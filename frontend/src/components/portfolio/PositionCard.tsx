@@ -6,14 +6,16 @@ interface PositionCardProps {
 }
 
 export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardProps) {
-  const formatNumber = (value: number, decimals = 2) => {
+  const formatNumber = (value: number | null | undefined, decimals = 2) => {
+    if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
   };
 
-  const formatPercent = (value: number) => {
+  const formatPercent = (value: number | null | undefined) => {
+    if (value == null) return '-';
     const sign = value >= 0 ? '+' : '';
     return `${sign}${formatNumber(value, 2)}%`;
   };

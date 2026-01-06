@@ -1,0 +1,22 @@
+# 本地開發用 - 只啟動 PostgreSQL
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: investmenttracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: investment_tracker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d investment_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

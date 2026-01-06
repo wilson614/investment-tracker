@@ -77,7 +77,8 @@ export function PortfolioPage() {
     );
   }
 
-  const formatNumber = (value: number) => {
+  const formatNumber = (value: number | null | undefined) => {
+    if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
