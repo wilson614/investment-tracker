@@ -1,0 +1,28 @@
+using FluentValidation;
+using InvestmentTracker.Application.DTOs;
+
+namespace InvestmentTracker.Application.Validators;
+
+public class CreatePortfolioRequestValidator : AbstractValidator<CreatePortfolioRequest>
+{
+    public CreatePortfolioRequestValidator()
+    {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Portfolio name is required")
+            .MaximumLength(100).WithMessage("Portfolio name cannot exceed 100 characters");
+
+        RuleFor(x => x.Description)
+            .MaximumLength(500).WithMessage("Description cannot exceed 500 characters")
+            .When(x => !string.IsNullOrEmpty(x.Description));
+
+        RuleFor(x => x.BaseCurrency)
+            .NotEmpty().WithMessage("Base currency is required")
+            .Length(3).WithMessage("Currency code must be exactly 3 characters")
+            .Matches("^[A-Z]{3}$").WithMessage("Currency code must be 3 uppercase letters");
+
+        RuleFor(x => x.HomeCurrency)
+            .NotEmpty().WithMessage("Home currency is required")
+            .Length(3).WithMessage("Currency code must be exactly 3 characters")
+            .Matches("^[A-Z]{3}$").WithMessage("Currency code must be 3 uppercase letters");
+    }
+}

@@ -1,10 +1,12 @@
 using System.Text;
+using FluentValidation;
 using InvestmentTracker.API.Middleware;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.CurrencyLedger;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using InvestmentTracker.Application.UseCases.StockTransactions;
+using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.Persistence;
@@ -14,8 +16,31 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// Configure Serilog
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "InvestmentTracker")
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/app-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .CreateLogger();
+
+try
+{
+    Log.Information("Starting Investment Tracker API");
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    // Use Serilog
+    builder.Host.UseSerilog();
 
 // Add controllers
 builder.Services.AddControllers();
@@ -125,6 +150,9 @@ builder.Services.AddScoped<CreateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<UpdateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
 
+// Register FluentValidation validators
+builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();
+
 // Configure CORS
 builder.Services.AddCors(options =>
 {
@@ -141,6 +169,8 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
+app.UseExceptionHandling();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -169,4 +199,13 @@ if (app.Environment.IsDevelopment())
     db.Database.EnsureCreated();
 }
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

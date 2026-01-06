@@ -1,56 +1,17 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './hooks/useAuth';
+import { AuthProvider } from './hooks/useAuth';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { TransactionsPage } from './pages/Transactions';
 import Currency from './pages/Currency';
 import CurrencyDetail from './pages/CurrencyDetail';
 import Login from './pages/Login';
-import ProtectedRoute from './components/common/ProtectedRoute';
+import { ProtectedRoute, PageLoader, ToastProvider } from './components/common';
+import { Navigation } from './components/layout/Navigation';
 import { portfolioApi } from './services/api';
 import type { Portfolio } from './types';
 import './index.css';
-
-function Header() {
-  const { user, logout } = useAuth();
-
-  const handleLogout = async () => {
-    await logout();
-  };
-
-  return (
-    <header className="bg-white shadow-sm">
-      <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="text-xl font-bold text-gray-900">
-            Investment Tracker
-          </Link>
-          <nav className="flex gap-4">
-            <Link to="/dashboard" className="text-gray-600 hover:text-gray-900">
-              儀表板
-            </Link>
-            <Link to="/" className="text-gray-600 hover:text-gray-900">
-              投資組合
-            </Link>
-            <Link to="/currency" className="text-gray-600 hover:text-gray-900">
-              外幣帳本
-            </Link>
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">{user?.displayName}</span>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function HomePage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -94,11 +55,7 @@ function HomePage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
+    return <PageLoader text="載入投資組合中..." />;
   }
 
   return (
@@ -156,7 +113,7 @@ function HomePage() {
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
+      <Navigation />
       {children}
     </div>
   );
@@ -235,7 +192,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

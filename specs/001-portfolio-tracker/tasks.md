@@ -322,15 +322,17 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T116 [P] Add Swagger/OpenAPI documentation in backend/src/InvestmentTracker.API/Program.cs
-- [ ] T117 [P] Add global exception handling middleware in backend/src/InvestmentTracker.API/Middleware/ExceptionHandlingMiddleware.cs
-- [ ] T118 [P] Add request validation with FluentValidation
-- [ ] T119 [P] Add structured logging configuration
-- [ ] T120 [P] Create responsive navigation component in frontend/src/components/common/Navigation.tsx
-- [ ] T121 [P] Add loading states and error handling to frontend components
-- [ ] T122 [P] Add toast notifications for user feedback
+- [x] T116 [P] Add Swagger/OpenAPI documentation in backend/src/InvestmentTracker.API/Program.cs
+- [x] T117 [P] Add global exception handling middleware in backend/src/InvestmentTracker.API/Middleware/ExceptionHandlingMiddleware.cs
+- [x] T118 [P] Add request validation with FluentValidation
+- [x] T119 [P] Add structured logging configuration (Serilog)
+- [x] T120 [P] Create responsive navigation component in frontend/src/components/layout/Navigation.tsx
+- [x] T121 [P] Add loading states and error handling to frontend components (LoadingSpinner, ErrorDisplay)
+- [x] T122 [P] Add toast notifications for user feedback (ToastProvider)
 - [ ] T123 Run quickstart.md validation scenarios
 - [ ] T124 Performance testing with 10,000 transactions
+
+**Checkpoint**: Phase 9 complete - cross-cutting concerns implemented
 
 ---
 
@@ -361,6 +363,35 @@
 - [ ] T135 Add price refresh button to Portfolio page
 
 **Checkpoint**: Real-time data integration complete - prices and exchange rates auto-populated
+
+---
+
+## Phase 11: UI Enhancement & Data Import
+
+**Purpose**: Improve visual design, add Chinese localization, and enable CSV data import
+
+### UI Localization
+
+- [ ] T136 [P] Localize UI to Traditional Chinese - scan and update all English text
+
+### Visual Design Enhancement (Modern Professional Style)
+
+- [ ] T137 [P] Install Lucide Icons and update navigation/button icons
+- [ ] T138 [P] Design color palette and base style variables (CSS custom properties)
+- [ ] T139 Improve card, table, and form visual design
+- [ ] T140 [P] Install Recharts and create chart components
+- [ ] T141 Add portfolio distribution pie chart and performance line chart
+- [ ] T142 [P] Add page transition animations
+
+### CSV Import Feature
+
+- [ ] T143 [P] Create CSV parser utility functions in frontend/src/utils/csvParser.ts
+- [ ] T144 [P] Create generic CSV import modal component in frontend/src/components/common/CsvImportModal.tsx
+- [ ] T145 Implement currency transaction CSV import (auto field mapping)
+- [ ] T146 Implement stock transaction CSV import (auto field mapping)
+- [ ] T147 [P] Create import preview and error validation display
+
+**Checkpoint**: Phase 11 complete - UI modernized with Chinese localization and CSV import enabled
 
 ---
 
