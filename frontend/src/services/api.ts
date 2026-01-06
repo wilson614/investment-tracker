@@ -6,6 +6,9 @@ import type {
   CreateStockTransactionRequest,
   UpdateStockTransactionRequest,
   PortfolioSummary,
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -104,6 +107,33 @@ export const transactionApi = {
 // Health Check
 export const healthApi = {
   check: () => fetchApi<{ status: string; timestamp: string }>('/health'),
+};
+
+// Auth API
+export const authApi = {
+  login: (data: LoginRequest) =>
+    fetchApi<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  register: (data: RegisterRequest) =>
+    fetchApi<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  refresh: (refreshToken: string) =>
+    fetchApi<AuthResponse>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
+  logout: (refreshToken: string) =>
+    fetchApi<void>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
 };
 
 export type { ApiErrorType };

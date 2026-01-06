@@ -1,4 +1,5 @@
 using System.Text;
+using InvestmentTracker.API.Middleware;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using InvestmentTracker.Application.UseCases.StockTransactions;
@@ -61,7 +62,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // Configure JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-256-bit-secret-key-here-minimum-32-chars";
+var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "your-256-bit-secret-key-here-minimum-32-chars";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "InvestmentTracker";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "InvestmentTracker";
 
@@ -76,7 +77,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
         };
     });
 
@@ -128,6 +129,7 @@ app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
+app.UseTenantContext();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -73,21 +73,21 @@
 - [x] T026 [P] Create RefreshTokenConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/RefreshTokenConfiguration.cs
 - [x] T027 Create IJwtTokenService interface in backend/src/InvestmentTracker.Application/Interfaces/IJwtTokenService.cs
 - [x] T028 Create JwtTokenService with Argon2 in backend/src/InvestmentTracker.Infrastructure/Services/JwtTokenService.cs
-- [ ] T029 Create AuthController (register, login, refresh, logout) in backend/src/InvestmentTracker.API/Controllers/AuthController.cs
+- [x] T029 Create AuthController (register, login, refresh, logout) in backend/src/InvestmentTracker.API/Controllers/AuthController.cs
 - [x] T030 Configure JWT authentication in backend/src/InvestmentTracker.API/Program.cs
-- [ ] T031 Create TenantContextMiddleware for user context in backend/src/InvestmentTracker.API/Middleware/TenantContextMiddleware.cs
+- [x] T031 Create TenantContextMiddleware for user context in backend/src/InvestmentTracker.API/Middleware/TenantContextMiddleware.cs
 
 ### Database Migration
 
-- [ ] T032 Create initial EF Core migration in backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/
+- [x] T032 Create initial EF Core migration in backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/
 
 ### Frontend Foundation
 
 - [x] T033 Create API client service in frontend/src/services/api.ts
-- [ ] T034 [P] Create auth context and hooks in frontend/src/hooks/useAuth.ts
+- [x] T034 [P] Create auth context and hooks in frontend/src/hooks/useAuth.tsx
 - [x] T035 [P] Create type definitions in frontend/src/types/index.ts
-- [ ] T036 Create Login page component in frontend/src/pages/Login.tsx
-- [ ] T037 Create protected route wrapper in frontend/src/components/common/ProtectedRoute.tsx
+- [x] T036 Create Login page component in frontend/src/pages/Login.tsx
+- [x] T037 Create protected route wrapper in frontend/src/components/common/ProtectedRoute.tsx
 - [x] T038 Configure React Router and app structure in frontend/src/App.tsx
 
 **Checkpoint**: Foundation ready - authentication works, user can login/register

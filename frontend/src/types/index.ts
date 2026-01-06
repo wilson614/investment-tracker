@@ -1,5 +1,30 @@
 // Portfolio and Transaction Types
 
+// Auth Types
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: User;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  displayName: string;
+}
+
 export interface Portfolio {
   id: string;
   name: string;
