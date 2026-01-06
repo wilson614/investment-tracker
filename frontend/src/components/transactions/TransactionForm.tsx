@@ -202,7 +202,7 @@ export function TransactionForm({ portfolioId, onSubmit, onCancel }: Transaction
             onChange={handleChange}
             required
             min="0"
-            step="0.0001"
+            step="0.00001"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="100.00"
           />

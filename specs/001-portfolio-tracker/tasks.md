@@ -334,6 +334,36 @@
 
 ---
 
+## Phase 10: Real-Time Data Integration (Enhancement)
+
+**Purpose**: Integrate external APIs for real-time stock prices and exchange rates
+
+**Note**: This phase is optional and can be implemented after core features are complete.
+
+### External API Integration
+
+- [ ] T125 [P] Research and select stock price API provider (Yahoo Finance, Alpha Vantage, etc.)
+- [ ] T126 [P] Research and select exchange rate API provider
+- [ ] T127 Create IStockPriceService interface in backend/src/InvestmentTracker.Application/Interfaces/IStockPriceService.cs
+- [ ] T128 Create IExchangeRateService interface in backend/src/InvestmentTracker.Application/Interfaces/IExchangeRateService.cs
+- [ ] T129 Implement StockPriceService with caching in backend/src/InvestmentTracker.Infrastructure/Services/StockPriceService.cs
+- [ ] T130 Implement ExchangeRateService with caching in backend/src/InvestmentTracker.Infrastructure/Services/ExchangeRateService.cs
+
+### API Endpoints
+
+- [ ] T131 Create PricesController for stock price lookups in backend/src/InvestmentTracker.API/Controllers/PricesController.cs
+- [ ] T132 Create ExchangeRatesController for rate lookups in backend/src/InvestmentTracker.API/Controllers/ExchangeRatesController.cs
+
+### Frontend Integration
+
+- [ ] T133 Update CurrentPriceInput to auto-fetch prices in frontend/src/components/portfolio/CurrentPriceInput.tsx
+- [ ] T134 Update CurrencyTransactionForm to auto-calculate exchange rate
+- [ ] T135 Add price refresh button to Portfolio page
+
+**Checkpoint**: Real-time data integration complete - prices and exchange rates auto-populated
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

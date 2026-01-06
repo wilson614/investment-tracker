@@ -82,7 +82,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 {formatNumber(tx.shares, 4)}
               </td>
               <td className="px-4 py-3 text-right text-gray-700">
-                {formatNumber(tx.pricePerShare, 4)}
+                {formatNumber(tx.pricePerShare, 5)}
               </td>
               <td className="px-4 py-3 text-right text-gray-700">
                 {formatNumber(tx.exchangeRate, 4)}
