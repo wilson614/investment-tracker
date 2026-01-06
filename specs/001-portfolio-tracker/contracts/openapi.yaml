@@ -1,0 +1,1032 @@
+openapi: 3.0.3
+info:
+  title: Investment Tracker API
+  description: |
+    Family Investment Portfolio Tracker REST API.
+    All endpoints require JWT Bearer authentication except /auth/*.
+  version: 1.0.0
+  contact:
+    name: Investment Tracker
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Development server
+  - url: https://your-domain.com/api/v1
+    description: Production server
+
+tags:
+  - name: Auth
+    description: Authentication endpoints
+  - name: Portfolios
+    description: Portfolio management
+  - name: StockTransactions
+    description: Stock/ETF transaction management
+  - name: CurrencyLedgers
+    description: Foreign currency ledger management
+  - name: CurrencyTransactions
+    description: Currency transaction management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ==================== Auth ====================
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "alice@family.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserDto'
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        displayName:
+          type: string
+          maxLength: 100
+
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+
+    # ==================== Portfolio ====================
+    PortfolioDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        baseCurrency:
+          type: string
+          example: "USD"
+        homeCurrency:
+          type: string
+          example: "TWD"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePortfolioRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        baseCurrency:
+          type: string
+          default: "USD"
+        homeCurrency:
+          type: string
+          default: "TWD"
+
+    UpdatePortfolioRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    PortfolioSummaryDto:
+      type: object
+      properties:
+        portfolio:
+          $ref: '#/components/schemas/PortfolioDto'
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionDto'
+        totalValueHome:
+          type: number
+          format: decimal
+        totalCostHome:
+          type: number
+          format: decimal
+        unrealizedPnlHome:
+          type: number
+          format: decimal
+        xirr:
+          type: number
+          format: decimal
+          nullable: true
+
+    PositionDto:
+      type: object
+      properties:
+        ticker:
+          type: string
+        totalShares:
+          type: number
+          format: decimal
+        averageCostSource:
+          type: number
+          format: decimal
+        averageCostHome:
+          type: number
+          format: decimal
+        totalCostHome:
+          type: number
+          format: decimal
+        currentPrice:
+          type: number
+          format: decimal
+          nullable: true
+        currentValueHome:
+          type: number
+          format: decimal
+          nullable: true
+        unrealizedPnlHome:
+          type: number
+          format: decimal
+          nullable: true
+        returnRate:
+          type: number
+          format: decimal
+          nullable: true
+
+    # ==================== Stock Transaction ====================
+    StockTransactionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        portfolioId:
+          type: string
+          format: uuid
+        transactionDate:
+          type: string
+          format: date
+        ticker:
+          type: string
+        transactionType:
+          type: string
+          enum: [Buy, Sell, Split, Adjustment]
+        shares:
+          type: number
+          format: decimal
+        pricePerShare:
+          type: number
+          format: decimal
+        exchangeRate:
+          type: number
+          format: decimal
+        fees:
+          type: number
+          format: decimal
+        fundSource:
+          type: string
+          enum: [None, CurrencyLedger]
+        currencyLedgerId:
+          type: string
+          format: uuid
+          nullable: true
+        totalCostSource:
+          type: number
+          format: decimal
+        totalCostHome:
+          type: number
+          format: decimal
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateStockTransactionRequest:
+      type: object
+      required: [transactionDate, ticker, transactionType, shares, pricePerShare, exchangeRate]
+      properties:
+        transactionDate:
+          type: string
+          format: date
+        ticker:
+          type: string
+          maxLength: 20
+        transactionType:
+          type: string
+          enum: [Buy, Sell, Split, Adjustment]
+        shares:
+          type: number
+          format: decimal
+          minimum: 0.0001
+        pricePerShare:
+          type: number
+          format: decimal
+          minimum: 0
+        exchangeRate:
+          type: number
+          format: decimal
+          minimum: 0.000001
+        fees:
+          type: number
+          format: decimal
+          default: 0
+        fundSource:
+          type: string
+          enum: [None, CurrencyLedger]
+          default: None
+        currencyLedgerId:
+          type: string
+          format: uuid
+          nullable: true
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    UpdateStockTransactionRequest:
+      type: object
+      properties:
+        transactionDate:
+          type: string
+          format: date
+        ticker:
+          type: string
+          maxLength: 20
+        transactionType:
+          type: string
+          enum: [Buy, Sell, Split, Adjustment]
+        shares:
+          type: number
+          format: decimal
+          minimum: 0.0001
+        pricePerShare:
+          type: number
+          format: decimal
+          minimum: 0
+        exchangeRate:
+          type: number
+          format: decimal
+          minimum: 0.000001
+        fees:
+          type: number
+          format: decimal
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    # ==================== Currency Ledger ====================
+    CurrencyLedgerDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        currencyCode:
+          type: string
+        name:
+          type: string
+        homeCurrency:
+          type: string
+        balance:
+          type: number
+          format: decimal
+        weightedAverageRate:
+          type: number
+          format: decimal
+        totalCostHome:
+          type: number
+          format: decimal
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateCurrencyLedgerRequest:
+      type: object
+      required: [currencyCode, name]
+      properties:
+        currencyCode:
+          type: string
+          maxLength: 3
+          example: "USD"
+        name:
+          type: string
+          maxLength: 100
+        homeCurrency:
+          type: string
+          default: "TWD"
+
+    # ==================== Currency Transaction ====================
+    CurrencyTransactionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        currencyLedgerId:
+          type: string
+          format: uuid
+        transactionDate:
+          type: string
+          format: date
+        transactionType:
+          type: string
+          enum: [ExchangeBuy, ExchangeSell, Interest, Spend]
+        foreignAmount:
+          type: number
+          format: decimal
+        homeAmount:
+          type: number
+          format: decimal
+          nullable: true
+        exchangeRate:
+          type: number
+          format: decimal
+          nullable: true
+        relatedStockTransactionId:
+          type: string
+          format: uuid
+          nullable: true
+        realizedPnlHome:
+          type: number
+          format: decimal
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateCurrencyTransactionRequest:
+      type: object
+      required: [transactionDate, transactionType, foreignAmount]
+      properties:
+        transactionDate:
+          type: string
+          format: date
+        transactionType:
+          type: string
+          enum: [ExchangeBuy, ExchangeSell, Interest, Spend]
+        foreignAmount:
+          type: number
+          format: decimal
+          minimum: 0.0001
+        homeAmount:
+          type: number
+          format: decimal
+          nullable: true
+        exchangeRate:
+          type: number
+          format: decimal
+          nullable: true
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    UpdateCurrencyTransactionRequest:
+      type: object
+      properties:
+        transactionDate:
+          type: string
+          format: date
+        transactionType:
+          type: string
+          enum: [ExchangeBuy, ExchangeSell, Interest, Spend]
+        foreignAmount:
+          type: number
+          format: decimal
+          minimum: 0.0001
+        homeAmount:
+          type: number
+          format: decimal
+          nullable: true
+        exchangeRate:
+          type: number
+          format: decimal
+          nullable: true
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    # ==================== Common ====================
+    ErrorResponse:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    PagedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: {}
+        totalCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== Auth ====================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and get JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid or expired refresh token
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '204':
+          description: Logged out
+
+  # ==================== Portfolios ====================
+  /portfolios:
+    get:
+      tags: [Portfolios]
+      summary: List user's portfolios
+      responses:
+        '200':
+          description: List of portfolios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PortfolioDto'
+    post:
+      tags: [Portfolios]
+      summary: Create a new portfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePortfolioRequest'
+      responses:
+        '201':
+          description: Portfolio created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioDto'
+        '400':
+          description: Validation error
+
+  /portfolios/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Portfolios]
+      summary: Get portfolio with summary
+      responses:
+        '200':
+          description: Portfolio with positions and metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioSummaryDto'
+        '404':
+          description: Portfolio not found
+    put:
+      tags: [Portfolios]
+      summary: Update portfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePortfolioRequest'
+      responses:
+        '200':
+          description: Portfolio updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioDto'
+        '404':
+          description: Portfolio not found
+    delete:
+      tags: [Portfolios]
+      summary: Delete portfolio (soft delete)
+      responses:
+        '204':
+          description: Portfolio deleted
+        '404':
+          description: Portfolio not found
+
+  /portfolios/{id}/xirr:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Portfolios]
+      summary: Calculate portfolio XIRR
+      parameters:
+        - name: currentPrice
+          in: query
+          description: Current market prices as ticker=price pairs
+          schema:
+            type: object
+            additionalProperties:
+              type: number
+      responses:
+        '200':
+          description: XIRR calculation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  xirr:
+                    type: number
+                    format: decimal
+                  annualizedReturn:
+                    type: string
+                    example: "12.34%"
+
+  # ==================== Stock Transactions ====================
+  /portfolios/{portfolioId}/transactions:
+    parameters:
+      - name: portfolioId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [StockTransactions]
+      summary: List stock transactions
+      parameters:
+        - name: ticker
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [Buy, Sell, Split, Adjustment]
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Paged list of transactions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/StockTransactionDto'
+    post:
+      tags: [StockTransactions]
+      summary: Create stock transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStockTransactionRequest'
+      responses:
+        '201':
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockTransactionDto'
+        '400':
+          description: Validation error (e.g., insufficient shares for sell)
+
+  /portfolios/{portfolioId}/transactions/{id}:
+    parameters:
+      - name: portfolioId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [StockTransactions]
+      summary: Get transaction details
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockTransactionDto'
+        '404':
+          description: Transaction not found
+    put:
+      tags: [StockTransactions]
+      summary: Update transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStockTransactionRequest'
+      responses:
+        '200':
+          description: Transaction updated (positions recalculated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockTransactionDto'
+        '400':
+          description: Validation error
+        '404':
+          description: Transaction not found
+    delete:
+      tags: [StockTransactions]
+      summary: Delete transaction (soft delete, recalculates positions)
+      responses:
+        '204':
+          description: Transaction deleted
+        '404':
+          description: Transaction not found
+
+  # ==================== Currency Ledgers ====================
+  /currency-ledgers:
+    get:
+      tags: [CurrencyLedgers]
+      summary: List user's currency ledgers
+      responses:
+        '200':
+          description: List of currency ledgers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CurrencyLedgerDto'
+    post:
+      tags: [CurrencyLedgers]
+      summary: Create a new currency ledger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCurrencyLedgerRequest'
+      responses:
+        '201':
+          description: Ledger created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyLedgerDto'
+        '400':
+          description: Validation error
+        '409':
+          description: Ledger for this currency already exists
+
+  /currency-ledgers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [CurrencyLedgers]
+      summary: Get currency ledger details
+      responses:
+        '200':
+          description: Ledger details with balance and rate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyLedgerDto'
+        '404':
+          description: Ledger not found
+    delete:
+      tags: [CurrencyLedgers]
+      summary: Delete currency ledger (soft delete)
+      responses:
+        '204':
+          description: Ledger deleted
+        '404':
+          description: Ledger not found
+
+  # ==================== Currency Transactions ====================
+  /currency-ledgers/{ledgerId}/transactions:
+    parameters:
+      - name: ledgerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [CurrencyTransactions]
+      summary: List currency transactions
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ExchangeBuy, ExchangeSell, Interest, Spend]
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paged list of transactions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CurrencyTransactionDto'
+    post:
+      tags: [CurrencyTransactions]
+      summary: Create currency transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCurrencyTransactionRequest'
+      responses:
+        '201':
+          description: Transaction created (ledger balance updated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyTransactionDto'
+        '400':
+          description: Validation error (e.g., insufficient balance for sell/spend)
+
+  /currency-ledgers/{ledgerId}/transactions/{id}:
+    parameters:
+      - name: ledgerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [CurrencyTransactions]
+      summary: Get transaction details
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyTransactionDto'
+        '404':
+          description: Transaction not found
+    put:
+      tags: [CurrencyTransactions]
+      summary: Update transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCurrencyTransactionRequest'
+      responses:
+        '200':
+          description: Transaction updated (ledger recalculated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyTransactionDto'
+        '400':
+          description: Validation error
+        '404':
+          description: Transaction not found
+    delete:
+      tags: [CurrencyTransactions]
+      summary: Delete transaction (soft delete, recalculates ledger)
+      responses:
+        '204':
+          description: Transaction deleted
+        '404':
+          description: Transaction not found
