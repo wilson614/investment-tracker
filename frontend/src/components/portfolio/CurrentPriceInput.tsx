@@ -1,0 +1,157 @@
+import { useState, useEffect } from 'react';
+import type { StockPosition, CurrentPriceInfo } from '../../types';
+
+interface CurrentPriceInputProps {
+  positions: StockPosition[];
+  onPricesChange: (prices: Record<string, CurrentPriceInfo>) => void;
+  baseCurrency?: string;
+  homeCurrency?: string;
+}
+
+interface PriceEntry {
+  ticker: string;
+  price: string;
+  exchangeRate: string;
+}
+
+export function CurrentPriceInput({
+  positions,
+  onPricesChange,
+  baseCurrency = 'USD',
+  homeCurrency = 'TWD',
+}: CurrentPriceInputProps) {
+  const [priceEntries, setPriceEntries] = useState<PriceEntry[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    const entries = positions.map((pos) => ({
+      ticker: pos.ticker,
+      price: pos.currentPrice?.toString() || '',
+      exchangeRate: pos.currentExchangeRate?.toString() || '',
+    }));
+    setPriceEntries(entries);
+  }, [positions]);
+
+  const handlePriceChange = (ticker: string, field: 'price' | 'exchangeRate', value: string) => {
+    setPriceEntries((prev) =>
+      prev.map((entry) =>
+        entry.ticker === ticker ? { ...entry, [field]: value } : entry
+      )
+    );
+  };
+
+  const handleApply = () => {
+    const prices: Record<string, CurrentPriceInfo> = {};
+
+    priceEntries.forEach((entry) => {
+      const price = parseFloat(entry.price);
+      const exchangeRate = parseFloat(entry.exchangeRate);
+
+      if (!isNaN(price) && price > 0 && !isNaN(exchangeRate) && exchangeRate > 0) {
+        prices[entry.ticker] = { price, exchangeRate };
+      }
+    });
+
+    if (Object.keys(prices).length > 0) {
+      onPricesChange(prices);
+    }
+  };
+
+  const handleClear = () => {
+    setPriceEntries((prev) =>
+      prev.map((entry) => ({ ...entry, price: '', exchangeRate: '' }))
+    );
+    onPricesChange({});
+  };
+
+  const filledCount = priceEntries.filter(
+    (e) => e.price && e.exchangeRate && parseFloat(e.price) > 0 && parseFloat(e.exchangeRate) > 0
+  ).length;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Current Prices</h3>
+          <p className="text-sm text-gray-500">
+            {filledCount} of {positions.length} prices entered
+          </p>
+        </div>
+        <svg
+          className={`w-5 h-5 text-gray-500 transform transition-transform ${
+            isExpanded ? 'rotate-180' : ''
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isExpanded && (
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600 pb-2 border-b">
+            <div className="col-span-3">Ticker</div>
+            <div className="col-span-4">Price ({baseCurrency})</div>
+            <div className="col-span-5">Exchange Rate ({baseCurrency}/{homeCurrency})</div>
+          </div>
+
+          {priceEntries.map((entry) => (
+            <div key={entry.ticker} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-3 font-medium text-gray-900">{entry.ticker}</div>
+              <div className="col-span-4">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={entry.price}
+                  onChange={(e) => handlePriceChange(entry.ticker, 'price', e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="col-span-5">
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={entry.exchangeRate}
+                  onChange={(e) => handlePriceChange(entry.ticker, 'exchangeRate', e.target.value)}
+                  placeholder="0.0000"
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="flex gap-2 pt-3 border-t">
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={filledCount === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Apply Prices
+            </button>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+            >
+              Clear All
+            </button>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Enter current stock prices and exchange rates to calculate unrealized P&L and XIRR.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -15,15 +15,18 @@ public class PortfoliosController : ControllerBase
 {
     private readonly IPortfolioRepository _portfolioRepository;
     private readonly GetPortfolioSummaryUseCase _getPortfolioSummaryUseCase;
+    private readonly CalculateXirrUseCase _calculateXirrUseCase;
     private readonly ICurrentUserService _currentUserService;
 
     public PortfoliosController(
         IPortfolioRepository portfolioRepository,
         GetPortfolioSummaryUseCase getPortfolioSummaryUseCase,
+        CalculateXirrUseCase calculateXirrUseCase,
         ICurrentUserService currentUserService)
     {
         _portfolioRepository = portfolioRepository;
         _getPortfolioSummaryUseCase = getPortfolioSummaryUseCase;
+        _calculateXirrUseCase = calculateXirrUseCase;
         _currentUserService = currentUserService;
     }
 
@@ -95,6 +98,32 @@ public class PortfoliosController : ControllerBase
             var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(
                 id, performanceRequest, cancellationToken);
             return Ok(summary);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>
+    /// Calculate XIRR (Extended Internal Rate of Return) for a portfolio.
+    /// </summary>
+    [HttpPost("{id:guid}/xirr")]
+    [ProducesResponseType(typeof(XirrResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<XirrResultDto>> CalculateXirr(
+        Guid id,
+        [FromBody] CalculateXirrRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _calculateXirrUseCase.ExecuteAsync(id, request, cancellationToken);
+            return Ok(result);
         }
         catch (InvalidOperationException)
         {

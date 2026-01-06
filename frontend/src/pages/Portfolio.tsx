@@ -4,13 +4,17 @@ import { portfolioApi, transactionApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
-import type { PortfolioSummary, StockTransaction, CreateStockTransactionRequest } from '../types';
+import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
+import { CurrentPriceInput } from '../components/portfolio/CurrentPriceInput';
+import type { PortfolioSummary, StockTransaction, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo } from '../types';
 
 export function PortfolioPage() {
   const { id } = useParams<{ id: string }>();
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -45,6 +49,25 @@ export function PortfolioPage() {
     setShowForm(false);
   };
 
+  const handlePricesChange = async (prices: Record<string, CurrentPriceInfo>) => {
+    if (!id) return;
+
+    setIsCalculating(true);
+
+    try {
+      const [summaryData, xirrData] = await Promise.all([
+        portfolioApi.getSummary(id, prices),
+        portfolioApi.calculateXirr(id, { currentPrices: prices }),
+      ]);
+      setSummary(summaryData);
+      setXirrResult(xirrData);
+    } catch (err) {
+      console.error('Failed to calculate performance:', err);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) {
       return;
@@ -77,14 +100,6 @@ export function PortfolioPage() {
     );
   }
 
-  const formatNumber = (value: number | null | undefined) => {
-    if (value == null) return '-';
-    return value.toLocaleString('zh-TW', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -101,48 +116,26 @@ export function PortfolioPage() {
           </p>
         </div>
 
-        {/* Summary Card */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            Portfolio Summary
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-sm text-gray-600">Total Cost</div>
-              <div className="text-xl font-bold text-gray-900">
-                {formatNumber(summary.totalCostHome)} {summary.portfolio.homeCurrency}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600">Positions</div>
-              <div className="text-xl font-bold text-gray-900">
-                {summary.positions.length}
-              </div>
-            </div>
-            {summary.totalValueHome !== undefined && (
-              <>
-                <div>
-                  <div className="text-sm text-gray-600">Current Value</div>
-                  <div className="text-xl font-bold text-gray-900">
-                    {formatNumber(summary.totalValueHome)} {summary.portfolio.homeCurrency}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Unrealized P&L</div>
-                  <div
-                    className={`text-xl font-bold ${
-                      (summary.totalUnrealizedPnlHome ?? 0) >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    }`}
-                  >
-                    {formatNumber(summary.totalUnrealizedPnlHome ?? 0)}{' '}
-                    {summary.portfolio.homeCurrency}
-                  </div>
-                </div>
-              </>
-            )}
+        {/* Current Price Input */}
+        {summary.positions.length > 0 && (
+          <div className="mb-6">
+            <CurrentPriceInput
+              positions={summary.positions}
+              onPricesChange={handlePricesChange}
+              baseCurrency={summary.portfolio.baseCurrency}
+              homeCurrency={summary.portfolio.homeCurrency}
+            />
           </div>
+        )}
+
+        {/* Performance Metrics */}
+        <div className="mb-6">
+          <PerformanceMetrics
+            summary={summary}
+            xirrResult={xirrResult}
+            homeCurrency={summary.portfolio.homeCurrency}
+            isLoading={isCalculating}
+          />
         </div>
 
         {/* Positions */}

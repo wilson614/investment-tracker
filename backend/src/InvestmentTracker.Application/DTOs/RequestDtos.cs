@@ -116,6 +116,26 @@ public record CalculatePerformanceRequest
 }
 
 /// <summary>
+/// Request for calculating XIRR.
+/// </summary>
+public record CalculateXirrRequest
+{
+    public Dictionary<string, CurrentPriceInfo>? CurrentPrices { get; init; }
+    public DateTime? AsOfDate { get; init; }
+}
+
+/// <summary>
+/// Result of XIRR calculation.
+/// </summary>
+public record XirrResultDto
+{
+    public double? Xirr { get; init; }
+    public double? XirrPercentage { get; init; }
+    public int CashFlowCount { get; init; }
+    public DateTime AsOfDate { get; init; }
+}
+
+/// <summary>
 /// Current price information for a ticker.
 /// </summary>
 public record CurrentPriceInfo

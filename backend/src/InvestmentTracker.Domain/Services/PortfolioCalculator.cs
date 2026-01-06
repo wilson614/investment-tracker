@@ -126,6 +126,128 @@ public class PortfolioCalculator
 
         return tickers.Select(ticker => CalculatePosition(ticker, transactionList));
     }
+
+    /// <summary>
+    /// Calculates XIRR (Extended Internal Rate of Return) using Newton-Raphson method.
+    /// </summary>
+    /// <param name="cashFlows">List of cash flows with amounts and dates</param>
+    /// <param name="maxIterations">Maximum iterations for convergence</param>
+    /// <param name="tolerance">Tolerance for convergence check</param>
+    /// <returns>Annual rate of return, or null if calculation fails</returns>
+    public double? CalculateXirr(
+        IEnumerable<CashFlow> cashFlows,
+        int maxIterations = 100,
+        double tolerance = 1e-7)
+    {
+        var flows = cashFlows.OrderBy(cf => cf.Date).ToList();
+
+        // Need at least 2 cash flows
+        if (flows.Count < 2)
+            return null;
+
+        // Need both positive and negative cash flows
+        var hasPositive = flows.Any(cf => cf.Amount > 0);
+        var hasNegative = flows.Any(cf => cf.Amount < 0);
+        if (!hasPositive || !hasNegative)
+            return null;
+
+        var firstDate = flows[0].Date;
+
+        // Convert to year fractions
+        var yearFractions = flows.Select(cf => (cf.Date - firstDate).TotalDays / 365.0).ToList();
+        var amounts = flows.Select(cf => (double)cf.Amount).ToList();
+
+        // Initial guess
+        double rate = 0.1;
+
+        // Newton-Raphson iteration
+        for (int i = 0; i < maxIterations; i++)
+        {
+            var npv = CalculateNpv(amounts, yearFractions, rate);
+            var derivative = CalculateNpvDerivative(amounts, yearFractions, rate);
+
+            if (Math.Abs(derivative) < 1e-10)
+            {
+                // Derivative too small, try different starting point
+                rate = rate + 0.1;
+                continue;
+            }
+
+            var newRate = rate - npv / derivative;
+
+            // Check for convergence
+            if (Math.Abs(newRate - rate) < tolerance)
+            {
+                return Math.Round(newRate, 6);
+            }
+
+            // Prevent rate from becoming too extreme
+            if (newRate < -0.999)
+                newRate = -0.999;
+            else if (newRate > 10)
+                newRate = 10;
+
+            rate = newRate;
+        }
+
+        // Try alternative method with bisection if Newton-Raphson fails
+        return CalculateXirrBisection(amounts, yearFractions);
+    }
+
+    private static double CalculateNpv(List<double> amounts, List<double> yearFractions, double rate)
+    {
+        double npv = 0;
+        for (int i = 0; i < amounts.Count; i++)
+        {
+            npv += amounts[i] / Math.Pow(1 + rate, yearFractions[i]);
+        }
+        return npv;
+    }
+
+    private static double CalculateNpvDerivative(List<double> amounts, List<double> yearFractions, double rate)
+    {
+        double derivative = 0;
+        for (int i = 0; i < amounts.Count; i++)
+        {
+            derivative -= yearFractions[i] * amounts[i] / Math.Pow(1 + rate, yearFractions[i] + 1);
+        }
+        return derivative;
+    }
+
+    private static double? CalculateXirrBisection(List<double> amounts, List<double> yearFractions, int maxIterations = 100)
+    {
+        double low = -0.999;
+        double high = 10.0;
+
+        var npvLow = CalculateNpv(amounts, yearFractions, low);
+        var npvHigh = CalculateNpv(amounts, yearFractions, high);
+
+        // Check if solution exists in range
+        if (npvLow * npvHigh > 0)
+            return null;
+
+        for (int i = 0; i < maxIterations; i++)
+        {
+            double mid = (low + high) / 2;
+            var npvMid = CalculateNpv(amounts, yearFractions, mid);
+
+            if (Math.Abs(npvMid) < 1e-7)
+                return Math.Round(mid, 6);
+
+            if (npvLow * npvMid < 0)
+            {
+                high = mid;
+                npvHigh = npvMid;
+            }
+            else
+            {
+                low = mid;
+                npvLow = npvMid;
+            }
+        }
+
+        return Math.Round((low + high) / 2, 6);
+    }
 }
 
 /// <summary>
@@ -144,3 +266,9 @@ public record UnrealizedPnl(
     decimal CurrentValueHome,
     decimal UnrealizedPnlHome,
     decimal UnrealizedPnlPercentage);
+
+/// <summary>
+/// Represents a cash flow for XIRR calculation.
+/// Negative amounts are outflows (investments), positive amounts are inflows (returns).
+/// </summary>
+public record CashFlow(decimal Amount, DateTime Date);

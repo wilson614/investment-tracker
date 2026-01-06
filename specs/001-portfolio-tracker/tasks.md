@@ -236,29 +236,29 @@
 
 ### Tests for User Story 4
 
-- [ ] T092 [P] [US4] Create XIRR calculation unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/XirrCalculatorTests.cs
-- [ ] T093 [P] [US4] Create Unrealized PnL calculation tests in backend/tests/InvestmentTracker.Domain.Tests/Services/UnrealizedPnlTests.cs
+- [x] T092 [P] [US4] Create XIRR calculation unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/XirrCalculatorTests.cs
+- [x] T093 [P] [US4] Create Unrealized PnL calculation tests in backend/tests/InvestmentTracker.Domain.Tests/Services/UnrealizedPnlTests.cs
 
 ### Domain Layer (US4)
 
-- [ ] T094 [US4] Implement XIRR calculator (Newton-Raphson) in backend/src/InvestmentTracker.Domain/Services/PortfolioCalculator.cs
-- [ ] T095 [US4] Implement Unrealized PnL calculation in PortfolioCalculator
+- [x] T094 [US4] Implement XIRR calculator (Newton-Raphson) in backend/src/InvestmentTracker.Domain/Services/PortfolioCalculator.cs
+- [x] T095 [US4] Implement Unrealized PnL calculation in PortfolioCalculator
 
 ### Application Layer (US4)
 
-- [ ] T096 [US4] Create CalculateXirrUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs
-- [ ] T097 [US4] Update GetPortfolioSummaryUseCase with current prices and unrealized PnL
+- [x] T096 [US4] Create CalculateXirrUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs
+- [x] T097 [US4] Update GetPortfolioSummaryUseCase with current prices and unrealized PnL
 
 ### API Layer (US4)
 
-- [ ] T098 [US4] Add XIRR endpoint to PortfoliosController
+- [x] T098 [US4] Add XIRR endpoint to PortfoliosController
 
 ### Frontend (US4)
 
-- [ ] T099 [P] [US4] Create PerformanceMetrics component in frontend/src/components/portfolio/PerformanceMetrics.tsx
-- [ ] T100 [P] [US4] Create CurrentPriceInput component in frontend/src/components/portfolio/CurrentPriceInput.tsx
-- [ ] T101 [US4] Create Dashboard page with portfolio overview in frontend/src/pages/Dashboard.tsx
-- [ ] T102 [US4] Update Portfolio page with performance metrics display
+- [x] T099 [P] [US4] Create PerformanceMetrics component in frontend/src/components/portfolio/PerformanceMetrics.tsx
+- [x] T100 [P] [US4] Create CurrentPriceInput component in frontend/src/components/portfolio/CurrentPriceInput.tsx
+- [x] T101 [US4] Create Dashboard page with portfolio overview in frontend/src/pages/Dashboard.tsx
+- [x] T102 [US4] Update Portfolio page with performance metrics display
 
 **Checkpoint**: User Story 4 complete - can view XIRR, unrealized PnL, and average cost
 

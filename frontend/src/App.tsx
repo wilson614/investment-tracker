@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { TransactionsPage } from './pages/Transactions';
 import Currency from './pages/Currency';
@@ -26,6 +27,9 @@ function Header() {
             Investment Tracker
           </Link>
           <nav className="flex gap-4">
+            <Link to="/dashboard" className="text-gray-600 hover:text-gray-900">
+              儀表板
+            </Link>
             <Link to="/" className="text-gray-600 hover:text-gray-900">
               投資組合
             </Link>
@@ -162,6 +166,16 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <DashboardPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={

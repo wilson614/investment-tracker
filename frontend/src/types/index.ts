@@ -202,3 +202,22 @@ export interface UpdateCurrencyTransactionRequest {
   exchangeRate?: number;
   notes?: string;
 }
+
+// Performance Types
+export interface CurrentPriceInfo {
+  price: number;
+  exchangeRate: number;
+}
+
+export interface CalculateXirrRequest {
+  currentPrices?: Record<string, CurrentPriceInfo>;
+  asOfDate?: string;
+}
+
+export interface XirrResult {
+  xirr: number | null;
+  xirrPercentage: number | null;
+  cashFlowCount: number;
+  asOfDate: string;
+}
+

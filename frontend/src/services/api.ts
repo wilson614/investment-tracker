@@ -16,6 +16,8 @@ import type {
   UpdateCurrencyLedgerRequest,
   CreateCurrencyTransactionRequest,
   UpdateCurrencyTransactionRequest,
+  CalculateXirrRequest,
+  XirrResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -70,6 +72,12 @@ export const portfolioApi = {
       : '';
     return fetchApi<PortfolioSummary>(`/portfolios/${id}/summary${params}`);
   },
+
+  calculateXirr: (id: string, request: CalculateXirrRequest) =>
+    fetchApi<XirrResult>(`/portfolios/${id}/xirr`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
 
   create: (data: CreatePortfolioRequest) =>
     fetchApi<Portfolio>('/portfolios', {

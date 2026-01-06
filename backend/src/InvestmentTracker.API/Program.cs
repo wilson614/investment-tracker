@@ -116,6 +116,7 @@ builder.Services.AddScoped<CreateStockTransactionUseCase>();
 builder.Services.AddScoped<UpdateStockTransactionUseCase>();
 builder.Services.AddScoped<DeleteStockTransactionUseCase>();
 builder.Services.AddScoped<GetPortfolioSummaryUseCase>();
+builder.Services.AddScoped<CalculateXirrUseCase>();
 builder.Services.AddScoped<GetCurrencyLedgerSummaryUseCase>();
 builder.Services.AddScoped<CreateCurrencyLedgerUseCase>();
 builder.Services.AddScoped<UpdateCurrencyLedgerUseCase>();
