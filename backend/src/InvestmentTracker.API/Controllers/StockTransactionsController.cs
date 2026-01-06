@@ -55,6 +55,7 @@ public class StockTransactionsController : ControllerBase
             Notes = t.Notes,
             TotalCostSource = t.TotalCostSource,
             TotalCostHome = t.TotalCostHome,
+            RealizedPnlHome = t.RealizedPnlHome,
             CreatedAt = t.CreatedAt,
             UpdatedAt = t.UpdatedAt
         }));
@@ -89,6 +90,7 @@ public class StockTransactionsController : ControllerBase
             Notes = transaction.Notes,
             TotalCostSource = transaction.TotalCostSource,
             TotalCostHome = transaction.TotalCostHome,
+            RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt
         });

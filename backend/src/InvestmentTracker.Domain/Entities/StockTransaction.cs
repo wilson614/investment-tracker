@@ -20,6 +20,7 @@ public class StockTransaction : BaseEntity
     public Guid? CurrencyLedgerId { get; private set; }
     public string? Notes { get; private set; }
     public bool IsDeleted { get; private set; }
+    public decimal? RealizedPnlHome { get; private set; }
 
     // Navigation properties
     public Portfolio Portfolio { get; private set; } = null!;
@@ -137,4 +138,9 @@ public class StockTransaction : BaseEntity
 
     public void MarkAsDeleted() => IsDeleted = true;
     public void Restore() => IsDeleted = false;
+
+    public void SetRealizedPnl(decimal? realizedPnlHome)
+    {
+        RealizedPnlHome = realizedPnlHome.HasValue ? Math.Round(realizedPnlHome.Value, 2) : null;
+    }
 }

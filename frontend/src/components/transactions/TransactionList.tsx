@@ -57,6 +57,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
             <th className="px-4 py-3 text-right font-medium text-gray-600">Rate</th>
             <th className="px-4 py-3 text-right font-medium text-gray-600">Fees</th>
             <th className="px-4 py-3 text-right font-medium text-gray-600">Total (TWD)</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">Realized PnL</th>
             {(onEdit || onDelete) && (
               <th className="px-4 py-3 text-center font-medium text-gray-600">Actions</th>
             )}
@@ -92,6 +93,19 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
               </td>
               <td className="px-4 py-3 text-right font-medium text-gray-900">
                 {formatNumber(tx.totalCostHome)}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {tx.realizedPnlHome != null ? (
+                  <span
+                    className={`font-medium ${
+                      tx.realizedPnlHome >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}
+                  >
+                    {tx.realizedPnlHome >= 0 ? '+' : ''}{formatNumber(tx.realizedPnlHome)}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">-</span>
+                )}
               </td>
               {(onEdit || onDelete) && (
                 <td className="px-4 py-3 text-center">

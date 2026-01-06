@@ -36,6 +36,7 @@ public record StockTransactionDto
     public string? Notes { get; init; }
     public decimal TotalCostSource { get; init; }
     public decimal TotalCostHome { get; init; }
+    public decimal? RealizedPnlHome { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
 }

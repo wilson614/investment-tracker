@@ -51,6 +51,42 @@ public class CreateStockTransactionUseCase
             throw new UnauthorizedAccessException("You do not have access to this portfolio");
         }
 
+        // For sell transactions, validate share balance and calculate realized PnL
+        decimal? realizedPnlHome = null;
+        if (request.TransactionType == TransactionType.Sell)
+        {
+            // Get all transactions for this portfolio
+            var existingTransactions = await _transactionRepository.GetByPortfolioIdAsync(
+                request.PortfolioId, cancellationToken);
+
+            // Calculate current position for this ticker
+            var currentPosition = _portfolioCalculator.CalculatePosition(
+                request.Ticker, existingTransactions);
+
+            // Validate sufficient shares
+            if (currentPosition.TotalShares < request.Shares)
+            {
+                throw new InvalidOperationException(
+                    $"Insufficient shares. Available: {currentPosition.TotalShares:F4}, Requested: {request.Shares:F4}");
+            }
+
+            // Create a temporary sell transaction for PnL calculation
+            var tempSellTransaction = new StockTransaction(
+                request.PortfolioId,
+                request.TransactionDate,
+                request.Ticker,
+                request.TransactionType,
+                request.Shares,
+                request.PricePerShare,
+                request.ExchangeRate,
+                request.Fees,
+                request.FundSource,
+                request.CurrencyLedgerId,
+                request.Notes);
+
+            realizedPnlHome = _portfolioCalculator.CalculateRealizedPnl(currentPosition, tempSellTransaction);
+        }
+
         // If fund source is CurrencyLedger, validate balance and deduct atomically
         Domain.Entities.CurrencyLedger? currencyLedger = null;
         if (request.FundSource == FundSource.CurrencyLedger && request.CurrencyLedgerId.HasValue)
@@ -105,6 +141,12 @@ public class CreateStockTransactionUseCase
             request.CurrencyLedgerId,
             request.Notes);
 
+        // Set realized PnL for sell transactions
+        if (realizedPnlHome.HasValue)
+        {
+            transaction.SetRealizedPnl(realizedPnlHome.Value);
+        }
+
         await _transactionRepository.AddAsync(transaction, cancellationToken);
 
         return MapToDto(transaction);
@@ -128,6 +170,7 @@ public class CreateStockTransactionUseCase
             Notes = transaction.Notes,
             TotalCostSource = transaction.TotalCostSource,
             TotalCostHome = transaction.TotalCostHome,
+            RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt
         };

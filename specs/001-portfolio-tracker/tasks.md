@@ -272,21 +272,21 @@
 
 ### Tests for User Story 5
 
-- [ ] T103 [P] [US5] Create Realized PnL calculation tests in backend/tests/InvestmentTracker.Domain.Tests/Services/RealizedPnlTests.cs
+- [x] T103 [P] [US5] Create Realized PnL calculation tests in backend/tests/InvestmentTracker.Domain.Tests/Services/PortfolioCalculatorTests.cs
 
 ### Domain Layer (US5)
 
-- [ ] T104 [US5] Implement Realized PnL calculation (average cost method) in PortfolioCalculator
-- [ ] T105 [US5] Add share balance validation for sell transactions
+- [x] T104 [US5] Implement Realized PnL calculation (average cost method) in PortfolioCalculator
+- [x] T105 [US5] Add share balance validation for sell transactions
 
 ### Application Layer (US5)
 
-- [ ] T106 [US5] Update CreateStockTransactionUseCase with sell validation and realized PnL calculation
+- [x] T106 [US5] Update CreateStockTransactionUseCase with sell validation and realized PnL calculation
 
 ### Frontend (US5)
 
-- [ ] T107 [P] [US5] Create RealizedPnlDisplay component in frontend/src/components/portfolio/RealizedPnlDisplay.tsx
-- [ ] T108 [US5] Add realized PnL to transaction list and details
+- [x] T107 [P] [US5] Add realizedPnlHome to StockTransaction type in frontend/src/types/index.ts
+- [x] T108 [US5] Add realized PnL column to TransactionList component
 
 **Checkpoint**: User Story 5 complete - can sell stocks and see realized profit/loss
 

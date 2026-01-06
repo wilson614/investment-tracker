@@ -77,6 +77,7 @@ export interface StockTransaction {
   notes?: string;
   totalCostSource: number;
   totalCostHome: number;
+  realizedPnlHome?: number;
   createdAt: string;
   updatedAt: string;
 }
