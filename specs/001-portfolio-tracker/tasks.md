@@ -203,26 +203,26 @@
 
 ### Tests for User Story 3
 
-- [ ] T084 [P] [US3] Create atomic transaction integration tests in backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
+- [x] T084 [P] [US3] Create atomic transaction integration tests in backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
 
 ### Domain Layer (US3)
 
-- [ ] T085 [US3] Add CurrencyLedgerId and FundSource to StockTransaction entity in backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs
+- [x] T085 [US3] Add CurrencyLedgerId and FundSource to StockTransaction entity in backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs
 
 ### Application Layer (US3)
 
-- [ ] T086 [US3] Update CreateStockTransactionUseCase with atomic currency deduction in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs
-- [ ] T087 [US3] Add balance validation before stock purchase in CreateStockTransactionUseCase
+- [x] T086 [US3] Update CreateStockTransactionUseCase with atomic currency deduction in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs
+- [x] T087 [US3] Add balance validation before stock purchase in CreateStockTransactionUseCase
 
 ### Infrastructure Layer (US3)
 
-- [ ] T088 [US3] Update StockTransactionConfiguration with CurrencyLedger relationship
-- [ ] T089 [US3] Create migration for FundSource and CurrencyLedgerId fields
+- [x] T088 [US3] Update StockTransactionConfiguration with CurrencyLedger relationship
+- [x] T089 [US3] Create migration for FundSource and CurrencyLedgerId fields
 
 ### Frontend (US3)
 
-- [ ] T090 [US3] Add fund source selector to TransactionForm in frontend/src/components/transactions/TransactionForm.tsx
-- [ ] T091 [US3] Add currency ledger balance display in transaction form
+- [x] T090 [US3] Add fund source selector to TransactionForm in frontend/src/components/transactions/TransactionForm.tsx
+- [x] T091 [US3] Add currency ledger balance display in transaction form
 
 **Checkpoint**: User Story 3 complete - stock purchases can use currency ledger with atomic deduction
 
