@@ -300,19 +300,19 @@
 
 ### Tests for User Story 6
 
-- [ ] T109 [P] [US6] Create data isolation integration tests in backend/tests/InvestmentTracker.API.Tests/Integration/MultiTenancyTests.cs
+- [x] T109 [P] [US6] Create data isolation integration tests in backend/tests/InvestmentTracker.API.Tests/Integration/MultiTenancyTests.cs
 
 ### Infrastructure Layer (US6)
 
-- [ ] T110 [US6] Add global query filters for Portfolio in AppDbContext
-- [ ] T111 [US6] Add global query filters for CurrencyLedger in AppDbContext
-- [ ] T112 [US6] Add global query filters for StockTransaction in AppDbContext
-- [ ] T113 [US6] Add global query filters for CurrencyTransaction in AppDbContext
+- [x] T110 [US6] Add global query filters for Portfolio in AppDbContext
+- [x] T111 [US6] Add global query filters for CurrencyLedger in AppDbContext
+- [x] T112 [US6] Add global query filters for StockTransaction in AppDbContext (via Portfolio relationship)
+- [x] T113 [US6] Add global query filters for CurrencyTransaction in AppDbContext (via CurrencyLedger relationship)
 
 ### API Layer (US6)
 
-- [ ] T114 [US6] Add ownership validation to all controllers
-- [ ] T115 [US6] Verify TenantContextMiddleware sets user context correctly
+- [x] T114 [US6] Add ownership validation to all controllers and use cases
+- [x] T115 [US6] Verify TenantContextMiddleware sets user context correctly
 
 **Checkpoint**: User Story 6 complete - data isolation verified between users
 
