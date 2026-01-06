@@ -26,18 +26,18 @@
 
 **Purpose**: Create project structure, configure tooling, and establish development environment
 
-- [ ] T001 Create solution structure with 4 backend projects in backend/InvestmentTracker.sln
-- [ ] T002 [P] Initialize InvestmentTracker.Domain class library in backend/src/InvestmentTracker.Domain/
-- [ ] T003 [P] Initialize InvestmentTracker.Application class library in backend/src/InvestmentTracker.Application/
-- [ ] T004 [P] Initialize InvestmentTracker.Infrastructure class library in backend/src/InvestmentTracker.Infrastructure/
-- [ ] T005 [P] Initialize InvestmentTracker.API web project in backend/src/InvestmentTracker.API/
-- [ ] T006 [P] Initialize test projects in backend/tests/ (Domain.Tests, Application.Tests, API.Tests)
-- [ ] T007 Create React TypeScript project with Vite in frontend/
-- [ ] T008 [P] Configure Tailwind CSS in frontend/tailwind.config.js
-- [ ] T009 [P] Configure Docker Compose in docker/docker-compose.yml (postgres, backend, frontend)
-- [ ] T010 [P] Create backend.Dockerfile with multi-stage build in docker/backend.Dockerfile
-- [ ] T011 [P] Create frontend.Dockerfile with nginx in docker/frontend.Dockerfile
-- [ ] T012 Create .env.example with required environment variables in project root
+- [x] T001 Create solution structure with 4 backend projects in backend/InvestmentTracker.sln
+- [x] T002 [P] Initialize InvestmentTracker.Domain class library in backend/src/InvestmentTracker.Domain/
+- [x] T003 [P] Initialize InvestmentTracker.Application class library in backend/src/InvestmentTracker.Application/
+- [x] T004 [P] Initialize InvestmentTracker.Infrastructure class library in backend/src/InvestmentTracker.Infrastructure/
+- [x] T005 [P] Initialize InvestmentTracker.API web project in backend/src/InvestmentTracker.API/
+- [x] T006 [P] Initialize test projects in backend/tests/ (Domain.Tests, Application.Tests, API.Tests)
+- [x] T007 Create React TypeScript project with Vite in frontend/
+- [x] T008 [P] Configure Tailwind CSS in frontend/tailwind.config.js
+- [x] T009 [P] Configure Docker Compose in docker/docker-compose.yml (postgres, backend, frontend)
+- [x] T010 [P] Create backend.Dockerfile with multi-stage build in docker/backend.Dockerfile
+- [x] T011 [P] Create frontend.Dockerfile with nginx in docker/frontend.Dockerfile
+- [x] T012 Create .env.example with required environment variables in project root
 
 **Checkpoint**: Project scaffolding complete - all projects build successfully
 
@@ -51,30 +51,30 @@
 
 ### Domain Layer Foundation
 
-- [ ] T013 [P] Create IHasTimestamps interface in backend/src/InvestmentTracker.Domain/Common/IHasTimestamps.cs
-- [ ] T014 [P] Create BaseEntity abstract class in backend/src/InvestmentTracker.Domain/Common/BaseEntity.cs
-- [ ] T015 [P] Create Money value object in backend/src/InvestmentTracker.Domain/ValueObjects/Money.cs
-- [ ] T016 [P] Create ExchangeRate value object in backend/src/InvestmentTracker.Domain/ValueObjects/ExchangeRate.cs
-- [ ] T017 Create User entity in backend/src/InvestmentTracker.Domain/Entities/User.cs
-- [ ] T018 [P] Create TransactionType enum in backend/src/InvestmentTracker.Domain/Enums/TransactionType.cs
-- [ ] T019 [P] Create CurrencyTransactionType enum in backend/src/InvestmentTracker.Domain/Enums/CurrencyTransactionType.cs
-- [ ] T020 [P] Create FundSource enum in backend/src/InvestmentTracker.Domain/Enums/FundSource.cs
+- [x] T013 [P] Create IHasTimestamps interface in backend/src/InvestmentTracker.Domain/Common/IHasTimestamps.cs
+- [x] T014 [P] Create BaseEntity abstract class in backend/src/InvestmentTracker.Domain/Common/BaseEntity.cs
+- [x] T015 [P] Create Money value object in backend/src/InvestmentTracker.Domain/ValueObjects/Money.cs
+- [x] T016 [P] Create ExchangeRate value object in backend/src/InvestmentTracker.Domain/ValueObjects/ExchangeRate.cs
+- [x] T017 Create User entity in backend/src/InvestmentTracker.Domain/Entities/User.cs
+- [x] T018 [P] Create TransactionType enum in backend/src/InvestmentTracker.Domain/Enums/TransactionType.cs
+- [x] T019 [P] Create CurrencyTransactionType enum in backend/src/InvestmentTracker.Domain/Enums/CurrencyTransactionType.cs
+- [x] T020 [P] Create FundSource enum in backend/src/InvestmentTracker.Domain/Enums/FundSource.cs
 
 ### Infrastructure Layer Foundation
 
-- [ ] T021 Create AppDbContext with audit timestamps in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
-- [ ] T022 [P] Create UserConfiguration for EF Core in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/UserConfiguration.cs
-- [ ] T023 Create ICurrentUserService interface in backend/src/InvestmentTracker.Application/Interfaces/ICurrentUserService.cs
-- [ ] T024 Create CurrentUserService implementation in backend/src/InvestmentTracker.Infrastructure/Services/CurrentUserService.cs
+- [x] T021 Create AppDbContext with audit timestamps in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
+- [x] T022 [P] Create UserConfiguration for EF Core in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/UserConfiguration.cs
+- [x] T023 Create ICurrentUserService interface in backend/src/InvestmentTracker.Application/Interfaces/ICurrentUserService.cs
+- [x] T024 Create CurrentUserService implementation in backend/src/InvestmentTracker.Infrastructure/Services/CurrentUserService.cs
 
 ### Authentication Infrastructure
 
-- [ ] T025 Create RefreshToken entity in backend/src/InvestmentTracker.Domain/Entities/RefreshToken.cs
-- [ ] T026 [P] Create RefreshTokenConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/RefreshTokenConfiguration.cs
-- [ ] T027 Create IJwtTokenService interface in backend/src/InvestmentTracker.Application/Interfaces/IJwtTokenService.cs
-- [ ] T028 Create JwtTokenService with Argon2 in backend/src/InvestmentTracker.Infrastructure/Services/JwtTokenService.cs
+- [x] T025 Create RefreshToken entity in backend/src/InvestmentTracker.Domain/Entities/RefreshToken.cs
+- [x] T026 [P] Create RefreshTokenConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/RefreshTokenConfiguration.cs
+- [x] T027 Create IJwtTokenService interface in backend/src/InvestmentTracker.Application/Interfaces/IJwtTokenService.cs
+- [x] T028 Create JwtTokenService with Argon2 in backend/src/InvestmentTracker.Infrastructure/Services/JwtTokenService.cs
 - [ ] T029 Create AuthController (register, login, refresh, logout) in backend/src/InvestmentTracker.API/Controllers/AuthController.cs
-- [ ] T030 Configure JWT authentication in backend/src/InvestmentTracker.API/Program.cs
+- [x] T030 Configure JWT authentication in backend/src/InvestmentTracker.API/Program.cs
 - [ ] T031 Create TenantContextMiddleware for user context in backend/src/InvestmentTracker.API/Middleware/TenantContextMiddleware.cs
 
 ### Database Migration
@@ -83,12 +83,12 @@
 
 ### Frontend Foundation
 
-- [ ] T033 Create API client service in frontend/src/services/api.ts
+- [x] T033 Create API client service in frontend/src/services/api.ts
 - [ ] T034 [P] Create auth context and hooks in frontend/src/hooks/useAuth.ts
-- [ ] T035 [P] Create type definitions in frontend/src/types/index.ts
+- [x] T035 [P] Create type definitions in frontend/src/types/index.ts
 - [ ] T036 Create Login page component in frontend/src/pages/Login.tsx
 - [ ] T037 Create protected route wrapper in frontend/src/components/common/ProtectedRoute.tsx
-- [ ] T038 Configure React Router and app structure in frontend/src/App.tsx
+- [x] T038 Configure React Router and app structure in frontend/src/App.tsx
 
 **Checkpoint**: Foundation ready - authentication works, user can login/register
 
@@ -102,45 +102,45 @@
 
 ### Tests for User Story 1
 
-- [ ] T039 [P] [US1] Create PortfolioCalculator unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/PortfolioCalculatorTests.cs
-- [ ] T040 [P] [US1] Create StockTransaction validation tests in backend/tests/InvestmentTracker.Domain.Tests/Entities/StockTransactionTests.cs
+- [x] T039 [P] [US1] Create PortfolioCalculator unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/PortfolioCalculatorTests.cs
+- [x] T040 [P] [US1] Create StockTransaction validation tests in backend/tests/InvestmentTracker.Domain.Tests/Entities/StockTransactionTests.cs
 
 ### Domain Layer (US1)
 
-- [ ] T041 [P] [US1] Create Portfolio entity in backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs
-- [ ] T042 [P] [US1] Create StockTransaction entity in backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs
-- [ ] T043 [US1] Create PortfolioCalculator domain service (RecalculatePosition, MovingAverageCost) in backend/src/InvestmentTracker.Domain/Services/PortfolioCalculator.cs
+- [x] T041 [P] [US1] Create Portfolio entity in backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs
+- [x] T042 [P] [US1] Create StockTransaction entity in backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs
+- [x] T043 [US1] Create PortfolioCalculator domain service (RecalculatePosition, MovingAverageCost) in backend/src/InvestmentTracker.Domain/Services/PortfolioCalculator.cs
 
 ### Infrastructure Layer (US1)
 
-- [ ] T044 [P] [US1] Create PortfolioConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/PortfolioConfiguration.cs
-- [ ] T045 [P] [US1] Create StockTransactionConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockTransactionConfiguration.cs
-- [ ] T046 [US1] Create IPortfolioRepository interface in backend/src/InvestmentTracker.Domain/Interfaces/IPortfolioRepository.cs
-- [ ] T047 [US1] Create PortfolioRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/PortfolioRepository.cs
-- [ ] T048 [US1] Add Portfolio and StockTransaction to AppDbContext and create migration
+- [x] T044 [P] [US1] Create PortfolioConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/PortfolioConfiguration.cs
+- [x] T045 [P] [US1] Create StockTransactionConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockTransactionConfiguration.cs
+- [x] T046 [US1] Create IPortfolioRepository interface in backend/src/InvestmentTracker.Domain/Interfaces/IPortfolioRepository.cs
+- [x] T047 [US1] Create PortfolioRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/PortfolioRepository.cs
+- [x] T048 [US1] Add Portfolio and StockTransaction to AppDbContext and create migration
 
 ### Application Layer (US1)
 
-- [ ] T049 [P] [US1] Create PortfolioDto, StockTransactionDto in backend/src/InvestmentTracker.Application/DTOs/PortfolioDtos.cs
-- [ ] T050 [P] [US1] Create CreatePortfolioRequest, CreateStockTransactionRequest in backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs
-- [ ] T051 [US1] Create CreateStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs
-- [ ] T052 [US1] Create UpdateStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs
-- [ ] T053 [US1] Create DeleteStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs
-- [ ] T054 [US1] Create GetPortfolioSummaryUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs
+- [x] T049 [P] [US1] Create PortfolioDto, StockTransactionDto in backend/src/InvestmentTracker.Application/DTOs/PortfolioDtos.cs
+- [x] T050 [P] [US1] Create CreatePortfolioRequest, CreateStockTransactionRequest in backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs
+- [x] T051 [US1] Create CreateStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs
+- [x] T052 [US1] Create UpdateStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs
+- [x] T053 [US1] Create DeleteStockTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs
+- [x] T054 [US1] Create GetPortfolioSummaryUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs
 
 ### API Layer (US1)
 
-- [ ] T055 [US1] Create PortfoliosController (CRUD, summary) in backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs
-- [ ] T056 [US1] Create StockTransactionsController (CRUD) in backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs
+- [x] T055 [US1] Create PortfoliosController (CRUD, summary) in backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs
+- [x] T056 [US1] Create StockTransactionsController (CRUD) in backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs
 
 ### Frontend (US1)
 
-- [ ] T057 [P] [US1] Create TransactionForm component in frontend/src/components/transactions/TransactionForm.tsx
-- [ ] T058 [P] [US1] Create TransactionList component in frontend/src/components/transactions/TransactionList.tsx
-- [ ] T059 [P] [US1] Create PositionCard component in frontend/src/components/portfolio/PositionCard.tsx
-- [ ] T060 [US1] Create Portfolio page in frontend/src/pages/Portfolio.tsx
-- [ ] T061 [US1] Create Transactions page in frontend/src/pages/Transactions.tsx
-- [ ] T062 [US1] Add portfolio and transaction API calls in frontend/src/services/api.ts
+- [x] T057 [P] [US1] Create TransactionForm component in frontend/src/components/transactions/TransactionForm.tsx
+- [x] T058 [P] [US1] Create TransactionList component in frontend/src/components/transactions/TransactionList.tsx
+- [x] T059 [P] [US1] Create PositionCard component in frontend/src/components/portfolio/PositionCard.tsx
+- [x] T060 [US1] Create Portfolio page in frontend/src/pages/Portfolio.tsx
+- [x] T061 [US1] Create Transactions page in frontend/src/pages/Transactions.tsx
+- [x] T062 [US1] Add portfolio and transaction API calls in frontend/src/services/api.ts
 
 **Checkpoint**: User Story 1 complete - can record buy transactions and see positions with correct costs
 

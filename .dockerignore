@@ -1,0 +1,72 @@
+# =============================================================================
+# Investment Tracker - .dockerignore
+# =============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+specs/
+.specify/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.vs/
+
+# .NET build artifacts
+**/bin/
+**/obj/
+**/packages/
+*.nupkg
+*.snupkg
+
+# Node.js
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/.next/
+**/.cache/
+*.tsbuildinfo
+
+# Test files
+**/*Tests/
+**/*.Tests.csproj
+**/tests/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Environment files (secrets should be passed at runtime)
+.env*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker files (don't need to copy docker files into image)
+**/Dockerfile*
+**/docker-compose*.yml
+**/.dockerignore
+
+# Misc
+*.tmp
+*.temp
+*.bak
