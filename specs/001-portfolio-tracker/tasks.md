@@ -154,42 +154,42 @@
 
 ### Tests for User Story 2
 
-- [ ] T063 [P] [US2] Create CurrencyLedgerService unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/CurrencyLedgerServiceTests.cs
-- [ ] T064 [P] [US2] Create weighted average formula tests (ExchangeBuy, ExchangeSell, Interest) in backend/tests/InvestmentTracker.Domain.Tests/Services/WeightedAverageCostTests.cs
+- [x] T063 [P] [US2] Create CurrencyLedgerService unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/CurrencyLedgerServiceTests.cs
+- [x] T064 [P] [US2] Create weighted average formula tests (ExchangeBuy, ExchangeSell, Interest) in backend/tests/InvestmentTracker.Domain.Tests/Services/WeightedAverageCostTests.cs
 
 ### Domain Layer (US2)
 
-- [ ] T065 [P] [US2] Create CurrencyLedger entity in backend/src/InvestmentTracker.Domain/Entities/CurrencyLedger.cs
-- [ ] T066 [P] [US2] Create CurrencyTransaction entity in backend/src/InvestmentTracker.Domain/Entities/CurrencyTransaction.cs
-- [ ] T067 [US2] Create CurrencyLedgerService domain service in backend/src/InvestmentTracker.Domain/Services/CurrencyLedgerService.cs
+- [x] T065 [P] [US2] Create CurrencyLedger entity in backend/src/InvestmentTracker.Domain/Entities/CurrencyLedger.cs
+- [x] T066 [P] [US2] Create CurrencyTransaction entity in backend/src/InvestmentTracker.Domain/Entities/CurrencyTransaction.cs
+- [x] T067 [US2] Create CurrencyLedgerService domain service in backend/src/InvestmentTracker.Domain/Services/CurrencyLedgerService.cs
 
 ### Infrastructure Layer (US2)
 
-- [ ] T068 [P] [US2] Create CurrencyLedgerConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/CurrencyLedgerConfiguration.cs
-- [ ] T069 [P] [US2] Create CurrencyTransactionConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/CurrencyTransactionConfiguration.cs
-- [ ] T070 [US2] Create ICurrencyLedgerRepository interface in backend/src/InvestmentTracker.Domain/Interfaces/ICurrencyLedgerRepository.cs
-- [ ] T071 [US2] Create CurrencyLedgerRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/CurrencyLedgerRepository.cs
-- [ ] T072 [US2] Add CurrencyLedger and CurrencyTransaction to AppDbContext and create migration
+- [x] T068 [P] [US2] Create CurrencyLedgerConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/CurrencyLedgerConfiguration.cs
+- [x] T069 [P] [US2] Create CurrencyTransactionConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/CurrencyTransactionConfiguration.cs
+- [x] T070 [US2] Create ICurrencyLedgerRepository interface in backend/src/InvestmentTracker.Domain/Interfaces/ICurrencyLedgerRepository.cs
+- [x] T071 [US2] Create CurrencyLedgerRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/CurrencyLedgerRepository.cs
+- [x] T072 [US2] Add CurrencyLedger and CurrencyTransaction to AppDbContext and create migration
 
 ### Application Layer (US2)
 
-- [ ] T073 [P] [US2] Create CurrencyLedgerDto, CurrencyTransactionDto in backend/src/InvestmentTracker.Application/DTOs/CurrencyDtos.cs
-- [ ] T074 [US2] Create CreateCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CreateCurrencyTransactionUseCase.cs
-- [ ] T075 [US2] Create UpdateCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/UpdateCurrencyTransactionUseCase.cs
-- [ ] T076 [US2] Create DeleteCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/DeleteCurrencyTransactionUseCase.cs
+- [x] T073 [P] [US2] Create CurrencyLedgerDto, CurrencyTransactionDto in backend/src/InvestmentTracker.Application/DTOs/CurrencyDtos.cs
+- [x] T074 [US2] Create CreateCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CreateCurrencyTransactionUseCase.cs
+- [x] T075 [US2] Create UpdateCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/UpdateCurrencyTransactionUseCase.cs
+- [x] T076 [US2] Create DeleteCurrencyTransactionUseCase in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/DeleteCurrencyTransactionUseCase.cs
 
 ### API Layer (US2)
 
-- [ ] T077 [US2] Create CurrencyLedgersController in backend/src/InvestmentTracker.API/Controllers/CurrencyLedgersController.cs
-- [ ] T078 [US2] Create CurrencyTransactionsController in backend/src/InvestmentTracker.API/Controllers/CurrencyTransactionsController.cs
+- [x] T077 [US2] Create CurrencyLedgersController in backend/src/InvestmentTracker.API/Controllers/CurrencyLedgersController.cs
+- [x] T078 [US2] Create CurrencyTransactionsController in backend/src/InvestmentTracker.API/Controllers/CurrencyTransactionsController.cs
 
 ### Frontend (US2)
 
-- [ ] T079 [P] [US2] Create CurrencyLedgerCard component in frontend/src/components/currency/CurrencyLedgerCard.tsx
-- [ ] T080 [P] [US2] Create CurrencyTransactionForm component in frontend/src/components/currency/CurrencyTransactionForm.tsx
-- [ ] T081 [P] [US2] Create CurrencyTransactionList component in frontend/src/components/currency/CurrencyTransactionList.tsx
-- [ ] T082 [US2] Create CurrencyLedger page in frontend/src/pages/CurrencyLedger.tsx
-- [ ] T083 [US2] Add currency ledger API calls in frontend/src/services/api.ts
+- [x] T079 [P] [US2] Create CurrencyLedgerCard component in frontend/src/components/currency/CurrencyLedgerCard.tsx
+- [x] T080 [P] [US2] Create CurrencyTransactionForm component in frontend/src/components/currency/CurrencyTransactionForm.tsx
+- [x] T081 [P] [US2] Create CurrencyTransactionList component in frontend/src/components/currency/CurrencyTransactionList.tsx
+- [x] T082 [US2] Create CurrencyLedger page in frontend/src/pages/CurrencyLedger.tsx
+- [x] T083 [US2] Add currency ledger API calls in frontend/src/services/api.ts
 
 **Checkpoint**: User Story 2 complete - can manage currency ledger with correct weighted average calculations
 

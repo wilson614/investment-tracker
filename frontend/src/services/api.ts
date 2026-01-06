@@ -9,6 +9,13 @@ import type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  CurrencyLedgerSummary,
+  CurrencyLedger,
+  CurrencyTransaction,
+  CreateCurrencyLedgerRequest,
+  UpdateCurrencyLedgerRequest,
+  CreateCurrencyTransactionRequest,
+  UpdateCurrencyTransactionRequest,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -134,6 +141,50 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ refreshToken }),
     }),
+};
+
+// Currency Ledger API
+export const currencyLedgerApi = {
+  getAll: () => fetchApi<CurrencyLedgerSummary[]>('/currencyledgers'),
+
+  getById: (id: string) =>
+    fetchApi<CurrencyLedgerSummary>(`/currencyledgers/${id}`),
+
+  create: (data: CreateCurrencyLedgerRequest) =>
+    fetchApi<CurrencyLedger>('/currencyledgers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: UpdateCurrencyLedgerRequest) =>
+    fetchApi<CurrencyLedger>(`/currencyledgers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/currencyledgers/${id}`, { method: 'DELETE' }),
+};
+
+// Currency Transaction API
+export const currencyTransactionApi = {
+  getByLedger: (ledgerId: string) =>
+    fetchApi<CurrencyTransaction[]>(`/currencytransactions/ledger/${ledgerId}`),
+
+  create: (data: CreateCurrencyTransactionRequest) =>
+    fetchApi<CurrencyTransaction>('/currencytransactions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: UpdateCurrencyTransactionRequest) =>
+    fetchApi<CurrencyTransaction>(`/currencytransactions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    fetchApi<void>(`/currencytransactions/${id}`, { method: 'DELETE' }),
 };
 
 export type { ApiErrorType };

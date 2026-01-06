@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { PortfolioPage } from './pages/Portfolio';
 import { TransactionsPage } from './pages/Transactions';
+import Currency from './pages/Currency';
+import CurrencyDetail from './pages/CurrencyDetail';
 import Login from './pages/Login';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { portfolioApi } from './services/api';
@@ -19,9 +21,19 @@ function Header() {
   return (
     <header className="bg-white shadow-sm">
       <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-        <Link to="/" className="text-xl font-bold text-gray-900">
-          Investment Tracker
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link to="/" className="text-xl font-bold text-gray-900">
+            Investment Tracker
+          </Link>
+          <nav className="flex gap-4">
+            <Link to="/" className="text-gray-600 hover:text-gray-900">
+              投資組合
+            </Link>
+            <Link to="/currency" className="text-gray-600 hover:text-gray-900">
+              外幣帳本
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">{user?.displayName}</span>
           <button
@@ -176,6 +188,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <TransactionsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/currency"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Currency />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/currency/:id"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <CurrencyDetail />
             </AppLayout>
           </ProtectedRoute>
         }

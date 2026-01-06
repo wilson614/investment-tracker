@@ -1,6 +1,8 @@
 using System.Text;
 using InvestmentTracker.API.Middleware;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.UseCases.CurrencyLedger;
+using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Interfaces;
@@ -102,15 +104,25 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 // Register Repositories
 builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();
 builder.Services.AddScoped<IStockTransactionRepository, StockTransactionRepository>();
+builder.Services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>();
+builder.Services.AddScoped<ICurrencyTransactionRepository, CurrencyTransactionRepository>();
 
 // Register Domain Services
 builder.Services.AddScoped<PortfolioCalculator>();
+builder.Services.AddScoped<CurrencyLedgerService>();
 
 // Register Use Cases
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
 builder.Services.AddScoped<UpdateStockTransactionUseCase>();
 builder.Services.AddScoped<DeleteStockTransactionUseCase>();
 builder.Services.AddScoped<GetPortfolioSummaryUseCase>();
+builder.Services.AddScoped<GetCurrencyLedgerSummaryUseCase>();
+builder.Services.AddScoped<CreateCurrencyLedgerUseCase>();
+builder.Services.AddScoped<UpdateCurrencyLedgerUseCase>();
+builder.Services.AddScoped<DeleteCurrencyLedgerUseCase>();
+builder.Services.AddScoped<CreateCurrencyTransactionUseCase>();
+builder.Services.AddScoped<UpdateCurrencyTransactionUseCase>();
+builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

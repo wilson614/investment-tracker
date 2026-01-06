@@ -126,3 +126,79 @@ export interface PortfolioSummary {
   totalUnrealizedPnlHome?: number;
   totalUnrealizedPnlPercentage?: number;
 }
+
+// Currency Ledger Types
+export const CurrencyTransactionType = {
+  ExchangeBuy: 1,
+  ExchangeSell: 2,
+  Interest: 3,
+  Spend: 4,
+} as const;
+export type CurrencyTransactionType = (typeof CurrencyTransactionType)[keyof typeof CurrencyTransactionType];
+
+export interface CurrencyLedger {
+  id: string;
+  currencyCode: string;
+  name: string;
+  homeCurrency: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CurrencyTransaction {
+  id: string;
+  currencyLedgerId: string;
+  transactionDate: string;
+  transactionType: CurrencyTransactionType;
+  foreignAmount: number;
+  homeAmount?: number;
+  exchangeRate?: number;
+  relatedStockTransactionId?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CurrencyLedgerSummary {
+  ledger: CurrencyLedger;
+  balance: number;
+  weightedAverageCost: number;
+  totalCostHome: number;
+  realizedPnl: number;
+  currentExchangeRate?: number;
+  currentValueHome?: number;
+  unrealizedPnlHome?: number;
+  unrealizedPnlPercentage?: number;
+  recentTransactions: CurrencyTransaction[];
+}
+
+export interface CreateCurrencyLedgerRequest {
+  currencyCode: string;
+  name: string;
+  homeCurrency?: string;
+}
+
+export interface UpdateCurrencyLedgerRequest {
+  name: string;
+}
+
+export interface CreateCurrencyTransactionRequest {
+  currencyLedgerId: string;
+  transactionDate: string;
+  transactionType: CurrencyTransactionType;
+  foreignAmount: number;
+  homeAmount?: number;
+  exchangeRate?: number;
+  relatedStockTransactionId?: string;
+  notes?: string;
+}
+
+export interface UpdateCurrencyTransactionRequest {
+  transactionDate: string;
+  transactionType: CurrencyTransactionType;
+  foreignAmount: number;
+  homeAmount?: number;
+  exchangeRate?: number;
+  notes?: string;
+}

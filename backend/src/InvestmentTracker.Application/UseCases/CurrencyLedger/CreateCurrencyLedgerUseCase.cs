@@ -1,0 +1,55 @@
+using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Interfaces;
+
+namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
+
+/// <summary>
+/// Use case for creating a new currency ledger.
+/// </summary>
+public class CreateCurrencyLedgerUseCase
+{
+    private readonly ICurrencyLedgerRepository _ledgerRepository;
+    private readonly ICurrentUserService _currentUserService;
+
+    public CreateCurrencyLedgerUseCase(
+        ICurrencyLedgerRepository ledgerRepository,
+        ICurrentUserService currentUserService)
+    {
+        _ledgerRepository = ledgerRepository;
+        _currentUserService = currentUserService;
+    }
+
+    public async Task<CurrencyLedgerDto> ExecuteAsync(
+        CreateCurrencyLedgerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUserService.UserId
+            ?? throw new UnauthorizedAccessException("User not authenticated");
+
+        // Check if ledger with same currency already exists
+        if (await _ledgerRepository.ExistsByCurrencyCodeAsync(userId, request.CurrencyCode, cancellationToken))
+        {
+            throw new InvalidOperationException($"A currency ledger for {request.CurrencyCode} already exists");
+        }
+
+        var ledger = new Domain.Entities.CurrencyLedger(
+            userId,
+            request.CurrencyCode,
+            request.Name,
+            request.HomeCurrency);
+
+        await _ledgerRepository.AddAsync(ledger, cancellationToken);
+
+        return new CurrencyLedgerDto
+        {
+            Id = ledger.Id,
+            CurrencyCode = ledger.CurrencyCode,
+            Name = ledger.Name,
+            HomeCurrency = ledger.HomeCurrency,
+            IsActive = ledger.IsActive,
+            CreatedAt = ledger.CreatedAt,
+            UpdatedAt = ledger.UpdatedAt
+        };
+    }
+}
