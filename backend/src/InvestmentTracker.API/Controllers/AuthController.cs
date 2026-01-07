@@ -134,6 +134,109 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Get current user profile.
+    /// </summary>
+    [HttpGet("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetCurrentUser()
+    {
+        var userId = GetCurrentUserId();
+        var user = await _context.Users.FindAsync(userId);
+
+        if (user == null)
+            return NotFound();
+
+        return Ok(new UserDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName
+        });
+    }
+
+    /// <summary>
+    /// Update current user profile.
+    /// </summary>
+    [HttpPut("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateUserProfileRequest request)
+    {
+        var userId = GetCurrentUserId();
+        var user = await _context.Users.FindAsync(userId);
+
+        if (user == null)
+            return NotFound();
+
+        // Update email if provided
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+            if (normalizedEmail != user.Email)
+            {
+                var existingUser = await _context.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.Email == normalizedEmail && u.Id != userId);
+
+                if (existingUser != null)
+                    return Conflict(new { message = "Email already in use" });
+
+                user.UpdateEmail(normalizedEmail);
+            }
+        }
+
+        // Update display name if provided
+        if (!string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            user.UpdateDisplayName(request.DisplayName.Trim());
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new UserDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName
+        });
+    }
+
+    /// <summary>
+    /// Change current user password.
+    /// </summary>
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var userId = GetCurrentUserId();
+        var user = await _context.Users.FindAsync(userId);
+
+        if (user == null)
+            return NotFound();
+
+        if (!_jwtTokenService.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+            return BadRequest(new { message = "Current password is incorrect" });
+
+        var newPasswordHash = _jwtTokenService.HashPassword(request.NewPassword);
+        user.UpdatePassword(newPasswordHash);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.Parse(userIdClaim!);
+    }
+
     private async Task<AuthResponse> CreateAuthResponse(User user, Guid? replacedTokenId = null)
     {
         var accessToken = _jwtTokenService.GenerateAccessToken(user);

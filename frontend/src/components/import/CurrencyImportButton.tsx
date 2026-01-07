@@ -169,7 +169,17 @@ export function CurrencyImportButton({
         if (needsHomeCost && !homeAmount) {
           errors.push({
             row: rowNum,
-            message: isExchangeType ? '換匯交易需要提供台幣金額' : '期初餘額需要提供台幣成本',
+            message: isExchangeType ? '換匯交易需要提供台幣金額' : '轉入餘額需要提供台幣成本',
+          });
+          continue;
+        }
+
+        // Validate TWD amount is an integer
+        if (homeAmount !== undefined && !Number.isInteger(homeAmount)) {
+          errors.push({
+            row: rowNum,
+            column: '台幣金額',
+            message: '台幣金額必須為整數',
           });
           continue;
         }

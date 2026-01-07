@@ -84,7 +84,6 @@ export function PortfolioPage() {
 
   const handleEditTransaction = (tx: StockTransaction) => {
     setEditingTransaction(tx);
-    setShowForm(true);
   };
 
   const handleUpdateTransaction = async (data: CreateStockTransactionRequest) => {
@@ -235,6 +234,7 @@ export function PortfolioPage() {
                 <PositionCard
                   key={position.ticker}
                   position={position}
+                  baseCurrency={summary.portfolio.baseCurrency}
                   homeCurrency={summary.portfolio.homeCurrency}
                 />
               ))}
@@ -242,33 +242,48 @@ export function PortfolioPage() {
           </div>
         )}
 
-        {/* Transaction Form */}
+        {/* Transaction Form Actions */}
         <div className="mb-6">
-          {showForm ? (
-            <TransactionForm
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowForm(true)}
+              className="btn-accent flex-1 py-3"
+            >
+              + 新增交易
+            </button>
+            <StockImportButton
               portfolioId={id!}
-              initialData={editingTransaction ?? undefined}
-              onSubmit={editingTransaction ? handleUpdateTransaction : handleAddTransaction}
-              onCancel={() => {
-                setShowForm(false);
-                setEditingTransaction(null);
-              }}
+              onImportComplete={loadData}
             />
-          ) : (
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowForm(true)}
-                className="btn-accent flex-1 py-3"
-              >
-                + 新增交易
-              </button>
-              <StockImportButton
+          </div>
+        </div>
+
+        {/* Add Transaction Modal */}
+        {showForm && !editingTransaction && (
+          <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
+            <div className="card-dark p-0 w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+              <TransactionForm
                 portfolioId={id!}
-                onImportComplete={loadData}
+                onSubmit={handleAddTransaction}
+                onCancel={() => setShowForm(false)}
               />
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Edit Transaction Modal */}
+        {editingTransaction && (
+          <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
+            <div className="card-dark p-0 w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+              <TransactionForm
+                portfolioId={id!}
+                initialData={editingTransaction}
+                onSubmit={handleUpdateTransaction}
+                onCancel={() => setEditingTransaction(null)}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Transaction List */}
         <div className="card-dark overflow-hidden">

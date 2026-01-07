@@ -13,7 +13,7 @@ public record RegisterRequest
     public required string Email { get; init; }
 
     [Required]
-    [MinLength(8)]
+    [MinLength(6)]
     [MaxLength(128)]
     public required string Password { get; init; }
 
@@ -63,4 +63,31 @@ public record UserDto
     public required Guid Id { get; init; }
     public required string Email { get; init; }
     public required string DisplayName { get; init; }
+}
+
+/// <summary>
+/// Request to update user profile.
+/// </summary>
+public record UpdateUserProfileRequest
+{
+    [MaxLength(100)]
+    public string? DisplayName { get; init; }
+
+    [EmailAddress]
+    [MaxLength(256)]
+    public string? Email { get; init; }
+}
+
+/// <summary>
+/// Request to change password.
+/// </summary>
+public record ChangePasswordRequest
+{
+    [Required]
+    public required string CurrentPassword { get; init; }
+
+    [Required]
+    [MinLength(6)]
+    [MaxLength(128)]
+    public required string NewPassword { get; init; }
 }

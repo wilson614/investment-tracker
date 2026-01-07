@@ -96,7 +96,7 @@ export default function Currency() {
           <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">總覽</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="metric-card metric-card-cream">
-              <p className="text-sm text-[var(--text-muted)] mb-1">累計換匯</p>
+              <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
               <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">{formatNumber(totalExchanged)}</p>
               <p className="text-sm text-[var(--text-muted)]">TWD</p>
             </div>

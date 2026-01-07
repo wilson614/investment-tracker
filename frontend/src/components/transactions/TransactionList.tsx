@@ -46,9 +46,9 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
       <table className="table-dark">
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr>
             <th>日期</th>
             <th>股票代號</th>

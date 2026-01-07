@@ -162,7 +162,7 @@ public class CreateStockTransactionUseCase
                 CurrencyTransactionType.Spend,
                 requiredAmount.Value,
                 relatedStockTransactionId: transaction.Id,
-                notes: $"Stock purchase: {request.Ticker} x {request.Shares}");
+                notes: $"買入 {request.Ticker} × {request.Shares}");
 
             await _currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
         }

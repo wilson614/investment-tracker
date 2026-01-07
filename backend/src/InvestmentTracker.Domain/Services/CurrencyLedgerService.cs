@@ -49,16 +49,29 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the total amount exchanged in home currency (TWD).
-    /// Sum of all ExchangeBuy and InitialBalance HomeAmount.
+    /// Calculates the net investment in home currency (TWD).
+    /// Net = (ExchangeBuy + InitialBalance) - ExchangeSell HomeAmount.
+    /// This represents the actual TWD invested, accounting for any sell-backs.
     /// </summary>
     public decimal CalculateTotalExchanged(IEnumerable<CurrencyTransaction> transactions)
     {
-        return transactions
-            .Where(t => !t.IsDeleted &&
-                       (t.TransactionType == CurrencyTransactionType.ExchangeBuy ||
-                        t.TransactionType == CurrencyTransactionType.InitialBalance))
-            .Sum(t => t.HomeAmount ?? 0m);
+        decimal buyTotal = 0m;
+        decimal sellTotal = 0m;
+
+        foreach (var tx in transactions.Where(t => !t.IsDeleted))
+        {
+            if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
+                tx.TransactionType == CurrencyTransactionType.InitialBalance)
+            {
+                buyTotal += tx.HomeAmount ?? 0m;
+            }
+            else if (tx.TransactionType == CurrencyTransactionType.ExchangeSell)
+            {
+                sellTotal += tx.HomeAmount ?? 0m;
+            }
+        }
+
+        return buyTotal - sellTotal;
     }
 
     /// <summary>

@@ -60,6 +60,16 @@ export function CurrencyTransactionForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate TWD amount is an integer
+    if (needsHomeCost && homeAmount) {
+      const homeValue = parseFloat(homeAmount);
+      if (!Number.isInteger(homeValue)) {
+        setError('台幣金額必須為整數');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -111,7 +121,7 @@ export function CurrencyTransactionForm({
           <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
           <option value={CurrencyTxType.Interest}>利息收入</option>
           <option value={CurrencyTxType.Spend}>消費支出</option>
-          <option value={CurrencyTxType.InitialBalance}>期初餘額</option>
+          <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
           <option value={CurrencyTxType.OtherIncome}>其他收入</option>
           <option value={CurrencyTxType.OtherExpense}>其他支出</option>
         </select>
@@ -139,11 +149,11 @@ export function CurrencyTransactionForm({
           </label>
           <input
             type="number"
-            step="0.01"
+            step="1"
             value={homeAmount}
             onChange={(e) => setHomeAmount(e.target.value)}
             className="input-dark w-full"
-            placeholder="0.00"
+            placeholder="0"
             required={needsHomeCost}
           />
         </div>

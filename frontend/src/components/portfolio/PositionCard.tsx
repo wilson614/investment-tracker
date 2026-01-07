@@ -2,10 +2,11 @@ import type { StockPosition } from '../../types';
 
 interface PositionCardProps {
   position: StockPosition;
+  baseCurrency?: string;
   homeCurrency?: string;
 }
 
-export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardProps) {
+export function PositionCard({ position, baseCurrency = 'USD', homeCurrency = 'TWD' }: PositionCardProps) {
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
     if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
@@ -37,7 +38,7 @@ export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardPro
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">平均成本:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(position.averageCostPerShare)} {homeCurrency}
+            {formatNumber(position.averageCostPerShareSource)} {baseCurrency}
           </span>
         </div>
 

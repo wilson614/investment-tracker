@@ -119,7 +119,15 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
   };
 
   const requiredAmount = calculateRequiredAmount();
-  const hasInsufficientBalance = selectedLedger && requiredAmount > selectedLedger.balance;
+
+  // When editing, add back the original transaction amount to the effective balance
+  const originalAmount = initialData
+    ? (initialData.shares * initialData.pricePerShare + initialData.fees)
+    : 0;
+  const effectiveBalance = selectedLedger
+    ? selectedLedger.balance + originalAmount
+    : 0;
+  const hasInsufficientBalance = selectedLedger && requiredAmount > effectiveBalance;
 
   return (
     <form onSubmit={handleSubmit} className="card-dark space-y-5 p-6">
@@ -287,24 +295,24 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
 
         {/* Balance Display */}
         {selectedLedger && (
-          <div className={`mt-4 p-4 rounded-lg ${hasInsufficientBalance ? 'bg-[var(--color-danger-soft)] border border-[var(--color-danger)]' : 'bg-[var(--accent-sand-soft)] border border-[var(--accent-sand)]'}`}>
+          <div className={`mt-4 p-4 rounded-lg ${hasInsufficientBalance ? 'bg-[var(--color-warning-soft)] border border-[var(--color-warning)]' : 'bg-[var(--accent-sand-soft)] border border-[var(--accent-sand)]'}`}>
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-base text-[var(--text-muted)]">可用餘額</p>
-                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-danger)]' : 'text-[var(--accent-sand)]'}`}>
-                  {selectedLedger.balance.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {selectedLedger.ledger.currencyCode}
+                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--accent-sand)]'}`}>
+                  {effectiveBalance.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {selectedLedger.ledger.currencyCode}
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-base text-[var(--text-muted)]">所需金額</p>
-                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-danger)]' : 'text-[var(--text-primary)]'}`}>
+                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--text-primary)]'}`}>
                   {requiredAmount.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {selectedLedger.ledger.currencyCode}
                 </p>
               </div>
             </div>
             {hasInsufficientBalance && (
-              <p className="text-base text-[var(--color-danger)] mt-3">
-                餘額不足。請增加資金或選擇其他資金來源。
+              <p className="text-base text-[var(--color-warning)] mt-3">
+                注意：餘額將變為負數
               </p>
             )}
           </div>
@@ -329,7 +337,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
       <div className="flex gap-3">
         <button
           type="submit"
-          disabled={isSubmitting || (hasInsufficientBalance ?? false)}
+          disabled={isSubmitting}
           className="btn-accent flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? '處理中...' : (initialData ? '儲存' : '新增交易')}

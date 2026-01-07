@@ -62,6 +62,11 @@ public class User : BaseEntity
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
 
+    // Update methods (aliases for Set methods)
+    public void UpdateEmail(string email) => SetEmail(email);
+    public void UpdateDisplayName(string displayName) => SetDisplayName(displayName);
+    public void UpdatePassword(string passwordHash) => SetPasswordHash(passwordHash);
+
     public void AddPortfolio(Portfolio portfolio)
     {
         if (portfolio == null)

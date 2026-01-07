@@ -157,6 +157,21 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ refreshToken }),
     }),
+
+  getMe: () =>
+    fetchApi<{ id: string; email: string; displayName: string }>('/auth/me'),
+
+  updateProfile: (data: { displayName?: string; email?: string }) =>
+    fetchApi<{ id: string; email: string; displayName: string }>('/auth/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    fetchApi<void>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // Currency Ledger API

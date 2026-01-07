@@ -55,7 +55,9 @@ public class GetPortfolioSummaryUseCase
                 Ticker = position.Ticker,
                 TotalShares = position.TotalShares,
                 TotalCostHome = position.TotalCostHome,
-                AverageCostPerShare = position.AverageCostPerShare
+                TotalCostSource = position.TotalCostSource,
+                AverageCostPerShareHome = position.AverageCostPerShareHome,
+                AverageCostPerShareSource = position.AverageCostPerShareSource
             };
 
             // If current prices provided, calculate unrealized PnL

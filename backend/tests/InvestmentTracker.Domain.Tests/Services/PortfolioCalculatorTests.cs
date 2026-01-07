@@ -39,7 +39,7 @@ public class PortfolioCalculatorTests
         // Total cost in home = 1055 * 31.5 = 33232.5
         Assert.Equal(33232.5m, position.TotalCostHome);
         // Average cost = 33232.5 / 10.5 = 3165
-        Assert.Equal(3165m, position.AverageCostPerShare, 2);
+        Assert.Equal(3165m, position.AverageCostPerShareHome, 2);
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class PortfolioCalculatorTests
         // Total: 49100 TWD for 15 shares
         // Average: 49100 / 15 = 3273.33
         Assert.Equal(49100m, position.TotalCostHome);
-        Assert.Equal(3273.33m, position.AverageCostPerShare, 2);
+        Assert.Equal(3273.33m, position.AverageCostPerShareHome, 2);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class PortfolioCalculatorTests
         // Remaining: 63000 - 15750 = 47250 TWD for 15 shares
         // Average remains 3150 (unchanged for remaining shares)
         Assert.Equal(47250m, position.TotalCostHome, 2);
-        Assert.Equal(3150m, position.AverageCostPerShare, 2);
+        Assert.Equal(3150m, position.AverageCostPerShareHome, 2);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class PortfolioCalculatorTests
         // Total source = (10 * 100) + 10 = 1010
         // Total home = 1010 * 31.5 = 31815
         Assert.Equal(31815m, position.TotalCostHome);
-        Assert.Equal(3181.5m, position.AverageCostPerShare, 2);
+        Assert.Equal(3181.5m, position.AverageCostPerShareHome, 2);
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class PortfolioCalculatorTests
         Assert.Equal("VWRA", position.Ticker);
         Assert.Equal(0m, position.TotalShares);
         Assert.Equal(0m, position.TotalCostHome);
-        Assert.Equal(0m, position.AverageCostPerShare);
+        Assert.Equal(0m, position.AverageCostPerShareHome);
     }
 
     [Fact]

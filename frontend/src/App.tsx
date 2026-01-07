@@ -6,6 +6,7 @@ import { PortfolioPage } from './pages/Portfolio';
 import { TransactionsPage } from './pages/Transactions';
 import Currency from './pages/Currency';
 import CurrencyDetail from './pages/CurrencyDetail';
+import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { ProtectedRoute, PageLoader, ToastProvider } from './components/common';
 import { Navigation } from './components/layout/Navigation';
@@ -179,6 +180,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <CurrencyDetail />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Settings />
             </AppLayout>
           </ProtectedRoute>
         }

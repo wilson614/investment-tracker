@@ -44,7 +44,7 @@ public record CurrencyLedgerSummaryDto
     public decimal Balance { get; init; }
     /// <summary>Average exchange rate from all exchanges (TWD per foreign unit)</summary>
     public decimal AverageExchangeRate { get; init; }
-    /// <summary>Total TWD invested in exchanges</summary>
+    /// <summary>Net TWD invested (buy - sell)</summary>
     public decimal TotalExchanged { get; init; }
     /// <summary>Total foreign currency spent on stocks</summary>
     public decimal TotalSpentOnStocks { get; init; }

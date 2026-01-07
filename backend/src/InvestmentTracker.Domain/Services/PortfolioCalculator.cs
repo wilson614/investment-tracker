@@ -23,11 +23,12 @@ public class PortfolioCalculator
 
         if (!tickerTransactions.Any())
         {
-            return new StockPosition(ticker, 0m, 0m, 0m);
+            return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m);
         }
 
         decimal totalShares = 0m;
         decimal totalCostHome = 0m;
+        decimal totalCostSource = 0m;
 
         foreach (var transaction in tickerTransactions)
         {
@@ -36,15 +37,18 @@ public class PortfolioCalculator
                 case TransactionType.Buy:
                     totalShares += transaction.Shares;
                     totalCostHome += transaction.TotalCostHome;
+                    totalCostSource += transaction.TotalCostSource;
                     break;
 
                 case TransactionType.Sell:
                     if (totalShares > 0)
                     {
                         // Calculate average cost per share before sell
-                        var avgCostPerShare = totalCostHome / totalShares;
+                        var avgCostPerShareHome = totalCostHome / totalShares;
+                        var avgCostPerShareSource = totalCostSource / totalShares;
                         // Remove cost basis for sold shares
-                        totalCostHome -= transaction.Shares * avgCostPerShare;
+                        totalCostHome -= transaction.Shares * avgCostPerShareHome;
+                        totalCostSource -= transaction.Shares * avgCostPerShareSource;
                         totalShares -= transaction.Shares;
                     }
                     break;
@@ -59,6 +63,7 @@ public class PortfolioCalculator
                     // Direct adjustment to shares and/or cost
                     totalShares += transaction.Shares;
                     totalCostHome += transaction.TotalCostHome;
+                    totalCostSource += transaction.TotalCostSource;
                     break;
             }
         }
@@ -66,10 +71,12 @@ public class PortfolioCalculator
         // Prevent negative values due to rounding
         totalShares = Math.Max(0, totalShares);
         totalCostHome = Math.Max(0, totalCostHome);
+        totalCostSource = Math.Max(0, totalCostSource);
 
-        var averageCost = totalShares > 0 ? totalCostHome / totalShares : 0m;
+        var averageCostHome = totalShares > 0 ? totalCostHome / totalShares : 0m;
+        var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
 
-        return new StockPosition(ticker, totalShares, totalCostHome, averageCost);
+        return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource);
     }
 
     /// <summary>
@@ -105,7 +112,7 @@ public class PortfolioCalculator
         }
 
         // Cost basis for sold shares (using average cost)
-        var costBasis = sellTransaction.Shares * positionBeforeSell.AverageCostPerShare;
+        var costBasis = sellTransaction.Shares * positionBeforeSell.AverageCostPerShareHome;
 
         // Sale proceeds in home currency
         var saleProceeds = sellTransaction.Shares * sellTransaction.PricePerShare * sellTransaction.ExchangeRate;
@@ -257,7 +264,9 @@ public record StockPosition(
     string Ticker,
     decimal TotalShares,
     decimal TotalCostHome,
-    decimal AverageCostPerShare);
+    decimal TotalCostSource,
+    decimal AverageCostPerShareHome,
+    decimal AverageCostPerShareSource);
 
 /// <summary>
 /// Represents unrealized profit/loss calculation result.

@@ -111,7 +111,9 @@ export interface StockPosition {
   ticker: string;
   totalShares: number;
   totalCostHome: number;
-  averageCostPerShare: number;
+  totalCostSource: number;
+  averageCostPerShareHome: number;
+  averageCostPerShareSource: number;
   currentPrice?: number;
   currentExchangeRate?: number;
   currentValueHome?: number;

@@ -49,7 +49,9 @@ public record StockPositionDto
     public string Ticker { get; init; } = string.Empty;
     public decimal TotalShares { get; init; }
     public decimal TotalCostHome { get; init; }
-    public decimal AverageCostPerShare { get; init; }
+    public decimal TotalCostSource { get; init; }
+    public decimal AverageCostPerShareHome { get; init; }
+    public decimal AverageCostPerShareSource { get; init; }
     public decimal? CurrentPrice { get; init; }
     public decimal? CurrentExchangeRate { get; init; }
     public decimal? CurrentValueHome { get; init; }

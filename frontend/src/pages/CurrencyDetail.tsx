@@ -12,7 +12,7 @@ const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
   [CurrencyTransactionType.Interest]: '利息收入',
   [CurrencyTransactionType.Spend]: '消費支出',
-  [CurrencyTransactionType.InitialBalance]: '期初餘額',
+  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
   [CurrencyTransactionType.OtherIncome]: '其他收入',
   [CurrencyTransactionType.OtherExpense]: '其他支出',
 };
@@ -71,6 +71,7 @@ export default function CurrencyDetail() {
   const [editingTransaction, setEditingTransaction] = useState<CurrencyTransaction | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   const loadData = async () => {
     if (!id) return;
@@ -126,14 +127,34 @@ export default function CurrencyDetail() {
     }
   };
 
-  const handleSelectOne = (txId: string) => {
+  const handleSelectOne = (txId: string, index: number, event?: React.MouseEvent) => {
     const newSelected = new Set(selectedIds);
-    if (newSelected.has(txId)) {
-      newSelected.delete(txId);
+
+    if (event?.shiftKey && lastSelectedIndex !== null) {
+      // Shift+click: select range
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      for (let i = start; i <= end; i++) {
+        newSelected.add(transactions[i].id);
+      }
+    } else if (event?.ctrlKey || event?.metaKey) {
+      // Ctrl/Cmd+click: toggle single item
+      if (newSelected.has(txId)) {
+        newSelected.delete(txId);
+      } else {
+        newSelected.add(txId);
+      }
     } else {
-      newSelected.add(txId);
+      // Regular click: toggle single item
+      if (newSelected.has(txId)) {
+        newSelected.delete(txId);
+      } else {
+        newSelected.add(txId);
+      }
     }
+
     setSelectedIds(newSelected);
+    setLastSelectedIndex(index);
   };
 
   const handleBatchDelete = async () => {
@@ -305,7 +326,7 @@ export default function CurrencyDetail() {
               </p>
             </div>
             <div className="metric-card metric-card-blush">
-              <p className="text-[var(--text-muted)] text-sm mb-1">累計換匯</p>
+              <p className="text-[var(--text-muted)] text-sm mb-1">淨投入</p>
               <p className="text-2xl font-bold text-[var(--accent-blush)] number-display">
                 {formatNumber(ledger.totalExchanged)}
               </p>
@@ -396,9 +417,9 @@ export default function CurrencyDetail() {
           {transactions.length === 0 ? (
             <p className="text-[var(--text-muted)] text-center py-12 text-base">尚無交易紀錄</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="table-dark">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr>
                     <th className="w-12 text-center">
                       <input
@@ -421,17 +442,18 @@ export default function CurrencyDetail() {
                 <tbody>
                   {(() => {
                     const runningBalances = calculateRunningBalances(transactions);
-                    return transactions.map((tx) => (
+                    return transactions.map((tx, index) => (
                       <tr
                         key={tx.id}
                         className={selectedIds.has(tx.id) ? 'bg-[var(--accent-peach-soft)]' : ''}
                       >
-                        <td>
+                        <td className="text-center">
                           <input
                             type="checkbox"
                             checked={selectedIds.has(tx.id)}
-                            onChange={() => handleSelectOne(tx.id)}
-                            className="checkbox-dark"
+                            onClick={(e) => handleSelectOne(tx.id, index, e)}
+                            onChange={() => {}}
+                            className="checkbox-dark cursor-pointer"
                           />
                         </td>
                         <td className="whitespace-nowrap">{formatDate(tx.transactionDate)}</td>
