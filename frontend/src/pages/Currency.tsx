@@ -60,8 +60,8 @@ export default function Currency() {
     });
   };
 
-  const totalCost = ledgers.reduce((sum, l) => sum + l.totalCostHome, 0);
-  const totalRealizedPnl = ledgers.reduce((sum, l) => sum + l.realizedPnl, 0);
+  const totalExchanged = ledgers.reduce((sum, l) => sum + l.totalExchanged, 0);
+  const totalSpentOnStocks = ledgers.reduce((sum, l) => sum + l.totalSpentOnStocks, 0);
 
   if (loading) {
     return (
@@ -96,16 +96,16 @@ export default function Currency() {
           <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">總覽</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="metric-card metric-card-cream">
-              <p className="text-sm text-[var(--text-muted)] mb-1">總投入成本</p>
-              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">{formatNumber(totalCost)}</p>
+              <p className="text-sm text-[var(--text-muted)] mb-1">累計換匯</p>
+              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">{formatNumber(totalExchanged)}</p>
               <p className="text-sm text-[var(--text-muted)]">TWD</p>
             </div>
             <div className="metric-card metric-card-peach">
-              <p className="text-sm text-[var(--text-muted)] mb-1">已實現損益</p>
-              <p className={`text-2xl font-bold number-display ${totalRealizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {totalRealizedPnl >= 0 ? '+' : ''}{formatNumber(totalRealizedPnl)}
+              <p className="text-sm text-[var(--text-muted)] mb-1">股票投入</p>
+              <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
+                {formatNumber(totalSpentOnStocks)}
               </p>
-              <p className="text-sm text-[var(--text-muted)]">TWD</p>
+              <p className="text-sm text-[var(--text-muted)]">外幣</p>
             </div>
           </div>
         </div>

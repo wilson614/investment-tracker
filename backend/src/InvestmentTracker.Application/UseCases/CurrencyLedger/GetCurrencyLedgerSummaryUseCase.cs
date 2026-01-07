@@ -39,9 +39,9 @@ public class GetCurrencyLedgerSummaryUseCase
         var transactions = ledger.Transactions.ToList();
 
         var balance = _currencyLedgerService.CalculateBalance(transactions);
-        var weightedAvgCost = _currencyLedgerService.CalculateWeightedAverageCost(transactions);
-        var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
-        var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+        var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
+        var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
+        var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
 
         var recentTransactions = transactions
             .OrderByDescending(t => t.TransactionDate)
@@ -54,9 +54,9 @@ public class GetCurrencyLedgerSummaryUseCase
         {
             Ledger = MapLedgerToDto(ledger),
             Balance = balance,
-            WeightedAverageCost = weightedAvgCost,
-            TotalCostHome = totalCost,
-            RealizedPnl = realizedPnl,
+            AverageExchangeRate = avgExchangeRate,
+            TotalExchanged = totalExchanged,
+            TotalSpentOnStocks = totalSpentOnStocks,
             CurrentExchangeRate = null, // TODO: Integrate with exchange rate API
             CurrentValueHome = null,
             UnrealizedPnlHome = null,
@@ -81,17 +81,17 @@ public class GetCurrencyLedgerSummaryUseCase
             {
                 var transactions = fullLedger.Transactions.ToList();
                 var balance = _currencyLedgerService.CalculateBalance(transactions);
-                var weightedAvgCost = _currencyLedgerService.CalculateWeightedAverageCost(transactions);
-                var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
-                var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+                var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
+                var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
+                var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
 
                 results.Add(new CurrencyLedgerSummaryDto
                 {
                     Ledger = MapLedgerToDto(fullLedger),
                     Balance = balance,
-                    WeightedAverageCost = weightedAvgCost,
-                    TotalCostHome = totalCost,
-                    RealizedPnl = realizedPnl,
+                    AverageExchangeRate = avgExchangeRate,
+                    TotalExchanged = totalExchanged,
+                    TotalSpentOnStocks = totalSpentOnStocks,
                     CurrentExchangeRate = null,
                     CurrentValueHome = null,
                     UnrealizedPnlHome = null,

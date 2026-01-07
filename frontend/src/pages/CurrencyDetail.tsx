@@ -69,6 +69,8 @@ export default function CurrencyDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<CurrencyTransaction | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
 
   const loadData = async () => {
     if (!id) return;
@@ -91,6 +93,24 @@ export default function CurrencyDetail() {
   useEffect(() => {
     loadData();
   }, [id]);
+
+  const handleStartEditName = () => {
+    if (ledger) {
+      setEditName(ledger.ledger.name);
+      setIsEditingName(true);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!ledger || !editName.trim()) return;
+    try {
+      await currencyLedgerApi.update(ledger.ledger.id, { name: editName.trim() });
+      setIsEditingName(false);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update name');
+    }
+  };
 
   const handleAddTransaction = async (data: CreateCurrencyTransactionRequest) => {
     await currencyTransactionApi.create(data);
@@ -217,7 +237,44 @@ export default function CurrencyDetail() {
               <h1 className="text-2xl font-bold text-[var(--text-primary)]">
                 {ledger.ledger.currencyCode}
               </h1>
-              <p className="text-[var(--text-muted)] text-base mt-1">{ledger.ledger.name}</p>
+              {isEditingName ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="input-dark py-1 px-2 text-base"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') setIsEditingName(false);
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveName}
+                    className="btn-accent py-1 px-3 text-sm"
+                  >
+                    儲存
+                  </button>
+                  <button
+                    onClick={() => setIsEditingName(false)}
+                    className="btn-dark py-1 px-3 text-sm"
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-[var(--text-muted)] text-base">{ledger.ledger.name}</p>
+                  <button
+                    onClick={handleStartEditName}
+                    className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                    title="編輯名稱"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               <CurrencyImportButton
@@ -241,24 +298,25 @@ export default function CurrencyDetail() {
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
             </div>
-            <div className="metric-card metric-card-sand">
-              <p className="text-[var(--text-muted)] text-sm mb-1">加權平均成本</p>
-              <p className="text-2xl font-bold text-[var(--accent-sand)] number-display">
-                {formatNumber(ledger.weightedAverageCost, 4)}
+            <div className="metric-card metric-card-butter">
+              <p className="text-[var(--text-muted)] text-sm mb-1">換匯均價</p>
+              <p className="text-2xl font-bold text-[var(--accent-butter)] number-display">
+                {formatNumber(ledger.averageExchangeRate, 4)}
               </p>
             </div>
             <div className="metric-card metric-card-blush">
-              <p className="text-[var(--text-muted)] text-sm mb-1">總成本</p>
+              <p className="text-[var(--text-muted)] text-sm mb-1">累計換匯</p>
               <p className="text-2xl font-bold text-[var(--accent-blush)] number-display">
-                {formatNumber(ledger.totalCostHome)}
+                {formatNumber(ledger.totalExchanged)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
             <div className="metric-card metric-card-peach">
-              <p className="text-[var(--text-muted)] text-sm mb-1">已實現損益</p>
-              <p className={`text-2xl font-bold number-display ${ledger.realizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {ledger.realizedPnl >= 0 ? '+' : ''}{formatNumber(ledger.realizedPnl)}
+              <p className="text-[var(--text-muted)] text-sm mb-1">股票投入</p>
+              <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
+                {formatNumber(ledger.totalSpentOnStocks, 4)}
               </p>
+              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
             </div>
           </div>
         </div>

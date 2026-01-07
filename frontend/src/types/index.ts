@@ -167,9 +167,9 @@ export interface CurrencyTransaction {
 export interface CurrencyLedgerSummary {
   ledger: CurrencyLedger;
   balance: number;
-  weightedAverageCost: number;
-  totalCostHome: number;
-  realizedPnl: number;
+  averageExchangeRate: number;
+  totalExchanged: number;
+  totalSpentOnStocks: number;
   currentExchangeRate?: number;
   currentValueHome?: number;
   unrealizedPnlHome?: number;

@@ -24,6 +24,54 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
+    /// Calculates the average exchange rate (only from ExchangeBuy and InitialBalance).
+    /// This is the simple average rate at which foreign currency was purchased.
+    /// </summary>
+    public decimal CalculateAverageExchangeRate(IEnumerable<CurrencyTransaction> transactions)
+    {
+        decimal totalHomeCost = 0m;
+        decimal totalForeignAmount = 0m;
+
+        foreach (var tx in transactions.Where(t => !t.IsDeleted))
+        {
+            if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
+                tx.TransactionType == CurrencyTransactionType.InitialBalance)
+            {
+                totalHomeCost += tx.HomeAmount ?? 0m;
+                totalForeignAmount += tx.ForeignAmount;
+            }
+        }
+
+        if (totalForeignAmount <= 0)
+            return 0m;
+
+        return Math.Round(totalHomeCost / totalForeignAmount, 4);
+    }
+
+    /// <summary>
+    /// Calculates the total amount exchanged in home currency (TWD).
+    /// Sum of all ExchangeBuy and InitialBalance HomeAmount.
+    /// </summary>
+    public decimal CalculateTotalExchanged(IEnumerable<CurrencyTransaction> transactions)
+    {
+        return transactions
+            .Where(t => !t.IsDeleted &&
+                       (t.TransactionType == CurrencyTransactionType.ExchangeBuy ||
+                        t.TransactionType == CurrencyTransactionType.InitialBalance))
+            .Sum(t => t.HomeAmount ?? 0m);
+    }
+
+    /// <summary>
+    /// Calculates the total foreign currency spent on stocks (Spend type transactions).
+    /// </summary>
+    public decimal CalculateTotalSpentOnStocks(IEnumerable<CurrencyTransaction> transactions)
+    {
+        return transactions
+            .Where(t => !t.IsDeleted && t.TransactionType == CurrencyTransactionType.Spend)
+            .Sum(t => t.ForeignAmount);
+    }
+
+    /// <summary>
     /// Calculates the weighted average cost per unit of foreign currency.
     /// Uses the moving average cost method.
     /// </summary>

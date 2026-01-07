@@ -14,16 +14,6 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
     });
   };
 
-  const formatPercent = (value: number | null | undefined) => {
-    if (value == null) return '-';
-    const sign = value >= 0 ? '+' : '';
-    return `${sign}${formatNumber(value, 2)}%`;
-  };
-
-  const pnlColor = (ledger.realizedPnl ?? 0) >= 0
-    ? 'number-positive'
-    : 'number-negative';
-
   return (
     <div
       className="card-dark p-5 cursor-pointer hover:border-[var(--border-hover)] transition-all"
@@ -41,52 +31,27 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
       <div className="space-y-3 text-base">
         <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">加權平均成本:</span>
+          <span className="text-[var(--text-muted)]">換匯均價:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(ledger.weightedAverageCost, 4)}
+            {formatNumber(ledger.averageExchangeRate, 4)}
           </span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">總成本:</span>
+          <span className="text-[var(--text-muted)]">累計換匯:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(ledger.totalCostHome)} {ledger.ledger.homeCurrency}
+            {formatNumber(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
           </span>
         </div>
 
         <hr className="border-[var(--border-color)] my-3" />
 
         <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">已實現損益:</span>
-          <span className={`font-medium number-display ${pnlColor}`}>
-            {formatNumber(ledger.realizedPnl)} {ledger.ledger.homeCurrency}
+          <span className="text-[var(--text-muted)]">股票投入:</span>
+          <span className="font-medium text-[var(--accent-peach)] number-display">
+            {formatNumber(ledger.totalSpentOnStocks, 4)} {ledger.ledger.currencyCode}
           </span>
         </div>
-
-        {ledger.currentValueHome !== undefined && ledger.currentValueHome !== null && (
-          <>
-            <div className="flex justify-between">
-              <span className="text-[var(--text-muted)]">現值:</span>
-              <span className="font-medium text-[var(--text-primary)] number-display">
-                {formatNumber(ledger.currentValueHome)} {ledger.ledger.homeCurrency}
-              </span>
-            </div>
-
-            {ledger.unrealizedPnlHome !== undefined && (
-              <div className="flex justify-between">
-                <span className="text-[var(--text-muted)]">未實現損益:</span>
-                <span className={`font-medium number-display ${(ledger.unrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
-                  {formatNumber(ledger.unrealizedPnlHome)} {ledger.ledger.homeCurrency}
-                  {ledger.unrealizedPnlPercentage !== undefined && (
-                    <span className="ml-1 text-sm">
-                      ({formatPercent(ledger.unrealizedPnlPercentage)})
-                    </span>
-                  )}
-                </span>
-              </div>
-            )}
-          </>
-        )}
       </div>
     </div>
   );

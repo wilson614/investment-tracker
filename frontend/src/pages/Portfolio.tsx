@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import { portfolioApi, transactionApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
@@ -7,7 +8,7 @@ import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { CurrentPriceInput } from '../components/portfolio/CurrentPriceInput';
 import { StockImportButton } from '../components/import';
-import type { PortfolioSummary, StockTransaction, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo } from '../types';
+import type { PortfolioSummary, StockTransaction, CreateStockTransactionRequest, UpdateStockTransactionRequest, XirrResult, CurrentPriceInfo } from '../types';
 
 export function PortfolioPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +19,10 @@ export function PortfolioPage() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -77,6 +82,51 @@ export function PortfolioPage() {
     await loadData();
   };
 
+  const handleEditTransaction = (tx: StockTransaction) => {
+    setEditingTransaction(tx);
+    setShowForm(true);
+  };
+
+  const handleUpdateTransaction = async (data: CreateStockTransactionRequest) => {
+    if (!editingTransaction) return;
+    const updateData: UpdateStockTransactionRequest = {
+      transactionDate: data.transactionDate,
+      shares: data.shares,
+      pricePerShare: data.pricePerShare,
+      exchangeRate: data.exchangeRate ?? editingTransaction.exchangeRate,
+      fees: data.fees,
+      fundSource: data.fundSource,
+      currencyLedgerId: data.currencyLedgerId,
+      notes: data.notes,
+    };
+    await transactionApi.update(editingTransaction.id, updateData);
+    setEditingTransaction(null);
+    setShowForm(false);
+    await loadData();
+  };
+
+  const handleStartEditName = () => {
+    if (summary) {
+      setEditName(summary.portfolio.name);
+      setEditDescription(summary.portfolio.description ?? '');
+      setIsEditingName(true);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!summary || !editName.trim()) return;
+    try {
+      await portfolioApi.update(summary.portfolio.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || undefined
+      });
+      setIsEditingName(false);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -106,15 +156,50 @@ export function PortfolioPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            {summary.portfolio.name}
-          </h1>
-          {summary.portfolio.description && (
-            <p className="text-[var(--text-secondary)] text-base mt-2">{summary.portfolio.description}</p>
+          {isEditingName ? (
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="input-dark text-2xl font-bold w-full"
+                autoFocus
+                placeholder="組合名稱"
+              />
+              <input
+                type="text"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="input-dark w-full"
+                placeholder="描述（選填）"
+              />
+              <div className="flex gap-2">
+                <button onClick={handleSaveName} className="btn-accent py-1 px-4">儲存</button>
+                <button onClick={() => setIsEditingName(false)} className="btn-dark py-1 px-4">取消</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+                  {summary.portfolio.name}
+                </h1>
+                <button
+                  onClick={handleStartEditName}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                  title="編輯名稱"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
+              {summary.portfolio.description && (
+                <p className="text-[var(--text-secondary)] text-base mt-2">{summary.portfolio.description}</p>
+              )}
+              <p className="text-base text-[var(--text-muted)] mt-1">
+                {summary.portfolio.baseCurrency} → {summary.portfolio.homeCurrency}
+              </p>
+            </>
           )}
-          <p className="text-base text-[var(--text-muted)] mt-1">
-            {summary.portfolio.baseCurrency} → {summary.portfolio.homeCurrency}
-          </p>
         </div>
 
         {/* Current Price Input */}
@@ -162,8 +247,12 @@ export function PortfolioPage() {
           {showForm ? (
             <TransactionForm
               portfolioId={id!}
-              onSubmit={handleAddTransaction}
-              onCancel={() => setShowForm(false)}
+              initialData={editingTransaction ?? undefined}
+              onSubmit={editingTransaction ? handleUpdateTransaction : handleAddTransaction}
+              onCancel={() => {
+                setShowForm(false);
+                setEditingTransaction(null);
+              }}
             />
           ) : (
             <div className="flex gap-3">
@@ -188,6 +277,7 @@ export function PortfolioPage() {
           </div>
           <TransactionList
             transactions={transactions}
+            onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
           />
         </div>

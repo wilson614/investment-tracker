@@ -1,31 +1,32 @@
 import { useState, useEffect } from 'react';
 import { currencyLedgerApi } from '../../services/api';
-import type { CreateStockTransactionRequest, TransactionType, FundSource, CurrencyLedgerSummary } from '../../types';
+import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary } from '../../types';
 import { FundSource as FundSourceEnum } from '../../types';
 
 interface TransactionFormProps {
   portfolioId: string;
+  initialData?: StockTransaction;
   onSubmit: (data: CreateStockTransactionRequest) => Promise<void>;
   onCancel?: () => void;
 }
 
-export function TransactionForm({ portfolioId, onSubmit, onCancel }: TransactionFormProps) {
+export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
   const [selectedLedger, setSelectedLedger] = useState<CurrencyLedgerSummary | null>(null);
 
   const [formData, setFormData] = useState({
-    ticker: '',
-    transactionType: 1 as TransactionType, // Buy
-    transactionDate: new Date().toISOString().split('T')[0],
-    shares: '',
-    pricePerShare: '',
-    exchangeRate: '',
-    fees: '0',
-    fundSource: FundSourceEnum.None as FundSource,
-    currencyLedgerId: '',
-    notes: '',
+    ticker: initialData?.ticker ?? '',
+    transactionType: (initialData?.transactionType ?? 1) as TransactionType,
+    transactionDate: initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+    shares: initialData?.shares?.toString() ?? '',
+    pricePerShare: initialData?.pricePerShare?.toString() ?? '',
+    exchangeRate: initialData?.exchangeRate?.toString() ?? '',
+    fees: initialData?.fees?.toString() ?? '0',
+    fundSource: (initialData?.fundSource ?? FundSourceEnum.None) as FundSource,
+    currencyLedgerId: initialData?.currencyLedgerId ?? '',
+    notes: initialData?.notes ?? '',
   });
 
   // Load currency ledgers for fund source selection
@@ -122,7 +123,7 @@ export function TransactionForm({ portfolioId, onSubmit, onCancel }: Transaction
 
   return (
     <form onSubmit={handleSubmit} className="card-dark space-y-5 p-6">
-      <h3 className="text-lg font-bold text-[var(--text-primary)]">新增交易</h3>
+      <h3 className="text-lg font-bold text-[var(--text-primary)]">{initialData ? '編輯交易' : '新增交易'}</h3>
 
       {error && (
         <div className="p-3 bg-[var(--color-danger-soft)] border border-[var(--color-danger)] text-[var(--color-danger)] rounded-lg text-base">{error}</div>
@@ -331,7 +332,7 @@ export function TransactionForm({ portfolioId, onSubmit, onCancel }: Transaction
           disabled={isSubmitting || (hasInsufficientBalance ?? false)}
           className="btn-accent flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? '新增中...' : '新增交易'}
+          {isSubmitting ? '處理中...' : (initialData ? '儲存' : '新增交易')}
         </button>
         {onCancel && (
           <button

@@ -196,7 +196,13 @@ body {
 .btn-danger {
   background-color: var(--color-danger-soft);
   border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
   color: var(--color-danger);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .btn-danger:hover {
@@ -212,7 +218,6 @@ body {
 }
 
 .table-dark th {
-  text-align: left;
   padding: 1rem 1.25rem;
   font-size: 0.8rem;
   font-weight: 600;

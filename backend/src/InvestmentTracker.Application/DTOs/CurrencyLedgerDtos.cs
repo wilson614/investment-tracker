@@ -40,10 +40,14 @@ public record CurrencyTransactionDto
 public record CurrencyLedgerSummaryDto
 {
     public CurrencyLedgerDto Ledger { get; init; } = null!;
+    /// <summary>Current foreign currency balance</summary>
     public decimal Balance { get; init; }
-    public decimal WeightedAverageCost { get; init; }
-    public decimal TotalCostHome { get; init; }
-    public decimal RealizedPnl { get; init; }
+    /// <summary>Average exchange rate from all exchanges (TWD per foreign unit)</summary>
+    public decimal AverageExchangeRate { get; init; }
+    /// <summary>Total TWD invested in exchanges</summary>
+    public decimal TotalExchanged { get; init; }
+    /// <summary>Total foreign currency spent on stocks</summary>
+    public decimal TotalSpentOnStocks { get; init; }
     public decimal? CurrentExchangeRate { get; init; }
     public decimal? CurrentValueHome { get; init; }
     public decimal? UnrealizedPnlHome { get; init; }
