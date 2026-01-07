@@ -21,50 +21,50 @@ export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardPro
   };
 
   const pnlColor = (position.unrealizedPnlHome ?? 0) >= 0
-    ? 'text-green-600'
-    : 'text-red-600';
+    ? 'number-positive'
+    : 'number-negative';
 
   return (
-    <div className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start mb-3">
-        <h3 className="text-lg font-bold text-gray-900">{position.ticker}</h3>
-        <span className="text-sm text-gray-500">
+    <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all">
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="text-lg font-bold text-[var(--accent-cream)]">{position.ticker}</h3>
+        <span className="text-base text-[var(--text-muted)] number-display">
           {formatNumber(position.totalShares, 4)} 股
         </span>
       </div>
 
-      <div className="space-y-2 text-sm">
+      <div className="space-y-3 text-base">
         <div className="flex justify-between">
-          <span className="text-gray-600">平均成本:</span>
-          <span className="font-medium">
+          <span className="text-[var(--text-muted)]">平均成本:</span>
+          <span className="font-medium text-[var(--text-primary)] number-display">
             {formatNumber(position.averageCostPerShare)} {homeCurrency}
           </span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-gray-600">總成本:</span>
-          <span className="font-medium">
+          <span className="text-[var(--text-muted)]">總成本:</span>
+          <span className="font-medium text-[var(--text-primary)] number-display">
             {formatNumber(position.totalCostHome)} {homeCurrency}
           </span>
         </div>
 
         {position.currentValueHome !== undefined && (
           <>
-            <hr className="my-2" />
+            <hr className="border-[var(--border-color)] my-3" />
 
             <div className="flex justify-between">
-              <span className="text-gray-600">現值:</span>
-              <span className="font-medium">
+              <span className="text-[var(--text-muted)]">現值:</span>
+              <span className="font-medium text-[var(--text-primary)] number-display">
                 {formatNumber(position.currentValueHome)} {homeCurrency}
               </span>
             </div>
 
             <div className="flex justify-between">
-              <span className="text-gray-600">未實現損益:</span>
-              <span className={`font-medium ${pnlColor}`}>
+              <span className="text-[var(--text-muted)]">未實現損益:</span>
+              <span className={`font-medium number-display ${pnlColor}`}>
                 {formatNumber(position.unrealizedPnlHome ?? 0)} {homeCurrency}
                 {position.unrealizedPnlPercentage !== undefined && (
-                  <span className="ml-1 text-xs">
+                  <span className="ml-1 text-sm">
                     ({formatPercent(position.unrealizedPnlPercentage)})
                   </span>
                 )}

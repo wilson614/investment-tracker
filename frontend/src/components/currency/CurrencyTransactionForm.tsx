@@ -1,28 +1,36 @@
 import { useState, useEffect } from 'react';
-import type { CurrencyTransactionType, CreateCurrencyTransactionRequest } from '../../types';
+import type { CurrencyTransactionType, CreateCurrencyTransactionRequest, CurrencyTransaction } from '../../types';
 import { CurrencyTransactionType as CurrencyTxType } from '../../types';
 
 interface CurrencyTransactionFormProps {
   ledgerId: string;
+  initialData?: CurrencyTransaction;
   onSubmit: (data: CreateCurrencyTransactionRequest) => Promise<void>;
   onCancel: () => void;
 }
 
 export function CurrencyTransactionForm({
   ledgerId,
+  initialData,
   onSubmit,
   onCancel,
 }: CurrencyTransactionFormProps) {
   const [transactionDate, setTransactionDate] = useState(
-    new Date().toISOString().split('T')[0]
+    initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0]
   );
   const [transactionType, setTransactionType] = useState<CurrencyTransactionType>(
-    CurrencyTxType.ExchangeBuy
+    initialData?.transactionType ?? CurrencyTxType.ExchangeBuy
   );
-  const [foreignAmount, setForeignAmount] = useState('');
-  const [homeAmount, setHomeAmount] = useState('');
-  const [exchangeRate, setExchangeRate] = useState('');
-  const [notes, setNotes] = useState('');
+  const [foreignAmount, setForeignAmount] = useState(
+    initialData?.foreignAmount?.toString() ?? ''
+  );
+  const [homeAmount, setHomeAmount] = useState(
+    initialData?.homeAmount?.toString() ?? ''
+  );
+  const [exchangeRate, setExchangeRate] = useState(
+    initialData?.exchangeRate?.toString() ?? ''
+  );
+  const [notes, setNotes] = useState(initialData?.notes ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,30 +82,30 @@ export function CurrencyTransactionForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="bg-red-50 text-red-700 p-3 rounded-lg">{error}</div>
+        <div className="bg-[var(--color-danger-soft)] border border-[var(--color-danger)] text-[var(--color-danger)] p-3 rounded-lg text-base">{error}</div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
           日期
         </label>
         <input
           type="date"
           value={transactionDate}
           onChange={(e) => setTransactionDate(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-dark w-full"
           required
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
           交易類型
         </label>
         <select
           value={transactionType}
           onChange={(e) => setTransactionType(Number(e.target.value) as CurrencyTransactionType)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-dark w-full"
         >
           <option value={CurrencyTxType.ExchangeBuy}>換匯買入</option>
           <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
@@ -110,7 +118,7 @@ export function CurrencyTransactionForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
           外幣金額
         </label>
         <input
@@ -118,7 +126,7 @@ export function CurrencyTransactionForm({
           step="0.0001"
           value={foreignAmount}
           onChange={(e) => setForeignAmount(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-dark w-full"
           placeholder="0.00"
           required
         />
@@ -126,7 +134,7 @@ export function CurrencyTransactionForm({
 
       {needsHomeCost && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             {transactionType === CurrencyTxType.InitialBalance ? '台幣成本' : '台幣金額'}
           </label>
           <input
@@ -134,7 +142,7 @@ export function CurrencyTransactionForm({
             step="0.01"
             value={homeAmount}
             onChange={(e) => setHomeAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="input-dark w-full"
             placeholder="0.00"
             required={needsHomeCost}
           />
@@ -143,7 +151,7 @@ export function CurrencyTransactionForm({
 
       {isExchangeType && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             匯率（自動計算）
           </label>
           <input
@@ -151,20 +159,20 @@ export function CurrencyTransactionForm({
             step="0.0001"
             value={exchangeRate}
             readOnly
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+            className="input-dark w-full bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
             placeholder="自動計算"
           />
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
           備註
         </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-dark w-full"
           rows={2}
           placeholder="選填"
         />
@@ -174,16 +182,16 @@ export function CurrencyTransactionForm({
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          className="btn-dark flex-1 py-2"
         >
           取消
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="btn-accent flex-1 py-2 disabled:opacity-50"
         >
-          {isSubmitting ? '處理中...' : '新增'}
+          {isSubmitting ? '處理中...' : (initialData ? '儲存' : '新增')}
         </button>
       </div>
     </form>

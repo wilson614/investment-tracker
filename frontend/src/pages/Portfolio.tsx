@@ -80,7 +80,7 @@ export function PortfolioPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-[var(--text-muted)] text-lg">載入中...</div>
       </div>
     );
   }
@@ -88,7 +88,7 @@ export function PortfolioPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-500">{error}</div>
+        <div className="text-[var(--color-danger)] text-lg">{error}</div>
       </div>
     );
   }
@@ -96,23 +96,23 @@ export function PortfolioPage() {
   if (!summary) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">找不到投資組合</div>
+        <div className="text-[var(--text-muted)] text-lg">找不到投資組合</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="min-h-screen py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
             {summary.portfolio.name}
           </h1>
           {summary.portfolio.description && (
-            <p className="text-gray-600 mt-1">{summary.portfolio.description}</p>
+            <p className="text-[var(--text-secondary)] text-base mt-2">{summary.portfolio.description}</p>
           )}
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-base text-[var(--text-muted)] mt-1">
             {summary.portfolio.baseCurrency} → {summary.portfolio.homeCurrency}
           </p>
         </div>
@@ -142,7 +142,7 @@ export function PortfolioPage() {
         {/* Positions */}
         {summary.positions.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">
               持倉
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -169,7 +169,7 @@ export function PortfolioPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowForm(true)}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                className="btn-accent flex-1 py-3"
               >
                 + 新增交易
               </button>
@@ -182,9 +182,9 @@ export function PortfolioPage() {
         </div>
 
         {/* Transaction List */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800">交易紀錄</h2>
+        <div className="card-dark overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border-color)]">
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">交易紀錄</h2>
           </div>
           <TransactionList
             transactions={transactions}

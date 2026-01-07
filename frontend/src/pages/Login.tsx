@@ -41,19 +41,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8">
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          Investment Tracker
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="card-dark max-w-md w-full p-8">
+        <h1 className="text-2xl font-bold text-center mb-6">
+          <span className="brand-text">Investment Tracker</span>
         </h1>
 
         <div className="flex mb-6">
           <button
             type="button"
-            className={`flex-1 py-2 text-center border-b-2 transition-colors ${
+            className={`flex-1 py-3 text-center text-base font-medium border-b-2 transition-colors ${
               isLogin
-                ? 'border-blue-500 text-blue-500 font-medium'
-                : 'border-gray-200 text-gray-500 hover:text-gray-700'
+                ? 'border-[var(--accent-peach)] text-[var(--accent-peach)]'
+                : 'border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
             onClick={() => setIsLogin(true)}
           >
@@ -61,10 +61,10 @@ export default function Login() {
           </button>
           <button
             type="button"
-            className={`flex-1 py-2 text-center border-b-2 transition-colors ${
+            className={`flex-1 py-3 text-center text-base font-medium border-b-2 transition-colors ${
               !isLogin
-                ? 'border-blue-500 text-blue-500 font-medium'
-                : 'border-gray-200 text-gray-500 hover:text-gray-700'
+                ? 'border-[var(--accent-peach)] text-[var(--accent-peach)]'
+                : 'border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
             onClick={() => setIsLogin(false)}
           >
@@ -73,15 +73,15 @@ export default function Login() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+          <div className="mb-4 p-3 bg-[var(--color-danger-soft)] border border-[var(--color-danger)] rounded-lg text-[var(--color-danger)] text-base">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {!isLogin && (
             <div>
-              <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="displayName" className="block text-base font-medium text-[var(--text-secondary)] mb-2">
                 顯示名稱
               </label>
               <input
@@ -89,7 +89,7 @@ export default function Login() {
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input-dark w-full"
                 placeholder="請輸入您的名稱"
                 required={!isLogin}
               />
@@ -97,7 +97,7 @@ export default function Login() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               電子郵件
             </label>
             <input
@@ -105,14 +105,14 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-dark w-full"
               placeholder="請輸入電子郵件"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               密碼
             </label>
             <input
@@ -120,20 +120,20 @@ export default function Login() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-dark w-full"
               placeholder="請輸入密碼"
               required
-              minLength={8}
+              minLength={6}
             />
             {!isLogin && (
-              <p className="mt-1 text-xs text-gray-500">密碼至少 8 個字元</p>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">密碼至少 6 個字元</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium rounded-md transition-colors"
+            className="btn-accent w-full py-3 disabled:opacity-50"
           >
             {isSubmitting ? '請稍候...' : isLogin ? '登入' : '建立帳號'}
           </button>

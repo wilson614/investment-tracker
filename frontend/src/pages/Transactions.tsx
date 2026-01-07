@@ -53,7 +53,7 @@ export function TransactionsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-[var(--text-muted)] text-lg">載入中...</div>
       </div>
     );
   }
@@ -61,21 +61,21 @@ export function TransactionsPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-500">{error}</div>
+        <div className="text-[var(--color-danger)] text-lg">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">交易紀錄</h1>
+    <div className="min-h-screen py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">交易紀錄</h1>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="card-dark p-5 mb-6">
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
                 股票代號篩選
               </label>
               <input
@@ -83,17 +83,17 @@ export function TransactionsPage() {
                 value={filter.ticker}
                 onChange={(e) => setFilter((prev) => ({ ...prev, ticker: e.target.value }))}
                 placeholder="例如：VWRA"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input-dark w-full"
               />
             </div>
             <div className="w-40">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
                 類型
               </label>
               <select
                 value={filter.type}
                 onChange={(e) => setFilter((prev) => ({ ...prev, type: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input-dark w-full"
               >
                 <option value="">全部</option>
                 <option value="1">買入</option>
@@ -104,12 +104,12 @@ export function TransactionsPage() {
         </div>
 
         {/* Summary */}
-        <div className="mb-4 text-sm text-gray-600">
+        <div className="mb-4 text-base text-[var(--text-muted)]">
           顯示 {filteredTransactions.length} 筆，共 {transactions.length} 筆交易
         </div>
 
         {/* Transaction List */}
-        <div className="bg-white rounded-lg shadow">
+        <div className="card-dark overflow-hidden">
           <TransactionList
             transactions={filteredTransactions}
             onDelete={handleDelete}

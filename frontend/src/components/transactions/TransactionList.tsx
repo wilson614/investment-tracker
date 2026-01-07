@@ -1,3 +1,4 @@
+import { Pencil, Trash2 } from 'lucide-react';
 import type { StockTransaction, TransactionType } from '../../types';
 
 interface TransactionListProps {
@@ -14,10 +15,10 @@ const transactionTypeLabels: Record<TransactionType, string> = {
 };
 
 const transactionTypeColors: Record<TransactionType, string> = {
-  1: 'bg-green-100 text-green-800',
-  2: 'bg-red-100 text-red-800',
-  3: 'bg-purple-100 text-purple-800',
-  4: 'bg-gray-100 text-gray-800',
+  1: 'badge-success',
+  2: 'badge-danger',
+  3: 'badge-cream',
+  4: 'badge-butter',
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
@@ -38,7 +39,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
 
   if (transactions.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-12 text-[var(--text-muted)] text-base">
         尚無交易紀錄，請在上方新增第一筆交易。
       </div>
     );
@@ -46,84 +47,82 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50">
+      <table className="table-dark">
+        <thead>
           <tr>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">日期</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">股票代號</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">類型</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">股數</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">價格</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">匯率</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">手續費</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">總成本 (TWD)</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">已實現損益</th>
+            <th>日期</th>
+            <th>股票代號</th>
+            <th>類型</th>
+            <th className="text-right">股數</th>
+            <th className="text-right">價格</th>
+            <th className="text-right">匯率</th>
+            <th className="text-right">手續費</th>
+            <th className="text-right">總成本 (TWD)</th>
+            <th className="text-right">已實現損益</th>
             {(onEdit || onDelete) && (
-              <th className="px-4 py-3 text-center font-medium text-gray-600">操作</th>
+              <th className="w-24 text-center">操作</th>
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody>
           {transactions.map((tx) => (
-            <tr key={tx.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 text-gray-700">
+            <tr key={tx.id}>
+              <td className="whitespace-nowrap">
                 {formatDate(tx.transactionDate)}
               </td>
-              <td className="px-4 py-3 font-medium text-gray-900">{tx.ticker}</td>
-              <td className="px-4 py-3">
-                <span
-                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    transactionTypeColors[tx.transactionType]
-                  }`}
-                >
+              <td className="font-medium text-[var(--accent-cream)]">{tx.ticker}</td>
+              <td>
+                <span className={`badge ${transactionTypeColors[tx.transactionType]}`}>
                   {transactionTypeLabels[tx.transactionType]}
                 </span>
               </td>
-              <td className="px-4 py-3 text-right text-gray-700">
+              <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.shares, 4)}
               </td>
-              <td className="px-4 py-3 text-right text-gray-700">
+              <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.pricePerShare, 5)}
               </td>
-              <td className="px-4 py-3 text-right text-gray-700">
+              <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.exchangeRate, 4)}
               </td>
-              <td className="px-4 py-3 text-right text-gray-700">
+              <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.fees)}
               </td>
-              <td className="px-4 py-3 text-right font-medium text-gray-900">
+              <td className="text-right font-medium number-display whitespace-nowrap">
                 {formatNumber(tx.totalCostHome)}
               </td>
-              <td className="px-4 py-3 text-right">
+              <td className="text-right">
                 {tx.realizedPnlHome != null ? (
                   <span
-                    className={`font-medium ${
-                      tx.realizedPnlHome >= 0 ? 'text-green-600' : 'text-red-600'
+                    className={`font-medium number-display ${
+                      tx.realizedPnlHome >= 0 ? 'number-positive' : 'number-negative'
                     }`}
                   >
                     {tx.realizedPnlHome >= 0 ? '+' : ''}{formatNumber(tx.realizedPnlHome)}
                   </span>
                 ) : (
-                  <span className="text-gray-400">-</span>
+                  <span className="text-[var(--text-muted)]">-</span>
                 )}
               </td>
               {(onEdit || onDelete) && (
-                <td className="px-4 py-3 text-center">
+                <td className="text-center">
                   <div className="flex justify-center gap-2">
                     {onEdit && (
                       <button
                         onClick={() => onEdit(tx)}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                        title="編輯"
                       >
-                        編輯
+                        <Pencil className="w-4 h-4" />
                       </button>
                     )}
                     {onDelete && (
                       <button
                         onClick={() => onDelete(tx.id)}
-                        className="text-red-600 hover:text-red-800"
+                        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                        title="刪除"
                       >
-                        刪除
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>

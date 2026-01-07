@@ -60,7 +60,7 @@ function HomePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">
         我的投資組合
       </h1>
 
@@ -70,19 +70,19 @@ function HomePage() {
           value={newPortfolioName}
           onChange={(e) => setNewPortfolioName(e.target.value)}
           placeholder="輸入投資組合名稱..."
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="input-dark flex-1"
         />
         <button
           type="submit"
           disabled={isCreating || !newPortfolioName.trim()}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="btn-accent disabled:opacity-50"
         >
           {isCreating ? '建立中...' : '建立'}
         </button>
       </form>
 
       {portfolios.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-[var(--text-muted)]">
           尚無投資組合，請建立一個開始使用。
         </div>
       ) : (
@@ -91,15 +91,15 @@ function HomePage() {
             <Link
               key={portfolio.id}
               to={`/portfolio/${portfolio.id}`}
-              className="block bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+              className="card-dark p-6 hover:border-[var(--border-hover)] transition-all"
             >
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)]">
                 {portfolio.name}
               </h2>
               {portfolio.description && (
-                <p className="text-gray-600 mt-1">{portfolio.description}</p>
+                <p className="text-[var(--text-secondary)] mt-1">{portfolio.description}</p>
               )}
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-sm text-[var(--text-muted)] mt-2">
                 {portfolio.baseCurrency} → {portfolio.homeCurrency}
               </p>
             </Link>
@@ -112,7 +112,7 @@ function HomePage() {
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-[var(--bg-primary)]">
       <Navigation />
       {children}
     </div>

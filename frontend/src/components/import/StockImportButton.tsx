@@ -255,7 +255,7 @@ export function StockImportButton({
     <>
       <button
         onClick={handleOpenImport}
-        className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="btn-dark flex items-center gap-2"
       >
         <Upload className="w-4 h-4" />
         匯入 CSV
@@ -263,35 +263,35 @@ export function StockImportButton({
 
       {/* Currency Ledger Selection Modal */}
       {isSelectingLedger && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">選擇匯率來源</h2>
-            <p className="text-gray-600 mb-4">
+        <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
+          <div className="card-dark p-6 w-full max-w-md m-4">
+            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">選擇匯率來源</h2>
+            <p className="text-[var(--text-muted)] mb-4">
               您可以選擇從外幣帳本自動計算匯率，或在 CSV 中手動提供匯率。
             </p>
 
             <div className="space-y-3">
               <button
                 onClick={() => handleSelectLedger(null)}
-                className="w-full p-4 border rounded-lg hover:bg-gray-50 text-left"
+                className="w-full p-4 border border-[var(--border-color)] rounded-lg hover:bg-[var(--bg-hover)] text-left transition-colors"
               >
-                <div className="font-medium">手動提供匯率</div>
-                <div className="text-sm text-gray-500">CSV 中需包含匯率欄位</div>
+                <div className="font-medium text-[var(--text-primary)]">手動提供匯率</div>
+                <div className="text-sm text-[var(--text-muted)]">CSV 中需包含匯率欄位</div>
               </button>
 
               {currencyLedgers.length > 0 && (
-                <div className="border-t pt-3">
-                  <div className="text-sm text-gray-500 mb-2">或從外幣帳本自動計算：</div>
+                <div className="border-t border-[var(--border-color)] pt-3">
+                  <div className="text-sm text-[var(--text-muted)] mb-2">或從外幣帳本自動計算：</div>
                   {currencyLedgers.map((ledgerSummary) => (
                     <button
                       key={ledgerSummary.ledger.id}
                       onClick={() => handleSelectLedger(ledgerSummary.ledger.id)}
-                      className="w-full p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 text-left flex items-center gap-3 mb-2"
+                      className="w-full p-4 border border-[var(--border-color)] rounded-lg hover:bg-[var(--accent-peach-soft)] hover:border-[var(--accent-peach)] text-left flex items-center gap-3 mb-2 transition-colors"
                     >
-                      <Wallet className="w-5 h-5 text-blue-600" />
+                      <Wallet className="w-5 h-5 text-[var(--accent-peach)]" />
                       <div>
-                        <div className="font-medium">{ledgerSummary.ledger.currencyCode}</div>
-                        <div className="text-sm text-gray-500">{ledgerSummary.ledger.name}</div>
+                        <div className="font-medium text-[var(--text-primary)]">{ledgerSummary.ledger.currencyCode}</div>
+                        <div className="text-sm text-[var(--text-muted)]">{ledgerSummary.ledger.name}</div>
                       </div>
                     </button>
                   ))}
@@ -301,7 +301,7 @@ export function StockImportButton({
 
             <button
               onClick={() => setIsSelectingLedger(false)}
-              className="w-full mt-4 py-2 text-gray-600 hover:text-gray-800"
+              className="w-full mt-4 py-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
             >
               取消
             </button>

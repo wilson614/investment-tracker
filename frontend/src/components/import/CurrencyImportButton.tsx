@@ -215,7 +215,7 @@ export function CurrencyImportButton({
     <>
       <button
         onClick={() => setIsModalOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        className="btn-dark flex items-center gap-2"
       >
         <Upload className="w-4 h-4" />
         匯入 CSV

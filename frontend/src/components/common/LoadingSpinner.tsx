@@ -18,15 +18,15 @@ export function LoadingSpinner({
   const spinner = (
     <div className="flex flex-col items-center justify-center gap-3">
       <div
-        className={`animate-spin rounded-full border-blue-200 border-t-blue-600 ${sizeClasses[size]}`}
+        className={`animate-spin rounded-full border-[var(--border-color)] border-t-[var(--accent-peach)] ${sizeClasses[size]}`}
       />
-      {text && <p className="text-sm text-gray-600">{text}</p>}
+      {text && <p className="text-sm text-[var(--text-muted)]">{text}</p>}
     </div>
   );
 
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white/80 z-50">
+      <div className="fixed inset-0 flex items-center justify-center bg-[var(--bg-primary)]/90 z-50">
         {spinner}
       </div>
     );
@@ -45,7 +45,7 @@ export function PageLoader({ text = '載入中...' }: { text?: string }) {
 
 export function InlineLoader({ text }: { text?: string }) {
   return (
-    <div className="flex items-center gap-2 text-gray-600">
+    <div className="flex items-center gap-2 text-[var(--text-muted)]">
       <LoadingSpinner size="sm" />
       {text && <span className="text-sm">{text}</span>}
     </div>

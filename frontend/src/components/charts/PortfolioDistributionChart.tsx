@@ -8,14 +8,14 @@ interface PortfolioDistributionChartProps {
 }
 
 const COLORS = [
-  '#3b82f6', // blue
-  '#22c55e', // green
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#14b8a6', // teal
-  '#f97316', // orange
+  '#e8a87c', // peach
+  '#e8d98c', // butter
+  '#d4a5a5', // blush
+  '#e8d5b5', // cream
+  '#c4956a', // caramel
+  '#9abe8c', // success green
+  '#dcc68a', // warning
+  '#d98a8a', // danger
 ];
 
 export function PortfolioDistributionChart({
@@ -24,7 +24,7 @@ export function PortfolioDistributionChart({
 }: PortfolioDistributionChartProps) {
   if (positions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
+      <div className="flex items-center justify-center h-64 text-[var(--text-muted)]">
         尚無持倉資料
       </div>
     );
@@ -79,8 +79,8 @@ export function PortfolioDistributionChart({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">資產分佈</h3>
+    <div className="card-dark p-6">
+      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">資產分佈</h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -110,8 +110,12 @@ export function PortfolioDistributionChart({
               }}
               contentStyle={{
                 borderRadius: '8px',
-                border: 'none',
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                border: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-card)',
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)',
+              }}
+              itemStyle={{
+                color: 'var(--text-primary)',
               }}
             />
             <Legend
@@ -119,16 +123,16 @@ export function PortfolioDistributionChart({
               align="right"
               verticalAlign="middle"
               formatter={(value) => (
-                <span className="text-sm text-gray-700">{value}</span>
+                <span className="text-sm text-[var(--text-secondary)]">{value}</span>
               )}
             />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">總成本</span>
-          <span className="font-semibold text-gray-900">
+          <span className="text-[var(--text-muted)]">總成本</span>
+          <span className="font-semibold text-[var(--text-primary)]">
             {formatNumber(totalValue)} {homeCurrency}
           </span>
         </div>

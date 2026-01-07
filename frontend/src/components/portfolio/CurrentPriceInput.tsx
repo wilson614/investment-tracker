@@ -69,20 +69,20 @@ export function CurrentPriceInput({
   ).length;
 
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="card-dark p-5">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center justify-between w-full text-left"
       >
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">即時價格</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="text-lg font-bold text-[var(--text-primary)]">即時價格</h3>
+          <p className="text-base text-[var(--text-muted)]">
             已輸入 {filledCount} / {positions.length} 筆價格
           </p>
         </div>
         <svg
-          className={`w-5 h-5 text-gray-500 transform transition-transform ${
+          className={`w-5 h-5 text-[var(--text-muted)] transform transition-transform ${
             isExpanded ? 'rotate-180' : ''
           }`}
           fill="none"
@@ -94,16 +94,16 @@ export function CurrentPriceInput({
       </button>
 
       {isExpanded && (
-        <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600 pb-2 border-b">
+        <div className="mt-5 space-y-4">
+          <div className="grid grid-cols-12 gap-3 text-base font-medium text-[var(--text-muted)] pb-3 border-b border-[var(--border-color)]">
             <div className="col-span-3">股票代號</div>
             <div className="col-span-4">價格 ({baseCurrency})</div>
             <div className="col-span-5">匯率 ({baseCurrency}/{homeCurrency})</div>
           </div>
 
           {priceEntries.map((entry) => (
-            <div key={entry.ticker} className="grid grid-cols-12 gap-2 items-center">
-              <div className="col-span-3 font-medium text-gray-900">{entry.ticker}</div>
+            <div key={entry.ticker} className="grid grid-cols-12 gap-3 items-center">
+              <div className="col-span-3 font-medium text-[var(--accent-cream)]">{entry.ticker}</div>
               <div className="col-span-4">
                 <input
                   type="number"
@@ -112,7 +112,7 @@ export function CurrentPriceInput({
                   value={entry.price}
                   onChange={(e) => handlePriceChange(entry.ticker, 'price', e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                  className="input-dark w-full text-base py-2"
                 />
               </div>
               <div className="col-span-5">
@@ -123,31 +123,31 @@ export function CurrentPriceInput({
                   value={entry.exchangeRate}
                   onChange={(e) => handlePriceChange(entry.ticker, 'exchangeRate', e.target.value)}
                   placeholder="0.0000"
-                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                  className="input-dark w-full text-base py-2"
                 />
               </div>
             </div>
           ))}
 
-          <div className="flex gap-2 pt-3 border-t">
+          <div className="flex gap-3 pt-4 border-t border-[var(--border-color)]">
             <button
               type="button"
               onClick={handleApply}
               disabled={filledCount === 0}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="btn-accent px-5 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               套用價格
             </button>
             <button
               type="button"
               onClick={handleClear}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+              className="btn-dark px-5 py-2"
             >
               清除全部
             </button>
           </div>
 
-          <p className="text-xs text-gray-500">
+          <p className="text-sm text-[var(--text-muted)]">
             輸入即時股價與匯率以計算未實現損益與年化報酬率 (XIRR)。
           </p>
         </div>

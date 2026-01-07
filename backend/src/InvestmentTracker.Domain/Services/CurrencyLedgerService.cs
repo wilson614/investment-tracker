@@ -82,6 +82,7 @@ public class CurrencyLedgerService
 
     /// <summary>
     /// Calculates the total cost basis in home currency.
+    /// Uses the same moving average cost method as weighted average cost.
     /// </summary>
     public decimal CalculateTotalCost(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -99,9 +100,13 @@ public class CurrencyLedgerService
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
-                    // Subtract proceeds from total cost
-                    totalCost -= tx.HomeAmount ?? 0m;
-                    balance -= tx.ForeignAmount;
+                    // Reduce cost basis proportionally (same as weighted average method)
+                    if (balance > 0)
+                    {
+                        var avgCost = totalCost / balance;
+                        totalCost -= avgCost * tx.ForeignAmount;
+                        balance -= tx.ForeignAmount;
+                    }
                     break;
 
                 case CurrencyTransactionType.Interest:

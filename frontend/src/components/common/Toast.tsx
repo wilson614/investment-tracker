@@ -104,24 +104,24 @@ interface ToastItemProps {
 
 const toastStyles: Record<ToastType, { bg: string; icon: string; iconColor: string }> = {
   success: {
-    bg: 'bg-green-50 border-green-200',
+    bg: 'bg-[var(--color-success-soft)] border-[var(--color-success)]',
     icon: 'M5 13l4 4L19 7',
-    iconColor: 'text-green-500',
+    iconColor: 'text-[var(--color-success)]',
   },
   error: {
-    bg: 'bg-red-50 border-red-200',
+    bg: 'bg-[var(--color-danger-soft)] border-[var(--color-danger)]',
     icon: 'M6 18L18 6M6 6l12 12',
-    iconColor: 'text-red-500',
+    iconColor: 'text-[var(--color-danger)]',
   },
   warning: {
-    bg: 'bg-yellow-50 border-yellow-200',
+    bg: 'bg-[var(--color-warning-soft)] border-[var(--color-warning)]',
     icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
-    iconColor: 'text-yellow-500',
+    iconColor: 'text-[var(--color-warning)]',
   },
   info: {
-    bg: 'bg-blue-50 border-blue-200',
+    bg: 'bg-[var(--accent-butter-soft)] border-[var(--accent-butter)]',
     icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-    iconColor: 'text-blue-500',
+    iconColor: 'text-[var(--accent-butter)]',
   },
 };
 
@@ -141,13 +141,13 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
       >
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.icon} />
       </svg>
-      <p className="text-sm text-gray-700 flex-1">{toast.message}</p>
+      <p className="text-sm text-[var(--text-primary)] flex-1">{toast.message}</p>
       <button
         onClick={onClose}
-        className="p-1 hover:bg-gray-200 rounded transition-colors"
+        className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors"
         aria-label="關閉通知"
       >
-        <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>

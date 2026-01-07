@@ -121,14 +121,14 @@ export function CSVImportModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
+      <div className="card-dark rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
           <button
             onClick={handleClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -138,11 +138,11 @@ export function CSVImportModal({
         <div className="flex-1 overflow-y-auto p-6">
           {step === 'upload' && (
             <div className="text-center py-12">
-              <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+              <Upload className="w-16 h-16 text-[var(--text-muted)] mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">
                 上傳 CSV 檔案
               </h3>
-              <p className="text-gray-500 mb-6">
+              <p className="text-[var(--text-muted)] mb-6">
                 選擇包含交易紀錄的 CSV 檔案，系統會自動偵測欄位對應
               </p>
               <label className="inline-block">
@@ -152,7 +152,7 @@ export function CSVImportModal({
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                <span className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors font-medium">
+                <span className="btn-accent cursor-pointer">
                   選擇檔案
                 </span>
               </label>
@@ -161,7 +161,7 @@ export function CSVImportModal({
 
           {step === 'mapping' && csvData && (
             <div className="space-y-6">
-              <div className="flex items-center gap-3 text-green-600 bg-green-50 p-4 rounded-lg">
+              <div className="flex items-center gap-3 text-[var(--color-success)] bg-[var(--color-success-soft)] p-4 rounded-lg">
                 <FileText className="w-5 h-5" />
                 <span>
                   已讀取 <strong>{csvData.rowCount}</strong> 筆資料，共{' '}
@@ -170,7 +170,7 @@ export function CSVImportModal({
               </div>
 
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">
                   欄位對應
                 </h3>
                 <div className="space-y-3">
@@ -180,11 +180,11 @@ export function CSVImportModal({
                       className="flex items-center gap-4"
                     >
                       <div className="w-40 flex-shrink-0">
-                        <span className="text-gray-700 font-medium">
+                        <span className="text-[var(--text-secondary)] font-medium">
                           {field.label}
                         </span>
                         {field.required && (
-                          <span className="text-red-500 ml-1">*</span>
+                          <span className="text-[var(--color-danger)] ml-1">*</span>
                         )}
                       </div>
                       <select
@@ -192,10 +192,10 @@ export function CSVImportModal({
                         onChange={(e) =>
                           handleMappingChange(field.name, e.target.value)
                         }
-                        className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        className={`flex-1 input-dark ${
                           field.required && !mapping[field.name]
-                            ? 'border-red-300 bg-red-50'
-                            : 'border-gray-300'
+                            ? 'border-[var(--color-danger)]'
+                            : ''
                         }`}
                       >
                         <option value="">-- 選擇欄位 --</option>
@@ -210,16 +210,16 @@ export function CSVImportModal({
                 </div>
               </div>
 
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">資料預覽（前 3 筆）</h4>
+              <div className="bg-[var(--bg-secondary)] p-4 rounded-lg">
+                <h4 className="font-medium text-[var(--text-primary)] mb-2">資料預覽（前 3 筆）</h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200">
+                      <tr className="border-b border-[var(--border-color)]">
                         {csvData.headers.map((header) => (
                           <th
                             key={header}
-                            className="px-3 py-2 text-left text-gray-600 font-medium"
+                            className="px-3 py-2 text-left text-[var(--text-muted)] font-medium"
                           >
                             {header}
                           </th>
@@ -228,11 +228,11 @@ export function CSVImportModal({
                     </thead>
                     <tbody>
                       {csvData.rows.slice(0, 3).map((row, idx) => (
-                        <tr key={idx} className="border-b border-gray-100">
+                        <tr key={idx} className="border-b border-[var(--border-color)]">
                           {row.map((cell, cellIdx) => (
                             <td
                               key={cellIdx}
-                              className="px-3 py-2 text-gray-700"
+                              className="px-3 py-2 text-[var(--text-secondary)]"
                             >
                               {cell || '-'}
                             </td>
@@ -248,22 +248,22 @@ export function CSVImportModal({
 
           {step === 'preview' && csvData && (
             <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">確認匯入</h4>
-                <p className="text-blue-700">
+              <div className="bg-[var(--accent-butter-soft)] p-4 rounded-lg">
+                <h4 className="font-medium text-[var(--text-primary)] mb-2">確認匯入</h4>
+                <p className="text-[var(--text-secondary)]">
                   即將匯入 <strong>{csvData.rowCount}</strong> 筆交易紀錄
                 </p>
               </div>
 
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">欄位對應摘要</h4>
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <h4 className="font-medium text-[var(--text-primary)] mb-2">欄位對應摘要</h4>
+                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
                   {fields.map((field) => (
                     <div key={field.name} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{field.label}</span>
-                      <span className="font-medium text-gray-900">
+                      <span className="text-[var(--text-muted)]">{field.label}</span>
+                      <span className="font-medium text-[var(--text-primary)]">
                         {mapping[field.name] || (
-                          <span className="text-gray-400">未對應</span>
+                          <span className="text-[var(--text-muted)]">未對應</span>
                         )}
                       </span>
                     </div>
@@ -277,21 +277,21 @@ export function CSVImportModal({
             <div className="space-y-6">
               {importResult.success ? (
                 <div className="text-center py-8">
-                  <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-medium text-gray-900 mb-2">
+                  <CheckCircle className="w-16 h-16 text-[var(--color-success)] mx-auto mb-4" />
+                  <h3 className="text-xl font-medium text-[var(--text-primary)] mb-2">
                     匯入完成
                   </h3>
-                  <p className="text-gray-600">
+                  <p className="text-[var(--text-muted)]">
                     成功匯入 <strong>{importResult.successCount}</strong> 筆資料
                   </p>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-medium text-gray-900 mb-2">
+                  <AlertCircle className="w-16 h-16 text-[var(--color-warning)] mx-auto mb-4" />
+                  <h3 className="text-xl font-medium text-[var(--text-primary)] mb-2">
                     匯入完成（部分成功）
                   </h3>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-[var(--text-muted)] mb-4">
                     成功 <strong>{importResult.successCount}</strong> 筆，
                     失敗 <strong>{importResult.errors.length}</strong> 筆
                   </p>
@@ -302,7 +302,7 @@ export function CSVImportModal({
                 <div>
                   <button
                     onClick={() => setShowErrors(!showErrors)}
-                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                    className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   >
                     {showErrors ? (
                       <ChevronUp className="w-4 h-4" />
@@ -313,11 +313,11 @@ export function CSVImportModal({
                   </button>
 
                   {showErrors && (
-                    <div className="mt-4 bg-red-50 p-4 rounded-lg max-h-60 overflow-y-auto">
+                    <div className="mt-4 bg-[var(--color-danger-soft)] p-4 rounded-lg max-h-60 overflow-y-auto">
                       {importResult.errors.map((error, idx) => (
                         <div
                           key={idx}
-                          className="text-sm text-red-700 py-1 border-b border-red-100 last:border-0"
+                          className="text-sm text-[var(--color-danger)] py-1 border-b border-[var(--color-danger)]/20 last:border-0"
                         >
                           <span className="font-medium">第 {error.row} 行</span>
                           {error.column && ` (${error.column})`}: {error.message}
@@ -332,11 +332,11 @@ export function CSVImportModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-between">
+        <div className="px-6 py-4 border-t border-[var(--border-color)] flex justify-between">
           {step === 'upload' && (
             <button
               onClick={handleClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="px-4 py-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
             >
               取消
             </button>
@@ -346,13 +346,13 @@ export function CSVImportModal({
             <>
               <button
                 onClick={() => setStep('upload')}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
               >
                 上一步
               </button>
               <button
                 onClick={handleProceedToPreview}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="btn-accent"
               >
                 下一步
               </button>
@@ -363,14 +363,14 @@ export function CSVImportModal({
             <>
               <button
                 onClick={() => setStep('mapping')}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
               >
                 上一步
               </button>
               <button
                 onClick={handleImport}
                 disabled={isImporting}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="btn-accent disabled:opacity-50"
               >
                 {isImporting ? '匯入中...' : '確認匯入'}
               </button>
@@ -380,7 +380,7 @@ export function CSVImportModal({
           {step === 'result' && (
             <button
               onClick={handleClose}
-              className="ml-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="ml-auto btn-accent"
             >
               完成
             </button>

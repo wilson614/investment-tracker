@@ -21,44 +21,44 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
   };
 
   const pnlColor = (ledger.realizedPnl ?? 0) >= 0
-    ? 'text-green-600'
-    : 'text-red-600';
+    ? 'number-positive'
+    : 'number-negative';
 
   return (
     <div
-      className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className="card-dark p-5 cursor-pointer hover:border-[var(--border-hover)] transition-all"
       onClick={onClick}
     >
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-lg font-bold text-gray-900">{ledger.ledger.currencyCode}</h3>
-          <p className="text-sm text-gray-500">{ledger.ledger.name}</p>
+          <h3 className="text-lg font-bold text-[var(--accent-cream)]">{ledger.ledger.currencyCode}</h3>
+          <p className="text-base text-[var(--text-muted)]">{ledger.ledger.name}</p>
         </div>
-        <span className="text-lg font-semibold text-blue-600">
-          {formatNumber(ledger.balance, 2)} {ledger.ledger.currencyCode}
+        <span className="text-lg font-bold text-[var(--accent-peach)] number-display">
+          {formatNumber(ledger.balance, 2)}
         </span>
       </div>
 
-      <div className="space-y-2 text-sm">
+      <div className="space-y-3 text-base">
         <div className="flex justify-between">
-          <span className="text-gray-600">加權平均成本:</span>
-          <span className="font-medium">
-            {formatNumber(ledger.weightedAverageCost, 4)} {ledger.ledger.homeCurrency}
+          <span className="text-[var(--text-muted)]">加權平均成本:</span>
+          <span className="font-medium text-[var(--text-primary)] number-display">
+            {formatNumber(ledger.weightedAverageCost, 4)}
           </span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-gray-600">總成本:</span>
-          <span className="font-medium">
+          <span className="text-[var(--text-muted)]">總成本:</span>
+          <span className="font-medium text-[var(--text-primary)] number-display">
             {formatNumber(ledger.totalCostHome)} {ledger.ledger.homeCurrency}
           </span>
         </div>
 
-        <hr className="my-2" />
+        <hr className="border-[var(--border-color)] my-3" />
 
         <div className="flex justify-between">
-          <span className="text-gray-600">已實現損益:</span>
-          <span className={`font-medium ${pnlColor}`}>
+          <span className="text-[var(--text-muted)]">已實現損益:</span>
+          <span className={`font-medium number-display ${pnlColor}`}>
             {formatNumber(ledger.realizedPnl)} {ledger.ledger.homeCurrency}
           </span>
         </div>
@@ -66,19 +66,19 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
         {ledger.currentValueHome !== undefined && ledger.currentValueHome !== null && (
           <>
             <div className="flex justify-between">
-              <span className="text-gray-600">現值:</span>
-              <span className="font-medium">
+              <span className="text-[var(--text-muted)]">現值:</span>
+              <span className="font-medium text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.currentValueHome)} {ledger.ledger.homeCurrency}
               </span>
             </div>
 
             {ledger.unrealizedPnlHome !== undefined && (
               <div className="flex justify-between">
-                <span className="text-gray-600">未實現損益:</span>
-                <span className={`font-medium ${(ledger.unrealizedPnlHome ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className="text-[var(--text-muted)]">未實現損益:</span>
+                <span className={`font-medium number-display ${(ledger.unrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
                   {formatNumber(ledger.unrealizedPnlHome)} {ledger.ledger.homeCurrency}
                   {ledger.unrealizedPnlPercentage !== undefined && (
-                    <span className="ml-1 text-xs">
+                    <span className="ml-1 text-sm">
                       ({formatPercent(ledger.unrealizedPnlPercentage)})
                     </span>
                   )}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronDown } from 'lucide-react';
 import { portfolioApi } from '../services/api';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { CurrentPriceInput } from '../components/portfolio/CurrentPriceInput';
@@ -31,7 +32,6 @@ export function DashboardPage() {
       const data = await portfolioApi.getAll();
       setPortfolios(data);
 
-      // Load summaries for all portfolios
       const metricsMap = new Map<string, PortfolioWithMetrics>();
       await Promise.all(
         data.map(async (portfolio) => {
@@ -111,7 +111,6 @@ export function DashboardPage() {
     });
   };
 
-  // Calculate aggregate totals
   const aggregateTotals = Array.from(portfolioMetrics.values()).reduce(
     (acc, metrics) => {
       if (metrics.summary) {
@@ -133,7 +132,7 @@ export function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">載入中...</div>
+        <div className="text-[var(--text-muted)] text-lg">載入中...</div>
       </div>
     );
   }
@@ -141,95 +140,95 @@ export function DashboardPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-500">{error}</div>
+        <div className="text-[var(--color-danger)] text-lg">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">儀表板</h1>
+    <div className="min-h-screen py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
 
         {/* Aggregate Summary */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">整體投資組合摘要</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-600">總成本</p>
-              <p className="text-lg font-bold text-gray-900">
-                {formatNumber(aggregateTotals.totalCost)} TWD
+        <div className="card-dark p-6 mb-8">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">整體投資組合摘要</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="metric-card metric-card-cream">
+              <p className="text-[var(--text-muted)] text-sm mb-1">總成本</p>
+              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">
+                {formatNumber(aggregateTotals.totalCost)}
               </p>
+              <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-600">目前市值</p>
-              <p className="text-lg font-bold text-gray-900">
-                {aggregateTotals.hasValue ? `${formatNumber(aggregateTotals.totalValue)} TWD` : '-'}
+            <div className="metric-card metric-card-sand">
+              <p className="text-[var(--text-muted)] text-sm mb-1">目前市值</p>
+              <p className="text-2xl font-bold text-[var(--accent-sand)] number-display">
+                {aggregateTotals.hasValue ? formatNumber(aggregateTotals.totalValue) : '-'}
               </p>
+              <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-600">未實現損益</p>
-              <p className={`text-lg font-bold ${aggregateTotals.totalPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {aggregateTotals.hasValue ? `${formatNumber(aggregateTotals.totalPnl)} TWD` : '-'}
+            <div className="metric-card metric-card-peach">
+              <p className="text-[var(--text-muted)] text-sm mb-1">未實現損益</p>
+              <p className={`text-2xl font-bold number-display ${aggregateTotals.totalPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
+                {aggregateTotals.hasValue ? formatNumber(aggregateTotals.totalPnl) : '-'}
               </p>
+              <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-600">持倉數量</p>
-              <p className="text-lg font-bold text-gray-900">{aggregateTotals.positionCount}</p>
+            <div className="metric-card metric-card-blush">
+              <p className="text-[var(--text-muted)] text-sm mb-1">持倉數量</p>
+              <p className="text-2xl font-bold text-[var(--accent-blush)] number-display">
+                {aggregateTotals.positionCount}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Portfolio List */}
         {portfolios.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-6 text-center">
-            <p className="text-gray-500 mb-4">尚無投資組合</p>
+          <div className="card-dark p-8 text-center">
+            <p className="text-[var(--text-muted)] text-lg mb-4">尚無投資組合</p>
             <Link
               to="/portfolios"
-              className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="btn-accent inline-block"
             >
               建立投資組合
             </Link>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {portfolios.map((portfolio) => {
               const metrics = portfolioMetrics.get(portfolio.id);
               const isSelected = selectedPortfolioId === portfolio.id;
 
               return (
-                <div key={portfolio.id} className="bg-white rounded-lg shadow overflow-hidden">
+                <div key={portfolio.id} className="card-dark overflow-hidden">
                   <div
-                    className="px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+                    className="px-6 py-5 flex justify-between items-center cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                     onClick={() => setSelectedPortfolioId(isSelected ? null : portfolio.id)}
                   >
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{portfolio.name}</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">{portfolio.name}</h3>
+                      <p className="text-base text-[var(--text-muted)] mt-1">
                         {portfolio.baseCurrency} → {portfolio.homeCurrency}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
                       <Link
                         to={`/portfolio/${portfolio.id}`}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
+                        className="text-[var(--accent-peach)] hover:underline text-base"
                         onClick={(e) => e.stopPropagation()}
                       >
                         查看詳情 →
                       </Link>
-                      <svg
-                        className={`w-5 h-5 text-gray-500 transform transition-transform ${isSelected ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      <ChevronDown
+                        className={`w-6 h-6 text-[var(--text-muted)] transform transition-transform ${isSelected ? 'rotate-180' : ''}`}
+                      />
                     </div>
                   </div>
 
                   {isSelected && metrics?.summary && (
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 border-t border-[var(--border-color)] space-y-6">
                       <CurrentPriceInput
                         positions={metrics.summary.positions}
                         onPricesChange={(prices) => handlePricesChange(portfolio.id, prices)}
@@ -246,8 +245,8 @@ export function DashboardPage() {
                   )}
 
                   {isSelected && metrics?.error && (
-                    <div className="p-6">
-                      <p className="text-red-500">{metrics.error}</p>
+                    <div className="p-6 border-t border-[var(--border-color)]">
+                      <p className="text-[var(--color-danger)] text-base">{metrics.error}</p>
                     </div>
                   )}
                 </div>
