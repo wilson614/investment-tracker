@@ -227,3 +227,28 @@ export interface XirrResult {
   asOfDate: string;
 }
 
+// Stock Price Types
+export const StockMarket = {
+  TW: 1,
+  US: 2,
+  UK: 3,
+} as const;
+export type StockMarket = (typeof StockMarket)[keyof typeof StockMarket];
+
+export interface StockQuoteResponse {
+  symbol: string;
+  name: string;
+  price: number;
+  change?: number;
+  changePercent?: string;
+  market: StockMarket;
+  source: string;
+  fetchedAt: string;
+}
+
+export interface MarketInfo {
+  value: number;
+  name: string;
+  description: string;
+}
+

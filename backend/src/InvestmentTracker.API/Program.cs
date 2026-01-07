@@ -12,6 +12,7 @@ using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Repositories;
 using InvestmentTracker.Infrastructure.Services;
+using InvestmentTracker.Infrastructure.StockPrices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -149,6 +150,13 @@ builder.Services.AddScoped<DeleteCurrencyLedgerUseCase>();
 builder.Services.AddScoped<CreateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<UpdateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
+
+// Stock Price Service
+builder.Services.AddHttpClient<IStockPriceProvider, SinaStockPriceProvider>();
+builder.Services.AddHttpClient<TwseStockPriceProvider>();
+builder.Services.AddScoped<IStockPriceProvider, SinaStockPriceProvider>();
+builder.Services.AddScoped<IStockPriceProvider, TwseStockPriceProvider>();
+builder.Services.AddScoped<IStockPriceService, StockPriceService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();

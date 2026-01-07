@@ -18,6 +18,9 @@ import type {
   UpdateCurrencyTransactionRequest,
   CalculateXirrRequest,
   XirrResult,
+  StockMarket,
+  StockQuoteResponse,
+  MarketInfo,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -216,6 +219,15 @@ export const currencyTransactionApi = {
 
   delete: (id: string) =>
     fetchApi<void>(`/currencytransactions/${id}`, { method: 'DELETE' }),
+};
+
+// Stock Price API
+export const stockPriceApi = {
+  getQuote: (market: StockMarket, symbol: string) =>
+    fetchApi<StockQuoteResponse>(`/stock-prices?market=${market}&symbol=${encodeURIComponent(symbol)}`),
+
+  getMarkets: () =>
+    fetchApi<MarketInfo[]>('/stock-prices/markets'),
 };
 
 export type { ApiErrorType };
