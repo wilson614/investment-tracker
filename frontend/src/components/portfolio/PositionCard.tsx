@@ -29,20 +29,20 @@ export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardPro
       <div className="flex justify-between items-start mb-3">
         <h3 className="text-lg font-bold text-gray-900">{position.ticker}</h3>
         <span className="text-sm text-gray-500">
-          {formatNumber(position.totalShares, 4)} shares
+          {formatNumber(position.totalShares, 4)} 股
         </span>
       </div>
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-600">Average Cost:</span>
+          <span className="text-gray-600">平均成本:</span>
           <span className="font-medium">
             {formatNumber(position.averageCostPerShare)} {homeCurrency}
           </span>
         </div>
 
         <div className="flex justify-between">
-          <span className="text-gray-600">Total Cost:</span>
+          <span className="text-gray-600">總成本:</span>
           <span className="font-medium">
             {formatNumber(position.totalCostHome)} {homeCurrency}
           </span>
@@ -53,14 +53,14 @@ export function PositionCard({ position, homeCurrency = 'TWD' }: PositionCardPro
             <hr className="my-2" />
 
             <div className="flex justify-between">
-              <span className="text-gray-600">Current Value:</span>
+              <span className="text-gray-600">現值:</span>
               <span className="font-medium">
                 {formatNumber(position.currentValueHome)} {homeCurrency}
               </span>
             </div>
 
             <div className="flex justify-between">
-              <span className="text-gray-600">Unrealized P&L:</span>
+              <span className="text-gray-600">未實現損益:</span>
               <span className={`font-medium ${pnlColor}`}>
                 {formatNumber(position.unrealizedPnlHome ?? 0)} {homeCurrency}
                 {position.unrealizedPnlPercentage !== undefined && (

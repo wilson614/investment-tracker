@@ -50,7 +50,15 @@ async function fetchApi<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw createApiError(response.status, errorText || response.statusText);
+    // Try to parse as JSON to extract error message
+    let errorMessage = errorText || response.statusText;
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorMessage = errorJson.error || errorJson.message || errorJson.title || errorText;
+    } catch {
+      // Not JSON, use raw text
+    }
+    throw createApiError(response.status, errorMessage);
   }
 
   if (response.status === 204) {

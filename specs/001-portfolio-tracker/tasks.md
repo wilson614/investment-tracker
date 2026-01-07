@@ -372,24 +372,24 @@
 
 ### UI Localization
 
-- [ ] T136 [P] Localize UI to Traditional Chinese - scan and update all English text
+- [x] T136 [P] Localize UI to Traditional Chinese - scan and update all English text
 
 ### Visual Design Enhancement (Modern Professional Style)
 
-- [ ] T137 [P] Install Lucide Icons and update navigation/button icons
-- [ ] T138 [P] Design color palette and base style variables (CSS custom properties)
-- [ ] T139 Improve card, table, and form visual design
-- [ ] T140 [P] Install Recharts and create chart components
-- [ ] T141 Add portfolio distribution pie chart and performance line chart
-- [ ] T142 [P] Add page transition animations
+- [x] T137 [P] Install Lucide Icons and update navigation/button icons
+- [x] T138 [P] Design color palette and base style variables (CSS custom properties)
+- [x] T139 Improve card, table, and form visual design
+- [x] T140 [P] Install Recharts and create chart components
+- [x] T141 Add portfolio distribution pie chart and performance line chart
+- [x] T142 [P] Add page transition animations
 
 ### CSV Import Feature
 
-- [ ] T143 [P] Create CSV parser utility functions in frontend/src/utils/csvParser.ts
-- [ ] T144 [P] Create generic CSV import modal component in frontend/src/components/common/CsvImportModal.tsx
-- [ ] T145 Implement currency transaction CSV import (auto field mapping)
-- [ ] T146 Implement stock transaction CSV import (auto field mapping)
-- [ ] T147 [P] Create import preview and error validation display
+- [x] T143 [P] Create CSV parser utility functions in frontend/src/utils/csvParser.ts
+- [x] T144 [P] Create generic CSV import modal component in frontend/src/components/import/CSVImportModal.tsx
+- [x] T145 Implement currency transaction CSV import (auto field mapping)
+- [x] T146 Implement stock transaction CSV import (auto field mapping)
+- [x] T147 [P] Create import preview and error validation display
 
 **Checkpoint**: Phase 11 complete - UI modernized with Chinese localization and CSV import enabled
 

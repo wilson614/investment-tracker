@@ -33,7 +33,7 @@ export function TransactionsPage() {
   }, [portfolioId]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+    if (!window.confirm('確定要刪除此交易紀錄嗎？')) {
       return;
     }
     await transactionApi.delete(id);
@@ -53,7 +53,7 @@ export function TransactionsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">載入中...</div>
       </div>
     );
   }
@@ -69,35 +69,35 @@ export function TransactionsPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Transactions</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">交易紀錄</h1>
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Filter by Ticker
+                股票代號篩選
               </label>
               <input
                 type="text"
                 value={filter.ticker}
                 onChange={(e) => setFilter((prev) => ({ ...prev, ticker: e.target.value }))}
-                placeholder="e.g., VWRA"
+                placeholder="例如：VWRA"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="w-40">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Type
+                類型
               </label>
               <select
                 value={filter.type}
                 onChange={(e) => setFilter((prev) => ({ ...prev, type: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All</option>
-                <option value="1">Buy</option>
-                <option value="2">Sell</option>
+                <option value="">全部</option>
+                <option value="1">買入</option>
+                <option value="2">賣出</option>
               </select>
             </div>
           </div>
@@ -105,7 +105,7 @@ export function TransactionsPage() {
 
         {/* Summary */}
         <div className="mb-4 text-sm text-gray-600">
-          Showing {filteredTransactions.length} of {transactions.length} transactions
+          顯示 {filteredTransactions.length} 筆，共 {transactions.length} 筆交易
         </div>
 
         {/* Transaction List */}

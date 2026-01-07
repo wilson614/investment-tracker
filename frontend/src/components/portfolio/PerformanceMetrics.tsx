@@ -53,18 +53,18 @@ export function PerformanceMetrics({
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Portfolio Performance</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-4">投資組合績效</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">Total Cost</p>
+          <p className="text-sm text-gray-600">總成本</p>
           <p className="text-lg font-bold text-gray-900">
             {formatNumber(summary.totalCostHome)} {homeCurrency}
           </p>
         </div>
 
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">Current Value</p>
+          <p className="text-sm text-gray-600">目前市值</p>
           <p className="text-lg font-bold text-gray-900">
             {summary.totalValueHome != null
               ? `${formatNumber(summary.totalValueHome)} ${homeCurrency}`
@@ -73,7 +73,7 @@ export function PerformanceMetrics({
         </div>
 
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">Unrealized P&L</p>
+          <p className="text-sm text-gray-600">未實現損益</p>
           <p className={`text-lg font-bold ${pnlColor}`}>
             {summary.totalUnrealizedPnlHome != null
               ? `${formatNumber(summary.totalUnrealizedPnlHome)} ${homeCurrency}`
@@ -87,7 +87,7 @@ export function PerformanceMetrics({
         </div>
 
         <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">XIRR (Annualized Return)</p>
+          <p className="text-sm text-gray-600">年化報酬率 (XIRR)</p>
           {xirrResult?.xirrPercentage != null ? (
             <p className={`text-lg font-bold ${xirrColor}`}>
               {formatPercent(xirrResult.xirrPercentage)}
@@ -97,14 +97,14 @@ export function PerformanceMetrics({
           )}
           {xirrResult && (
             <p className="text-xs text-gray-500">
-              Based on {xirrResult.cashFlowCount} transactions
+              基於 {xirrResult.cashFlowCount} 筆交易計算
             </p>
           )}
         </div>
       </div>
 
       <div className="mt-4 text-xs text-gray-500">
-        <p>Positions: {summary.positions.length}</p>
+        <p>持倉數量: {summary.positions.length}</p>
       </div>
     </div>
   );

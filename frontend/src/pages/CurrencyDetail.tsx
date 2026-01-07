@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { currencyLedgerApi, currencyTransactionApi } from '../services/api';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
+import { CurrencyImportButton } from '../components/import';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
 import { CurrencyTransactionType } from '../types';
 
@@ -10,7 +11,41 @@ const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
   [CurrencyTransactionType.Interest]: '利息收入',
   [CurrencyTransactionType.Spend]: '消費支出',
+  [CurrencyTransactionType.InitialBalance]: '期初餘額',
+  [CurrencyTransactionType.OtherIncome]: '其他收入',
+  [CurrencyTransactionType.OtherExpense]: '其他支出',
 };
+
+// Calculate balance change for a transaction
+function getBalanceChange(tx: CurrencyTransaction): number {
+  switch (tx.transactionType) {
+    case CurrencyTransactionType.ExchangeBuy:
+    case CurrencyTransactionType.InitialBalance:
+    case CurrencyTransactionType.Interest:
+    case CurrencyTransactionType.OtherIncome:
+      return tx.foreignAmount;
+    case CurrencyTransactionType.ExchangeSell:
+    case CurrencyTransactionType.Spend:
+    case CurrencyTransactionType.OtherExpense:
+      return -tx.foreignAmount;
+    default:
+      return 0;
+  }
+}
+
+// Calculate running balances for transactions (sorted by date)
+function calculateRunningBalances(transactions: CurrencyTransaction[]): Map<string, number> {
+  const balanceMap = new Map<string, number>();
+  let runningBalance = 0;
+
+  // Transactions should already be sorted by date from API
+  for (const tx of transactions) {
+    runningBalance += getBalanceChange(tx);
+    balanceMap.set(tx.id, runningBalance);
+  }
+
+  return balanceMap;
+}
 
 export default function CurrencyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +55,9 @@ export default function CurrencyDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const loadData = async () => {
     if (!id) return;
@@ -31,6 +69,7 @@ export default function CurrencyDetail() {
       ]);
       setLedger(ledgerData);
       setTransactions(txData);
+      setSelectedIds(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -48,13 +87,36 @@ export default function CurrencyDetail() {
     await loadData();
   };
 
-  const handleDelete = async (txId: string) => {
-    if (!confirm('確定要刪除這筆交易嗎？')) return;
+  const handleSelectAll = () => {
+    if (selectedIds.size === transactions.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(transactions.map(tx => tx.id)));
+    }
+  };
+
+  const handleSelectOne = (txId: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(txId)) {
+      newSelected.delete(txId);
+    } else {
+      newSelected.add(txId);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBatchDelete = async () => {
+    setIsDeleting(true);
     try {
-      await currencyTransactionApi.delete(txId);
+      for (const txId of selectedIds) {
+        await currencyTransactionApi.delete(txId);
+      }
+      setShowDeleteConfirm(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -89,6 +151,8 @@ export default function CurrencyDetail() {
     );
   }
 
+  const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length;
+
   return (
     <div className="container mx-auto px-4 py-8">
       <button
@@ -114,12 +178,18 @@ export default function CurrencyDetail() {
             </h1>
             <p className="text-gray-500">{ledger.ledger.name}</p>
           </div>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            新增交易
-          </button>
+          <div className="flex gap-2">
+            <CurrencyImportButton
+              ledgerId={ledger.ledger.id}
+              onImportComplete={loadData}
+            />
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              新增交易
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -164,9 +234,46 @@ export default function CurrencyDetail() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4 text-red-600">確認刪除</h2>
+            <p className="mb-2">您確定要刪除選取的 <strong>{selectedIds.size}</strong> 筆交易嗎？</p>
+            <p className="text-red-500 text-sm mb-4">此操作無法復原！</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? '刪除中...' : '確認刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Transaction List */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-lg font-bold mb-4">交易紀錄</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">交易紀錄</h2>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+            >
+              刪除選取 ({selectedIds.size})
+            </button>
+          )}
+        </div>
 
         {transactions.length === 0 ? (
           <p className="text-gray-500 text-center py-8">尚無交易紀錄</p>
@@ -175,18 +282,39 @@ export default function CurrencyDetail() {
             <table className="w-full">
               <thead>
                 <tr className="border-b text-left text-sm text-gray-500">
+                  <th className="pb-3 pr-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
                   <th className="pb-3">日期</th>
                   <th className="pb-3">類型</th>
                   <th className="pb-3 text-right">外幣金額</th>
                   <th className="pb-3 text-right">台幣金額</th>
                   <th className="pb-3 text-right">匯率</th>
+                  <th className="pb-3 text-right">餘額</th>
                   <th className="pb-3">備註</th>
-                  <th className="pb-3"></th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="border-b hover:bg-gray-50">
+                {(() => {
+                  const runningBalances = calculateRunningBalances(transactions);
+                  return transactions.map((tx) => (
+                  <tr
+                    key={tx.id}
+                    className={`border-b hover:bg-gray-50 ${selectedIds.has(tx.id) ? 'bg-blue-50' : ''}`}
+                  >
+                    <td className="py-3 pr-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(tx.id)}
+                        onChange={() => handleSelectOne(tx.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="py-3">{formatDate(tx.transactionDate)}</td>
                     <td className="py-3">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
@@ -194,8 +322,12 @@ export default function CurrencyDetail() {
                           ? 'bg-green-100 text-green-800'
                           : tx.transactionType === CurrencyTransactionType.ExchangeSell
                           ? 'bg-red-100 text-red-800'
-                          : tx.transactionType === CurrencyTransactionType.Interest
+                          : tx.transactionType === CurrencyTransactionType.Interest ||
+                            tx.transactionType === CurrencyTransactionType.OtherIncome
                           ? 'bg-blue-100 text-blue-800'
+                          : tx.transactionType === CurrencyTransactionType.Spend ||
+                            tx.transactionType === CurrencyTransactionType.OtherExpense
+                          ? 'bg-orange-100 text-orange-800'
                           : 'bg-gray-100 text-gray-800'
                       }`}>
                         {transactionTypeLabels[tx.transactionType]}
@@ -210,19 +342,15 @@ export default function CurrencyDetail() {
                     <td className="py-3 text-right font-mono">
                       {tx.exchangeRate ? formatNumber(tx.exchangeRate, 4) : '-'}
                     </td>
+                    <td className="py-3 text-right font-mono">
+                      {formatNumber(runningBalances.get(tx.id) ?? 0, 4)}
+                    </td>
                     <td className="py-3 text-gray-500 text-sm max-w-32 truncate">
                       {tx.notes || '-'}
                     </td>
-                    <td className="py-3">
-                      <button
-                        onClick={() => handleDelete(tx.id)}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                      >
-                        刪除
-                      </button>
-                    </td>
                   </tr>
-                ))}
+                  ));
+                })()}
               </tbody>
             </table>
           </div>

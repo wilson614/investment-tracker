@@ -15,5 +15,14 @@ public enum CurrencyTransactionType
     Interest = 3,
 
     /// <summary>Spend foreign currency (e.g., for stock purchase)</summary>
-    Spend = 4
+    Spend = 4,
+
+    /// <summary>Initial balance (opening balance with known cost basis)</summary>
+    InitialBalance = 5,
+
+    /// <summary>Other income (e.g., broker bonus, dividends)</summary>
+    OtherIncome = 6,
+
+    /// <summary>Other expense (e.g., transfer out, fees)</summary>
+    OtherExpense = 7
 }

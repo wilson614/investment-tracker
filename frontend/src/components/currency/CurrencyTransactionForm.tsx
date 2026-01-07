@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { CurrencyTransactionType, CreateCurrencyTransactionRequest } from '../../types';
 import { CurrencyTransactionType as CurrencyTxType } from '../../types';
 
@@ -26,9 +26,28 @@ export function CurrencyTransactionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsExchangeInfo =
+  // Exchange types need both home amount and exchange rate
+  const isExchangeType =
     transactionType === CurrencyTxType.ExchangeBuy ||
     transactionType === CurrencyTxType.ExchangeSell;
+
+  // Initial balance needs home amount (cost basis) but not exchange rate
+  const needsHomeCost =
+    isExchangeType || transactionType === CurrencyTxType.InitialBalance;
+
+  // Auto-calculate exchange rate when foreign and home amounts change (only for exchange types)
+  useEffect(() => {
+    if (isExchangeType && foreignAmount && homeAmount) {
+      const foreign = parseFloat(foreignAmount);
+      const home = parseFloat(homeAmount);
+      if (foreign > 0 && home > 0) {
+        const rate = home / foreign;
+        setExchangeRate(rate.toFixed(4));
+      }
+    } else if (!isExchangeType) {
+      setExchangeRate('');
+    }
+  }, [foreignAmount, homeAmount, isExchangeType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +103,9 @@ export function CurrencyTransactionForm({
           <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
           <option value={CurrencyTxType.Interest}>利息收入</option>
           <option value={CurrencyTxType.Spend}>消費支出</option>
+          <option value={CurrencyTxType.InitialBalance}>期初餘額</option>
+          <option value={CurrencyTxType.OtherIncome}>其他收入</option>
+          <option value={CurrencyTxType.OtherExpense}>其他支出</option>
         </select>
       </div>
 
@@ -102,38 +124,37 @@ export function CurrencyTransactionForm({
         />
       </div>
 
-      {needsExchangeInfo && (
-        <>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              台幣金額
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={homeAmount}
-              onChange={(e) => setHomeAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="0.00"
-              required={needsExchangeInfo}
-            />
-          </div>
+      {needsHomeCost && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {transactionType === CurrencyTxType.InitialBalance ? '台幣成本' : '台幣金額'}
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={homeAmount}
+            onChange={(e) => setHomeAmount(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="0.00"
+            required={needsHomeCost}
+          />
+        </div>
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              匯率
-            </label>
-            <input
-              type="number"
-              step="0.0001"
-              value={exchangeRate}
-              onChange={(e) => setExchangeRate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="32.0000"
-              required={needsExchangeInfo}
-            />
-          </div>
-        </>
+      {isExchangeType && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            匯率（自動計算）
+          </label>
+          <input
+            type="number"
+            step="0.0001"
+            value={exchangeRate}
+            readOnly
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+            placeholder="自動計算"
+          />
+        </div>
       )}
 
       <div>

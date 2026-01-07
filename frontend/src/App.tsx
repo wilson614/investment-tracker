@@ -61,7 +61,7 @@ function HomePage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
-        My Portfolios
+        我的投資組合
       </h1>
 
       <form onSubmit={handleCreatePortfolio} className="mb-8 flex gap-2">
@@ -69,7 +69,7 @@ function HomePage() {
           type="text"
           value={newPortfolioName}
           onChange={(e) => setNewPortfolioName(e.target.value)}
-          placeholder="New portfolio name..."
+          placeholder="輸入投資組合名稱..."
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -77,13 +77,13 @@ function HomePage() {
           disabled={isCreating || !newPortfolioName.trim()}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {isCreating ? 'Creating...' : 'Create'}
+          {isCreating ? '建立中...' : '建立'}
         </button>
       </form>
 
       {portfolios.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          No portfolios yet. Create one to get started.
+          尚無投資組合，請建立一個開始使用。
         </div>
       ) : (
         <div className="grid gap-4">

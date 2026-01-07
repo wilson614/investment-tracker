@@ -61,9 +61,12 @@ public record CreateStockTransactionRequest
     [Range(0, double.MaxValue)]
     public decimal PricePerShare { get; init; }
 
-    [Required]
-    [Range(0.000001, double.MaxValue)]
-    public decimal ExchangeRate { get; init; }
+    /// <summary>
+    /// Exchange rate for conversion to home currency.
+    /// Optional when FundSource is CurrencyLedger - will be calculated from ledger's weighted average cost.
+    /// </summary>
+    [Range(0, double.MaxValue)]
+    public decimal? ExchangeRate { get; init; }
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }

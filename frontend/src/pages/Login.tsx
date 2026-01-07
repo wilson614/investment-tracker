@@ -26,7 +26,7 @@ export default function Login() {
         await login({ email, password });
       } else {
         if (!displayName.trim()) {
-          setError('Display name is required');
+          setError('請輸入顯示名稱');
           setIsSubmitting(false);
           return;
         }
@@ -57,7 +57,7 @@ export default function Login() {
             }`}
             onClick={() => setIsLogin(true)}
           >
-            Login
+            登入
           </button>
           <button
             type="button"
@@ -68,7 +68,7 @@ export default function Login() {
             }`}
             onClick={() => setIsLogin(false)}
           >
-            Register
+            註冊
           </button>
         </div>
 
@@ -82,7 +82,7 @@ export default function Login() {
           {!isLogin && (
             <div>
               <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
-                Display Name
+                顯示名稱
               </label>
               <input
                 id="displayName"
@@ -90,7 +90,7 @@ export default function Login() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your name"
+                placeholder="請輸入您的名稱"
                 required={!isLogin}
               />
             </div>
@@ -98,7 +98,7 @@ export default function Login() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email
+              電子郵件
             </label>
             <input
               id="email"
@@ -106,14 +106,14 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your email"
+              placeholder="請輸入電子郵件"
               required
             />
           </div>
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
+              密碼
             </label>
             <input
               id="password"
@@ -121,12 +121,12 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your password"
+              placeholder="請輸入密碼"
               required
               minLength={8}
             />
             {!isLogin && (
-              <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+              <p className="mt-1 text-xs text-gray-500">密碼至少 8 個字元</p>
             )}
           </div>
 
@@ -135,7 +135,7 @@ export default function Login() {
             disabled={isSubmitting}
             className="w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium rounded-md transition-colors"
           >
-            {isSubmitting ? 'Please wait...' : isLogin ? 'Login' : 'Create Account'}
+            {isSubmitting ? '請稍候...' : isLogin ? '登入' : '建立帳號'}
           </button>
         </form>
       </div>

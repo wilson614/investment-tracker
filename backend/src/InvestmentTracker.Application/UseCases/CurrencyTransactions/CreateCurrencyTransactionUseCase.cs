@@ -40,24 +40,8 @@ public class CreateCurrencyTransactionUseCase
         if (ledger.UserId != _currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this currency ledger");
 
-        // For Spend transactions, validate sufficient balance
-        if (request.TransactionType == Domain.Enums.CurrencyTransactionType.Spend)
-        {
-            if (!_currencyLedgerService.ValidateSpend(ledger.Transactions, request.ForeignAmount))
-            {
-                throw new InvalidOperationException("Insufficient balance for this spend transaction");
-            }
-        }
-
-        // For ExchangeSell transactions, validate sufficient balance
-        if (request.TransactionType == Domain.Enums.CurrencyTransactionType.ExchangeSell)
-        {
-            var currentBalance = _currencyLedgerService.CalculateBalance(ledger.Transactions);
-            if (currentBalance < request.ForeignAmount)
-            {
-                throw new InvalidOperationException("Insufficient balance for this sell transaction");
-            }
-        }
+        // Note: Spend and ExchangeSell transactions can result in negative balance
+        // IB and other brokers support margin/leverage trading
 
         var transaction = new CurrencyTransaction(
             request.CurrencyLedgerId,

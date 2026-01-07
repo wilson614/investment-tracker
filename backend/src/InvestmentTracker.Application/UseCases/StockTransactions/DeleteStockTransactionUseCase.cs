@@ -10,15 +10,18 @@ public class DeleteStockTransactionUseCase
 {
     private readonly IStockTransactionRepository _transactionRepository;
     private readonly IPortfolioRepository _portfolioRepository;
+    private readonly ICurrencyTransactionRepository _currencyTransactionRepository;
     private readonly ICurrentUserService _currentUserService;
 
     public DeleteStockTransactionUseCase(
         IStockTransactionRepository transactionRepository,
         IPortfolioRepository portfolioRepository,
+        ICurrencyTransactionRepository currencyTransactionRepository,
         ICurrentUserService currentUserService)
     {
         _transactionRepository = transactionRepository;
         _portfolioRepository = portfolioRepository;
+        _currencyTransactionRepository = currencyTransactionRepository;
         _currentUserService = currentUserService;
     }
 
@@ -36,7 +39,15 @@ public class DeleteStockTransactionUseCase
             throw new UnauthorizedAccessException("You do not have access to this transaction");
         }
 
-        // Soft delete
+        // Find and delete linked currency transaction (if any)
+        var linkedCurrencyTransaction = await _currencyTransactionRepository.GetByStockTransactionIdAsync(
+            transactionId, cancellationToken);
+        if (linkedCurrencyTransaction != null)
+        {
+            await _currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
+        }
+
+        // Soft delete stock transaction
         await _transactionRepository.SoftDeleteAsync(transactionId, cancellationToken);
     }
 }

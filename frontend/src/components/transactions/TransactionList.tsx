@@ -7,10 +7,10 @@ interface TransactionListProps {
 }
 
 const transactionTypeLabels: Record<TransactionType, string> = {
-  1: 'Buy',
-  2: 'Sell',
-  3: 'Split',
-  4: 'Adjustment',
+  1: '買入',
+  2: '賣出',
+  3: '股票分割',
+  4: '調整',
 };
 
 const transactionTypeColors: Record<TransactionType, string> = {
@@ -39,7 +39,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
   if (transactions.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        No transactions yet. Add your first transaction above.
+        尚無交易紀錄，請在上方新增第一筆交易。
       </div>
     );
   }
@@ -49,17 +49,17 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Date</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Ticker</th>
-            <th className="px-4 py-3 text-left font-medium text-gray-600">Type</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Shares</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Price</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Rate</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Fees</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Total (TWD)</th>
-            <th className="px-4 py-3 text-right font-medium text-gray-600">Realized PnL</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">日期</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">股票代號</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-600">類型</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">股數</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">價格</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">匯率</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">手續費</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">總成本 (TWD)</th>
+            <th className="px-4 py-3 text-right font-medium text-gray-600">已實現損益</th>
             {(onEdit || onDelete) && (
-              <th className="px-4 py-3 text-center font-medium text-gray-600">Actions</th>
+              <th className="px-4 py-3 text-center font-medium text-gray-600">操作</th>
             )}
           </tr>
         </thead>
@@ -115,7 +115,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                         onClick={() => onEdit(tx)}
                         className="text-blue-600 hover:text-blue-800"
                       >
-                        Edit
+                        編輯
                       </button>
                     )}
                     {onDelete && (
@@ -123,7 +123,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                         onClick={() => onDelete(tx.id)}
                         className="text-red-600 hover:text-red-800"
                       >
-                        Delete
+                        刪除
                       </button>
                     )}
                   </div>

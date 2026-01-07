@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface NavLinkProps {
   to: string;
   children: React.ReactNode;
+  icon?: LucideIcon;
   onClick?: () => void;
 }
 
-function NavLink({ to, children, onClick }: NavLinkProps) {
+function NavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
   const location = useLocation();
   const isActive = location.pathname === to ||
     (to !== '/' && location.pathname.startsWith(to));
@@ -17,18 +20,19 @@ function NavLink({ to, children, onClick }: NavLinkProps) {
     <Link
       to={to}
       onClick={onClick}
-      className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
         isActive
           ? 'bg-blue-100 text-blue-700'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
+      {Icon && <Icon className="w-4 h-4" />}
       {children}
     </Link>
   );
 }
 
-function MobileNavLink({ to, children, onClick }: NavLinkProps) {
+function MobileNavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
   const location = useLocation();
   const isActive = location.pathname === to ||
     (to !== '/' && location.pathname.startsWith(to));
@@ -37,52 +41,15 @@ function MobileNavLink({ to, children, onClick }: NavLinkProps) {
     <Link
       to={to}
       onClick={onClick}
-      className={`block px-4 py-3 text-base font-medium border-l-4 transition-colors ${
+      className={`flex items-center gap-3 px-4 py-3 text-base font-medium border-l-4 transition-colors ${
         isActive
           ? 'border-blue-500 bg-blue-50 text-blue-700'
           : 'border-transparent text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-900'
       }`}
     >
+      {Icon && <Icon className="w-5 h-5" />}
       {children}
     </Link>
-  );
-}
-
-// Hamburger menu icon
-function MenuIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 6h16M4 12h16M4 18h16"
-      />
-    </svg>
-  );
-}
-
-// Close icon
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M6 18L18 6M6 6l12 12"
-      />
-    </svg>
   );
 }
 
@@ -100,9 +67,9 @@ export function Navigation() {
   };
 
   const navLinks = [
-    { to: '/dashboard', label: '儀表板' },
-    { to: '/', label: '投資組合' },
-    { to: '/currency', label: '外幣帳本' },
+    { to: '/dashboard', label: '儀表板', icon: LayoutDashboard },
+    { to: '/', label: '投資組合', icon: Briefcase },
+    { to: '/currency', label: '外幣帳本', icon: Wallet },
   ];
 
   return (
@@ -113,15 +80,16 @@ export function Navigation() {
           <div className="flex items-center">
             <Link
               to="/"
-              className="flex-shrink-0 text-xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
+              className="flex items-center gap-2 flex-shrink-0 text-xl font-bold text-gray-900 hover:text-blue-600 transition-colors"
             >
-              📊 Investment Tracker
+              <TrendingUp className="w-6 h-6 text-blue-600" />
+              投資追蹤
             </Link>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex md:ml-8 md:space-x-2">
               {navLinks.map((link) => (
-                <NavLink key={link.to} to={link.to}>
+                <NavLink key={link.to} to={link.to} icon={link.icon}>
                   {link.label}
                 </NavLink>
               ))}
@@ -135,8 +103,9 @@ export function Navigation() {
             </span>
             <button
               onClick={handleLogout}
-              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
             >
+              <LogOut className="w-4 h-4" />
               登出
             </button>
           </div>
@@ -150,9 +119,9 @@ export function Navigation() {
               aria-label="Toggle navigation menu"
             >
               {isMobileMenuOpen ? (
-                <CloseIcon className="h-6 w-6" />
+                <X className="h-6 w-6" />
               ) : (
-                <MenuIcon className="h-6 w-6" />
+                <Menu className="h-6 w-6" />
               )}
             </button>
           </div>
@@ -173,6 +142,7 @@ export function Navigation() {
               <MobileNavLink
                 key={link.to}
                 to={link.to}
+                icon={link.icon}
                 onClick={closeMobileMenu}
               >
                 {link.label}
@@ -188,8 +158,9 @@ export function Navigation() {
               </div>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
               >
+                <LogOut className="w-4 h-4" />
                 登出
               </button>
             </div>

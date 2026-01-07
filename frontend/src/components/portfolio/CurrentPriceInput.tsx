@@ -76,9 +76,9 @@ export function CurrentPriceInput({
         className="flex items-center justify-between w-full text-left"
       >
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Current Prices</h3>
+          <h3 className="text-lg font-semibold text-gray-900">即時價格</h3>
           <p className="text-sm text-gray-500">
-            {filledCount} of {positions.length} prices entered
+            已輸入 {filledCount} / {positions.length} 筆價格
           </p>
         </div>
         <svg
@@ -96,9 +96,9 @@ export function CurrentPriceInput({
       {isExpanded && (
         <div className="mt-4 space-y-3">
           <div className="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600 pb-2 border-b">
-            <div className="col-span-3">Ticker</div>
-            <div className="col-span-4">Price ({baseCurrency})</div>
-            <div className="col-span-5">Exchange Rate ({baseCurrency}/{homeCurrency})</div>
+            <div className="col-span-3">股票代號</div>
+            <div className="col-span-4">價格 ({baseCurrency})</div>
+            <div className="col-span-5">匯率 ({baseCurrency}/{homeCurrency})</div>
           </div>
 
           {priceEntries.map((entry) => (
@@ -136,19 +136,19 @@ export function CurrentPriceInput({
               disabled={filledCount === 0}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
-              Apply Prices
+              套用價格
             </button>
             <button
               type="button"
               onClick={handleClear}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
             >
-              Clear All
+              清除全部
             </button>
           </div>
 
           <p className="text-xs text-gray-500">
-            Enter current stock prices and exchange rates to calculate unrealized P&L and XIRR.
+            輸入即時股價與匯率以計算未實現損益與年化報酬率 (XIRR)。
           </p>
         </div>
       )}

@@ -6,6 +6,7 @@ import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { CurrentPriceInput } from '../components/portfolio/CurrentPriceInput';
+import { StockImportButton } from '../components/import';
 import type { PortfolioSummary, StockTransaction, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo } from '../types';
 
 export function PortfolioPage() {
@@ -69,7 +70,7 @@ export function PortfolioPage() {
   };
 
   const handleDeleteTransaction = async (transactionId: string) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+    if (!window.confirm('確定要刪除此交易紀錄嗎？')) {
       return;
     }
     await transactionApi.delete(transactionId);
@@ -79,7 +80,7 @@ export function PortfolioPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">載入中...</div>
       </div>
     );
   }
@@ -95,7 +96,7 @@ export function PortfolioPage() {
   if (!summary) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">Portfolio not found</div>
+        <div className="text-gray-500">找不到投資組合</div>
       </div>
     );
   }
@@ -142,7 +143,7 @@ export function PortfolioPage() {
         {summary.positions.length > 0 && (
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Positions
+              持倉
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {summary.positions.map((position) => (
@@ -165,19 +166,25 @@ export function PortfolioPage() {
               onCancel={() => setShowForm(false)}
             />
           ) : (
-            <button
-              onClick={() => setShowForm(true)}
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-            >
-              + Add Transaction
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                + 新增交易
+              </button>
+              <StockImportButton
+                portfolioId={id!}
+                onImportComplete={loadData}
+              />
+            </div>
           )}
         </div>
 
         {/* Transaction List */}
         <div className="bg-white rounded-lg shadow">
           <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-800">Transactions</h2>
+            <h2 className="text-lg font-semibold text-gray-800">交易紀錄</h2>
           </div>
           <TransactionList
             transactions={transactions}

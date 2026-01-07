@@ -89,7 +89,7 @@ export interface CreateStockTransactionRequest {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate: number;
+  exchangeRate?: number; // Optional when using CurrencyLedger - auto-calculated from ledger
   fees: number;
   fundSource?: FundSource;
   currencyLedgerId?: string;
@@ -134,6 +134,9 @@ export const CurrencyTransactionType = {
   ExchangeSell: 2,
   Interest: 3,
   Spend: 4,
+  InitialBalance: 5,
+  OtherIncome: 6,
+  OtherExpense: 7,
 } as const;
 export type CurrencyTransactionType = (typeof CurrencyTransactionType)[keyof typeof CurrencyTransactionType];
 

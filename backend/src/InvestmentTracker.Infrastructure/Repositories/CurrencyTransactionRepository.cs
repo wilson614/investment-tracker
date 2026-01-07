@@ -23,6 +23,12 @@ public class CurrencyTransactionRepository : ICurrencyTransactionRepository
             .FirstOrDefaultAsync(ct => ct.Id == id, cancellationToken);
     }
 
+    public async Task<CurrencyTransaction?> GetByStockTransactionIdAsync(Guid stockTransactionId, CancellationToken cancellationToken = default)
+    {
+        return await _context.CurrencyTransactions
+            .FirstOrDefaultAsync(ct => ct.RelatedStockTransactionId == stockTransactionId, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdAsync(Guid ledgerId, CancellationToken cancellationToken = default)
     {
         return await _context.CurrencyTransactions
