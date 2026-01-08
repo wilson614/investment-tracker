@@ -190,6 +190,9 @@ As an investor, I want to see my portfolio's historical performance and current 
 
 #### Dashboard Analytics
 - **FR-030**: System MUST display Global CAPE (Cyclically Adjusted P/E) data from Research Affiliates API.
+- **FR-030a**: System MUST allow users to select which CAPE regions to display from available options (e.g., All Country, USA, Europe, Emerging Markets, etc.).
+- **FR-030b**: System MUST persist user's CAPE region preferences in localStorage.
+- **FR-030c**: System MUST provide sensible default regions (All Country, USA, Emerging Markets, Europe) for new users.
 - **FR-031**: System MUST cache CAPE data with daily refresh (data updates monthly, cache for 24 hours).
 - **FR-032**: System MUST calculate and display historical annual returns for the portfolio.
 - **FR-033**: System MUST calculate historical annual returns per position based on year-end valuations.

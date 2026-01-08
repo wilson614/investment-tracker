@@ -4,6 +4,7 @@ import { ChevronDown, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { PositionCard } from '../components/portfolio/PositionCard';
+import { MarketContext } from '../components/dashboard';
 import { StockMarket } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse } from '../types';
 
@@ -303,6 +304,9 @@ export function DashboardPage() {
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
+
+        {/* Market Context - CAPE */}
+        <MarketContext className="mb-8" />
 
         {/* Aggregate Summary */}
         <div className="card-dark p-6 mb-8">

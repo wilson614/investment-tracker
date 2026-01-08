@@ -22,6 +22,7 @@ import type {
   StockQuoteResponse,
   ExchangeRateResponse,
   MarketInfo,
+  CapeData,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -238,6 +239,15 @@ export const stockPriceApi = {
 
   getMarkets: () =>
     fetchApi<MarketInfo[]>('/stock-prices/markets'),
+};
+
+// Market Data API (CAPE)
+export const marketDataApi = {
+  getCapeData: () =>
+    fetchApi<CapeData>('/market-data/cape'),
+
+  refreshCapeData: () =>
+    fetchApi<CapeData>('/market-data/cape/refresh', { method: 'POST' }),
 };
 
 export type { ApiErrorType };

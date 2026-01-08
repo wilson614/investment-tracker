@@ -259,3 +259,31 @@ export interface MarketInfo {
   description: string;
 }
 
+// CAPE (Cyclically Adjusted P/E) Types
+export interface CapeDataItem {
+  boxName: string;
+  currentValue: number;
+  currentValuePercentile: number;
+  range25th: number;
+  range50th: number;
+  range75th: number;
+}
+
+export interface CapeData {
+  date: string;
+  items: CapeDataItem[];
+  fetchedAt: string;
+}
+
+export type CapeValuation = 'cheap' | 'fair' | 'expensive';
+
+export interface CapeDisplayItem {
+  region: string;
+  cape: number;
+  percentile: number;
+  valuation: CapeValuation;
+  median: number;
+  range25th: number;
+  range75th: number;
+}
+

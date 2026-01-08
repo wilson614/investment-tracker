@@ -428,8 +428,8 @@
 
 ### Frontend - CAPE Service (C3)
 
-- [ ] T164 [P] [US7] Create CapeData types in frontend/src/types/index.ts
-- [ ] T165 [P] [US7] Create capeApi service with 24hr localStorage cache in frontend/src/services/capeApi.ts
+- [x] T164 [P] [US7] Create CapeData types in frontend/src/types/index.ts
+- [x] T165 [P] [US7] Create capeApi service with 24hr localStorage cache in frontend/src/services/capeApi.ts
 
 ### Frontend - Historical Returns Service
 
@@ -438,16 +438,16 @@
 
 ### Frontend - Dashboard Components (C4)
 
-- [ ] T168 [P] [US7] Create MarketContext component (CAPE display) in frontend/src/components/dashboard/MarketContext.tsx
+- [x] T168 [P] [US7] Create MarketContext component (CAPE display) in frontend/src/components/dashboard/MarketContext.tsx
 - [ ] T169 [P] [US7] Create HistoricalReturnsTable component in frontend/src/components/dashboard/HistoricalReturnsTable.tsx
 - [ ] T170 [P] [US7] Create PositionAllocation component (with weights) in frontend/src/components/dashboard/PositionAllocation.tsx
-- [ ] T171 [US7] Update Dashboard page to integrate new components in frontend/src/pages/Dashboard.tsx
-- [ ] T172 [US7] Add useCapeData hook for CAPE fetching in frontend/src/hooks/useCapeData.ts
+- [x] T171 [US7] Update Dashboard page to integrate new components in frontend/src/pages/Dashboard.tsx
+- [x] T172 [US7] Add useCapeData hook for CAPE fetching in frontend/src/hooks/useCapeData.ts
 - [ ] T173 [US7] Add useHistoricalReturns hook for returns fetching in frontend/src/hooks/useHistoricalReturns.ts
 
 ### Polish & Edge Cases
 
-- [ ] T174 [US7] Add error handling for CAPE API failures (graceful degradation) in MarketContext component
+- [x] T174 [US7] Add error handling for CAPE API failures (graceful degradation) in MarketContext component
 - [ ] T175 [US7] Add loading states for historical returns calculation
 - [ ] T176 [US7] Handle edge case: no historical data available (first year of investing)
 - [ ] T177 [US7] Handle edge case: missing year-end price (use last available trading day)

@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<StockTransaction> StockTransactions => Set<StockTransaction>();
     public DbSet<CurrencyLedger> CurrencyLedgers => Set<CurrencyLedger>();
     public DbSet<CurrencyTransaction> CurrencyTransactions => Set<CurrencyTransaction>();
+    public DbSet<CapeDataSnapshot> CapeDataSnapshots => Set<CapeDataSnapshot>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

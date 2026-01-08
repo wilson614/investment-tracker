@@ -35,4 +35,9 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 - **不要**在 commit message 結尾加上 `🤖 Generated with [Claude Code]` 和 `Co-Authored-By: Claude` 這幾行
 - Commit message 使用簡潔的 conventional commits 格式
 
+## Development Rules
+
+- **修正功能前先檢查 spec.md**：任何功能修改前，必須先檢視 `specs/001-portfolio-tracker/spec.md` 確認是否需要同步更新規格
+- **規格同步**：如果修正涉及需求變更，先更新 spec.md 再實作
+
 <!-- MANUAL ADDITIONS END -->

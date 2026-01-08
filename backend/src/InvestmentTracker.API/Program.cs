@@ -13,6 +13,7 @@ using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Repositories;
 using InvestmentTracker.Infrastructure.Services;
 using InvestmentTracker.Infrastructure.StockPrices;
+using InvestmentTracker.Infrastructure.MarketData;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -45,6 +46,9 @@ try
 
 // Add controllers
 builder.Services.AddControllers();
+
+// Add Memory Cache
+builder.Services.AddMemoryCache();
 
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -159,6 +163,9 @@ builder.Services.AddScoped<IStockPriceProvider, SinaStockPriceProvider>();
 builder.Services.AddScoped<IStockPriceProvider, TwseStockPriceProvider>();
 builder.Services.AddScoped<IExchangeRateProvider, SinaExchangeRateProvider>();
 builder.Services.AddScoped<IStockPriceService, StockPriceService>();
+
+// CAPE Data Service
+builder.Services.AddHttpClient<ICapeDataService, CapeDataService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();
