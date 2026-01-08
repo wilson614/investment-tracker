@@ -1,48 +1,48 @@
 # Implementation Plan: Family Investment Portfolio Tracker
 
-**Branch**: `001-portfolio-tracker` | **Date**: 2026-01-06 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-portfolio-tracker` | **Date**: 2026-01-08 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-portfolio-tracker/spec.md`
+**Status**: Updated - Dashboard Analytics phase added
 
 ## Summary
 
-Build a family investment portfolio tracking system to replace manual spreadsheets. The system
-tracks ETF/stock transactions with multi-currency support, calculates performance metrics
-(XIRR, Unrealized/Realized PnL), and maintains a foreign currency ledger with weighted average
-cost methodology. Implements strict multi-tenancy for family member data isolation.
+Build a family investment portfolio tracker to replace manual spreadsheet tracking. The system supports stock/ETF transactions, currency ledger management, real-time quotes, and multi-tenancy for family members.
 
-**Technical Approach**: Clean Architecture with .NET 8 Web API backend, React TypeScript
-frontend, PostgreSQL database, all containerized via Docker for self-hosted deployment.
+**New in this update**: Dashboard analytics with historical returns, CAPE market context, and historical price API integration.
 
 ## Technical Context
 
 **Language/Version**: C# .NET 8 (Backend), TypeScript 5.x (Frontend)
 **Primary Dependencies**:
-- Backend: ASP.NET Core 8, Entity Framework Core 8, JWT Bearer Authentication
-- Frontend: React 18, Tailwind CSS, React Query (TanStack Query)
-**Storage**: PostgreSQL 16 (Docker container), EF Core Migrations
-**Testing**: xUnit + FluentAssertions (Backend), Jest + React Testing Library (Frontend)
-**Target Platform**: Docker containers (Linux-based), self-hosted NAS/VPS
-**Project Type**: Web application (frontend + backend)
-**Performance Goals**: Pages load <3s, metrics update <5s, support 10,000 transactions/user
-**Constraints**: <512MB RAM idle, <2GB under load, fully offline after deployment
-**Scale/Scope**: 10 concurrent family members, ~10,000 transactions per user
+- Backend: ASP.NET Core, Entity Framework Core, FluentValidation
+- Frontend: React 18, Vite, TailwindCSS, React Router
+
+**Storage**: SQLite (development), PostgreSQL (production-compatible)
+**Testing**: xUnit (backend), Jest (frontend)
+**Target Platform**: Docker containers (self-hosted), Web browser
+**Project Type**: Web application (backend + frontend)
+**Performance Goals**: <3s page load, <5s metric calculation
+**Constraints**: <512MB RAM idle, offline-capable core features
+**Scale/Scope**: 10 family members, 10,000 transactions per user
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| Principle | Status | Evidence |
-|-----------|--------|----------|
-| **I. Clean Architecture** | ✅ PASS | 4-layer structure: Domain, Application, Infrastructure, API. Domain has no external dependencies. |
-| **II. Multi-Tenancy** | ✅ PASS | FR-017~FR-019 mandate user data isolation. All queries include UserId filtering. |
-| **III. Accuracy First** | ✅ PASS | `decimal` type for all monetary values. XIRR with Newton-Raphson. 4 decimal precision. Unit tests for all calculations. |
-| **IV. Self-Hosted Friendly** | ✅ PASS | Single `docker-compose.yml`, PostgreSQL, environment-variable config, no cloud dependencies. |
-| **V. Technology Stack** | ✅ PASS | C# .NET 8, React TypeScript, PostgreSQL, EF Core, xUnit, Docker. |
-| **Database Standards** | ✅ PASS | All entities include CreatedAt/UpdatedAt. Soft deletes for financial records. |
-| **API Standards** | ✅ PASS | JWT auth, consistent error responses, API versioning via URL prefix. |
-| **Security Requirements** | ✅ PASS | Argon2 password hashing, environment-based config, input validation at API layer. |
+| Principle | Status | Notes |
+|-----------|--------|-------|
+| I. Clean Architecture | ✅ PASS | Domain/Application/Infrastructure/API layers implemented |
+| II. Multi-Tenancy | ✅ PASS | Row-level filtering with EF Core global query filters |
+| III. Accuracy First | ✅ PASS | decimal types, XIRR with Newton-Raphson, unit tests |
+| IV. Self-Hosted Friendly | ✅ PASS | Docker-ready, env-var config, SQLite for dev |
+| V. Technology Stack | ✅ PASS | C# .NET 8, React, Entity Framework Core |
 
-**Gate Result**: ✅ All principles satisfied. Proceed to Phase 0.
+**Technical Constraints Compliance**:
+- ✅ All tables have `created_at` and `updated_at` timestamps
+- ✅ Soft deletes for financial records (IsDeleted/IsActive flags)
+- ✅ Foreign keys indexed
+- ✅ JWT authentication with configurable expiration
+- ✅ Input validation at API boundary (FluentValidation)
 
 ## Project Structure
 
@@ -51,117 +51,109 @@ frontend, PostgreSQL database, all containerized via Docker for self-hosted depl
 ```text
 specs/001-portfolio-tracker/
 ├── plan.md              # This file
-├── research.md          # Phase 0 output
-├── data-model.md        # Phase 1 output
+├── research.md          # Phase 0 output (updated for dashboard)
+├── data-model.md        # Phase 1 output (updated for dashboard)
 ├── quickstart.md        # Phase 1 output
-├── contracts/           # Phase 1 output (OpenAPI specs)
-└── tasks.md             # Phase 2 output (/speckit.tasks)
+├── contracts/           # Phase 1 output
+└── tasks.md             # Phase 2 output
 ```
 
 ### Source Code (repository root)
 
 ```text
-# Clean Architecture - .NET 8 Backend
 backend/
 ├── src/
-│   ├── InvestmentTracker.Domain/           # Entities, Value Objects, Domain Services
+│   ├── InvestmentTracker.Domain/
 │   │   ├── Entities/
-│   │   │   ├── User.cs
-│   │   │   ├── Portfolio.cs
-│   │   │   ├── StockTransaction.cs
-│   │   │   ├── Position.cs
-│   │   │   ├── CurrencyLedger.cs
-│   │   │   └── CurrencyTransaction.cs
-│   │   ├── ValueObjects/
-│   │   │   ├── Money.cs
-│   │   │   └── ExchangeRate.cs
+│   │   ├── Enums/
 │   │   ├── Services/
-│   │   │   ├── PortfolioCalculator.cs      # Weighted avg, PnL, XIRR
-│   │   │   └── CurrencyLedgerService.cs
-│   │   └── Interfaces/
-│   │       └── IRepository.cs
-│   │
-│   ├── InvestmentTracker.Application/      # Use Cases, DTOs, Validators
-│   │   ├── UseCases/
-│   │   │   ├── StockTransactions/
-│   │   │   ├── CurrencyTransactions/
-│   │   │   └── Portfolio/
+│   │   └── ValueObjects/
+│   ├── InvestmentTracker.Application/
 │   │   ├── DTOs/
+│   │   ├── UseCases/
+│   │   ├── Validators/
 │   │   └── Interfaces/
-│   │
-│   ├── InvestmentTracker.Infrastructure/   # EF Core, Repositories
+│   ├── InvestmentTracker.Infrastructure/
 │   │   ├── Persistence/
-│   │   │   ├── AppDbContext.cs
-│   │   │   ├── Configurations/
-│   │   │   └── Migrations/
 │   │   ├── Repositories/
-│   │   ├── Services/
-│   │   │   └── JwtTokenService.cs
-│   │   └── StockPrices/                     # Real-time price fetching
-│   │       ├── IStockPriceProvider.cs
-│   │       ├── IStockPriceService.cs
-│   │       ├── StockPriceService.cs
-│   │       ├── SinaStockPriceProvider.cs    # US/UK via Sina Finance
-│   │       ├── TwseStockPriceProvider.cs    # Taiwan via TWSE
-│   │       └── SinaExchangeRateProvider.cs  # Exchange rates via Sina
-│   │
-│   └── InvestmentTracker.API/              # Controllers, Middleware
+│   │   └── Services/
+│   └── InvestmentTracker.API/
 │       ├── Controllers/
-│       │   ├── AuthController.cs
-│       │   ├── PortfoliosController.cs
-│       │   ├── StockTransactionsController.cs
-│       │   ├── StockPricesController.cs     # Real-time price API
-│       │   └── CurrencyController.cs
-│       ├── Middleware/
-│       │   └── TenantContextMiddleware.cs
-│       └── Program.cs
-│
+│       └── Middleware/
 └── tests/
-    ├── InvestmentTracker.Domain.Tests/     # Unit tests for domain logic
+    ├── InvestmentTracker.Domain.Tests/
     ├── InvestmentTracker.Application.Tests/
-    └── InvestmentTracker.API.Tests/        # Integration tests
+    └── InvestmentTracker.API.Tests/
 
-# React TypeScript Frontend
 frontend/
 ├── src/
 │   ├── components/
 │   │   ├── common/
+│   │   ├── layout/
 │   │   ├── portfolio/
-│   │   │   ├── PositionCard.tsx          # Position with inline price fetch
-│   │   │   ├── PerformanceMetrics.tsx
-│   │   │   └── CurrentPriceInput.tsx     # (deprecated - moved to PositionCard)
 │   │   ├── transactions/
-│   │   └── currency/
+│   │   └── dashboard/        # NEW: Dashboard components
 │   ├── pages/
-│   │   ├── Dashboard.tsx
-│   │   ├── Portfolio.tsx                 # Fetch all prices button, XIRR
-│   │   ├── Transactions.tsx
-│   │   └── CurrencyLedger.tsx
 │   ├── services/
-│   │   └── api.ts                        # stockPriceApi with getQuoteWithRate
 │   ├── hooks/
-│   ├── types/
-│   │   └── index.ts                      # StockQuoteResponse, ExchangeRateResponse
-│   └── App.tsx
-├── tests/
-└── tailwind.config.js
-
-# Docker Configuration
-docker/
-├── docker-compose.yml
-├── backend.Dockerfile
-└── frontend.Dockerfile
+│   └── types/
+└── tests/
 ```
 
-**Structure Decision**: Web application with Clean Architecture backend (4 layers) and
-React frontend. Follows constitution's separation of concerns mandate.
+**Structure Decision**: Web application with separate backend and frontend projects. Clean Architecture layers in backend. Feature-based component organization in frontend.
+
+## Implementation Phases
+
+### Phase A: Core Portfolio (COMPLETE)
+- User authentication (JWT)
+- Portfolio CRUD
+- Stock transactions (Buy/Sell)
+- Position calculations
+- Currency ledger
+
+### Phase B: Real-time Quotes (COMPLETE)
+- Stock quote API integration (TW/US/UK)
+- Exchange rate fetching
+- Quote caching in localStorage
+- Batch quote refresh
+
+### Phase C: Dashboard Analytics (NEW)
+- **C1**: Historical Price API integration
+  - Yahoo Finance for US/UK
+  - TWSE/TPEx for Taiwan
+  - Permanent caching in database
+- **C2**: Historical Returns Calculation
+  - Year-end valuation fetch
+  - Per-position annual returns
+  - Portfolio annual returns
+  - YTD return calculation
+- **C3**: CAPE Market Context
+  - Research Affiliates API integration
+  - 24-hour cache
+  - Display with valuation context
+- **C4**: Dashboard UI Redesign
+  - Market context section
+  - Historical returns table
+  - Position allocation weights
 
 ## Complexity Tracking
 
-> No violations to justify. All architecture decisions align with constitution principles.
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| External API for historical prices | Cannot calculate historical returns without historical prices | Manual input would require significant user effort annually |
+| New database table (historical_prices) | Permanent cache for immutable historical data | localStorage insufficient for persistence across devices |
 
-| Aspect | Decision | Rationale |
-|--------|----------|-----------|
-| 4-layer backend | Domain/Application/Infrastructure/API | Constitution mandates Clean Architecture |
-| Repository pattern | Used for data access abstraction | Enables unit testing of domain logic |
-| Domain Services | PortfolioCalculator, CurrencyLedgerService | Encapsulates complex business logic |
+## New Requirements Summary (FR-030 to FR-039)
+
+| Requirement | Description | Implementation |
+|-------------|-------------|----------------|
+| FR-030 | Display Global CAPE | Frontend fetch from RA API |
+| FR-031 | Cache CAPE (24hr) | localStorage with timestamp |
+| FR-032 | Portfolio annual returns | Calculate from year-end values |
+| FR-033 | Position annual returns | Calculate from year-end values |
+| FR-034 | Allocation weights | Value / Total Value × 100 |
+| FR-035 | YTD return | Jan 1 value vs current |
+| FR-036 | Return formula | ((End - Start - Contrib) / Start) × 100 |
+| FR-037 | Fetch historical prices | Yahoo/TWSE API |
+| FR-038 | Cache historical prices | Database (permanent) |
+| FR-039 | Use Dec 31 closing | Or last trading day |

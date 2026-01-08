@@ -1,8 +1,8 @@
 # Research: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-06
-**Status**: Complete
+**Date**: 2026-01-08
+**Status**: Complete (Updated for Dashboard Analytics)
 
 ## Executive Summary
 
@@ -406,5 +406,218 @@ export function useCreateTransaction() {
 | Deployment | Docker Compose (3 containers) |
 | API Versioning | URL path `/api/v1/` |
 | Frontend State | React Query + Context |
+
+---
+
+## 11. CAPE API Integration (Research Affiliates)
+
+### Decision
+**Frontend-only fetch** from Research Affiliates CAPE API with **24-hour localStorage cache**.
+
+### Rationale
+- Research Affiliates provides free, public CAPE data
+- No authentication required
+- Frontend fetch avoids backend complexity
+- 24-hour cache sufficient (CAPE updates monthly)
+
+### API Discovery Pattern
+```javascript
+// Step 1: Discover latest date
+const discoveryUrl = 'https://interactive.researchaffiliates.com/api/v2/cape?format=json';
+// Response: { "date": "2024-12-31", ... }
+
+// Step 2: Fetch CAPE data for that date
+const dataUrl = `https://interactive.researchaffiliates.com/api/v2/cape?format=json&date=${date}`;
+// Response: [{ "id": "usa", "name": "United States", "cape": 38.2, ... }, ...]
+```
+
+### Cache Strategy
+```typescript
+// services/capeApi.ts
+const CACHE_KEY = 'cape_data';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function getCapeData(): Promise<CapeData[]> {
+  const cached = localStorage.getItem(CACHE_KEY);
+  if (cached) {
+    const { data, timestamp } = JSON.parse(cached);
+    if (Date.now() - timestamp < CACHE_DURATION) {
+      return data;
+    }
+  }
+
+  const freshData = await fetchCapeFromApi();
+  localStorage.setItem(CACHE_KEY, JSON.stringify({
+    data: freshData,
+    timestamp: Date.now()
+  }));
+  return freshData;
+}
+```
+
+### Display Format
+- Show key markets: US, Taiwan, Emerging Markets, Europe
+- Include CAPE value and valuation context (cheap/fair/expensive)
+- Valuation thresholds: <15 cheap, 15-25 fair, >25 expensive
+
+---
+
+## 12. Historical Price API Integration
+
+### Decision
+**Backend service** fetching from Yahoo Finance (US/UK) and TWSE/TPEx (Taiwan), with **permanent database cache**.
+
+### Rationale
+- Historical prices are immutable (once past, they don't change)
+- Database cache eliminates repeated API calls
+- Backend handles API rate limits and errors gracefully
+- Supports offline functionality for historical calculations
+
+### API Sources
+
+#### Yahoo Finance (US/UK)
+```
+GET https://query1.finance.yahoo.com/v8/finance/chart/{symbol}
+    ?period1={unix_start}&period2={unix_end}&interval=1d
+
+// For Dec 31 closing price:
+// period1 = Dec 30 00:00 UTC
+// period2 = Dec 31 23:59 UTC
+// Extract: chart.result[0].indicators.adjclose[0].adjclose[-1]
+```
+
+#### TWSE (Taiwan Listed)
+```
+GET https://www.twse.com.tw/exchangeReport/STOCK_DAY
+    ?response=json&date={YYYYMM}&stockNo={ticker}
+
+// Returns: data array with [date, volume, open, high, low, close, ...]
+// Find row matching Dec 31 (or last trading day)
+```
+
+#### TPEx (Taiwan OTC)
+```
+GET https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php
+    ?l=zh-tw&d={YYY/MM/DD}&stkno={ticker}
+
+// YYY = year - 1911 (ROC year)
+```
+
+### Database Schema
+```sql
+CREATE TABLE historical_prices (
+    id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    price_date DATE NOT NULL,
+    close_price DECIMAL(18,4) NOT NULL,
+    source TEXT NOT NULL,  -- 'yahoo', 'twse', 'tpex'
+    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(ticker, price_date)
+);
+
+CREATE INDEX idx_historical_prices_ticker_date ON historical_prices(ticker, price_date);
+```
+
+### Cache Policy
+- **Permanent cache**: Once fetched, historical prices never re-fetched
+- **On-demand fetch**: Only fetch when calculating returns for specific year
+- **Batch fetch**: When calculating portfolio returns, fetch all missing prices in single batch
+
+---
+
+## 13. Historical Returns Calculation
+
+### Decision
+**Modified Dietz method** for annual returns calculation.
+
+### Rationale
+- Simple formula that accounts for cash flows during the year
+- Industry-standard for performance measurement
+- Handles mid-year contributions correctly
+
+### Formula
+```
+Annual Return = ((End Value - Start Value - Net Contributions) / Start Value) × 100
+
+Where:
+- End Value = Position value at Dec 31 (shares × closing price × exchange rate)
+- Start Value = Position value at Jan 1 (or first purchase date if new)
+- Net Contributions = Sum of Buy amounts - Sum of Sell amounts during year
+```
+
+### Implementation Details
+```csharp
+// Domain Service: HistoricalReturnsCalculator.cs
+public record AnnualReturn(
+    int Year,
+    decimal StartValue,
+    decimal EndValue,
+    decimal NetContributions,
+    decimal ReturnPercent
+);
+
+public AnnualReturn CalculateAnnualReturn(
+    string ticker,
+    int year,
+    IEnumerable<StockTransaction> transactions,
+    HistoricalPrice startPrice,
+    HistoricalPrice endPrice)
+{
+    // 1. Get shares held at year start
+    var startShares = GetSharesAtDate(transactions, new DateTime(year, 1, 1));
+    var startValue = startShares * startPrice.ClosePrice * startPrice.ExchangeRate;
+
+    // 2. Get shares held at year end
+    var endShares = GetSharesAtDate(transactions, new DateTime(year, 12, 31));
+    var endValue = endShares * endPrice.ClosePrice * endPrice.ExchangeRate;
+
+    // 3. Calculate net contributions during year
+    var yearTransactions = transactions
+        .Where(t => t.Date.Year == year)
+        .ToList();
+    var netContributions = yearTransactions
+        .Where(t => t.Type == TransactionType.Buy)
+        .Sum(t => t.TotalCostHome)
+        - yearTransactions
+        .Where(t => t.Type == TransactionType.Sell)
+        .Sum(t => t.TotalCostHome);
+
+    // 4. Calculate return
+    var returnPercent = startValue == 0
+        ? 0
+        : ((endValue - startValue - netContributions) / startValue) * 100;
+
+    return new AnnualReturn(year, startValue, endValue, netContributions, returnPercent);
+}
+```
+
+### Edge Cases
+| Scenario | Handling |
+|----------|----------|
+| New position mid-year | Use first purchase date as start, StartValue = 0 |
+| Position sold mid-year | EndValue = 0, include sell proceeds in calculation |
+| No start price (new ticker) | StartValue = first purchase value |
+| Missing Dec 31 price | Use last trading day of year |
+
+---
+
+## Summary (Updated)
+
+| Topic | Decision |
+|-------|----------|
+| XIRR Algorithm | Newton-Raphson with Brent's fallback |
+| Cost Calculation | Moving average, recalculate from T=0 |
+| Multi-Tenancy | Row-level filtering with EF Core global filters |
+| Transaction Atomicity | EF Core database transactions |
+| Authentication | JWT Bearer with refresh token rotation |
+| Decimal Precision | decimal(18,4) shares, decimal(18,6) rates |
+| Deployment | Docker Compose (3 containers) |
+| API Versioning | URL path `/api/v1/` |
+| Frontend State | React Query + Context |
+| **CAPE API** | Frontend fetch, 24hr localStorage cache |
+| **Historical Prices** | Backend fetch, permanent DB cache |
+| **Historical Returns** | Modified Dietz method |
 
 **All research complete. Ready for Phase 1: Design & Contracts.**

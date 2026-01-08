@@ -1,8 +1,8 @@
 # Data Model: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-06
-**Status**: Complete
+**Date**: 2026-01-08
+**Status**: Complete (Updated for Dashboard Analytics)
 
 ## Entity Relationship Diagram
 
@@ -21,6 +21,10 @@
 │   ┌──────────────┐     ┌─────────────────────┐                             │
 │   │CurrencyLedger│1──* │ CurrencyTransaction │                             │
 │   └──────────────┘     └─────────────────────┘                             │
+│                                                                             │
+│   ┌─────────────────┐                                                       │
+│   │ HistoricalPrice │  (Standalone - price cache for year-end valuations)  │
+│   └─────────────────┘                                                       │
 │                                                                             │
 │   Legend: 1───* = One-to-Many                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -388,4 +392,43 @@ public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     }
     return base.SaveChangesAsync(ct);
 }
+```
+
+---
+
+## 7. HistoricalPrice
+
+Caches historical closing prices for year-end valuation calculations.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| Id | Guid | PK | Unique identifier |
+| Ticker | string(20) | Required | Stock/ETF symbol |
+| PriceDate | DateTime | Required | Date of the price (typically Dec 31 or last trading day) |
+| ClosePrice | decimal(18,4) | Required | Closing price in source currency |
+| ExchangeRate | decimal(18,6) | Optional | Exchange rate to home currency at that date |
+| Source | string(50) | Required | Data source (yahoo, twse, tpex) |
+| FetchedAt | DateTime | Required | When the data was fetched |
+| CreatedAt | DateTime | Required | UTC timestamp |
+| UpdatedAt | DateTime | Required | UTC timestamp |
+
+**Relationships**:
+- Standalone entity (no foreign keys)
+
+**Indexes**:
+- `IX_HistoricalPrice_Ticker_PriceDate` (Unique)
+
+**Cache Policy**:
+- Permanent cache: Once fetched, historical prices are never re-fetched
+- Immutable data: Past prices don't change
+
+**EF Core Configuration**:
+```csharp
+modelBuilder.Entity<HistoricalPrice>(entity =>
+{
+    entity.HasKey(e => e.Id);
+    entity.HasIndex(e => new { e.Ticker, e.PriceDate }).IsUnique();
+    entity.Property(e => e.ClosePrice).HasPrecision(18, 4);
+    entity.Property(e => e.ExchangeRate).HasPrecision(18, 6);
+});
 ```
