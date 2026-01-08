@@ -116,6 +116,26 @@ As a family admin, I want each family member to have their own isolated portfoli
 
 ---
 
+### User Story 7 - Dashboard with Historical Returns and Market Context (Priority: P7)
+
+As an investor, I want to see my portfolio's historical performance and current market valuation context so that I can make informed investment decisions.
+
+**Why this priority**: Historical returns and market context provide strategic insights but require core functionality (transactions, quotes) to be in place first.
+
+**Independent Test**: Can be fully tested by viewing the dashboard after recording transactions spanning multiple years and verifying historical returns are calculated correctly.
+
+**Acceptance Scenarios**:
+
+1. **Given** I have transactions from 2022, 2023, and 2024, **When** I view the dashboard, **Then** I see annual returns for each year based on year-end valuations.
+
+2. **Given** the current date is mid-2025, **When** I view the dashboard, **Then** I see Year-to-Date (YTD) return calculated from Jan 1, 2025 valuation to current value.
+
+3. **Given** I have multiple positions, **When** I view the dashboard, **Then** I see each position's allocation weight (%) and historical annual returns.
+
+4. **Given** the Research Affiliates API is available, **When** I view the dashboard, **Then** I see the current Global CAPE value with valuation context (e.g., "Above historical median").
+
+---
+
 ### Edge Cases
 
 - What happens when a user enters a sell transaction for more shares than they own?
@@ -167,6 +187,18 @@ As a family admin, I want each family member to have their own isolated portfoli
   - UK: Ends with ".L" (e.g., VWRA.L)
   - US: Default for alphabetic tickers (e.g., VTI, AAPL)
 - **FR-029**: System MUST fallback from US to UK market when quote not found (for dual-listed securities).
+
+#### Dashboard Analytics
+- **FR-030**: System MUST display Global CAPE (Cyclically Adjusted P/E) data from Research Affiliates API.
+- **FR-031**: System MUST cache CAPE data with daily refresh (data updates monthly, cache for 24 hours).
+- **FR-032**: System MUST calculate and display historical annual returns for the portfolio.
+- **FR-033**: System MUST calculate historical annual returns per position based on year-end valuations.
+- **FR-034**: System MUST display allocation weight (%) for each position relative to total portfolio value.
+- **FR-035**: System MUST calculate Year-to-Date (YTD) return based on Jan 1 valuation vs current value.
+- **FR-036**: Historical returns calculation formula: ((Year-End Value - Year-Start Value - Net Contributions) / Year-Start Value) × 100.
+- **FR-037**: System MUST fetch historical closing prices via API to calculate year-end valuations.
+- **FR-038**: System MUST cache historical prices permanently (historical data does not change).
+- **FR-039**: System MUST use Dec 31 closing price (or last trading day) for year-end valuation.
 
 #### Currency Ledger
 - **FR-007**: System MUST track foreign currency balance with weighted average cost methodology.
@@ -225,10 +257,23 @@ As a family admin, I want each family member to have their own isolated portfoli
    - Transaction List: Filtered to this ticker only
 
 4. **Dashboard Page** (`/dashboard`)
-   - Aggregate Summary: Total cost, total value, total PnL, position count
-   - Portfolio Card: Expandable to show positions
+   - **Market Context Section**:
+     - Global CAPE (Cyclically Adjusted P/E) from Research Affiliates API
+     - Display current value, expected return, and valuation percentile
+     - Provides macro context for investment decisions
+   - **Portfolio Summary Section**:
+     - Total market value, total cost, unrealized PnL (amount + percentage)
+     - Year-to-date (YTD) return
+     - Annual XIRR (annualized return rate)
+   - **Historical Returns Table**:
+     - Portfolio historical returns by year (e.g., 2024: +15.2%, 2023: +8.7%)
+     - Calculated from actual transaction data and year-end valuations
+   - **Position Performance Grid**:
+     - All positions with current value, unrealized PnL, allocation weight (%)
+     - Historical returns per position by year
+     - Sortable by performance, allocation, or alphabetically
    - Auto-loads cached quotes (max 1 hour) on page load
-   - "獲取全部報價" button per portfolio
+   - "獲取全部報價" button to refresh all position prices
 
 ### Display Conventions
 
@@ -277,6 +322,11 @@ As a family admin, I want each family member to have their own isolated portfoli
 - Q: 是否需要顯示 "USD → TWD" 標示？ → A: 否，系統目前只支援台幣與美金，最終報酬都以台幣呈現
 - Q: 投資組合頁面應顯示哪些交易紀錄？ → A: 顯示全部持倉的交易紀錄（包含編輯/刪除功能）
 - Q: 儀表板是否讀取快取的股價資料？ → A: 是，載入時自動讀取 1 小時內的 localStorage 快取
+- Q: 儀表板應顯示哪些投資人關注的資訊？ → A:
+  - 持倉的歷年報酬紀錄（各年度報酬率）
+  - 投資組合的歷年報酬紀錄
+  - 當前全球 CAPE（使用 Research Affiliates API）
+  - 各持倉配置比重（%）
 
 ## Assumptions
 
@@ -296,4 +346,62 @@ As a family admin, I want each family member to have their own isolated portfoli
 - **Database**: SQLite (development), SQL Server compatible
 - **Authentication**: JWT-based with refresh tokens
 - **Stock Price API**: Sina Finance (TW), Yahoo Finance (US/UK) via server proxy
+- **CAPE Data API**: Research Affiliates (https://interactive.researchaffiliates.com/asset-allocation-data/{YYYYMM}/{DD}/boxplot/boxplot_shillerpe.json)
+
+## External API Reference
+
+### Research Affiliates CAPE API
+
+**Endpoint Pattern**: `https://interactive.researchaffiliates.com/asset-allocation-data/{YYYYMM}/{DD}/boxplot/boxplot_shillerpe.json`
+
+**Date Discovery**: Data is updated monthly. Try current month days 01-10 first, then previous month.
+
+**Response Format**: JSON array of objects with the following fields per region:
+- `boxName`: Region identifier (e.g., "All Country", "USA", "Emerging Markets")
+- `currentValue`: Current CAPE ratio
+- `expectedValue`: Expected return based on CAPE
+- `range50th`: Median historical CAPE
+- `range25th`, `range75th`: Interquartile range
+
+**Regions of Interest**:
+- "All Country" - Global aggregate
+- "USA" - US market
+- "Emerging Markets" - EM aggregate
+
+**Caching Strategy**: Cache for 24 hours (data updates monthly)
+
+### Historical Price API
+
+**Purpose**: Fetch historical closing prices for year-end valuation calculations.
+
+**API Options by Market**:
+
+1. **US/UK Stocks** - Yahoo Finance Historical Data
+   - Endpoint: `https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={timestamp}&period2={timestamp}&interval=1d`
+   - Returns OHLCV data for specified date range
+   - Use `adjclose` for adjusted closing price
+
+2. **Taiwan Stocks** - TWSE/TPEx Historical Data
+   - TWSE: `https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={YYYYMMDD}&stockNo={ticker}`
+   - TPEx: `https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_info/st43_result.php?d={YYY/MM/DD}&stkno={ticker}`
+
+**Date Selection Logic**:
+- For year-end: Use Dec 31, or last trading day before Dec 31 if market was closed
+- For YTD start: Use Jan 1, or first trading day after Jan 1
+
+**Caching Strategy**:
+- Historical prices are immutable - cache permanently in database
+- Store: ticker, date, close_price, exchange_rate (for that date)
+- Only fetch once per ticker per date
+
+**Database Table**: `historical_prices`
+```
+- Id: GUID
+- Ticker: string
+- Date: date
+- ClosePrice: decimal (source currency)
+- ExchangeRate: decimal (to home currency)
+- CreatedAt: datetime
+```
+
 
