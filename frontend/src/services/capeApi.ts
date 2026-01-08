@@ -172,8 +172,9 @@ export function transformCapeData(data: CapeData, selectedRegions?: string[]): C
     .map((item) => ({
       region: REGION_DISPLAY_NAMES[item.boxName] || item.boxName,
       cape: item.currentValue,
+      adjustedCape: item.adjustedValue,
       percentile: item.currentValuePercentile,
-      valuation: getCapeValuation(item.currentValue, item.range25th, item.range75th),
+      valuation: getCapeValuation(item.adjustedValue ?? item.currentValue, item.range25th, item.range75th),
       median: item.range50th,
       range25th: item.range25th,
       range75th: item.range75th,

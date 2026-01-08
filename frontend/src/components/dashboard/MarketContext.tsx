@@ -72,6 +72,10 @@ interface CapeRowProps {
 }
 
 function CapeRow({ item }: CapeRowProps) {
+  // Use adjusted CAPE if available, otherwise use original
+  const displayCape = item.adjustedCape ?? item.cape;
+  const hasAdjusted = item.adjustedCape != null;
+
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-[var(--border-color)] last:border-b-0">
       <div className="flex items-center gap-3 min-w-0">
@@ -80,7 +84,10 @@ function CapeRow({ item }: CapeRowProps) {
       </div>
       <div className="flex items-center gap-4 text-sm shrink-0">
         <div className="text-right">
-          <div className="text-[var(--text-primary)] font-mono text-lg font-semibold">{item.cape.toFixed(1)}</div>
+          <div className="text-[var(--text-primary)] font-mono text-lg font-semibold" title={hasAdjusted ? `原始: ${item.cape.toFixed(1)}` : undefined}>
+            {displayCape.toFixed(1)}
+            {hasAdjusted && <span className="text-[var(--accent-peach)] text-xs ml-1">*</span>}
+          </div>
         </div>
         <div className="text-right hidden sm:block">
           <div className="text-[var(--text-muted)] text-xs">中位數</div>
@@ -289,9 +296,12 @@ export function MarketContext({ className = '' }: MarketContextProps) {
             {data.map((item) => (
               <CapeRow key={item.region} item={item} />
             ))}
-            <p className="text-xs text-[var(--text-muted)] mt-4">
-              百分位條顯示目前 CAPE 在該市場歷史數據中的位置
-            </p>
+            <div className="text-xs text-[var(--text-muted)] mt-4 space-y-1">
+              <p>百分位條顯示目前 CAPE 在該市場歷史數據中的位置</p>
+              {data.some(item => item.adjustedCape != null) && (
+                <p><span className="text-[var(--accent-peach)]">*</span> 已根據即時大盤指數調整</p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="text-center py-8 text-[var(--text-muted)]">

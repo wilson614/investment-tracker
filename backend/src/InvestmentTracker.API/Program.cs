@@ -164,6 +164,12 @@ builder.Services.AddScoped<IStockPriceProvider, TwseStockPriceProvider>();
 builder.Services.AddScoped<IExchangeRateProvider, SinaExchangeRateProvider>();
 builder.Services.AddScoped<IStockPriceService, StockPriceService>();
 
+// Index Price Service (for CAPE real-time adjustment)
+builder.Services.AddHttpClient<ISinaEtfPriceService, SinaEtfPriceService>();
+builder.Services.AddHttpClient<IStooqHistoricalPriceService, StooqHistoricalPriceService>();
+builder.Services.AddHttpClient<ITwseIndexPriceService, TwseIndexPriceService>();
+builder.Services.AddScoped<IIndexPriceService, IndexPriceService>();
+
 // CAPE Data Service
 builder.Services.AddHttpClient<ICapeDataService, CapeDataService>();
 

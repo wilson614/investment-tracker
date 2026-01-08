@@ -1,0 +1,74 @@
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+
+namespace InvestmentTracker.Infrastructure.MarketData;
+
+/// <summary>
+/// Service for fetching index prices from Google Finance
+/// Scrapes the Google Finance website for real-time prices
+/// </summary>
+public partial class GoogleFinanceService : IGoogleFinanceService
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<GoogleFinanceService> _logger;
+
+    // Google Finance symbol format: SYMBOL:EXCHANGE
+    private static readonly Dictionary<string, string> GoogleFinanceSymbols = new()
+    {
+        ["All Country"] = "GEISAC:INDEXFTSE",    // FTSE Global All Cap Index
+        ["US Large"] = ".INX:INDEXSP",            // S&P 500
+        ["Taiwan"] = "TWII:TPE",                  // Taiwan Weighted Index
+    };
+
+    public GoogleFinanceService(HttpClient httpClient, ILogger<GoogleFinanceService> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task<decimal?> GetCurrentPriceAsync(string marketKey, CancellationToken cancellationToken = default)
+    {
+        if (!GoogleFinanceSymbols.TryGetValue(marketKey, out var symbol))
+        {
+            _logger.LogDebug("No Google Finance symbol mapping for {Market}", marketKey);
+            return null;
+        }
+
+        try
+        {
+            var url = $"https://www.google.com/finance/quote/{symbol}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Google Finance returned {Status} for {Symbol}", response.StatusCode, symbol);
+                return null;
+            }
+
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Extract price from data-last-price attribute
+            var match = DataLastPriceRegex().Match(html);
+            if (match.Success && decimal.TryParse(match.Groups[1].Value, out var price))
+            {
+                _logger.LogDebug("Got price {Price} for {Market} from Google Finance", price, marketKey);
+                return price;
+            }
+
+            _logger.LogWarning("Could not parse price from Google Finance for {Symbol}", symbol);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching price from Google Finance for {Market}", marketKey);
+            return null;
+        }
+    }
+
+    public static IReadOnlyCollection<string> SupportedMarkets => GoogleFinanceSymbols.Keys;
+
+    [GeneratedRegex(@"data-last-price=""([0-9.]+)""")]
+    private static partial Regex DataLastPriceRegex();
+}

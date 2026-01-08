@@ -25,6 +25,7 @@ public record CapeDataResponse(
 public record CapeDataItem(
     string BoxName,
     decimal CurrentValue,
+    decimal? AdjustedValue,
     decimal CurrentValuePercentile,
     decimal Range25th,
     decimal Range50th,

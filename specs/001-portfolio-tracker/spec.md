@@ -193,6 +193,8 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-030a**: System MUST allow users to select which CAPE regions to display from available options (e.g., All Country, USA, Europe, Emerging Markets, etc.).
 - **FR-030b**: System MUST persist user's CAPE region preferences in localStorage.
 - **FR-030c**: System MUST provide sensible default regions (All Country, USA, Emerging Markets, Europe) for new users.
+- **FR-030d**: System MUST apply real-time adjustment to CAPE values using formula: `Adjusted CAPE = API CAPE × (Current Price / Reference Price)`, where Reference Price is the month-end price matching the API data date.
+- **FR-030e**: System MUST support CAPE real-time adjustment for: All Country, US Large, and Taiwan markets.
 - **FR-031**: System MUST cache CAPE data with daily refresh (data updates monthly, cache for 24 hours).
 - **FR-032**: System MUST calculate and display historical annual returns for the portfolio.
 - **FR-033**: System MUST calculate historical annual returns per position based on year-end valuations.
@@ -341,6 +343,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Interest Tracking**: Bank interest in Currency Ledger defaults to 0 cost basis (lowering average cost).
 - **Stock Split Handling**: Stock splits are recorded as adjustment transactions that modify share count without affecting total cost basis.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.
+- **CAPE Adjustment Markets**: Default supported markets are All Country (VWRA), US Large (VUAA), and Taiwan (TWII). Additional markets use accumulating ETFs from Sina (real-time) + Stooq (historical) when available; markets without data sources show original CAPE only.
 
 ## Technology Stack
 
@@ -372,6 +375,59 @@ As an investor, I want to see my portfolio's historical performance and current 
 - "Emerging Markets" - EM aggregate
 
 **Caching Strategy**: Cache for 24 hours (data updates monthly)
+
+### CAPE Real-Time Adjustment
+
+**Purpose**: Adjust CAPE values in real-time to reflect current market prices, since Research Affiliates data is updated monthly with a lag.
+
+**Formula**: `Adjusted CAPE = API CAPE × (Current Price / Reference Price)`
+
+**Data Sources by Market**:
+
+| Market | Current Price Source | Historical Price Source | Symbol/Identifier |
+|--------|---------------------|------------------------|-------------------|
+| All Country | Sina Finance (UK ETF) | Stooq | VWRA.UK (lse_vwra) |
+| US Large | Sina Finance (UK ETF) | Stooq | VUAA.UK (lse_vuaa) |
+| Taiwan | TWSE API | TWSE API | ^TWII (tse_t00.tw) |
+
+**Why Accumulating ETFs**: Using accumulating ETFs (VWRA, VUAA) instead of indices avoids dividend adjustment issues. These ETFs reinvest dividends, making price-based comparison accurate.
+
+**Reference Date Calculation**:
+- API date format: "2026-01-02" means data is as of end of previous month (2025-12-31)
+- Reference Price = Month-end closing price matching the CAPE data date
+
+**API Endpoints**:
+
+1. **Sina Finance (Real-time UK ETFs)**
+   - Endpoint: `https://hq.sinajs.cn/list={symbol}`
+   - Symbols: `lse_vwra` (All Country), `lse_vuaa` (US Large)
+   - Requires Referer header: `http://vip.stock.finance.sina.com.cn`
+   - Response: CSV-like format, price is field index 1
+   - Update frequency: ~5 seconds during market hours
+
+2. **Stooq (Historical ETF Prices)**
+   - Endpoint: `https://stooq.com/q/d/l/?s={symbol}&d1={YYYYMMDD}&d2={YYYYMMDD}&i=d`
+   - Symbols: `vwra.uk` (All Country), `vuaa.uk` (US Large)
+   - Response: CSV with headers Date,Open,High,Low,Close,Volume
+   - Use Close price (column index 4)
+
+3. **TWSE API (Taiwan Real-time)**
+   - Endpoint: `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0`
+   - Response: JSON with `z` (current price) or `y` (previous close if market closed)
+   - Update frequency: ~5 seconds during market hours (09:00-13:30 Taiwan time)
+
+4. **TWSE API (Taiwan Historical)**
+   - Endpoint: `https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={YYYYMM}01`
+   - Response: JSON with monthly trading data, field index 4 is "發行量加權股價指數"
+   - Use last row for month-end price
+
+**Caching Strategy**:
+- Historical reference prices cached in database (`IndexPriceSnapshots` table)
+- Current prices fetched on each CAPE API request (no caching for real-time data)
+
+**Fallback Strategy**:
+- If external API unavailable, use cached reference price from database
+- If no cached price exists, return null for adjustedValue (display original CAPE only)
 
 ### Historical Price API
 

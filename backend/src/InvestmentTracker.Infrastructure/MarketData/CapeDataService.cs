@@ -15,6 +15,7 @@ public class CapeDataService : ICapeDataService
 {
     private readonly HttpClient _httpClient;
     private readonly AppDbContext _dbContext;
+    private readonly IIndexPriceService _indexPriceService;
     private readonly ILogger<CapeDataService> _logger;
 
     private const string BaseUrl = "https://interactive.researchaffiliates.com/asset-allocation-data";
@@ -22,10 +23,12 @@ public class CapeDataService : ICapeDataService
     public CapeDataService(
         HttpClient httpClient,
         AppDbContext dbContext,
+        IIndexPriceService indexPriceService,
         ILogger<CapeDataService> logger)
     {
         _httpClient = httpClient;
         _dbContext = dbContext;
+        _indexPriceService = indexPriceService;
         _logger = logger;
     }
 
@@ -47,15 +50,99 @@ public class CapeDataService : ICapeDataService
                 var newData = await TryFetchNewerDataAsync(snapshot.DataDate, cancellationToken);
                 if (newData != null)
                 {
-                    return newData;
+                    return await ApplyRealTimeAdjustmentsAsync(newData, cancellationToken);
                 }
             }
 
-            return DeserializeSnapshot(snapshot);
+            var data = DeserializeSnapshot(snapshot);
+            return await ApplyRealTimeAdjustmentsAsync(data, cancellationToken);
         }
 
         // No data in database, fetch fresh
-        return await FetchAndSaveAsync(cancellationToken);
+        var freshData = await FetchAndSaveAsync(cancellationToken);
+        if (freshData != null)
+        {
+            return await ApplyRealTimeAdjustmentsAsync(freshData, cancellationToken);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Apply real-time adjustments to CAPE values based on current index prices
+    /// </summary>
+    private async Task<CapeDataResponse> ApplyRealTimeAdjustmentsAsync(
+        CapeDataResponse data,
+        CancellationToken cancellationToken)
+    {
+        // Parse the data date to get the reference date for historical prices
+        // API date format: "2026-01-02" means data is as of end of previous month (2025-12-31)
+        if (!DateTime.TryParse(data.Date, out var apiDate))
+        {
+            return data;
+        }
+
+        // The CAPE data is for the previous month's end
+        var referenceDate = new DateTime(apiDate.Year, apiDate.Month, 1).AddDays(-1);
+
+        var adjustedItems = new List<CapeDataItem>();
+
+        foreach (var item in data.Items)
+        {
+            var adjustedValue = await CalculateAdjustedValueAsync(
+                item.BoxName,
+                item.CurrentValue,
+                referenceDate,
+                cancellationToken);
+
+            adjustedItems.Add(item with { AdjustedValue = adjustedValue });
+        }
+
+        return data with { Items = adjustedItems };
+    }
+
+    /// <summary>
+    /// Calculate adjusted CAPE value based on current vs reference index price
+    /// </summary>
+    private async Task<decimal?> CalculateAdjustedValueAsync(
+        string marketKey,
+        decimal originalValue,
+        DateTime referenceDate,
+        CancellationToken cancellationToken)
+    {
+        // Check if this market supports adjustment
+        if (!IndexPriceService.SupportedMarkets.Contains(marketKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            var indexPrices = await _indexPriceService.GetIndexPricesAsync(
+                marketKey,
+                referenceDate,
+                cancellationToken);
+
+            if (indexPrices == null || indexPrices.ReferencePrice == 0)
+            {
+                _logger.LogDebug("Could not get index prices for {Market}", marketKey);
+                return null;
+            }
+
+            // Adjusted CAPE = Original CAPE × (Current Index / Reference Index)
+            var adjustmentRatio = indexPrices.CurrentPrice / indexPrices.ReferencePrice;
+            var adjustedValue = originalValue * adjustmentRatio;
+
+            _logger.LogDebug(
+                "Adjusted {Market} CAPE: {Original} × ({Current}/{Reference}) = {Adjusted}",
+                marketKey, originalValue, indexPrices.CurrentPrice, indexPrices.ReferencePrice, adjustedValue);
+
+            return Math.Round(adjustedValue, 2);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to calculate adjusted CAPE for {Market}", marketKey);
+            return null;
+        }
     }
 
     /// <summary>
@@ -83,7 +170,12 @@ public class CapeDataService : ICapeDataService
 
     public async Task<CapeDataResponse?> RefreshCapeDataAsync(CancellationToken cancellationToken = default)
     {
-        return await FetchAndSaveAsync(cancellationToken);
+        var data = await FetchAndSaveAsync(cancellationToken);
+        if (data != null)
+        {
+            return await ApplyRealTimeAdjustmentsAsync(data, cancellationToken);
+        }
+        return null;
     }
 
     private async Task<CapeDataResponse?> TryFetchNewerDataAsync(string currentDataDate, CancellationToken cancellationToken)
@@ -129,9 +221,15 @@ public class CapeDataService : ICapeDataService
         var existing = await _dbContext.CapeDataSnapshots
             .FirstOrDefaultAsync(s => s.DataDate == data.Date, cancellationToken);
 
+        // Store items without AdjustedValue (it's calculated on-the-fly)
+        var itemsToStore = data.Items.Select(i => new StoredCapeItem(
+            i.BoxName, i.CurrentValue, i.CurrentValuePercentile,
+            i.Range25th, i.Range50th, i.Range75th
+        )).ToList();
+
         if (existing != null)
         {
-            existing.ItemsJson = JsonSerializer.Serialize(data.Items);
+            existing.ItemsJson = JsonSerializer.Serialize(itemsToStore);
             existing.FetchedAt = DateTime.UtcNow;
         }
         else
@@ -139,7 +237,7 @@ public class CapeDataService : ICapeDataService
             var snapshot = new CapeDataSnapshot
             {
                 DataDate = data.Date,
-                ItemsJson = JsonSerializer.Serialize(data.Items),
+                ItemsJson = JsonSerializer.Serialize(itemsToStore),
                 FetchedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
             };
@@ -152,7 +250,11 @@ public class CapeDataService : ICapeDataService
 
     private static CapeDataResponse DeserializeSnapshot(CapeDataSnapshot snapshot)
     {
-        var items = JsonSerializer.Deserialize<List<CapeDataItem>>(snapshot.ItemsJson) ?? [];
+        var storedItems = JsonSerializer.Deserialize<List<StoredCapeItem>>(snapshot.ItemsJson) ?? [];
+        var items = storedItems.Select(i => new CapeDataItem(
+            i.BoxName, i.CurrentValue, null, i.CurrentValuePercentile,
+            i.Range25th, i.Range50th, i.Range75th
+        )).ToList();
         return new CapeDataResponse(snapshot.DataDate, items, snapshot.FetchedAt);
     }
 
@@ -223,6 +325,7 @@ public class CapeDataService : ICapeDataService
             return rawItems.Select(item => new CapeDataItem(
                 item.BoxName ?? "",
                 item.CurrentValue,
+                null, // AdjustedValue will be calculated later
                 item.CurrentValuePercentile,
                 item.Range25th,
                 item.Range50th,
@@ -238,6 +341,16 @@ public class CapeDataService : ICapeDataService
 
     private record RawCapeItem(
         string? BoxName,
+        decimal CurrentValue,
+        decimal CurrentValuePercentile,
+        decimal Range25th,
+        decimal Range50th,
+        decimal Range75th
+    );
+
+    // For storing in database without AdjustedValue
+    private record StoredCapeItem(
+        string BoxName,
         decimal CurrentValue,
         decimal CurrentValuePercentile,
         decimal Range25th,

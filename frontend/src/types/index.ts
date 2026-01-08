@@ -263,6 +263,7 @@ export interface MarketInfo {
 export interface CapeDataItem {
   boxName: string;
   currentValue: number;
+  adjustedValue?: number; // Real-time adjusted CAPE value based on current index price
   currentValuePercentile: number;
   range25th: number;
   range50th: number;
@@ -280,6 +281,7 @@ export type CapeValuation = 'cheap' | 'fair' | 'expensive';
 export interface CapeDisplayItem {
   region: string;
   cape: number;
+  adjustedCape?: number; // Real-time adjusted value
   percentile: number;
   valuation: CapeValuation;
   median: number;
