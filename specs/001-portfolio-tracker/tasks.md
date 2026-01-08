@@ -395,6 +395,68 @@
 
 ---
 
+## Phase 12: User Story 7 - Dashboard with Historical Returns (Priority: P7)
+
+**Goal**: Display historical performance and market context on dashboard
+
+**Independent Test**: View dashboard after recording transactions spanning multiple years, verify historical returns are calculated correctly and CAPE data is displayed.
+
+### Setup (Database & Infrastructure)
+
+- [ ] T148 [US7] Create HistoricalPrice entity in backend/src/InvestmentTracker.Domain/Entities/HistoricalPrice.cs
+- [ ] T149 [US7] Add HistoricalPriceConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/HistoricalPriceConfiguration.cs
+- [ ] T150 [US7] Add DbSet<HistoricalPrice> to AppDbContext in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
+- [ ] T151 [US7] Create and apply EF Core migration for historical_prices table
+
+### Backend - Historical Price Service (C1)
+
+- [ ] T152 [P] [US7] Create IHistoricalPriceRepository interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceRepository.cs
+- [ ] T153 [P] [US7] Create IHistoricalPriceService interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceService.cs
+- [ ] T154 [US7] Implement HistoricalPriceRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalPriceRepository.cs
+- [ ] T155 [US7] Implement YahooFinanceHistoricalService for US/UK stocks in backend/src/InvestmentTracker.Infrastructure/Services/YahooFinanceHistoricalService.cs
+- [ ] T156 [US7] Implement TwseHistoricalService for Taiwan stocks in backend/src/InvestmentTracker.Infrastructure/Services/TwseHistoricalService.cs
+- [ ] T157 [US7] Create HistoricalPriceService facade in backend/src/InvestmentTracker.Infrastructure/Services/HistoricalPriceService.cs
+- [ ] T158 [US7] Register historical price services in DI container in backend/src/InvestmentTracker.API/Program.cs
+
+### Backend - Historical Returns Calculation (C2)
+
+- [ ] T159 [US7] Create HistoricalReturnDto and related DTOs in backend/src/InvestmentTracker.Application/DTOs/HistoricalReturnDtos.cs
+- [ ] T160 [US7] Create GetHistoricalReturnsUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetHistoricalReturnsUseCase.cs
+- [ ] T161 [US7] Add historical returns endpoint to PortfoliosController in backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs
+- [ ] T162 [US7] Implement year-end share calculation logic (shares held at specific date) in GetHistoricalReturnsUseCase
+- [ ] T163 [US7] Implement YTD return calculation in GetHistoricalReturnsUseCase
+
+### Frontend - CAPE Service (C3)
+
+- [ ] T164 [P] [US7] Create CapeData types in frontend/src/types/index.ts
+- [ ] T165 [P] [US7] Create capeApi service with 24hr localStorage cache in frontend/src/services/capeApi.ts
+
+### Frontend - Historical Returns Service
+
+- [ ] T166 [P] [US7] Add HistoricalReturn types in frontend/src/types/index.ts
+- [ ] T167 [P] [US7] Add getHistoricalReturns API method in frontend/src/services/api.ts
+
+### Frontend - Dashboard Components (C4)
+
+- [ ] T168 [P] [US7] Create MarketContext component (CAPE display) in frontend/src/components/dashboard/MarketContext.tsx
+- [ ] T169 [P] [US7] Create HistoricalReturnsTable component in frontend/src/components/dashboard/HistoricalReturnsTable.tsx
+- [ ] T170 [P] [US7] Create PositionAllocation component (with weights) in frontend/src/components/dashboard/PositionAllocation.tsx
+- [ ] T171 [US7] Update Dashboard page to integrate new components in frontend/src/pages/Dashboard.tsx
+- [ ] T172 [US7] Add useCapeData hook for CAPE fetching in frontend/src/hooks/useCapeData.ts
+- [ ] T173 [US7] Add useHistoricalReturns hook for returns fetching in frontend/src/hooks/useHistoricalReturns.ts
+
+### Polish & Edge Cases
+
+- [ ] T174 [US7] Add error handling for CAPE API failures (graceful degradation) in MarketContext component
+- [ ] T175 [US7] Add loading states for historical returns calculation
+- [ ] T176 [US7] Handle edge case: no historical data available (first year of investing)
+- [ ] T177 [US7] Handle edge case: missing year-end price (use last available trading day)
+- [ ] T178 [US7] Add tooltip explanations for CAPE and return calculations
+
+**Checkpoint**: Phase 12 complete - Dashboard displays CAPE, historical returns, and allocation weights
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -409,6 +471,9 @@
   - US5 → Depends on US1 (needs buy transactions)
   - US6 → Can run parallel to US1-US5 (infrastructure)
 - **Phase 9 (Polish)**: Depends on all user stories
+- **Phase 10 (Real-Time Data)**: Optional enhancement
+- **Phase 11 (UI Enhancement)**: Depends on Phase 9
+- **Phase 12 (Dashboard Analytics/US7)**: Depends on Phase 4 (needs portfolio performance foundation)
 
 ### User Story Dependencies
 
@@ -418,17 +483,34 @@ US1 (Stock Purchase) ─────┐
 US2 (Currency Ledger) ────┘
 
 US1 ──→ US4 (Performance) ──→ US5 (Sell/Realized PnL)
+                          └──→ US7 (Dashboard Analytics)
 
 US6 (Multi-Tenancy) ── runs parallel, integrates with all
 ```
 
-### Parallel Opportunities per Phase
+### Phase 12 Parallel Opportunities
 
-**Phase 1**: T002-T006 (projects), T009-T011 (Docker)
-**Phase 2**: T013-T020 (domain), T022+T026 (configs)
-**US1**: T039-T040 (tests), T041-T042 (entities), T044-T045 (configs), T057-T059 (frontend)
-**US2**: T063-T064 (tests), T065-T066 (entities), T068-T069 (configs), T079-T081 (frontend)
-**US4**: T092-T093 (tests), T099-T100 (frontend)
+```bash
+# Setup (sequential - schema changes)
+T148 → T149 → T150 → T151
+
+# Backend Historical Price Service (parallel interfaces)
+T152 + T153 (parallel)
+→ T154 → T155 + T156 (parallel) → T157 → T158
+
+# Backend Historical Returns (sequential)
+T159 → T160 → T161 → T162 → T163
+
+# Frontend Services (all parallel)
+T164 + T165 + T166 + T167 (parallel)
+
+# Frontend Components (parallel, then integration)
+T168 + T169 + T170 (parallel)
+→ T171 → T172 + T173 (parallel)
+
+# Polish (sequential after integration)
+T174 → T175 → T176 → T177 → T178
+```
 
 ---
 
