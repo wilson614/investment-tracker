@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { AuthProvider } from './hooks/useAuth';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
+import { PositionDetailPage } from './pages/PositionDetail';
 import { TransactionsPage } from './pages/Transactions';
 import Currency from './pages/Currency';
 import CurrencyDetail from './pages/CurrencyDetail';
@@ -150,6 +151,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <PortfolioPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/portfolio/:id/position/:ticker"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <PositionDetailPage />
             </AppLayout>
           </ProtectedRoute>
         }

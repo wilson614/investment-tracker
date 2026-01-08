@@ -287,6 +287,70 @@ public record ExchangeRateValue(
 
 ---
 
+## Stock Price & Exchange Rate DTOs
+
+### StockMarket Enumeration
+```csharp
+public enum StockMarket
+{
+    TW = 1,  // Taiwan Stock Exchange
+    US = 2,  // US Stock Market (via Sina)
+    UK = 3   // UK/London Stock Exchange (via Sina)
+}
+```
+
+### StockQuoteResponse
+Response DTO for real-time stock price queries.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Symbol | string | Stock/ETF symbol (e.g., "AAPL", "2330") |
+| Name | string | Company name |
+| Price | decimal | Current price in source currency |
+| Change | decimal? | Price change from previous close |
+| ChangePercent | string? | Percentage change (e.g., "+1.23%") |
+| Market | StockMarket | Market identifier |
+| Source | string | Data source (e.g., "Sina Finance", "TWSE") |
+| FetchedAt | DateTime | UTC timestamp of quote |
+| ExchangeRate | decimal? | Exchange rate to home currency (when using with-rate endpoint) |
+| ExchangeRatePair | string? | Currency pair description (e.g., "USD/TWD") |
+
+### ExchangeRateResponse
+Response DTO for currency exchange rate queries.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| FromCurrency | string | Source currency code (e.g., "USD") |
+| ToCurrency | string | Target currency code (e.g., "TWD") |
+| Rate | decimal | Exchange rate |
+| Source | string | Data source (e.g., "Sina Finance") |
+| FetchedAt | DateTime | UTC timestamp of rate |
+
+---
+
+## External API Integrations
+
+### Stock Price Providers
+
+| Provider | Markets | API Endpoint | Encoding |
+|----------|---------|--------------|----------|
+| Sina Finance | US, UK | `hq.sinajs.cn/list=` | GBK |
+| TWSE | TW | `mis.twse.com.tw/stock/api/getStockInfo.jsp` | UTF-8 |
+
+**Sina Symbol Formats**:
+- US stocks: `gb_{symbol}` (e.g., `gb_aapl`)
+- UK stocks: `lse_{symbol}` (e.g., `lse_vod`)
+
+### Exchange Rate Provider
+
+| Provider | API Endpoint | Pairs Supported |
+|----------|--------------|-----------------|
+| Sina Finance | `hq.sinajs.cn/list=fx_s{pair}` | USD/TWD, GBP/USD, EUR/USD, etc. |
+
+**Sina Forex Symbol Format**: `fx_s{from}{to}` (lowercase, e.g., `fx_susdtwd`)
+
+---
+
 ## Soft Delete Strategy
 
 All financial records use soft deletes to maintain audit trails:

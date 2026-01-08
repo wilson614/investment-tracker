@@ -17,6 +17,7 @@ import type { CreateStockTransactionRequest, TransactionType, CurrencyLedgerSumm
 interface StockImportButtonProps {
   portfolioId: string;
   onImportComplete: () => void;
+  compact?: boolean;
 }
 
 // Field definitions for stock transaction CSV (exchangeRate is optional when using currency ledger)
@@ -101,6 +102,7 @@ function parseTransactionType(typeStr: string): TransactionType | null {
 export function StockImportButton({
   portfolioId,
   onImportComplete,
+  compact = false,
 }: StockImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSelectingLedger, setIsSelectingLedger] = useState(false);
@@ -255,9 +257,12 @@ export function StockImportButton({
     <>
       <button
         onClick={handleOpenImport}
-        className="btn-dark flex items-center gap-2"
+        className={compact
+          ? "btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
+          : "btn-dark flex items-center gap-2"
+        }
       >
-        <Upload className="w-4 h-4" />
+        <Upload className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
         匯入 CSV
       </button>
 

@@ -244,6 +244,16 @@ export interface StockQuoteResponse {
   market: StockMarket;
   source: string;
   fetchedAt: string;
+  exchangeRate?: number;
+  exchangeRatePair?: string;
+}
+
+export interface ExchangeRateResponse {
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  source: string;
+  fetchedAt: string;
 }
 
 export interface MarketInfo {

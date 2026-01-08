@@ -20,6 +20,7 @@ import type {
   XirrResult,
   StockMarket,
   StockQuoteResponse,
+  ExchangeRateResponse,
   MarketInfo,
 } from '../types';
 
@@ -78,10 +79,13 @@ export const portfolioApi = {
   getById: (id: string) => fetchApi<Portfolio>(`/portfolios/${id}`),
 
   getSummary: (id: string, currentPrices?: Record<string, { price: number; exchangeRate: number }>) => {
-    const params = currentPrices
-      ? `?${new URLSearchParams({ currentPrices: JSON.stringify(currentPrices) })}`
-      : '';
-    return fetchApi<PortfolioSummary>(`/portfolios/${id}/summary${params}`);
+    if (currentPrices && Object.keys(currentPrices).length > 0) {
+      return fetchApi<PortfolioSummary>(`/portfolios/${id}/summary`, {
+        method: 'POST',
+        body: JSON.stringify({ currentPrices }),
+      });
+    }
+    return fetchApi<PortfolioSummary>(`/portfolios/${id}/summary`);
   },
 
   calculateXirr: (id: string, request: CalculateXirrRequest) =>
@@ -225,6 +229,12 @@ export const currencyTransactionApi = {
 export const stockPriceApi = {
   getQuote: (market: StockMarket, symbol: string) =>
     fetchApi<StockQuoteResponse>(`/stock-prices?market=${market}&symbol=${encodeURIComponent(symbol)}`),
+
+  getQuoteWithRate: (market: StockMarket, symbol: string, homeCurrency: string) =>
+    fetchApi<StockQuoteResponse>(`/stock-prices/with-rate?market=${market}&symbol=${encodeURIComponent(symbol)}&homeCurrency=${encodeURIComponent(homeCurrency)}`),
+
+  getExchangeRate: (from: string, to: string) =>
+    fetchApi<ExchangeRateResponse>(`/stock-prices/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
   getMarkets: () =>
     fetchApi<MarketInfo[]>('/stock-prices/markets'),

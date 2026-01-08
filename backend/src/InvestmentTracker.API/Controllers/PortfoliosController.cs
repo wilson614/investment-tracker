@@ -90,7 +90,33 @@ public class PortfoliosController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PortfolioSummaryDto>> GetSummary(
         Guid id,
-        [FromQuery] CalculatePerformanceRequest? performanceRequest,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(
+                id, null, cancellationToken);
+            return Ok(summary);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>
+    /// Get portfolio summary with calculated positions and current prices.
+    /// </summary>
+    [HttpPost("{id:guid}/summary")]
+    [ProducesResponseType(typeof(PortfolioSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PortfolioSummaryDto>> GetSummaryWithPrices(
+        Guid id,
+        [FromBody] CalculatePerformanceRequest? performanceRequest,
         CancellationToken cancellationToken)
     {
         try

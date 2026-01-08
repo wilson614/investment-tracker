@@ -95,14 +95,22 @@ backend/
 │   │   │   ├── Configurations/
 │   │   │   └── Migrations/
 │   │   ├── Repositories/
-│   │   └── Services/
-│   │       └── JwtTokenService.cs
+│   │   ├── Services/
+│   │   │   └── JwtTokenService.cs
+│   │   └── StockPrices/                     # Real-time price fetching
+│   │       ├── IStockPriceProvider.cs
+│   │       ├── IStockPriceService.cs
+│   │       ├── StockPriceService.cs
+│   │       ├── SinaStockPriceProvider.cs    # US/UK via Sina Finance
+│   │       ├── TwseStockPriceProvider.cs    # Taiwan via TWSE
+│   │       └── SinaExchangeRateProvider.cs  # Exchange rates via Sina
 │   │
 │   └── InvestmentTracker.API/              # Controllers, Middleware
 │       ├── Controllers/
 │       │   ├── AuthController.cs
 │       │   ├── PortfoliosController.cs
 │       │   ├── StockTransactionsController.cs
+│       │   ├── StockPricesController.cs     # Real-time price API
 │       │   └── CurrencyController.cs
 │       ├── Middleware/
 │       │   └── TenantContextMiddleware.cs
@@ -119,17 +127,21 @@ frontend/
 │   ├── components/
 │   │   ├── common/
 │   │   ├── portfolio/
+│   │   │   ├── PositionCard.tsx          # Position with inline price fetch
+│   │   │   ├── PerformanceMetrics.tsx
+│   │   │   └── CurrentPriceInput.tsx     # (deprecated - moved to PositionCard)
 │   │   ├── transactions/
 │   │   └── currency/
 │   ├── pages/
 │   │   ├── Dashboard.tsx
-│   │   ├── Portfolio.tsx
+│   │   ├── Portfolio.tsx                 # Fetch all prices button, XIRR
 │   │   ├── Transactions.tsx
 │   │   └── CurrencyLedger.tsx
 │   ├── services/
-│   │   └── api.ts
+│   │   └── api.ts                        # stockPriceApi with getQuoteWithRate
 │   ├── hooks/
 │   ├── types/
+│   │   └── index.ts                      # StockQuoteResponse, ExchangeRateResponse
 │   └── App.tsx
 ├── tests/
 └── tailwind.config.js

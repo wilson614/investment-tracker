@@ -13,18 +13,25 @@ export function PerformanceMetrics({
   homeCurrency = 'TWD',
   isLoading = false,
 }: PerformanceMetricsProps) {
-  const formatNumber = (value: number | null | undefined, decimals = 2) => {
+  // For TWD, round to integer; for others, keep 2 decimals
+  const formatCurrency = (value: number | null | undefined) => {
     if (value == null) return '-';
+    if (homeCurrency === 'TWD') {
+      return Math.round(value).toLocaleString('zh-TW');
+    }
     return value.toLocaleString('zh-TW', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
   };
 
   const formatPercent = (value: number | null | undefined) => {
     if (value == null) return '-';
     const sign = value >= 0 ? '+' : '';
-    return `${sign}${formatNumber(value, 2)}%`;
+    return `${sign}${value.toLocaleString('zh-TW', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}%`;
   };
 
   const pnlColor = (summary.totalUnrealizedPnlHome ?? 0) >= 0
@@ -53,13 +60,13 @@ export function PerformanceMetrics({
 
   return (
     <div className="card-dark p-6">
-      <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">投資組合績效</h2>
+      <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">投資組合績效</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="metric-card metric-card-cream">
           <p className="text-sm text-[var(--text-muted)] mb-1">總成本</p>
           <p className="text-xl font-bold text-[var(--accent-cream)] number-display">
-            {formatNumber(summary.totalCostHome)}
+            {formatCurrency(summary.totalCostHome)}
           </p>
           <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
         </div>
@@ -68,7 +75,7 @@ export function PerformanceMetrics({
           <p className="text-sm text-[var(--text-muted)] mb-1">目前市值</p>
           <p className="text-xl font-bold text-[var(--accent-sand)] number-display">
             {summary.totalValueHome != null
-              ? formatNumber(summary.totalValueHome)
+              ? formatCurrency(summary.totalValueHome)
               : '-'}
           </p>
           <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
@@ -78,7 +85,7 @@ export function PerformanceMetrics({
           <p className="text-sm text-[var(--text-muted)] mb-1">未實現損益</p>
           <p className={`text-xl font-bold number-display ${pnlColor}`}>
             {summary.totalUnrealizedPnlHome != null
-              ? formatNumber(summary.totalUnrealizedPnlHome)
+              ? formatCurrency(summary.totalUnrealizedPnlHome)
               : '-'}
           </p>
           {summary.totalUnrealizedPnlPercentage != null && (

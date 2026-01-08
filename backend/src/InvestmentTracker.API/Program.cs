@@ -154,8 +154,10 @@ builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
 // Stock Price Service
 builder.Services.AddHttpClient<IStockPriceProvider, SinaStockPriceProvider>();
 builder.Services.AddHttpClient<TwseStockPriceProvider>();
+builder.Services.AddHttpClient<IExchangeRateProvider, SinaExchangeRateProvider>();
 builder.Services.AddScoped<IStockPriceProvider, SinaStockPriceProvider>();
 builder.Services.AddScoped<IStockPriceProvider, TwseStockPriceProvider>();
+builder.Services.AddScoped<IExchangeRateProvider, SinaExchangeRateProvider>();
 builder.Services.AddScoped<IStockPriceService, StockPriceService>();
 
 // Register FluentValidation validators

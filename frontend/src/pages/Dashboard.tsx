@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
-import { portfolioApi } from '../services/api';
+import { ChevronDown, RefreshCw, Loader2 } from 'lucide-react';
+import { portfolioApi, stockPriceApi } from '../services/api';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
-import { CurrentPriceInput } from '../components/portfolio/CurrentPriceInput';
-import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo } from '../types';
+import { PositionCard } from '../components/portfolio/PositionCard';
+import { StockMarket } from '../types';
+import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType } from '../types';
 
 interface PortfolioWithMetrics {
   portfolio: Portfolio;
@@ -14,12 +15,29 @@ interface PortfolioWithMetrics {
   error: string | null;
 }
 
+const guessMarket = (ticker: string): StockMarketType => {
+  // Taiwan: pure digits, or digits ending with letters (e.g., 2330, 00878, 6547M)
+  if (/^\d+[A-Za-z]*$/.test(ticker)) {
+    return StockMarket.TW;
+  }
+  // UK: ends with .L (London Stock Exchange)
+  if (ticker.endsWith('.L')) {
+    return StockMarket.UK;
+  }
+  // Default to US
+  return StockMarket.US;
+};
+
 export function DashboardPage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [portfolioMetrics, setPortfolioMetrics] = useState<Map<string, PortfolioWithMetrics>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
+  const [fetchingAllPortfolioId, setFetchingAllPortfolioId] = useState<string | null>(null);
+
+  // Track current prices per portfolio
+  const currentPricesRef = useRef<Map<string, Record<string, CurrentPriceInfo>>>(new Map());
 
   useEffect(() => {
     loadPortfolios();
@@ -63,9 +81,9 @@ export function DashboardPage() {
     }
   };
 
-  const handlePricesChange = async (portfolioId: string, prices: Record<string, CurrentPriceInfo>) => {
+  const updateSummaryWithPrices = async (portfolioId: string, prices: Record<string, CurrentPriceInfo>) => {
     const metrics = portfolioMetrics.get(portfolioId);
-    if (!metrics) return;
+    if (!metrics || Object.keys(prices).length === 0) return;
 
     setPortfolioMetrics((prev) => {
       const newMap = new Map(prev);
@@ -103,12 +121,77 @@ export function DashboardPage() {
     }
   };
 
-  const formatNumber = (value: number | null | undefined) => {
+  const handlePositionPriceUpdate = (portfolioId: string, ticker: string, price: number, exchangeRate: number) => {
+    const portfolioPrices = currentPricesRef.current.get(portfolioId) || {};
+    portfolioPrices[ticker] = { price, exchangeRate };
+    currentPricesRef.current.set(portfolioId, portfolioPrices);
+    updateSummaryWithPrices(portfolioId, { ...portfolioPrices });
+  };
+
+  const handleFetchAllPrices = async (portfolioId: string) => {
+    const metrics = portfolioMetrics.get(portfolioId);
+    if (!metrics?.summary) return;
+
+    setFetchingAllPortfolioId(portfolioId);
+
+    try {
+      const homeCurrency = metrics.portfolio.homeCurrency;
+      const fetchPromises = metrics.summary.positions.map(async (position) => {
+        try {
+          const market = guessMarket(position.ticker);
+          let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
+
+          // If US market fails, try UK as fallback (for ETFs like VWRA)
+          if (!quote && market === StockMarket.US) {
+            quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
+          }
+
+          if (quote?.exchangeRate) {
+            return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
+          }
+          return null;
+        } catch {
+          // If US fails, try UK as fallback
+          if (guessMarket(position.ticker) === StockMarket.US) {
+            try {
+              const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
+              if (ukQuote?.exchangeRate) {
+                return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
+              }
+            } catch {
+              // UK also failed
+            }
+          }
+          console.error(`Failed to fetch price for ${position.ticker}`);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(fetchPromises);
+      const newPrices: Record<string, CurrentPriceInfo> = {};
+
+      results.forEach((result) => {
+        if (result) {
+          newPrices[result.ticker] = { price: result.price, exchangeRate: result.exchangeRate };
+        }
+      });
+
+      const existingPrices = currentPricesRef.current.get(portfolioId) || {};
+      const allPrices = { ...existingPrices, ...newPrices };
+      currentPricesRef.current.set(portfolioId, allPrices);
+
+      if (Object.keys(newPrices).length > 0) {
+        await updateSummaryWithPrices(portfolioId, allPrices);
+      }
+    } finally {
+      setFetchingAllPortfolioId(null);
+    }
+  };
+
+  // Format TWD as integer
+  const formatTWD = (value: number | null | undefined) => {
     if (value == null) return '-';
-    return value.toLocaleString('zh-TW', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return Math.round(value).toLocaleString('zh-TW');
   };
 
   const aggregateTotals = Array.from(portfolioMetrics.values()).reduce(
@@ -157,21 +240,21 @@ export function DashboardPage() {
             <div className="metric-card metric-card-cream">
               <p className="text-[var(--text-muted)] text-sm mb-1">總成本</p>
               <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">
-                {formatNumber(aggregateTotals.totalCost)}
+                {formatTWD(aggregateTotals.totalCost)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
             <div className="metric-card metric-card-sand">
               <p className="text-[var(--text-muted)] text-sm mb-1">目前市值</p>
               <p className="text-2xl font-bold text-[var(--accent-sand)] number-display">
-                {aggregateTotals.hasValue ? formatNumber(aggregateTotals.totalValue) : '-'}
+                {aggregateTotals.hasValue ? formatTWD(aggregateTotals.totalValue) : '-'}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
             <div className="metric-card metric-card-peach">
               <p className="text-[var(--text-muted)] text-sm mb-1">未實現損益</p>
               <p className={`text-2xl font-bold number-display ${aggregateTotals.totalPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {aggregateTotals.hasValue ? formatNumber(aggregateTotals.totalPnl) : '-'}
+                {aggregateTotals.hasValue ? formatTWD(aggregateTotals.totalPnl) : '-'}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
@@ -200,6 +283,7 @@ export function DashboardPage() {
             {portfolios.map((portfolio) => {
               const metrics = portfolioMetrics.get(portfolio.id);
               const isSelected = selectedPortfolioId === portfolio.id;
+              const isFetchingAll = fetchingAllPortfolioId === portfolio.id;
 
               return (
                 <div key={portfolio.id} className="card-dark overflow-hidden">
@@ -229,12 +313,44 @@ export function DashboardPage() {
 
                   {isSelected && metrics?.summary && (
                     <div className="p-6 border-t border-[var(--border-color)] space-y-6">
-                      <CurrentPriceInput
-                        positions={metrics.summary.positions}
-                        onPricesChange={(prices) => handlePricesChange(portfolio.id, prices)}
-                        baseCurrency={portfolio.baseCurrency}
-                        homeCurrency={portfolio.homeCurrency}
-                      />
+                      {/* Fetch All Button and Positions */}
+                      {metrics.summary.positions.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-lg font-semibold text-[var(--text-primary)]">持倉</h4>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFetchAllPrices(portfolio.id);
+                              }}
+                              disabled={isFetchingAll || metrics.isLoading}
+                              className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+                            >
+                              {isFetchingAll ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-4 h-4" />
+                              )}
+                              獲取全部報價
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {metrics.summary.positions.map((position) => (
+                              <PositionCard
+                                key={position.ticker}
+                                position={position}
+                                baseCurrency={portfolio.baseCurrency}
+                                homeCurrency={portfolio.homeCurrency}
+                                onPriceUpdate={(ticker, price, exchangeRate) =>
+                                  handlePositionPriceUpdate(portfolio.id, ticker, price, exchangeRate)
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <PerformanceMetrics
                         summary={metrics.summary}
                         xirrResult={metrics.xirrResult}

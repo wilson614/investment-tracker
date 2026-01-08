@@ -35,4 +35,20 @@ public record StockQuoteResponse
     public StockMarket Market { get; init; }
     public string Source { get; init; } = string.Empty;
     public DateTime FetchedAt { get; init; }
+    /// <summary>Exchange rate to home currency (e.g., USD/TWD)</summary>
+    public decimal? ExchangeRate { get; init; }
+    /// <summary>Exchange rate pair description (e.g., "USD/TWD")</summary>
+    public string? ExchangeRatePair { get; init; }
+}
+
+/// <summary>
+/// Exchange rate response
+/// </summary>
+public record ExchangeRateResponse
+{
+    public string FromCurrency { get; init; } = string.Empty;
+    public string ToCurrency { get; init; } = string.Empty;
+    public decimal Rate { get; init; }
+    public string Source { get; init; } = string.Empty;
+    public DateTime FetchedAt { get; init; }
 }
