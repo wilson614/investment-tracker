@@ -81,6 +81,39 @@ public class TwseIndexPriceService : ITwseIndexPriceService
         }
     }
 
+    public async Task<decimal?> GetCurrentPriceWithFallbackAsync(CancellationToken cancellationToken = default)
+    {
+        // Try real-time API first
+        var realTimePrice = await GetCurrentPriceAsync(cancellationToken);
+        if (realTimePrice != null)
+        {
+            return realTimePrice;
+        }
+
+        // Fallback: use the latest available historical data
+        _logger.LogInformation("Real-time TWSE API failed, trying historical fallback");
+
+        // Try current month first
+        var now = DateTime.Now;
+        var price = await GetMonthEndPriceAsync(now.Year, now.Month, cancellationToken);
+        if (price != null)
+        {
+            _logger.LogDebug("Using current month's latest price {Price} as fallback", price);
+            return price;
+        }
+
+        // Try previous month if current month has no data yet
+        var prevMonth = now.AddMonths(-1);
+        price = await GetMonthEndPriceAsync(prevMonth.Year, prevMonth.Month, cancellationToken);
+        if (price != null)
+        {
+            _logger.LogDebug("Using previous month's price {Price} as fallback", price);
+            return price;
+        }
+
+        return null;
+    }
+
     public async Task<decimal?> GetMonthEndPriceAsync(int year, int month, CancellationToken cancellationToken = default)
     {
         try
@@ -140,5 +173,6 @@ public class TwseIndexPriceService : ITwseIndexPriceService
 public interface ITwseIndexPriceService
 {
     Task<decimal?> GetCurrentPriceAsync(CancellationToken cancellationToken = default);
+    Task<decimal?> GetCurrentPriceWithFallbackAsync(CancellationToken cancellationToken = default);
     Task<decimal?> GetMonthEndPriceAsync(int year, int month, CancellationToken cancellationToken = default);
 }

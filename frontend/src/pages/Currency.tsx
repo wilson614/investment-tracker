@@ -60,6 +60,12 @@ export default function Currency() {
     });
   };
 
+  // Format TWD as integer
+  const formatTWD = (value: number | null | undefined) => {
+    if (value == null) return '0';
+    return Math.round(value).toLocaleString('zh-TW');
+  };
+
   const totalExchanged = ledgers.reduce((sum, l) => sum + l.totalExchanged, 0);
   const totalSpentOnStocks = ledgers.reduce((sum, l) => sum + l.totalSpentOnStocks, 0);
 
@@ -95,14 +101,14 @@ export default function Currency() {
         <div className="card-dark p-6 mb-8">
           <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">總覽</h2>
           <div className="grid grid-cols-2 gap-4">
-            <div className="metric-card metric-card-cream">
+            <div className="metric-card">
               <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
-              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">{formatNumber(totalExchanged)}</p>
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatTWD(totalExchanged)}</p>
               <p className="text-sm text-[var(--text-muted)]">TWD</p>
             </div>
-            <div className="metric-card metric-card-peach">
+            <div className="metric-card">
               <p className="text-sm text-[var(--text-muted)] mb-1">股票投入</p>
-              <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(totalSpentOnStocks)}
               </p>
               <p className="text-sm text-[var(--text-muted)]">外幣</p>

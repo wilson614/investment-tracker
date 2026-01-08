@@ -7,6 +7,8 @@ import type { CapeData, CapeDisplayItem, CapeValuation } from '../types';
 import { marketDataApi } from './api';
 
 const REGION_PREFS_KEY = 'cape_region_preferences';
+const CAPE_CACHE_KEY = 'cape_data_cache';
+const CAPE_CACHE_MAX_AGE = 60 * 60 * 1000; // 1 hour
 
 // All available regions from the API (based on actual API response)
 const ALL_KNOWN_REGIONS = [
@@ -126,6 +128,40 @@ const REGION_DISPLAY_NAMES: Record<string, string> = {
 let cachedData: CapeData | null = null;
 
 /**
+ * Load CAPE data from localStorage cache
+ */
+export function loadCachedCapeData(): CapeData | null {
+  try {
+    const cached = localStorage.getItem(CAPE_CACHE_KEY);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      if (age <= CAPE_CACHE_MAX_AGE) {
+        cachedData = data;
+        return data;
+      }
+    }
+  } catch {
+    // Ignore cache errors
+  }
+  return null;
+}
+
+/**
+ * Save CAPE data to localStorage cache
+ */
+function saveCapeDataToCache(data: CapeData): void {
+  try {
+    localStorage.setItem(CAPE_CACHE_KEY, JSON.stringify({
+      data,
+      timestamp: Date.now(),
+    }));
+  } catch {
+    // localStorage might be full or disabled
+  }
+}
+
+/**
  * Determine valuation level based on CAPE value compared to its historical percentiles
  * Uses the market's own historical data for comparison
  */
@@ -141,6 +177,7 @@ export function getCapeValuation(cape: number, range25th: number, range75th: num
 export async function getCapeData(): Promise<CapeData> {
   const data = await marketDataApi.getCapeData();
   cachedData = data;
+  saveCapeDataToCache(data);
   return data;
 }
 
@@ -150,6 +187,7 @@ export async function getCapeData(): Promise<CapeData> {
 export async function refreshCapeData(): Promise<CapeData> {
   const data = await marketDataApi.refreshCapeData();
   cachedData = data;
+  saveCapeDataToCache(data);
   return data;
 }
 

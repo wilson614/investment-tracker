@@ -62,7 +62,8 @@ public class IndexPriceService : IIndexPriceService
             if (marketKey == "Taiwan")
             {
                 // Taiwan uses TWSE for both real-time and historical
-                currentPrice = await _twseIndexPriceService.GetCurrentPriceAsync(cancellationToken);
+                // Use fallback method that tries historical data if real-time fails
+                currentPrice = await _twseIndexPriceService.GetCurrentPriceWithFallbackAsync(cancellationToken);
                 referencePrice = await GetTaiwanReferencePriceAsync(referenceDate, referenceYearMonth, cancellationToken);
             }
             else

@@ -23,6 +23,8 @@
   --accent-blush-soft: rgba(212, 165, 165, 0.15);
   --accent-butter: #e8d98c;
   --accent-butter-soft: rgba(232, 217, 140, 0.15);
+  --accent-sand: #d4c4a8;
+  --accent-sand-soft: rgba(212, 196, 168, 0.15);
   --accent-caramel: #c4956a;
   --accent-caramel-soft: rgba(196, 149, 106, 0.15);
 
@@ -334,6 +336,11 @@ select.input-dark option {
 .metric-card-cream {
   background-color: var(--accent-cream-soft);
   border-color: var(--accent-cream);
+}
+
+.metric-card-sand {
+  background-color: var(--accent-sand-soft);
+  border-color: var(--accent-sand);
 }
 
 .metric-card-peach {

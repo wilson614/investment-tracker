@@ -14,6 +14,12 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
     });
   };
 
+  // Format TWD as integer
+  const formatTWD = (value: number | null | undefined) => {
+    if (value == null) return '-';
+    return Math.round(value).toLocaleString('zh-TW');
+  };
+
   return (
     <div
       className="card-dark p-5 cursor-pointer hover:border-[var(--border-hover)] transition-all"
@@ -40,7 +46,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">累計換匯:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
+            {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
           </span>
         </div>
 

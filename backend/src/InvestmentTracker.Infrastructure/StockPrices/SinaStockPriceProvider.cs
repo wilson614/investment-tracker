@@ -102,8 +102,10 @@ public class SinaStockPriceProvider : IStockPriceProvider
 
         var fields = data.Split(',');
 
-        // US stocks format (based on Sina API):
-        // 0: Name, 1: Current Price, 2: Change %, 3: Timestamp, 4: Change, 5: Open, 6: High, 7: Low, ...
+        // Log actual field data for debugging
+        _logger.LogDebug("Sina API response for {Symbol}: field count={Count}, fields={Fields}",
+            symbol, fields.Length, string.Join("|", fields.Take(15)));
+
         if (fields.Length < 5)
         {
             _logger.LogWarning("Insufficient fields in Sina response for {Symbol}: {FieldCount}", symbol, fields.Length);
@@ -120,14 +122,37 @@ public class SinaStockPriceProvider : IStockPriceProvider
         decimal? change = null;
         string? changePercent = null;
 
-        if (fields.Length > 4 && decimal.TryParse(fields[4], out var changeValue))
+        // UK stocks (lse_) have different format than US stocks (gb_)
+        // UK: 0:name, 1:price, 2:high, 3:low, 4:open, 5:yesterday close, ...
+        // US: 0:name, 1:price, 2:change%, 3:timestamp, 4:change, ...
+        if (market == StockMarket.UK)
         {
-            change = changeValue;
+            // UK: Calculate change from yesterday's close (fields[5])
+            if (fields.Length > 5 && decimal.TryParse(fields[5], out var yesterdayClose) && yesterdayClose > 0)
+            {
+                change = price - yesterdayClose;
+                var pctValue = (change.Value / yesterdayClose) * 100;
+                var sign = pctValue >= 0 ? "+" : "";
+                changePercent = $"{sign}{pctValue:F2}%";
+            }
         }
-
-        if (fields.Length > 2 && !string.IsNullOrEmpty(fields[2]))
+        else
         {
-            changePercent = fields[2].Contains('%') ? fields[2] : $"{fields[2]}%";
+            // US: fields[4] contains daily change value
+            if (fields.Length > 4 && decimal.TryParse(fields[4], out var changeValue))
+            {
+                change = changeValue;
+            }
+
+            // US: fields[2] contains daily change percentage (e.g., "-1.15" for -1.15%)
+            if (fields.Length > 2 && !string.IsNullOrEmpty(fields[2]))
+            {
+                if (decimal.TryParse(fields[2], out var percentValue))
+                {
+                    var sign = percentValue >= 0 ? "+" : "";
+                    changePercent = $"{sign}{percentValue:F2}%";
+                }
+            }
         }
 
         return new StockQuoteResponse

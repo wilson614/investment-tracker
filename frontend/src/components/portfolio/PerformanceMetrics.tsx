@@ -1,3 +1,4 @@
+import React from 'react';
 import type { PortfolioSummary, XirrResult } from '../../types';
 
 interface PerformanceMetricsProps {
@@ -13,6 +14,45 @@ export function PerformanceMetrics({
   homeCurrency = 'TWD',
   isLoading = false,
 }: PerformanceMetricsProps) {
+  // Track if we've ever loaded data - only show skeleton on initial load
+  const hasLoadedRef = React.useRef(false);
+
+  // Cache the last valid values to prevent flashing
+  const lastValuesRef = React.useRef<{
+    totalCostHome: number | null;
+    totalValueHome: number | null;
+    totalUnrealizedPnlHome: number | null;
+    totalUnrealizedPnlPercentage: number | null;
+    xirrPercentage: number | null;
+    cashFlowCount: number | null;
+    positionCount: number;
+  }>({
+    totalCostHome: null,
+    totalValueHome: null,
+    totalUnrealizedPnlHome: null,
+    totalUnrealizedPnlPercentage: null,
+    xirrPercentage: null,
+    cashFlowCount: null,
+    positionCount: 0,
+  });
+
+  if (summary) {
+    hasLoadedRef.current = true;
+    // Update cached values when we have new data
+    lastValuesRef.current = {
+      totalCostHome: summary.totalCostHome,
+      totalValueHome: summary.totalValueHome ?? lastValuesRef.current.totalValueHome,
+      totalUnrealizedPnlHome: summary.totalUnrealizedPnlHome ?? lastValuesRef.current.totalUnrealizedPnlHome,
+      totalUnrealizedPnlPercentage: summary.totalUnrealizedPnlPercentage ?? lastValuesRef.current.totalUnrealizedPnlPercentage,
+      xirrPercentage: xirrResult?.xirrPercentage ?? lastValuesRef.current.xirrPercentage,
+      cashFlowCount: xirrResult?.cashFlowCount ?? lastValuesRef.current.cashFlowCount,
+      positionCount: summary.positions.length,
+    };
+  }
+
+  // Use cached values for display
+  const displayValues = lastValuesRef.current;
+
   // For TWD, round to integer; for others, keep 2 decimals
   const formatCurrency = (value: number | null | undefined) => {
     if (value == null) return '-';
@@ -34,15 +74,15 @@ export function PerformanceMetrics({
     })}%`;
   };
 
-  const pnlColor = (summary.totalUnrealizedPnlHome ?? 0) >= 0
+  const pnlColor = (displayValues.totalUnrealizedPnlHome ?? 0) >= 0
     ? 'number-positive'
     : 'number-negative';
 
-  const xirrColor = (xirrResult?.xirrPercentage ?? 0) >= 0
+  const xirrColor = (displayValues.xirrPercentage ?? 0) >= 0
     ? 'number-positive'
     : 'number-negative';
 
-  if (isLoading) {
+  if (isLoading && !hasLoadedRef.current) {
     return (
       <div className="card-dark p-6 animate-pulse">
         <div className="h-6 bg-[var(--bg-tertiary)] rounded w-1/3 mb-4"></div>
@@ -63,57 +103,49 @@ export function PerformanceMetrics({
       <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">投資組合績效</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="metric-card metric-card-cream">
+        <div className="metric-card">
           <p className="text-sm text-[var(--text-muted)] mb-1">總成本</p>
-          <p className="text-xl font-bold text-[var(--accent-cream)] number-display">
-            {formatCurrency(summary.totalCostHome)}
+          <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+            {formatCurrency(displayValues.totalCostHome)}
           </p>
           <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
         </div>
 
-        <div className="metric-card metric-card-sand">
+        <div className="metric-card">
           <p className="text-sm text-[var(--text-muted)] mb-1">目前市值</p>
-          <p className="text-xl font-bold text-[var(--accent-sand)] number-display">
-            {summary.totalValueHome != null
-              ? formatCurrency(summary.totalValueHome)
-              : '-'}
+          <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+            {formatCurrency(displayValues.totalValueHome)}
           </p>
           <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
         </div>
 
-        <div className="metric-card metric-card-peach">
+        <div className="metric-card">
           <p className="text-sm text-[var(--text-muted)] mb-1">未實現損益</p>
           <p className={`text-xl font-bold number-display ${pnlColor}`}>
-            {summary.totalUnrealizedPnlHome != null
-              ? formatCurrency(summary.totalUnrealizedPnlHome)
-              : '-'}
+            {formatCurrency(displayValues.totalUnrealizedPnlHome)}
           </p>
-          {summary.totalUnrealizedPnlPercentage != null && (
+          {displayValues.totalUnrealizedPnlPercentage != null && (
             <p className={`text-sm ${pnlColor}`}>
-              {formatPercent(summary.totalUnrealizedPnlPercentage)}
+              {formatPercent(displayValues.totalUnrealizedPnlPercentage)}
             </p>
           )}
         </div>
 
-        <div className="metric-card metric-card-blush">
+        <div className="metric-card">
           <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
-          {xirrResult?.xirrPercentage != null ? (
-            <p className={`text-xl font-bold number-display ${xirrColor}`}>
-              {formatPercent(xirrResult.xirrPercentage)}
-            </p>
-          ) : (
-            <p className="text-xl font-bold text-[var(--text-muted)]">-</p>
-          )}
-          {xirrResult && (
+          <p className={`text-xl font-bold number-display ${displayValues.xirrPercentage != null ? xirrColor : 'text-[var(--text-muted)]'}`}>
+            {formatPercent(displayValues.xirrPercentage)}
+          </p>
+          {displayValues.cashFlowCount != null && (
             <p className="text-sm text-[var(--text-muted)]">
-              基於 {xirrResult.cashFlowCount} 筆交易計算
+              基於 {displayValues.cashFlowCount} 筆交易計算
             </p>
           )}
         </div>
       </div>
 
       <div className="mt-4 text-sm text-[var(--text-muted)]">
-        <p>持倉數量: {summary.positions.length}</p>
+        <p>持倉數量: {displayValues.positionCount}</p>
       </div>
     </div>
   );

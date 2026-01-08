@@ -37,6 +37,11 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
     });
   };
 
+  // Format TWD as integer (no decimals)
+  const formatTWD = (value: number) => {
+    return Math.round(value).toLocaleString('zh-TW');
+  };
+
   if (transactions.length === 0) {
     return (
       <div className="text-center py-12 text-[var(--text-muted)] text-base">
@@ -89,7 +94,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 {formatNumber(tx.fees)}
               </td>
               <td className="text-right font-medium number-display whitespace-nowrap">
-                {formatNumber(tx.totalCostHome)}
+                {formatTWD(tx.totalCostHome)}
               </td>
               <td className="text-right">
                 {tx.realizedPnlHome != null ? (
@@ -98,7 +103,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                       tx.realizedPnlHome >= 0 ? 'number-positive' : 'number-negative'
                     }`}
                   >
-                    {tx.realizedPnlHome >= 0 ? '+' : ''}{formatNumber(tx.realizedPnlHome)}
+                    {tx.realizedPnlHome >= 0 ? '+' : ''}{formatTWD(tx.realizedPnlHome)}
                   </span>
                 ) : (
                   <span className="text-[var(--text-muted)]">-</span>

@@ -1,20 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { ChevronDown, RefreshCw, Loader2 } from 'lucide-react';
-import { portfolioApi, stockPriceApi } from '../services/api';
-import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
-import { PositionCard } from '../components/portfolio/PositionCard';
+import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
 import { MarketContext } from '../components/dashboard';
-import { StockMarket } from '../types';
-import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse } from '../types';
-
-interface PortfolioWithMetrics {
-  portfolio: Portfolio;
-  summary: PortfolioSummary | null;
-  xirrResult: XirrResult | null;
-  isLoading: boolean;
-  error: string | null;
-}
+import { StockMarket, TransactionType } from '../types';
+import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 
 interface CachedQuote {
   quote: StockQuoteResponse;
@@ -62,147 +51,107 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
-export function DashboardPage() {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [portfolioMetrics, setPortfolioMetrics] = useState<Map<string, PortfolioWithMetrics>>(new Map());
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
-  const [fetchingAllPortfolioId, setFetchingAllPortfolioId] = useState<string | null>(null);
+interface PositionWithPnl {
+  ticker: string;
+  totalShares: number;
+  avgCostPerShareHome: number;
+  currentPrice?: number;
+  pnlPercentage?: number;
+  valueHome?: number;
+}
 
-  // Track current prices per portfolio
-  const currentPricesRef = useRef<Map<string, Record<string, CurrentPriceInfo>>>(new Map());
+export function DashboardPage() {
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
+  const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<StockTransaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
 
   useEffect(() => {
-    loadPortfolios();
+    loadDashboardData();
   }, []);
 
-  const loadPortfolios = async () => {
+  const loadDashboardData = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await portfolioApi.getAll();
-      setPortfolios(data);
 
-      const metricsMap = new Map<string, PortfolioWithMetrics>();
-      await Promise.all(
-        data.map(async (portfolio) => {
-          try {
-            // First get basic summary to know all tickers
-            const basicSummary = await portfolioApi.getSummary(portfolio.id);
-            const tickers = basicSummary.positions.map(p => p.ticker);
+      const portfolios = await portfolioApi.getAll();
+      if (portfolios.length === 0) {
+        setIsLoading(false);
+        return;
+      }
 
-            // Load cached prices for all positions
-            const cachedPrices = loadCachedPrices(tickers);
-            currentPricesRef.current.set(portfolio.id, cachedPrices);
+      // Use first portfolio (system designed for single portfolio)
+      const p = portfolios[0];
+      setPortfolio(p);
 
-            // If we have cached prices, recalculate with them
-            if (Object.keys(cachedPrices).length > 0) {
-              const [summary, xirrResult] = await Promise.all([
-                portfolioApi.getSummary(portfolio.id, cachedPrices),
-                portfolioApi.calculateXirr(portfolio.id, { currentPrices: cachedPrices }),
-              ]);
-              metricsMap.set(portfolio.id, {
-                portfolio,
-                summary,
-                xirrResult,
-                isLoading: false,
-                error: null,
-              });
-            } else {
-              metricsMap.set(portfolio.id, {
-                portfolio,
-                summary: basicSummary,
-                xirrResult: null,
-                isLoading: false,
-                error: null,
-              });
-            }
-          } catch (err) {
-            metricsMap.set(portfolio.id, {
-              portfolio,
-              summary: null,
-              xirrResult: null,
-              isLoading: false,
-              error: err instanceof Error ? err.message : 'Failed to load',
-            });
-          }
-        })
+      // Load summary and transactions in parallel
+      const [basicSummary, txData] = await Promise.all([
+        portfolioApi.getSummary(p.id),
+        transactionApi.getByPortfolio(p.id),
+      ]);
+
+      const tickers = basicSummary.positions.map(pos => pos.ticker);
+      const cachedPrices = loadCachedPrices(tickers);
+      currentPricesRef.current = cachedPrices;
+
+      // Get most recent 5 transactions
+      const sortedTx = [...txData].sort((a, b) =>
+        new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
       );
-      setPortfolioMetrics(metricsMap);
+      setRecentTransactions(sortedTx.slice(0, 5));
+
+      // If we have cached prices, recalculate with them
+      if (Object.keys(cachedPrices).length > 0) {
+        const [summaryWithPrices, xirr] = await Promise.all([
+          portfolioApi.getSummary(p.id, cachedPrices),
+          portfolioApi.calculateXirr(p.id, { currentPrices: cachedPrices }),
+        ]);
+        setSummary(summaryWithPrices);
+        setXirrResult(xirr);
+      } else {
+        setSummary(basicSummary);
+        setXirrResult(null);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load portfolios');
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updateSummaryWithPrices = async (portfolioId: string, prices: Record<string, CurrentPriceInfo>) => {
-    const metrics = portfolioMetrics.get(portfolioId);
-    if (!metrics || Object.keys(prices).length === 0) return;
+  const handleFetchAllPrices = async () => {
+    if (!portfolio || !summary) return;
 
-    setPortfolioMetrics((prev) => {
-      const newMap = new Map(prev);
-      newMap.set(portfolioId, { ...metrics, isLoading: true });
-      return newMap;
-    });
+    setIsFetchingPrices(true);
 
     try {
-      const [summary, xirrResult] = await Promise.all([
-        portfolioApi.getSummary(portfolioId, prices),
-        portfolioApi.calculateXirr(portfolioId, { currentPrices: prices }),
-      ]);
-
-      setPortfolioMetrics((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(portfolioId, {
-          ...metrics,
-          summary,
-          xirrResult,
-          isLoading: false,
-          error: null,
-        });
-        return newMap;
-      });
-    } catch (err) {
-      setPortfolioMetrics((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(portfolioId, {
-          ...metrics,
-          isLoading: false,
-          error: err instanceof Error ? err.message : 'Failed to calculate',
-        });
-        return newMap;
-      });
-    }
-  };
-
-  const handlePositionPriceUpdate = (portfolioId: string, ticker: string, price: number, exchangeRate: number) => {
-    const portfolioPrices = currentPricesRef.current.get(portfolioId) || {};
-    portfolioPrices[ticker] = { price, exchangeRate };
-    currentPricesRef.current.set(portfolioId, portfolioPrices);
-    updateSummaryWithPrices(portfolioId, { ...portfolioPrices });
-  };
-
-  const handleFetchAllPrices = async (portfolioId: string) => {
-    const metrics = portfolioMetrics.get(portfolioId);
-    if (!metrics?.summary) return;
-
-    setFetchingAllPortfolioId(portfolioId);
-
-    try {
-      const homeCurrency = metrics.portfolio.homeCurrency;
-      const fetchPromises = metrics.summary.positions.map(async (position) => {
+      const homeCurrency = portfolio.homeCurrency;
+      const fetchPromises = summary.positions.map(async (position) => {
         try {
           const market = guessMarket(position.ticker);
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
+          let finalMarket = market;
 
           // If US market fails, try UK as fallback (for ETFs like VWRA)
           if (!quote && market === StockMarket.US) {
             quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
+            if (quote) finalMarket = StockMarket.UK;
           }
 
           if (quote?.exchangeRate) {
+            // Save full quote to cache
+            const cacheData: CachedQuote = {
+              quote,
+              updatedAt: new Date().toISOString(),
+              market: finalMarket,
+            };
+            localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
             return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
           }
           return null;
@@ -212,6 +161,13 @@ export function DashboardPage() {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
               if (ukQuote?.exchangeRate) {
+                // Save full quote to cache
+                const cacheData: CachedQuote = {
+                  quote: ukQuote,
+                  updatedAt: new Date().toISOString(),
+                  market: StockMarket.UK,
+                };
+                localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
                 return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
               }
             } catch {
@@ -232,15 +188,19 @@ export function DashboardPage() {
         }
       });
 
-      const existingPrices = currentPricesRef.current.get(portfolioId) || {};
-      const allPrices = { ...existingPrices, ...newPrices };
-      currentPricesRef.current.set(portfolioId, allPrices);
+      const allPrices = { ...currentPricesRef.current, ...newPrices };
+      currentPricesRef.current = allPrices;
 
       if (Object.keys(newPrices).length > 0) {
-        await updateSummaryWithPrices(portfolioId, allPrices);
+        const [summaryWithPrices, xirr] = await Promise.all([
+          portfolioApi.getSummary(portfolio.id, allPrices),
+          portfolioApi.calculateXirr(portfolio.id, { currentPrices: allPrices }),
+        ]);
+        setSummary(summaryWithPrices);
+        setXirrResult(xirr);
       }
     } finally {
-      setFetchingAllPortfolioId(null);
+      setIsFetchingPrices(false);
     }
   };
 
@@ -257,32 +217,46 @@ export function DashboardPage() {
     return `${sign}${value.toFixed(2)}%`;
   };
 
-  const aggregateTotals = Array.from(portfolioMetrics.values()).reduce(
-    (acc, metrics) => {
-      if (metrics.summary) {
-        acc.totalCost += metrics.summary.totalCostHome;
-        if (metrics.summary.totalValueHome != null) {
-          acc.totalValue += metrics.summary.totalValueHome;
-          acc.hasValue = true;
-        }
-        if (metrics.summary.totalUnrealizedPnlHome != null) {
-          acc.totalPnl += metrics.summary.totalUnrealizedPnlHome;
-        }
-        acc.positionCount += metrics.summary.positions.length;
-      }
-      if (metrics.xirrResult?.xirr != null) {
-        acc.xirrSum += metrics.xirrResult.xirr;
-        acc.xirrCount += 1;
-      }
-      return acc;
-    },
-    { totalCost: 0, totalValue: 0, totalPnl: 0, positionCount: 0, hasValue: false, xirrSum: 0, xirrCount: 0 }
-  );
+  // Format date
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
 
-  // Calculate return percentage
-  const returnPercentage = aggregateTotals.hasValue && aggregateTotals.totalCost > 0
-    ? (aggregateTotals.totalPnl / aggregateTotals.totalCost) * 100
-    : null;
+  // Calculate position data with PnL
+  const getPositionsWithPnl = (): PositionWithPnl[] => {
+    if (!summary) return [];
+
+    return summary.positions.map(pos => ({
+      ticker: pos.ticker,
+      totalShares: pos.totalShares,
+      avgCostPerShareHome: pos.averageCostPerShareHome,
+      currentPrice: pos.currentPrice,
+      pnlPercentage: pos.unrealizedPnlPercentage,
+      valueHome: pos.currentValueHome,
+    }));
+  };
+
+  // Get positions sorted by PnL percentage (best performers first)
+  const getTopPerformers = () => {
+    return getPositionsWithPnl()
+      .filter(p => p.pnlPercentage != null)
+      .sort((a, b) => (b.pnlPercentage ?? 0) - (a.pnlPercentage ?? 0));
+  };
+
+  // Calculate asset allocation percentages
+  const getAssetAllocation = () => {
+    if (!summary?.totalValueHome) return [];
+
+    return summary.positions
+      .filter(p => p.currentValueHome != null)
+      .map(p => ({
+        ticker: p.ticker,
+        value: p.currentValueHome!,
+        percentage: (p.currentValueHome! / summary.totalValueHome!) * 100,
+      }))
+      .sort((a, b) => b.percentage - a.percentage);
+  };
 
   if (isLoading) {
     return (
@@ -300,148 +274,180 @@ export function DashboardPage() {
     );
   }
 
+  if (!portfolio) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
+          <div className="card-dark p-8 text-center">
+            <p className="text-[var(--text-muted)] text-lg">尚無投資組合，請先建立一個投資組合。</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const hasValueData = summary?.totalValueHome != null;
+  const returnPercentage = hasValueData && summary?.totalCostHome
+    ? ((summary.totalUnrealizedPnlHome ?? 0) / summary.totalCostHome) * 100
+    : null;
+
+  const topPerformers = getTopPerformers();
+  const assetAllocation = getAssetAllocation();
+
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
+          <button
+            onClick={handleFetchAllPrices}
+            disabled={isFetchingPrices || !summary?.positions.length}
+            className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {isFetchingPrices ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            更新報價
+          </button>
+        </div>
 
         {/* Market Context - CAPE */}
-        <MarketContext className="mb-8" />
+        <MarketContext className="mb-6" />
 
-        {/* Aggregate Summary */}
-        <div className="card-dark p-6 mb-8">
-          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">整體投資組合摘要</h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="metric-card metric-card-cream">
+        {/* Portfolio Summary */}
+        <div className="card-dark p-6 mb-6">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">投資組合總覽</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">總成本</p>
-              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">
-                {formatTWD(aggregateTotals.totalCost)}
+              <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {formatTWD(summary?.totalCostHome)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
-            <div className="metric-card metric-card-sand">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">目前市值</p>
-              <p className="text-2xl font-bold text-[var(--accent-sand)] number-display">
-                {aggregateTotals.hasValue ? formatTWD(aggregateTotals.totalValue) : '-'}
+              <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {hasValueData ? formatTWD(summary?.totalValueHome) : '-'}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
-            <div className="metric-card metric-card-peach">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">未實現損益</p>
-              <p className={`text-2xl font-bold number-display ${aggregateTotals.totalPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {aggregateTotals.hasValue ? formatTWD(aggregateTotals.totalPnl) : '-'}
+              <p className={`text-xl font-bold number-display ${(summary?.totalUnrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+                {hasValueData ? formatTWD(summary?.totalUnrealizedPnlHome) : '-'}
               </p>
               <p className={`text-sm ${returnPercentage != null && returnPercentage >= 0 ? 'number-positive' : returnPercentage != null ? 'number-negative' : 'text-[var(--text-muted)]'}`}>
                 {formatPercent(returnPercentage)}
               </p>
             </div>
-            <div className="metric-card metric-card-blush">
+            <div className="metric-card">
+              <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
+              {xirrResult?.xirrPercentage != null ? (
+                <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
+                  {formatPercent(xirrResult.xirrPercentage)}
+                </p>
+              ) : (
+                <p className="text-xl font-bold text-[var(--text-muted)]">-</p>
+              )}
+              {xirrResult && (
+                <p className="text-sm text-[var(--text-muted)]">
+                  {xirrResult.cashFlowCount} 筆交易
+                </p>
+              )}
+            </div>
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">持倉數量</p>
-              <p className="text-2xl font-bold text-[var(--accent-blush)] number-display">
-                {aggregateTotals.positionCount}
+              <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {summary?.positions.length ?? 0}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Portfolio List */}
-        {portfolios.length === 0 ? (
-          <div className="card-dark p-8 text-center">
-            <p className="text-[var(--text-muted)] text-lg mb-4">尚無投資組合</p>
-            <Link
-              to="/"
-              className="btn-accent inline-block"
-            >
-              建立投資組合
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {portfolios.map((portfolio) => {
-              const metrics = portfolioMetrics.get(portfolio.id);
-              const isSelected = selectedPortfolioId === portfolio.id;
-              const isFetchingAll = fetchingAllPortfolioId === portfolio.id;
-
-              return (
-                <div key={portfolio.id} className="card-dark overflow-hidden">
-                  <div
-                    className="px-6 py-5 flex justify-between items-center cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
-                    onClick={() => setSelectedPortfolioId(isSelected ? null : portfolio.id)}
-                  >
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">投資組合</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Asset Allocation */}
+          <div className="card-dark p-6">
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">資產配置</h2>
+            {assetAllocation.length > 0 ? (
+              <div className="space-y-3">
+                {assetAllocation.map((item) => (
+                  <div key={item.ticker} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[var(--text-primary)] font-medium">{item.ticker}</span>
+                      <span className="text-[var(--text-secondary)]">{item.percentage.toFixed(1)}%</span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <Link
-                        to={`/portfolio/${portfolio.id}`}
-                        className="text-[var(--accent-peach)] hover:underline text-base"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        查看詳情 →
-                      </Link>
-                      <ChevronDown
-                        className={`w-6 h-6 text-[var(--text-muted)] transform transition-transform ${isSelected ? 'rotate-180' : ''}`}
+                    <div className="w-full h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[var(--accent-peach)] transition-all"
+                        style={{ width: `${Math.min(item.percentage, 100)}%` }}
                       />
                     </div>
                   </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[var(--text-muted)] text-center py-4">
+                獲取報價後顯示資產配置
+              </p>
+            )}
+          </div>
 
-                  {isSelected && metrics?.summary && (
-                    <div className="p-6 border-t border-[var(--border-color)] space-y-6">
-                      {/* Fetch All Button and Positions */}
-                      {metrics.summary.positions.length > 0 && (
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-semibold text-[var(--text-primary)]">持倉</h4>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleFetchAllPrices(portfolio.id);
-                              }}
-                              disabled={isFetchingAll || metrics.isLoading}
-                              className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
-                            >
-                              {isFetchingAll ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <RefreshCw className="w-4 h-4" />
-                              )}
-                              獲取全部報價
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {metrics.summary.positions.map((position) => (
-                              <PositionCard
-                                key={position.ticker}
-                                position={position}
-                                baseCurrency={portfolio.baseCurrency}
-                                homeCurrency={portfolio.homeCurrency}
-                                onPriceUpdate={(ticker, price, exchangeRate) =>
-                                  handlePositionPriceUpdate(portfolio.id, ticker, price, exchangeRate)
-                                }
-                              />
-                            ))}
-                          </div>
-                        </div>
+          {/* Position Performance */}
+          <div className="card-dark p-6">
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">持倉績效</h2>
+            {topPerformers.length > 0 ? (
+              <div className="space-y-3">
+                {topPerformers.map((pos) => (
+                  <div key={pos.ticker} className="flex items-center justify-between py-2 border-b border-[var(--border-color)] last:border-b-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[var(--text-primary)] font-medium">{pos.ticker}</span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {pos.totalShares.toFixed(2)} 股
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(pos.pnlPercentage ?? 0) >= 0 ? (
+                        <TrendingUp className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <TrendingDown className="w-4 h-4 text-red-500" />
                       )}
-
-                      <PerformanceMetrics
-                        summary={metrics.summary}
-                        xirrResult={metrics.xirrResult}
-                        homeCurrency={portfolio.homeCurrency}
-                        isLoading={metrics.isLoading}
-                      />
+                      <span className={`font-mono font-medium ${(pos.pnlPercentage ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {formatPercent(pos.pnlPercentage)}
+                      </span>
                     </div>
-                  )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[var(--text-muted)] text-center py-4">
+                獲取報價後顯示持倉績效
+              </p>
+            )}
+          </div>
+        </div>
 
-                  {isSelected && metrics?.error && (
-                    <div className="p-6 border-t border-[var(--border-color)]">
-                      <p className="text-[var(--color-danger)] text-base">{metrics.error}</p>
-                    </div>
-                  )}
+        {/* Recent Transactions */}
+        {recentTransactions.length > 0 && (
+          <div className="card-dark p-6 mt-6">
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">最近交易</h2>
+            <div className="space-y-2">
+              {recentTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between py-2 border-b border-[var(--border-color)] last:border-b-0">
+                  <div className="flex items-center gap-4">
+                    <span className={`text-sm font-medium px-2 py-0.5 rounded ${tx.transactionType === TransactionType.Buy ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {tx.transactionType === TransactionType.Buy ? '買入' : '賣出'}
+                    </span>
+                    <span className="text-[var(--text-primary)] font-medium">{tx.ticker}</span>
+                    <span className="text-sm text-[var(--text-muted)]">{tx.shares} 股</span>
+                  </div>
+                  <span className="text-sm text-[var(--text-muted)]">{formatDate(tx.transactionDate)}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         )}
       </div>

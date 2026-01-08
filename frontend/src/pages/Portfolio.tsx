@@ -8,7 +8,7 @@ import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { StockImportButton } from '../components/import';
 import { StockMarket } from '../types';
-import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction } from '../types';
+import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
 const guessMarket = (ticker: string): StockMarketType => {
@@ -21,13 +21,76 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
+// Cache keys for localStorage
+const getPerformanceCacheKey = (portfolioId: string) => `perf_cache_${portfolioId}`;
+const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+
+interface CachedPerformance {
+  summary: PortfolioSummary;
+  xirrResult: XirrResult | null;
+  cachedAt: string;
+}
+
+interface CachedQuote {
+  quote: StockQuoteResponse;
+  updatedAt: string;
+  market: StockMarketType;
+}
+
+// Load cached quotes for tickers (same logic as Dashboard)
+const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
+  const prices: Record<string, CurrentPriceInfo> = {};
+  const maxAge = 60 * 60 * 1000; // 1 hour
+
+  for (const ticker of tickers) {
+    try {
+      const cached = localStorage.getItem(getQuoteCacheKey(ticker));
+      if (cached) {
+        const data: CachedQuote = JSON.parse(cached);
+        const cacheAge = Date.now() - new Date(data.updatedAt).getTime();
+        if (cacheAge <= maxAge && data.quote.exchangeRate) {
+          prices[ticker] = {
+            price: data.quote.price,
+            exchangeRate: data.quote.exchangeRate,
+          };
+        }
+      }
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  return prices;
+};
+
 export function PortfolioPage() {
   const { id } = useParams<{ id: string }>();
-  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
-  const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Load cached performance data on init
+  const loadCachedPerformance = (): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
+    if (!id) return { summary: null, xirrResult: null };
+    try {
+      const cached = localStorage.getItem(getPerformanceCacheKey(id));
+      if (cached) {
+        const data: CachedPerformance = JSON.parse(cached);
+        // Only use cache if less than 1 hour old
+        const cacheAge = Date.now() - new Date(data.cachedAt).getTime();
+        if (cacheAge < 60 * 60 * 1000) {
+          return { summary: data.summary, xirrResult: data.xirrResult };
+        }
+      }
+    } catch {
+      // Ignore cache errors
+    }
+    return { summary: null, xirrResult: null };
+  };
+
+  const cachedPerf = loadCachedPerformance();
+  const [summary, setSummary] = useState<PortfolioSummary | null>(cachedPerf.summary);
+  const [xirrResult, setXirrResult] = useState<XirrResult | null>(cachedPerf.xirrResult);
+  const [isLoading, setIsLoading] = useState(cachedPerf.summary === null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFetchingAll, setIsFetchingAll] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
@@ -43,13 +106,28 @@ export function PortfolioPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const [summaryData, txData] = await Promise.all([
+      const [basicSummary, txData] = await Promise.all([
         portfolioApi.getSummary(id),
         transactionApi.getByPortfolio(id),
       ]);
-      setSummary(summaryData);
       setTransactions(txData);
-      currentPricesRef.current = {};
+
+      // Load cached prices for all positions
+      const tickers = basicSummary.positions.map(pos => pos.ticker);
+      const cachedPrices = loadCachedPrices(tickers);
+      currentPricesRef.current = cachedPrices;
+
+      // If we have cached prices, calculate with them immediately
+      if (Object.keys(cachedPrices).length > 0) {
+        const [summaryWithPrices, xirr] = await Promise.all([
+          portfolioApi.getSummary(id, cachedPrices),
+          portfolioApi.calculateXirr(id, { currentPrices: cachedPrices }),
+        ]);
+        setSummary(summaryWithPrices);
+        setXirrResult(xirr);
+      } else {
+        setSummary(basicSummary);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load portfolio');
     } finally {
@@ -104,6 +182,18 @@ export function PortfolioPage() {
       ]);
       setSummary(summaryData);
       setXirrResult(xirrData);
+
+      // Cache the performance data
+      try {
+        const cacheData: CachedPerformance = {
+          summary: summaryData,
+          xirrResult: xirrData,
+          cachedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(getPerformanceCacheKey(id), JSON.stringify(cacheData));
+      } catch {
+        // Ignore cache errors
+      }
     } catch (err) {
       console.error('Failed to calculate performance:', err);
     } finally {
@@ -127,12 +217,21 @@ export function PortfolioPage() {
         try {
           const market = guessMarket(position.ticker);
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
+          let finalMarket = market;
 
           if (!quote && market === StockMarket.US) {
             quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
+            if (quote) finalMarket = StockMarket.UK;
           }
 
           if (quote?.exchangeRate) {
+            // Save full quote to cache for PositionCard to use
+            const cacheData: CachedQuote = {
+              quote,
+              updatedAt: new Date().toISOString(),
+              market: finalMarket,
+            };
+            localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
             return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
           }
           return null;
@@ -141,6 +240,13 @@ export function PortfolioPage() {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
               if (ukQuote?.exchangeRate) {
+                // Save full quote to cache
+                const cacheData: CachedQuote = {
+                  quote: ukQuote,
+                  updatedAt: new Date().toISOString(),
+                  market: StockMarket.UK,
+                };
+                localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
                 return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
               }
             } catch {
@@ -166,6 +272,9 @@ export function PortfolioPage() {
       if (Object.keys(newPrices).length > 0) {
         await updateSummaryWithPrices({ ...currentPricesRef.current });
       }
+
+      // Trigger PositionCard to re-read from cache
+      setRefreshTrigger(Date.now());
     } finally {
       setIsFetchingAll(false);
     }
@@ -254,19 +363,20 @@ export function PortfolioPage() {
             )}
           </div>
           {!isEditingDescription && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowForm(true)}
-                className="btn-accent px-3 py-1.5 text-sm"
-              >
-                + 新增交易
-              </button>
-              <StockImportButton
-                portfolioId={id!}
-                onImportComplete={loadData}
-                compact
-              />
-            </div>
+            <button
+              type="button"
+              onClick={handleFetchAllPrices}
+              disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
+              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+              title="更新報價"
+            >
+              {isFetchingAll ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              更新報價
+            </button>
           )}
         </div>
 
@@ -283,24 +393,9 @@ export function PortfolioPage() {
         {/* Positions */}
         {summary.positions.length > 0 ? (
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                持倉 <span className="text-sm font-normal text-[var(--text-muted)]">（點擊查看詳情）</span>
-              </h2>
-              <button
-                type="button"
-                onClick={handleFetchAllPrices}
-                disabled={isFetchingAll || isCalculating}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                {isFetchingAll ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                獲取全部報價
-              </button>
-            </div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">
+              持倉 <span className="text-sm font-normal text-[var(--text-muted)]">（點擊查看詳情）</span>
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {summary.positions.map((position) => (
                 <Link
@@ -313,6 +408,7 @@ export function PortfolioPage() {
                     baseCurrency={summary.portfolio.baseCurrency}
                     homeCurrency={summary.portfolio.homeCurrency}
                     onPriceUpdate={handlePositionPriceUpdate}
+                    refreshTrigger={refreshTrigger}
                   />
                 </Link>
               ))}
@@ -326,10 +422,23 @@ export function PortfolioPage() {
 
         {/* Transaction History */}
         <div className="card-dark overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--border-color)]">
+          <div className="px-5 py-4 border-b border-[var(--border-color)] flex justify-between items-center">
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
               全部交易紀錄
             </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowForm(true)}
+                className="btn-accent px-3 py-1.5 text-sm"
+              >
+                + 新增交易
+              </button>
+              <StockImportButton
+                portfolioId={id!}
+                onImportComplete={loadData}
+                compact
+              />
+            </div>
           </div>
           {transactions.length > 0 ? (
             <TransactionList

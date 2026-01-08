@@ -28,6 +28,29 @@ const MARKET_LABELS: Record<StockMarketType, string> = {
   [StockMarket.UK]: '英股',
 };
 
+// Cache key for localStorage (same as PositionCard)
+const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+
+interface CachedQuote {
+  quote: StockQuoteResponse;
+  updatedAt: string;
+  market: StockMarketType;
+}
+
+// Load cached market from localStorage
+const loadCachedMarket = (ticker: string): StockMarketType => {
+  try {
+    const cached = localStorage.getItem(getQuoteCacheKey(ticker));
+    if (cached) {
+      const data: CachedQuote = JSON.parse(cached);
+      return data.market;
+    }
+  } catch {
+    // Ignore cache errors
+  }
+  return guessMarket(ticker);
+};
+
 export function PositionDetailPage() {
   const { id: portfolioId, ticker } = useParams<{ id: string; ticker: string }>();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
@@ -38,7 +61,7 @@ export function PositionDetailPage() {
 
   // Quote state
   const [selectedMarket, setSelectedMarket] = useState<StockMarketType>(
-    ticker ? guessMarket(ticker) : StockMarket.US
+    ticker ? loadCachedMarket(ticker) : StockMarket.US
   );
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [lastQuote, setLastQuote] = useState<StockQuoteResponse | null>(null);
@@ -253,7 +276,7 @@ export function PositionDetailPage() {
               </div>
 
               <div className="metric-card metric-card-sand">
-                <p className="text-sm text-[var(--text-muted)] mb-1">平均成本</p>
+                <p className="text-sm text-[var(--text-muted)] mb-1">單位成本</p>
                 <p className="text-xl font-bold text-[var(--accent-sand)] number-display">
                   {formatNumber(position.averageCostPerShareSource)}
                 </p>

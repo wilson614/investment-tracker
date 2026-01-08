@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Loader2, Settings2 } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import { stockPriceApi } from '../../services/api';
 import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse } from '../../types';
 import { StockMarket } from '../../types';
@@ -10,6 +10,7 @@ interface PositionCardProps {
   homeCurrency?: string;
   onPriceUpdate?: (ticker: string, price: number, exchangeRate: number) => void;
   autoFetch?: boolean;
+  refreshTrigger?: number;
 }
 
 const guessMarket = (ticker: string): StockMarketType => {
@@ -46,6 +47,7 @@ export function PositionCard({
   homeCurrency = 'TWD',
   onPriceUpdate,
   autoFetch = true,
+  refreshTrigger,
 }: PositionCardProps) {
   // Load cached data on init
   const loadCachedQuote = (): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
@@ -75,6 +77,19 @@ export function PositionCard({
   const [error, setError] = useState<string | null>(null);
   const [showMarketSelector, setShowMarketSelector] = useState(false);
   const hasFetched = useRef(false);
+
+  // Re-read from cache when refreshTrigger changes (parent finished fetching)
+  useEffect(() => {
+    if (refreshTrigger) {
+      const freshData = loadCachedQuote();
+      if (freshData.quote) {
+        setLastQuote(freshData.quote);
+        setLastUpdated(freshData.updatedAt);
+        setSelectedMarket(freshData.market);
+        setFetchStatus('success');
+      }
+    }
+  }, [refreshTrigger]);
 
   // Auto-fetch on mount (only if no cache or cache is old)
   useEffect(() => {
@@ -203,77 +218,56 @@ export function PositionCard({
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all">
-      {/* Header: Ticker + Quote on same row */}
+      {/* Header: Ticker + Quote */}
       <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-[var(--accent-cream)]">{position.ticker}</h3>
-              <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded">
-                {MARKET_LABELS[selectedMarket]}
-              </span>
-            </div>
-            <span className="text-sm text-[var(--text-muted)] number-display">
-              {formatNumber(position.totalShares, 4)} 股
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-[var(--accent-cream)]">{position.ticker}</h3>
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded">
+              {MARKET_LABELS[selectedMarket]}
             </span>
-          </div>
-        </div>
-
-        {/* Quote display (compact) */}
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            {lastQuote ? (
-              <>
-                <div className="text-base font-bold text-[var(--text-primary)] number-display">
-                  {formatNumber(lastQuote.price)} {baseCurrency}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] number-display">
-                  匯率 {formatNumber(lastQuote.exchangeRate ?? 0, 4)}
-                </div>
-              </>
-            ) : (
-              <div className="text-base text-[var(--text-muted)]">-</div>
-            )}
-          </div>
-          <div className="flex flex-col gap-0.5">
             <button
               type="button"
-              onClick={() => handleFetchQuote()}
-              disabled={fetchStatus === 'loading'}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-hover)] rounded transition-colors disabled:opacity-50"
-              title="獲取即時報價"
-            >
-              {fetchStatus === 'loading' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMarketSelector(!showMarketSelector)}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors opacity-50 hover:opacity-100"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowMarketSelector(!showMarketSelector); }}
+              className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors opacity-40 hover:opacity-100"
               title="切換市場"
             >
-              <Settings2 className="w-3 h-3" />
+              <Settings2 className="w-3.5 h-3.5" />
             </button>
           </div>
+          <span className="text-sm text-[var(--text-muted)] number-display">
+            {formatNumber(position.totalShares, 4)} 股
+          </span>
         </div>
-      </div>
 
-      {/* Update time & error */}
-      {(lastUpdated || fetchStatus === 'error') && (
-        <div className="flex justify-end items-center gap-2 mb-3 text-xs">
-          {lastUpdated && (
-            <span className="text-[var(--text-muted)]">
-              更新於 {formatTime(lastUpdated)}
-            </span>
+        {/* Quote display */}
+        <div className="text-right">
+          {lastQuote ? (
+            <>
+              <div className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {formatNumber(lastQuote.price)} <span className="text-sm font-normal text-[var(--text-muted)]">{baseCurrency}</span>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                {lastQuote.changePercent && (
+                  <span className={`text-sm font-medium ${lastQuote.changePercent.startsWith('-') ? 'number-negative' : 'number-positive'}`}>
+                    {lastQuote.changePercent}
+                  </span>
+                )}
+                {lastUpdated && (
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {formatTime(lastUpdated)}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="text-xl text-[var(--text-muted)]">-</div>
           )}
           {fetchStatus === 'error' && (
-            <span className="text-[var(--color-danger)]">{error}</span>
+            <div className="text-xs text-[var(--color-danger)]">{error}</div>
           )}
         </div>
-      )}
+      </div>
 
       {/* Market selector popup */}
       {showMarketSelector && (
@@ -300,7 +294,7 @@ export function PositionCard({
 
       <div className="space-y-3 text-base">
         <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">平均成本:</span>
+          <span className="text-[var(--text-muted)]">單位成本:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
             {formatNumber(position.averageCostPerShareSource)} {baseCurrency}
           </span>

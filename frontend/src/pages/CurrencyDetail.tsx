@@ -203,6 +203,12 @@ export default function CurrencyDetail() {
     });
   };
 
+  // Format TWD as integer
+  const formatTWD = (value: number | null | undefined) => {
+    if (value == null) return '-';
+    return Math.round(value).toLocaleString('zh-TW');
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('zh-TW');
   };
@@ -297,44 +303,32 @@ export default function CurrencyDetail() {
                 </div>
               )}
             </div>
-            <div className="flex gap-3">
-              <CurrencyImportButton
-                ledgerId={ledger.ledger.id}
-                onImportComplete={loadData}
-              />
-              <button
-                onClick={() => setShowAddForm(true)}
-                className="btn-accent"
-              >
-                新增交易
-              </button>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="metric-card metric-card-cream">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">餘額</p>
-              <p className="text-2xl font-bold text-[var(--accent-cream)] number-display">
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.balance, 4)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
             </div>
-            <div className="metric-card metric-card-butter">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">換匯均價</p>
-              <p className="text-2xl font-bold text-[var(--accent-butter)] number-display">
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.averageExchangeRate, 4)}
               </p>
             </div>
-            <div className="metric-card metric-card-blush">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">淨投入</p>
-              <p className="text-2xl font-bold text-[var(--accent-blush)] number-display">
-                {formatNumber(ledger.totalExchanged)}
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
+                {formatTWD(ledger.totalExchanged)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
-            <div className="metric-card metric-card-peach">
+            <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">股票投入</p>
-              <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.totalSpentOnStocks, 4)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
@@ -404,14 +398,26 @@ export default function CurrencyDetail() {
         <div className="card-dark overflow-hidden">
           <div className="flex justify-between items-center p-5 border-b border-[var(--border-color)]">
             <h2 className="text-lg font-bold text-[var(--text-primary)]">交易紀錄</h2>
-            {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="btn-danger text-sm"
+                >
+                  刪除選取 ({selectedIds.size})
+                </button>
+              )}
               <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="btn-danger text-sm"
+                onClick={() => setShowAddForm(true)}
+                className="btn-accent px-3 py-1.5 text-sm"
               >
-                刪除選取 ({selectedIds.size})
+                + 新增交易
               </button>
-            )}
+              <CurrencyImportButton
+                ledgerId={ledger.ledger.id}
+                onImportComplete={loadData}
+              />
+            </div>
           </div>
 
           {transactions.length === 0 ? (

@@ -164,3 +164,7 @@ yarn-error.log*
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# VS Code debug browser profiles
+.vscode/.edge-debug-profile/
+.vscode/.chrome-debug-profile/
