@@ -86,7 +86,6 @@ public class GetPortfolioSummaryUseCase
         var portfolioDto = new PortfolioDto
         {
             Id = portfolio.Id,
-            Name = portfolio.Name,
             Description = portfolio.Description,
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,

@@ -59,7 +59,8 @@ public class AtomicTransactionTests : IDisposable
         _dbContext.Users.Add(user);
 
         // Create portfolio
-        var portfolio = new Portfolio(_testUserId, "Test Portfolio", "USD", "TWD");
+        var portfolio = new Portfolio(_testUserId, "USD", "TWD");
+        portfolio.SetDescription("Test Portfolio");
         await _portfolioRepository.AddAsync(portfolio);
 
         // Create currency ledger with initial balance

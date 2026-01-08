@@ -8,10 +8,6 @@ namespace InvestmentTracker.Application.DTOs;
 /// </summary>
 public record CreatePortfolioRequest
 {
-    [Required]
-    [StringLength(100, MinimumLength = 1)]
-    public string Name { get; init; } = string.Empty;
-
     [StringLength(500)]
     public string? Description { get; init; }
 
@@ -27,10 +23,6 @@ public record CreatePortfolioRequest
 /// </summary>
 public record UpdatePortfolioRequest
 {
-    [Required]
-    [StringLength(100, MinimumLength = 1)]
-    public string Name { get; init; } = string.Empty;
-
     [StringLength(500)]
     public string? Description { get; init; }
 }

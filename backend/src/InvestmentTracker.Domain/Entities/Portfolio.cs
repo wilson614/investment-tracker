@@ -8,7 +8,6 @@ namespace InvestmentTracker.Domain.Entities;
 public class Portfolio : BaseEntity
 {
     public Guid UserId { get; private set; }
-    public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
     public string BaseCurrency { get; private set; } = "USD";
     public string HomeCurrency { get; private set; } = "TWD";
@@ -23,25 +22,13 @@ public class Portfolio : BaseEntity
     // Required by EF Core
     private Portfolio() { }
 
-    public Portfolio(Guid userId, string name, string baseCurrency = "USD", string homeCurrency = "TWD")
+    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD")
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
 
         UserId = userId;
-        SetName(name);
         SetCurrencies(baseCurrency, homeCurrency);
-    }
-
-    public void SetName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Name is required", nameof(name));
-
-        if (name.Length > 100)
-            throw new ArgumentException("Name cannot exceed 100 characters", nameof(name));
-
-        Name = name.Trim();
     }
 
     public void SetDescription(string? description)

@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { AuthProvider } from './hooks/useAuth';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
@@ -12,52 +12,42 @@ import Login from './pages/Login';
 import { ProtectedRoute, PageLoader, ToastProvider } from './components/common';
 import { Navigation } from './components/layout/Navigation';
 import { portfolioApi } from './services/api';
-import type { Portfolio } from './types';
 import './index.css';
 
 function HomePage() {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newPortfolioName, setNewPortfolioName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPortfolios();
+    const ensurePortfolio = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const portfolios = await portfolioApi.getAll();
+        if (portfolios.length > 0) {
+          window.location.href = `/portfolio/${portfolios[0].id}`;
+          return;
+        }
+
+        const created = await portfolioApi.create({
+          baseCurrency: 'USD',
+          homeCurrency: 'TWD',
+        });
+
+        window.location.href = `/portfolio/${created.id}`;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '載入投資組合失敗');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    ensurePortfolio();
   }, []);
 
-  const loadPortfolios = async () => {
-    try {
-      const data = await portfolioApi.getAll();
-      setPortfolios(data);
-    } catch {
-      console.error('Failed to load portfolios');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreatePortfolio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPortfolioName.trim()) return;
-
-    setIsCreating(true);
-    try {
-      await portfolioApi.create({
-        name: newPortfolioName.trim(),
-        baseCurrency: 'USD',
-        homeCurrency: 'TWD',
-      });
-      setNewPortfolioName('');
-      await loadPortfolios();
-    } catch {
-      console.error('Failed to create portfolio');
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
   if (isLoading) {
-    return <PageLoader text="載入投資組合中..." />;
+    return <PageLoader text="準備投資組合中..." />;
   }
 
   return (
@@ -65,49 +55,11 @@ function HomePage() {
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">
         我的投資組合
       </h1>
-
-      <form onSubmit={handleCreatePortfolio} className="mb-8 flex gap-2">
-        <input
-          type="text"
-          value={newPortfolioName}
-          onChange={(e) => setNewPortfolioName(e.target.value)}
-          placeholder="輸入投資組合名稱..."
-          className="input-dark flex-1"
-        />
-        <button
-          type="submit"
-          disabled={isCreating || !newPortfolioName.trim()}
-          className="btn-accent disabled:opacity-50"
-        >
-          {isCreating ? '建立中...' : '建立'}
-        </button>
-      </form>
-
-      {portfolios.length === 0 ? (
-        <div className="text-center py-12 text-[var(--text-muted)]">
-          尚無投資組合，請建立一個開始使用。
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {portfolios.map((portfolio) => (
-            <Link
-              key={portfolio.id}
-              to={`/portfolio/${portfolio.id}`}
-              className="card-dark p-6 hover:border-[var(--border-hover)] transition-all"
-            >
-              <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-                {portfolio.name}
-              </h2>
-              {portfolio.description && (
-                <p className="text-[var(--text-secondary)] mt-1">{portfolio.description}</p>
-              )}
-              <p className="text-sm text-[var(--text-muted)] mt-2">
-                {portfolio.baseCurrency} → {portfolio.homeCurrency}
-              </p>
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="card-dark p-6">
+        <p className="text-base text-[var(--text-muted)]">
+          {error ?? '找不到投資組合，請重新整理。'}
+        </p>
+      </div>
     </div>
   );
 }

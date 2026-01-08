@@ -43,7 +43,6 @@ public class PortfoliosController : ControllerBase
         return Ok(portfolios.Select(p => new PortfolioDto
         {
             Id = p.Id,
-            Name = p.Name,
             Description = p.Description,
             BaseCurrency = p.BaseCurrency,
             HomeCurrency = p.HomeCurrency,
@@ -72,7 +71,6 @@ public class PortfoliosController : ControllerBase
         return Ok(new PortfolioDto
         {
             Id = portfolio.Id,
-            Name = portfolio.Name,
             Description = portfolio.Description,
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
@@ -173,7 +171,6 @@ public class PortfoliosController : ControllerBase
     {
         var portfolio = new Portfolio(
             _currentUserService.UserId!.Value,
-            request.Name,
             request.BaseCurrency,
             request.HomeCurrency);
 
@@ -187,7 +184,6 @@ public class PortfoliosController : ControllerBase
         var dto = new PortfolioDto
         {
             Id = portfolio.Id,
-            Name = portfolio.Name,
             Description = portfolio.Description,
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
@@ -218,7 +214,6 @@ public class PortfoliosController : ControllerBase
         if (portfolio.UserId != _currentUserService.UserId)
             return Forbid();
 
-        portfolio.SetName(request.Name);
         portfolio.SetDescription(request.Description);
 
         await _portfolioRepository.UpdateAsync(portfolio, cancellationToken);
@@ -226,7 +221,6 @@ public class PortfoliosController : ControllerBase
         return Ok(new PortfolioDto
         {
             Id = portfolio.Id,
-            Name = portfolio.Name,
             Description = portfolio.Description,
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,

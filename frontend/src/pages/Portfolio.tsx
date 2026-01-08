@@ -3,11 +3,12 @@ import { useParams, Link } from 'react-router-dom';
 import { Pencil, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
+import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { StockImportButton } from '../components/import';
 import { StockMarket } from '../types';
-import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType } from '../types';
+import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction } from '../types';
 import { transactionApi } from '../services/api';
 
 const guessMarket = (ticker: string): StockMarketType => {
@@ -29,8 +30,9 @@ export function PortfolioPage() {
   const [isFetchingAll, setIsFetchingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState('');
+  const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
+  const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editDescription, setEditDescription] = useState('');
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
@@ -41,8 +43,12 @@ export function PortfolioPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const summaryData = await portfolioApi.getSummary(id);
+      const [summaryData, txData] = await Promise.all([
+        portfolioApi.getSummary(id),
+        transactionApi.getByPortfolio(id),
+      ]);
       setSummary(summaryData);
+      setTransactions(txData);
       currentPricesRef.current = {};
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load portfolio');
@@ -56,9 +62,34 @@ export function PortfolioPage() {
   }, [loadData]);
 
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
-    await transactionApi.create(data);
+    if (editingTransaction) {
+      await transactionApi.update(editingTransaction.id, {
+        transactionDate: data.transactionDate,
+        shares: data.shares,
+        pricePerShare: data.pricePerShare,
+        exchangeRate: data.exchangeRate ?? 1,
+        fees: data.fees,
+        fundSource: data.fundSource,
+        currencyLedgerId: data.currencyLedgerId,
+        notes: data.notes,
+      });
+    } else {
+      await transactionApi.create(data);
+    }
     await loadData();
     setShowForm(false);
+    setEditingTransaction(null);
+  };
+
+  const handleEditTransaction = (transaction: StockTransaction) => {
+    setEditingTransaction(transaction);
+    setShowForm(true);
+  };
+
+  const handleDeleteTransaction = async (transactionId: string) => {
+    if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
+    await transactionApi.delete(transactionId);
+    await loadData();
   };
 
   const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
@@ -140,22 +171,19 @@ export function PortfolioPage() {
     }
   };
 
-  const handleStartEditName = () => {
-    if (summary) {
-      setEditName(summary.portfolio.name);
-      setEditDescription(summary.portfolio.description ?? '');
-      setIsEditingName(true);
-    }
+  const handleStartEditDescription = () => {
+    if (!summary) return;
+    setEditDescription(summary.portfolio.description ?? '');
+    setIsEditingDescription(true);
   };
 
-  const handleSaveName = async () => {
-    if (!summary || !editName.trim()) return;
+  const handleSaveDescription = async () => {
+    if (!summary) return;
     try {
       await portfolioApi.update(summary.portfolio.id, {
-        name: editName.trim(),
-        description: editDescription.trim() || undefined
+        description: editDescription.trim() || undefined,
       });
-      setIsEditingName(false);
+      setIsEditingDescription(false);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update');
@@ -192,38 +220,29 @@ export function PortfolioPage() {
         {/* Header */}
         <div className="flex justify-between items-start mb-6">
           <div>
-            {isEditingName ? (
+            {isEditingDescription ? (
               <div className="space-y-3">
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="input-dark text-2xl font-bold w-full"
-                  autoFocus
-                  placeholder="組合名稱"
-                />
                 <input
                   type="text"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="input-dark w-full"
+                  autoFocus
                   placeholder="描述（選填）"
                 />
                 <div className="flex gap-2">
-                  <button onClick={handleSaveName} className="btn-accent py-1 px-4">儲存</button>
-                  <button onClick={() => setIsEditingName(false)} className="btn-dark py-1 px-4">取消</button>
+                  <button onClick={handleSaveDescription} className="btn-accent py-1 px-4">儲存</button>
+                  <button onClick={() => setIsEditingDescription(false)} className="btn-dark py-1 px-4">取消</button>
                 </div>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-                    {summary.portfolio.name}
-                  </h1>
+                  <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
                   <button
-                    onClick={handleStartEditName}
+                    onClick={handleStartEditDescription}
                     className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                    title="編輯名稱"
+                    title="編輯描述"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
@@ -231,13 +250,10 @@ export function PortfolioPage() {
                 {summary.portfolio.description && (
                   <p className="text-[var(--text-secondary)] text-base mt-1">{summary.portfolio.description}</p>
                 )}
-                <p className="text-sm text-[var(--text-muted)] mt-1">
-                  {summary.portfolio.baseCurrency} → {summary.portfolio.homeCurrency}
-                </p>
               </>
             )}
           </div>
-          {!isEditingName && (
+          {!isEditingDescription && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowForm(true)}
@@ -308,14 +324,38 @@ export function PortfolioPage() {
           </div>
         )}
 
+        {/* Transaction History */}
+        <div className="card-dark overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border-color)]">
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">
+              全部交易紀錄
+            </h2>
+          </div>
+          {transactions.length > 0 ? (
+            <TransactionList
+              transactions={transactions}
+              onEdit={handleEditTransaction}
+              onDelete={handleDeleteTransaction}
+            />
+          ) : (
+            <div className="p-8 text-center text-[var(--text-muted)]">
+              尚無交易紀錄
+            </div>
+          )}
+        </div>
+
         {/* Add Transaction Modal */}
         {showForm && (
           <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
             <div className="card-dark p-0 w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
               <TransactionForm
                 portfolioId={id!}
+                initialData={editingTransaction ?? undefined}
                 onSubmit={handleAddTransaction}
-                onCancel={() => setShowForm(false)}
+                onCancel={() => {
+                  setShowForm(false);
+                  setEditingTransaction(null);
+                }}
               />
             </div>
           </div>

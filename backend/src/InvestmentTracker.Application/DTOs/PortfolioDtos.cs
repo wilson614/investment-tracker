@@ -8,7 +8,6 @@ namespace InvestmentTracker.Application.DTOs;
 public record PortfolioDto
 {
     public Guid Id { get; init; }
-    public string Name { get; init; } = string.Empty;
     public string? Description { get; init; }
     public string BaseCurrency { get; init; } = "USD";
     public string HomeCurrency { get; init; } = "TWD";

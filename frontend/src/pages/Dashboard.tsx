@@ -5,7 +5,7 @@ import { portfolioApi, stockPriceApi } from '../services/api';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { StockMarket } from '../types';
-import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType } from '../types';
+import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse } from '../types';
 
 interface PortfolioWithMetrics {
   portfolio: Portfolio;
@@ -14,6 +14,39 @@ interface PortfolioWithMetrics {
   isLoading: boolean;
   error: string | null;
 }
+
+interface CachedQuote {
+  quote: StockQuoteResponse;
+  updatedAt: string;
+  market: StockMarketType;
+}
+
+const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+
+// Load cached quotes for a list of tickers
+const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
+  const prices: Record<string, CurrentPriceInfo> = {};
+  const maxAge = 60 * 60 * 1000; // 1 hour max cache age for dashboard
+
+  for (const ticker of tickers) {
+    try {
+      const cached = localStorage.getItem(getQuoteCacheKey(ticker));
+      if (cached) {
+        const data: CachedQuote = JSON.parse(cached);
+        const cacheAge = Date.now() - new Date(data.updatedAt).getTime();
+        if (cacheAge <= maxAge && data.quote.exchangeRate) {
+          prices[ticker] = {
+            price: data.quote.price,
+            exchangeRate: data.quote.exchangeRate,
+          };
+        }
+      }
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  return prices;
+};
 
 const guessMarket = (ticker: string): StockMarketType => {
   // Taiwan: pure digits, or digits ending with letters (e.g., 2330, 00878, 6547M)
@@ -54,14 +87,36 @@ export function DashboardPage() {
       await Promise.all(
         data.map(async (portfolio) => {
           try {
-            const summary = await portfolioApi.getSummary(portfolio.id);
-            metricsMap.set(portfolio.id, {
-              portfolio,
-              summary,
-              xirrResult: null,
-              isLoading: false,
-              error: null,
-            });
+            // First get basic summary to know all tickers
+            const basicSummary = await portfolioApi.getSummary(portfolio.id);
+            const tickers = basicSummary.positions.map(p => p.ticker);
+
+            // Load cached prices for all positions
+            const cachedPrices = loadCachedPrices(tickers);
+            currentPricesRef.current.set(portfolio.id, cachedPrices);
+
+            // If we have cached prices, recalculate with them
+            if (Object.keys(cachedPrices).length > 0) {
+              const [summary, xirrResult] = await Promise.all([
+                portfolioApi.getSummary(portfolio.id, cachedPrices),
+                portfolioApi.calculateXirr(portfolio.id, { currentPrices: cachedPrices }),
+              ]);
+              metricsMap.set(portfolio.id, {
+                portfolio,
+                summary,
+                xirrResult,
+                isLoading: false,
+                error: null,
+              });
+            } else {
+              metricsMap.set(portfolio.id, {
+                portfolio,
+                summary: basicSummary,
+                xirrResult: null,
+                isLoading: false,
+                error: null,
+              });
+            }
           } catch (err) {
             metricsMap.set(portfolio.id, {
               portfolio,
@@ -194,6 +249,13 @@ export function DashboardPage() {
     return Math.round(value).toLocaleString('zh-TW');
   };
 
+  // Format percentage
+  const formatPercent = (value: number | null | undefined) => {
+    if (value == null) return '-';
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}%`;
+  };
+
   const aggregateTotals = Array.from(portfolioMetrics.values()).reduce(
     (acc, metrics) => {
       if (metrics.summary) {
@@ -207,10 +269,19 @@ export function DashboardPage() {
         }
         acc.positionCount += metrics.summary.positions.length;
       }
+      if (metrics.xirrResult?.xirr != null) {
+        acc.xirrSum += metrics.xirrResult.xirr;
+        acc.xirrCount += 1;
+      }
       return acc;
     },
-    { totalCost: 0, totalValue: 0, totalPnl: 0, positionCount: 0, hasValue: false }
+    { totalCost: 0, totalValue: 0, totalPnl: 0, positionCount: 0, hasValue: false, xirrSum: 0, xirrCount: 0 }
   );
+
+  // Calculate return percentage
+  const returnPercentage = aggregateTotals.hasValue && aggregateTotals.totalCost > 0
+    ? (aggregateTotals.totalPnl / aggregateTotals.totalCost) * 100
+    : null;
 
   if (isLoading) {
     return (
@@ -256,7 +327,9 @@ export function DashboardPage() {
               <p className={`text-2xl font-bold number-display ${aggregateTotals.totalPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
                 {aggregateTotals.hasValue ? formatTWD(aggregateTotals.totalPnl) : '-'}
               </p>
-              <p className="text-[var(--text-muted)] text-sm">TWD</p>
+              <p className={`text-sm ${returnPercentage != null && returnPercentage >= 0 ? 'number-positive' : returnPercentage != null ? 'number-negative' : 'text-[var(--text-muted)]'}`}>
+                {formatPercent(returnPercentage)}
+              </p>
             </div>
             <div className="metric-card metric-card-blush">
               <p className="text-[var(--text-muted)] text-sm mb-1">持倉數量</p>
@@ -272,7 +345,7 @@ export function DashboardPage() {
           <div className="card-dark p-8 text-center">
             <p className="text-[var(--text-muted)] text-lg mb-4">尚無投資組合</p>
             <Link
-              to="/portfolios"
+              to="/"
               className="btn-accent inline-block"
             >
               建立投資組合
@@ -292,10 +365,7 @@ export function DashboardPage() {
                     onClick={() => setSelectedPortfolioId(isSelected ? null : portfolio.id)}
                   >
                     <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">{portfolio.name}</h3>
-                      <p className="text-base text-[var(--text-muted)] mt-1">
-                        {portfolio.baseCurrency} → {portfolio.homeCurrency}
-                      </p>
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">投資組合</h3>
                     </div>
                     <div className="flex items-center gap-4">
                       <Link

@@ -204,22 +204,31 @@ export function PositionDetailPage() {
                 {MARKET_LABELS[selectedMarket]}
               </span>
             </div>
-            <p className="text-[var(--text-muted)] mt-1">
-              {portfolio.name} · {baseCurrency} → {homeCurrency}
-            </p>
           </div>
-          <button
-            onClick={handleFetchQuote}
-            disabled={fetchStatus === 'loading'}
-            className="btn-dark flex items-center gap-2 disabled:opacity-50"
-          >
-            {fetchStatus === 'loading' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleFetchQuote}
+              disabled={fetchStatus === 'loading'}
+              className="btn-dark flex items-center gap-2 disabled:opacity-50"
+            >
+              {fetchStatus === 'loading' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              獲取報價
+            </button>
+            {fetchStatus === 'error' && (
+              <span className="text-sm text-[var(--color-danger)]">
+                無法取得報價
+              </span>
             )}
-            獲取報價
-          </button>
+            {fetchStatus === 'success' && lastQuote && (
+              <span className="text-sm text-[var(--color-success)]">
+                已更新
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Position Metrics */}

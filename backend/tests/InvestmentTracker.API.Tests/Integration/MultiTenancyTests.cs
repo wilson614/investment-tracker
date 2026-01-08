@@ -51,8 +51,12 @@ public class MultiTenancyTests : IDisposable
         context.Users.AddRange(user1, user2);
 
         // Create portfolios for each user
-        var portfolio1 = new Portfolio(_user1Id, "User1 Portfolio", "USD", "TWD");
-        var portfolio2 = new Portfolio(_user2Id, "User2 Portfolio", "USD", "TWD");
+        var portfolio1 = new Portfolio(_user1Id, "USD", "TWD");
+        portfolio1.SetDescription("User1 Portfolio");
+
+        var portfolio2 = new Portfolio(_user2Id, "USD", "TWD");
+        portfolio2.SetDescription("User2 Portfolio");
+
         context.Portfolios.AddRange(portfolio1, portfolio2);
 
         // Create currency ledgers for each user
@@ -120,7 +124,7 @@ public class MultiTenancyTests : IDisposable
 
         // Assert
         portfolios.Should().HaveCount(1);
-        portfolios.First().Name.Should().Be("User1 Portfolio");
+        portfolios.First().Description.Should().Be("User1 Portfolio");
         portfolios.First().UserId.Should().Be(_user1Id);
     }
 
@@ -135,7 +139,7 @@ public class MultiTenancyTests : IDisposable
 
         // Assert
         portfolios.Should().HaveCount(1);
-        portfolios.First().Name.Should().Be("User2 Portfolio");
+        portfolios.First().Description.Should().Be("User2 Portfolio");
         portfolios.First().UserId.Should().Be(_user2Id);
     }
 

@@ -27,7 +27,6 @@ export interface RegisterRequest {
 
 export interface Portfolio {
   id: string;
-  name: string;
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
@@ -37,14 +36,12 @@ export interface Portfolio {
 }
 
 export interface CreatePortfolioRequest {
-  name: string;
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
 }
 
 export interface UpdatePortfolioRequest {
-  name: string;
   description?: string;
 }
 

@@ -33,7 +33,6 @@ public class PortfolioRepository : IPortfolioRepository
     {
         return await _context.Portfolios
             .Where(p => p.UserId == userId)
-            .OrderBy(p => p.Name)
             .ToListAsync(cancellationToken);
     }
 
