@@ -11,6 +11,21 @@ const CAPE_CACHE_KEY = 'cape_data_cache';
 const CAPE_CACHE_MAX_AGE = 60 * 60 * 1000; // 1 hour
 
 // All available regions from the API (based on actual API response)
+// Large regions (displayed first in region selector)
+const LARGE_REGIONS = new Set([
+  'All Country',
+  'US Large',
+  'US Small',
+  'Developed Markets Large',
+  'Developed Markets Small',
+  'Dev ex US Large',
+  'Dev ex US Small',
+  'Emerging Markets',
+  'Europe',
+  'Europe ex UK',
+  'Asia ex Japan',
+]);
+
 const ALL_KNOWN_REGIONS = [
   'All Country',
   'US Large',
@@ -66,7 +81,7 @@ const ALL_KNOWN_REGIONS = [
 ];
 
 // Default regions for new users
-const DEFAULT_REGIONS = ['All Country', 'US Large', 'Emerging Markets', 'Europe', 'Taiwan'];
+const DEFAULT_REGIONS = ['All Country', 'Taiwan', 'US Large', 'Emerging Markets'];
 
 // Region name mapping for display (Chinese)
 const REGION_DISPLAY_NAMES: Record<string, string> = {
@@ -258,16 +273,26 @@ export function setSelectedRegions(regions: string[]): void {
 /**
  * Get all available regions from cached CAPE data
  * Falls back to known regions if no data available
+ * Sorted: large regions first, then countries
  */
 export function getAvailableRegions(): { key: string; label: string }[] {
   const regionKeys = cachedData
     ? cachedData.items.map((item) => item.boxName)
     : ALL_KNOWN_REGIONS;
 
-  return regionKeys.map((key) => ({
+  const regions = regionKeys.map((key) => ({
     key,
     label: REGION_DISPLAY_NAMES[key] || key,
   }));
+
+  // Sort: large regions first, then countries
+  return regions.sort((a, b) => {
+    const aIsLarge = LARGE_REGIONS.has(a.key);
+    const bIsLarge = LARGE_REGIONS.has(b.key);
+    if (aIsLarge && !bIsLarge) return -1;
+    if (!aIsLarge && bIsLarge) return 1;
+    return 0; // Keep original order within each group
+  });
 }
 
 /**

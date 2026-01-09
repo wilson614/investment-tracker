@@ -4,9 +4,19 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Loader2, TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search, Info } from 'lucide-react';
 import { useCapeData } from '../../hooks/useCapeData';
 import type { CapeDisplayItem, CapeValuation } from '../../types';
+
+type CapeSortKey = 'default' | 'cape-asc' | 'cape-desc' | 'percentile-asc' | 'percentile-desc';
+
+const CAPE_SORT_OPTIONS: { value: CapeSortKey; label: string }[] = [
+  { value: 'default', label: '預設' },
+  { value: 'cape-asc', label: 'CAPE ↑' },
+  { value: 'cape-desc', label: 'CAPE ↓' },
+  { value: 'percentile-asc', label: '百分位 ↑' },
+  { value: 'percentile-desc', label: '百分位 ↓' },
+];
 
 interface ValuationBadgeProps {
   valuation: CapeValuation;
@@ -109,20 +119,53 @@ export function MarketContext({ className = '' }: MarketContextProps) {
   const { data, dataDate, isLoading, error, selectedRegions, availableRegions, setSelectedRegions } = useCapeData();
   const [showSettings, setShowSettings] = useState(false);
   const [tempSelectedRegions, setTempSelectedRegions] = useState<string[]>(selectedRegions);
+  const [initialSelectedRegions, setInitialSelectedRegions] = useState<string[]>(selectedRegions);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<CapeSortKey>('default');
+
+  const sortedData = useMemo(() => {
+    if (!data) return null;
+    if (sortKey === 'default') return data;
+
+    return [...data].sort((a, b) => {
+      const aValue = a.adjustedCape ?? a.cape;
+      const bValue = b.adjustedCape ?? b.cape;
+      switch (sortKey) {
+        case 'cape-asc': return aValue - bValue;
+        case 'cape-desc': return bValue - aValue;
+        case 'percentile-asc': return a.percentile - b.percentile;
+        case 'percentile-desc': return b.percentile - a.percentile;
+        default: return 0;
+      }
+    });
+  }, [data, sortKey]);
 
   const filteredRegions = useMemo(() => {
-    if (!searchQuery.trim()) return availableRegions;
-    const query = searchQuery.toLowerCase();
-    return availableRegions.filter(
-      (region) =>
-        region.key.toLowerCase().includes(query) ||
-        region.label.toLowerCase().includes(query)
-    );
-  }, [availableRegions, searchQuery]);
+    let regions = availableRegions;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      regions = regions.filter(
+        (region) =>
+          region.key.toLowerCase().includes(query) ||
+          region.label.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort: selected regions first (based on initial selection when dialog opened)
+    return [...regions].sort((a, b) => {
+      const aSelected = initialSelectedRegions.includes(a.key);
+      const bSelected = initialSelectedRegions.includes(b.key);
+      if (aSelected && !bSelected) return -1;
+      if (!aSelected && bSelected) return 1;
+      return 0;
+    });
+  }, [availableRegions, searchQuery, initialSelectedRegions]);
 
   const handleOpenSettings = () => {
     setTempSelectedRegions(selectedRegions);
+    setInitialSelectedRegions(selectedRegions);
     setSearchQuery('');
     setShowSettings(true);
   };
@@ -142,8 +185,6 @@ export function MarketContext({ className = '' }: MarketContextProps) {
   const toggleRegion = (regionKey: string) => {
     setTempSelectedRegions((prev) => {
       if (prev.includes(regionKey)) {
-        // Don't allow removing the last region
-        if (prev.length === 1) return prev;
         return prev.filter((r) => r !== regionKey);
       }
       return [...prev, regionKey];
@@ -175,18 +216,40 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     <div className={`card-dark ${className}`}>
       <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">市場估值指標</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">市場估值指標</h2>
+            <div className="relative group">
+              <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+              <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-10">
+                <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                  <p>百分位條 = CAPE 歷史位置</p>
+                  <p className="mt-1"><span className="text-[var(--accent-peach)]">*</span> = 已根據即時指數調整</p>
+                </div>
+              </div>
+            </div>
+          </div>
           <p className="text-xs text-[var(--text-muted)]">
             CAPE (Shiller P/E) {dataDate && `• 資料日期: ${dataDate}`}
           </p>
         </div>
-        <button
-          onClick={handleOpenSettings}
-          className="btn-dark p-2"
-          title="選擇市場"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as CapeSortKey)}
+            className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded px-2 py-1.5 text-xs text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-peach)] h-8"
+          >
+            {CAPE_SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleOpenSettings}
+            className="btn-dark p-2 h-8 flex items-center justify-center"
+            title="選擇市場"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Settings Modal */}
@@ -241,9 +304,6 @@ export function MarketContext({ className = '' }: MarketContextProps) {
                   找不到符合的市場
                 </p>
               )}
-              <p className="text-xs text-[var(--text-muted)] mt-4">
-                至少選擇一個市場
-              </p>
             </div>
             <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">
               <button
@@ -268,16 +328,12 @@ export function MarketContext({ className = '' }: MarketContextProps) {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
           </div>
-        ) : data && data.length > 0 ? (
+        ) : sortedData && sortedData.length > 0 ? (
           <div>
-            {data.map((item) => (
-              <CapeRow key={item.region} item={item} />
-            ))}
-            <div className="text-xs text-[var(--text-muted)] mt-4 space-y-1">
-              <p>百分位條顯示目前 CAPE 在該市場歷史數據中的位置</p>
-              {data.some(item => item.adjustedCape != null) && (
-                <p><span className="text-[var(--accent-peach)]">*</span> 已根據即時大盤指數調整</p>
-              )}
+            <div className="max-h-[240px] overflow-y-auto">
+              {sortedData.map((item) => (
+                <CapeRow key={item.region} item={item} />
+              ))}
             </div>
           </div>
         ) : (

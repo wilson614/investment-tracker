@@ -19,8 +19,16 @@ public class SinaEtfPriceService : ISinaEtfPriceService
     // Sina symbol mappings for UK-listed ETFs (USD denominated)
     private static readonly Dictionary<string, string> SinaSymbols = new()
     {
-        ["All Country"] = "lse_vwra",  // Vanguard FTSE All-World UCITS ETF (Acc)
-        ["US Large"] = "lse_vuaa",      // Vanguard S&P 500 UCITS ETF (Acc)
+        ["All Country"] = "lse_vwra",           // Vanguard FTSE All-World UCITS ETF (Acc)
+        ["US Large"] = "lse_vuaa",              // Vanguard S&P 500 UCITS ETF (Acc)
+        ["US Small"] = "lse_xrsu",              // Xtrackers Russell 2000 UCITS ETF (Acc)
+        ["Emerging Markets"] = "lse_vfem",      // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
+        ["Europe"] = "lse_veua",                // Vanguard FTSE Developed Europe UCITS ETF (Acc)
+        ["Japan"] = "lse_vjpa",                 // Vanguard FTSE Japan UCITS ETF (Acc)
+        ["Developed Markets Large"] = "lse_vhve", // Vanguard FTSE Developed World UCITS ETF (Acc)
+        ["Developed Markets Small"] = "lse_wsml", // iShares MSCI World Small Cap UCITS ETF (Acc)
+        ["Dev ex US Large"] = "lse_exus",       // Vanguard FTSE Developed ex US UCITS ETF (Acc)
+        ["China"] = "lse_hcha",                 // HSBC MSCI China UCITS ETF (Acc)
     };
 
     static SinaEtfPriceService()

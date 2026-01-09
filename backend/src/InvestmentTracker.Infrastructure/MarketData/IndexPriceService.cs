@@ -22,9 +22,17 @@ public class IndexPriceService : IIndexPriceService
     // All supported markets for CAPE adjustment
     public static readonly IReadOnlyCollection<string> SupportedMarkets = new[]
     {
-        "All Country",  // VWRA - Vanguard FTSE All-World
-        "US Large",     // VUAA - Vanguard S&P 500
-        "Taiwan",       // TWII - Taiwan Weighted Index
+        "All Country",              // VWRA - Vanguard FTSE All-World
+        "US Large",                 // VUAA - Vanguard S&P 500
+        "US Small",                 // XRSU - Xtrackers Russell 2000
+        "Taiwan",                   // TWII - Taiwan Weighted Index
+        "Emerging Markets",         // VFEM - Vanguard FTSE Emerging Markets
+        "Europe",                   // VEUA - Vanguard FTSE Developed Europe
+        "Japan",                    // VJPA - Vanguard FTSE Japan
+        "China",                    // HCHA - HSBC MSCI China
+        "Developed Markets Large",  // VHVE - Vanguard FTSE Developed World
+        "Developed Markets Small",  // WSML - iShares MSCI World Small Cap
+        "Dev ex US Large",          // EXUS - Vanguard FTSE Developed ex US
     };
 
     public IndexPriceService(

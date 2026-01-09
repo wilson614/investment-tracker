@@ -196,7 +196,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-030b**: System MUST persist user's CAPE region preferences in localStorage.
 - **FR-030c**: System MUST provide sensible default regions (All Country, USA, Emerging Markets, Europe) for new users.
 - **FR-030d**: System MUST apply real-time adjustment to CAPE values using formula: `Adjusted CAPE = API CAPE × (Current Price / Reference Price)`, where Reference Price is the month-end price matching the API data date.
-- **FR-030e**: System MUST support CAPE real-time adjustment for: All Country, US Large, and Taiwan markets.
+- **FR-030e**: System MUST support CAPE real-time adjustment for the following markets: All Country, US Large, US Small, Taiwan, Emerging Markets, Europe, Japan, China, Developed Markets Large, Developed Markets Small, and Dev ex US Large.
 - **FR-031**: System MUST cache CAPE data with daily refresh (data updates monthly, cache for 24 hours).
 - **FR-032**: System MUST calculate and display historical annual returns for the portfolio.
 - **FR-033**: System MUST calculate historical annual returns per position based on year-end valuations.
@@ -498,7 +498,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Interest Tracking**: Bank interest in Currency Ledger defaults to 0 cost basis (lowering average cost).
 - **Stock Split Handling**: Stock splits are recorded as adjustment transactions that modify share count without affecting total cost basis.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.
-- **CAPE Adjustment Markets**: Default supported markets are All Country (VWRA), US Large (VUAA), and Taiwan (TWII). Additional markets use accumulating ETFs from Sina (real-time) + Stooq (historical) when available; markets without data sources show original CAPE only.
+- **CAPE Adjustment Markets**: Supported markets for real-time CAPE adjustment include All Country (VWRA), US Large (VUAA), US Small (XRSU), Taiwan (TWII), Emerging Markets (VFEM), Europe (VEUA), Japan (VJPA), China (HCHA), Developed Markets Large (VHVE), Developed Markets Small (WSML), and Dev ex US Large (EXUS). Markets without data sources show original CAPE only.
 - **Observability**: Basic console logging for backend errors; React error boundary for frontend crash recovery. No external APM or monitoring services required.
 
 ## Technology Stack
@@ -544,7 +544,15 @@ As an investor, I want to see my portfolio's historical performance and current 
 |--------|---------------------|------------------------|-------------------|
 | All Country | Sina Finance (UK ETF) | Stooq | VWRA.UK (lse_vwra) |
 | US Large | Sina Finance (UK ETF) | Stooq | VUAA.UK (lse_vuaa) |
+| US Small | Sina Finance (UK ETF) | Stooq | XRSU.UK (lse_xrsu) |
 | Taiwan | TWSE API | TWSE API | ^TWII (tse_t00.tw) |
+| Emerging Markets | Sina Finance (UK ETF) | Stooq | VFEM.UK (lse_vfem) |
+| Europe | Sina Finance (UK ETF) | Stooq | VEUA.UK (lse_veua) |
+| Japan | Sina Finance (UK ETF) | Stooq | VJPA.UK (lse_vjpa) |
+| China | Sina Finance (UK ETF) | Stooq | HCHA.UK (lse_hcha) |
+| Developed Markets Large | Sina Finance (UK ETF) | Stooq | VHVE.UK (lse_vhve) |
+| Developed Markets Small | Sina Finance (UK ETF) | Stooq | WSML.UK (lse_wsml) |
+| Dev ex US Large | Sina Finance (UK ETF) | Stooq | EXUS.UK (lse_exus) |
 
 **Why Accumulating ETFs**: Using accumulating ETFs (VWRA, VUAA) instead of indices avoids dividend adjustment issues. These ETFs reinvest dividends, making price-based comparison accurate.
 
