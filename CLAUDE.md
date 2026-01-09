@@ -40,7 +40,19 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Development Rules
 
-- **修正功能前先檢查 spec.md**：任何功能修改前，必須先檢視 `specs/001-portfolio-tracker/spec.md` 確認是否需要同步更新規格
-- **規格同步**：如果修正涉及需求變更，先更新 spec.md 再實作
+### Spec-Driven Development (SDD) 工作流程
+
+當用戶同意執行需求修改後，**必須**依照以下順序執行：
+
+1. **檢查 spec.md**：先檢視 `specs/001-portfolio-tracker/spec.md` 確認是否需要同步更新規格
+2. **更新規格**：如果需求涉及變更，先更新 spec.md
+3. **規劃任務**：使用 TodoWrite 規劃實作步驟
+4. **開始實作**：依照規劃執行程式碼修改
+5. **完成後檢查**：commit 前再次確認 spec.md 是否需要補充
+
+### 其他規則
+
+- **規格優先**：spec.md 是需求的唯一真實來源 (Single Source of Truth)
+- **同步更新**：任何影響功能行為的修改都必須反映在 spec.md
 
 <!-- MANUAL ADDITIONS END -->
