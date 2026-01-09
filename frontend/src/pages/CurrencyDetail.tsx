@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
-import { currencyLedgerApi, currencyTransactionApi } from '../services/api';
+import { ArrowLeft, Pencil, Trash2, Download, RefreshCw, Loader2, Info } from 'lucide-react';
+import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
+import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
 import { CurrencyImportButton } from '../components/import';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
@@ -72,6 +73,8 @@ export default function CurrencyDetail() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [currentRate, setCurrentRate] = useState<number | null>(null);
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
 
   const loadData = async () => {
     if (!id) return;
@@ -94,6 +97,32 @@ export default function CurrencyDetail() {
   useEffect(() => {
     loadData();
   }, [id]);
+
+  const handleFetchRate = async () => {
+    if (!ledger) return;
+    setIsFetchingRate(true);
+    try {
+      const rateResponse = await stockPriceApi.getExchangeRate(
+        ledger.ledger.currencyCode,
+        ledger.ledger.homeCurrency
+      );
+      if (rateResponse?.rate) {
+        setCurrentRate(rateResponse.rate);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setIsFetchingRate(false);
+    }
+  };
+
+  // Auto-fetch rate when ledger loads
+  useEffect(() => {
+    if (ledger && !currentRate) {
+      handleFetchRate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledger]);
 
   const handleStartEditName = () => {
     if (ledger) {
@@ -193,6 +222,15 @@ export default function CurrencyDetail() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     }
+  };
+
+  const handleExportTransactions = () => {
+    if (!ledger || transactions.length === 0) return;
+    exportCurrencyTransactionsToCsv(
+      transactions,
+      ledger.ledger.currencyCode,
+      ledger.ledger.homeCurrency
+    );
   };
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
@@ -305,13 +343,43 @@ export default function CurrencyDetail() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">餘額</p>
               <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.balance, 4)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
+              {currentRate && ledger.balance > 0 && (
+                <p className="text-[var(--accent-peach)] text-sm mt-1">
+                  ≈ {formatTWD(ledger.balance * currentRate)} TWD
+                </p>
+              )}
+            </div>
+            <div className="metric-card">
+              <div className="flex items-center gap-1 mb-1">
+                <p className="text-[var(--text-muted)] text-sm">即時匯率</p>
+                <button
+                  onClick={handleFetchRate}
+                  disabled={isFetchingRate}
+                  className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] transition-colors disabled:opacity-50"
+                  title="更新匯率"
+                >
+                  {isFetchingRate ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3" />
+                  )}
+                </button>
+              </div>
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
+                {currentRate ? formatNumber(currentRate, 4) : '-'}
+              </p>
+              {currentRate && ledger.averageExchangeRate && (
+                <p className={`text-sm ${currentRate > ledger.averageExchangeRate ? 'text-red-400' : 'text-green-400'}`}>
+                  {currentRate > ledger.averageExchangeRate ? '↑' : '↓'} vs 均價
+                </p>
+              )}
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">換匯均價</p>
@@ -327,7 +395,17 @@ export default function CurrencyDetail() {
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
             <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">股票投入</p>
+              <div className="flex items-center gap-1 mb-1">
+                <p className="text-[var(--text-muted)] text-sm">股票投入</p>
+                <div className="relative group">
+                  <Info className="w-3 h-3 text-[var(--text-muted)] cursor-help" />
+                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                      從此帳本用於購買股票的外幣金額
+                    </div>
+                  </div>
+                </div>
+              </div>
               <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.totalSpentOnStocks, 4)}
               </p>
@@ -407,6 +485,15 @@ export default function CurrencyDetail() {
                   刪除選取 ({selectedIds.size})
                 </button>
               )}
+              <button
+                onClick={handleExportTransactions}
+                disabled={transactions.length === 0}
+                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+                title="匯出交易"
+              >
+                <Download className="w-4 h-4" />
+                匯出
+              </button>
               <button
                 onClick={() => setShowAddForm(true)}
                 className="btn-accent px-3 py-1.5 text-sm"

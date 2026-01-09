@@ -388,10 +388,10 @@ export function PortfolioPage() {
                 onClick={handleExportPositions}
                 disabled={summary.positions.length === 0}
                 className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="匯出持倉"
+                title="匯出持倉明細"
               >
                 <Download className="w-4 h-4" />
-                匯出持倉
+                匯出
               </button>
               <button
                 type="button"

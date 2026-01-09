@@ -68,7 +68,38 @@ public class MarketYtdService : IMarketYtdService
 
     public async Task<MarketYtdComparisonDto> RefreshYtdComparisonAsync(CancellationToken cancellationToken = default)
     {
-        // Same as GetYtdComparisonAsync but forces fresh price fetch
+        var year = DateTime.UtcNow.Year;
+        var jan1YearMonth = $"{year}01";
+
+        // Check if we have Jan 1 prices, if not try to seed them with current prices
+        // (This is a fallback - ideally Jan 1 prices should be captured on Jan 1)
+        var existingPrices = await _dbContext.IndexPriceSnapshots
+            .Where(s => s.YearMonth == jan1YearMonth && Benchmarks.Keys.Contains(s.MarketKey))
+            .Select(s => s.MarketKey)
+            .ToListAsync(cancellationToken);
+
+        foreach (var (marketKey, benchmark) in Benchmarks)
+        {
+            if (!existingPrices.Contains(marketKey))
+            {
+                try
+                {
+                    var quote = await _stockPriceService.GetQuoteAsync(benchmark.Market, benchmark.Symbol, cancellationToken);
+                    if (quote != null)
+                    {
+                        // Use current price as Jan 1 reference (this will show ~0% YTD initially)
+                        // In production, this should be populated with actual Jan 1 prices
+                        _logger.LogInformation("Seeding Jan 1 price for {MarketKey} with current price {Price}", marketKey, quote.Price);
+                        await StoreJan1PriceAsync(marketKey, quote.Price, cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to seed Jan 1 price for {MarketKey}", marketKey);
+                }
+            }
+        }
+
         return await GetYtdComparisonAsync(cancellationToken);
     }
 

@@ -71,9 +71,20 @@ export function DashboardPage() {
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
 
+  // Track if we need to auto-fetch prices after initial load
+  const shouldAutoFetch = useRef(true);
+
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Auto-fetch prices after initial data load
+  useEffect(() => {
+    if (!isLoading && portfolio && summary && shouldAutoFetch.current) {
+      shouldAutoFetch.current = false;
+      handleFetchAllPrices();
+    }
+  }, [isLoading, portfolio, summary]);
 
   const loadDashboardData = async () => {
     try {

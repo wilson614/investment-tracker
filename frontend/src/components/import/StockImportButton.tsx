@@ -263,7 +263,7 @@ export function StockImportButton({
         }
       >
         <Upload className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
-        匯入 CSV
+        匯入
       </button>
 
       {/* Currency Ledger Selection Modal */}

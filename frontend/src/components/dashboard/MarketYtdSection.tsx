@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, AlertCircle, Info } from 'lucide-react';
 import { marketDataApi } from '../../services/api';
 import type { MarketYtdComparison, MarketYtdReturn } from '../../types';
 
@@ -97,7 +97,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
       <div className={`card-dark ${className}`}>
         <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">市場 YTD 表現</h2>
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">市場表現</h2>
             <p className="text-xs text-[var(--text-muted)]">基準 ETF 年初至今報酬</p>
           </div>
           <button
@@ -124,11 +124,21 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
   return (
     <div className={`card-dark ${className}`}>
       <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">市場 YTD 表現</h2>
-          <p className="text-xs text-[var(--text-muted)]">
-            {data?.year ? `${data.year} 年初至今` : '基準 ETF 年初至今報酬'}
-          </p>
+        <div className="flex items-center gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">市場表現</h2>
+            <p className="text-xs text-[var(--text-muted)]">
+              {data?.year ? `${data.year} 年初至今` : '基準 ETF 年初至今報酬'}
+            </p>
+          </div>
+          <div className="relative group">
+            <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                YTD = (現價 - Jan 1 價格) / Jan 1 價格 × 100
+              </div>
+            </div>
+          </div>
         </div>
         <button
           onClick={refresh}
@@ -154,9 +164,6 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             {data.benchmarks.map((item) => (
               <YtdRow key={item.marketKey} item={item} />
             ))}
-            <p className="text-xs text-[var(--text-muted)] mt-4">
-              公式: (現價 - Jan 1 價格) / Jan 1 價格 × 100
-            </p>
           </div>
         ) : (
           <div className="text-center py-8 text-[var(--text-muted)]">

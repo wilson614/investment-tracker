@@ -225,10 +225,10 @@ export function CurrencyImportButton({
     <>
       <button
         onClick={() => setIsModalOpen(true)}
-        className="btn-dark flex items-center gap-2"
+        className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
       >
-        <Upload className="w-4 h-4" />
-        匯入 CSV
+        <Upload className="w-3.5 h-3.5" />
+        匯入
       </button>
 
       <CSVImportModal

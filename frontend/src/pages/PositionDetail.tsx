@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Loader2, Download } from 'lucide-react';
 import { portfolioApi, transactionApi, stockPriceApi } from '../services/api';
+import { exportTransactionsToCsv } from '../services/csvExport';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { StockMarket } from '../types';
 import type {
@@ -78,6 +79,7 @@ export function PositionDetailPage() {
 
   // Auto-fetch tracking
   const hasFetched = useRef(false);
+  const hasAppliedCache = useRef(false);
 
   const loadData = useCallback(async () => {
     if (!portfolioId || !ticker) return;
@@ -97,7 +99,24 @@ export function PositionDetailPage() {
       const pos = summaryData.positions.find(
         (p) => p.ticker.toUpperCase() === ticker.toUpperCase()
       );
-      setPosition(pos || null);
+
+      // If we have cached quote, apply it immediately to position
+      if (pos && cachedData.quote && cachedData.quote.exchangeRate) {
+        const currentValue = pos.totalShares * cachedData.quote.price * cachedData.quote.exchangeRate;
+        const pnl = currentValue - pos.totalCostHome;
+        const pnlPct = pos.totalCostHome > 0 ? (pnl / pos.totalCostHome) * 100 : 0;
+        setPosition({
+          ...pos,
+          currentPrice: cachedData.quote.price,
+          currentExchangeRate: cachedData.quote.exchangeRate,
+          currentValueHome: currentValue,
+          unrealizedPnlHome: pnl,
+          unrealizedPnlPercentage: pnlPct,
+        });
+        hasAppliedCache.current = true;
+      } else {
+        setPosition(pos || null);
+      }
 
       // Filter transactions for this ticker
       const tickerTx = txData.filter(
@@ -109,33 +128,21 @@ export function PositionDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [portfolioId, ticker]);
+  }, [portfolioId, ticker, cachedData.quote]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Auto-fetch quote on mount (if cache is older than 5 minutes)
+  // Auto-fetch quote on mount (always fetch fresh on page load)
   useEffect(() => {
-    if (!hasFetched.current && portfolio && position) {
+    if (!hasFetched.current && portfolio && position && !isLoading) {
       hasFetched.current = true;
-      const cacheAge = lastUpdated ? Date.now() - lastUpdated.getTime() : Infinity;
-      if (cacheAge > 5 * 60 * 1000) {
-        handleFetchQuote();
-      } else if (lastQuote) {
-        // If we have cached quote, calculate position values and XIRR
-        const currentValue = position.totalShares * lastQuote.price * (lastQuote.exchangeRate ?? 1);
-        const pnl = currentValue - position.totalCostHome;
-        const pnlPct = position.totalCostHome > 0 ? (pnl / position.totalCostHome) * 100 : 0;
-        setPosition({
-          ...position,
-          currentPrice: lastQuote.price,
-          currentExchangeRate: lastQuote.exchangeRate,
-          currentValueHome: currentValue,
-          unrealizedPnlHome: pnl,
-          unrealizedPnlPercentage: pnlPct,
-        });
-        // Calculate XIRR with cached quote
+      // Always fetch fresh quote on page load
+      handleFetchQuote();
+
+      // If we have cached quote and haven't calculated XIRR yet, do it now
+      if (hasAppliedCache.current && lastQuote) {
         portfolioApi.calculatePositionXirr(
           portfolioId!,
           ticker!,
@@ -147,7 +154,7 @@ export function PositionDetailPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolio, position]);
+  }, [portfolio, position, isLoading]);
 
   const handleFetchQuote = async () => {
     if (!portfolio) return;
@@ -233,6 +240,16 @@ export function PositionDetailPage() {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
     await loadData();
+  };
+
+  const handleExportTransactions = () => {
+    if (!portfolio || transactions.length === 0) return;
+    exportTransactionsToCsv(
+      transactions,
+      portfolio.baseCurrency,
+      portfolio.homeCurrency,
+      `${ticker}_交易紀錄_${new Date().toISOString().split('T')[0]}.csv`
+    );
   };
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
@@ -370,7 +387,8 @@ export function PositionDetailPage() {
               </div>
             </div>
 
-            {lastQuote && (
+            {/* Show computed values section when we have current value (from cache or fresh quote) */}
+            {position.currentValueHome != null && (
               <>
                 <hr className="border-[var(--border-color)] my-4" />
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -417,10 +435,19 @@ export function PositionDetailPage() {
 
         {/* Transaction List */}
         <div className="card-dark overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--border-color)]">
+          <div className="px-5 py-4 border-b border-[var(--border-color)] flex justify-between items-center">
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
               {ticker} 交易紀錄
             </h2>
+            <button
+              onClick={handleExportTransactions}
+              disabled={transactions.length === 0}
+              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+              title="匯出交易紀錄"
+            >
+              <Download className="w-4 h-4" />
+              匯出
+            </button>
           </div>
           {transactions.length > 0 ? (
             <TransactionList

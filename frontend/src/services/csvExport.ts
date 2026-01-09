@@ -3,8 +3,8 @@
  * Exports transactions and positions to CSV with UTF-8 BOM for Excel compatibility
  */
 
-import type { StockTransaction, StockPosition } from '../types';
-import { TransactionType } from '../types';
+import type { StockTransaction, StockPosition, CurrencyTransaction } from '../types';
+import { TransactionType, CurrencyTransactionType } from '../types';
 
 // UTF-8 BOM for Excel compatibility
 const UTF8_BOM = '\uFEFF';
@@ -15,6 +15,17 @@ const TRANSACTION_TYPE_LABELS: Record<number, string> = {
   [TransactionType.Sell]: '賣出',
   [TransactionType.Split]: '分割',
   [TransactionType.Adjustment]: '調整',
+};
+
+// Currency transaction type labels in Chinese
+const CURRENCY_TX_TYPE_LABELS: Record<number, string> = {
+  [CurrencyTransactionType.ExchangeBuy]: '換匯買入',
+  [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
+  [CurrencyTransactionType.Interest]: '利息收入',
+  [CurrencyTransactionType.Spend]: '消費支出',
+  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
+  [CurrencyTransactionType.OtherIncome]: '其他收入',
+  [CurrencyTransactionType.OtherExpense]: '其他支出',
 };
 
 /**
@@ -180,5 +191,56 @@ export function exportPositionsToCsv(
 ): void {
   const csv = generatePositionsCsv(positions, baseCurrency, homeCurrency);
   const defaultFilename = `持倉明細_${new Date().toISOString().split('T')[0]}.csv`;
+  downloadCsv(csv, filename || defaultFilename);
+}
+
+/**
+ * Generate CSV content for currency transactions
+ */
+export function generateCurrencyTransactionsCsv(
+  transactions: CurrencyTransaction[],
+  currencyCode: string,
+  homeCurrency = 'TWD'
+): string {
+  // CSV Headers in Chinese
+  const headers = [
+    '日期',
+    '類型',
+    `外幣金額(${currencyCode})`,
+    `台幣金額(${homeCurrency})`,
+    '匯率',
+    '備註',
+  ];
+
+  // Generate rows
+  const rows = transactions.map((tx) => [
+    escapeCSVField(formatDate(tx.transactionDate)),
+    escapeCSVField(CURRENCY_TX_TYPE_LABELS[tx.transactionType] || String(tx.transactionType)),
+    escapeCSVField(formatNumber(tx.foreignAmount, 4)),
+    escapeCSVField(tx.homeAmount != null ? formatNumber(tx.homeAmount, 2) : ''),
+    escapeCSVField(tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : ''),
+    escapeCSVField(tx.notes || ''),
+  ]);
+
+  // Combine headers and rows
+  const csvContent = [
+    headers.join(','),
+    ...rows.map((row) => row.join(',')),
+  ].join('\n');
+
+  return UTF8_BOM + csvContent;
+}
+
+/**
+ * Export currency transactions to CSV and trigger download
+ */
+export function exportCurrencyTransactionsToCsv(
+  transactions: CurrencyTransaction[],
+  currencyCode: string,
+  homeCurrency = 'TWD',
+  filename?: string
+): void {
+  const csv = generateCurrencyTransactionsCsv(transactions, currencyCode, homeCurrency);
+  const defaultFilename = `${currencyCode}_交易紀錄_${new Date().toISOString().split('T')[0]}.csv`;
   downloadCsv(csv, filename || defaultFilename);
 }
