@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, transactionApi, stockPriceApi } from '../services/api';
@@ -38,18 +38,22 @@ interface CachedQuote {
   market: StockMarketType;
 }
 
-// Load cached market from localStorage
-const loadCachedMarket = (ticker: string): StockMarketType => {
+// Load cached quote from localStorage
+const loadCachedQuote = (ticker: string): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
   try {
     const cached = localStorage.getItem(getQuoteCacheKey(ticker));
     if (cached) {
       const data: CachedQuote = JSON.parse(cached);
-      return data.market;
+      return {
+        quote: data.quote,
+        updatedAt: new Date(data.updatedAt),
+        market: data.market,
+      };
     }
   } catch {
     // Ignore cache errors
   }
-  return guessMarket(ticker);
+  return { quote: null, updatedAt: null, market: guessMarket(ticker) };
 };
 
 export function PositionDetailPage() {
@@ -60,14 +64,20 @@ export function PositionDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Quote state
-  const [selectedMarket, setSelectedMarket] = useState<StockMarketType>(
-    ticker ? loadCachedMarket(ticker) : StockMarket.US
+  // Load cached quote on init
+  const cachedData = ticker ? loadCachedQuote(ticker) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType };
+
+  // Quote state - initialize from cache
+  const [selectedMarket, setSelectedMarket] = useState<StockMarketType>(cachedData.market);
+  const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
+    cachedData.quote ? 'success' : 'idle'
   );
-  const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [lastQuote, setLastQuote] = useState<StockQuoteResponse | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lastQuote, setLastQuote] = useState<StockQuoteResponse | null>(cachedData.quote);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(cachedData.updatedAt);
   const [positionXirr, setPositionXirr] = useState<XirrResult | null>(null);
+
+  // Auto-fetch tracking
+  const hasFetched = useRef(false);
 
   const loadData = useCallback(async () => {
     if (!portfolioId || !ticker) return;
@@ -104,6 +114,40 @@ export function PositionDetailPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Auto-fetch quote on mount (if cache is older than 5 minutes)
+  useEffect(() => {
+    if (!hasFetched.current && portfolio && position) {
+      hasFetched.current = true;
+      const cacheAge = lastUpdated ? Date.now() - lastUpdated.getTime() : Infinity;
+      if (cacheAge > 5 * 60 * 1000) {
+        handleFetchQuote();
+      } else if (lastQuote) {
+        // If we have cached quote, calculate position values and XIRR
+        const currentValue = position.totalShares * lastQuote.price * (lastQuote.exchangeRate ?? 1);
+        const pnl = currentValue - position.totalCostHome;
+        const pnlPct = position.totalCostHome > 0 ? (pnl / position.totalCostHome) * 100 : 0;
+        setPosition({
+          ...position,
+          currentPrice: lastQuote.price,
+          currentExchangeRate: lastQuote.exchangeRate,
+          currentValueHome: currentValue,
+          unrealizedPnlHome: pnl,
+          unrealizedPnlPercentage: pnlPct,
+        });
+        // Calculate XIRR with cached quote
+        portfolioApi.calculatePositionXirr(
+          portfolioId!,
+          ticker!,
+          {
+            currentPrice: lastQuote.price,
+            currentExchangeRate: lastQuote.exchangeRate,
+          }
+        ).then(setPositionXirr).catch(() => setPositionXirr(null));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolio, position]);
 
   const handleFetchQuote = async () => {
     if (!portfolio) return;
