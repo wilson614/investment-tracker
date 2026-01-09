@@ -174,9 +174,21 @@ export function PositionDetailPage() {
       }
 
       if (quote) {
+        const now = new Date();
         setLastQuote(quote);
-        setLastUpdated(new Date());
+        setLastUpdated(now);
         setFetchStatus('success');
+
+        // Save to localStorage cache (same format as PositionCard)
+        try {
+          localStorage.setItem(getQuoteCacheKey(ticker!), JSON.stringify({
+            quote,
+            updatedAt: now.toISOString(),
+            market: quote.market,
+          }));
+        } catch {
+          // Ignore cache errors
+        }
 
         // Recalculate position with current price
         if (position && quote.exchangeRate) {
@@ -264,7 +276,6 @@ export function PositionDetailPage() {
 
   const pnlColor =
     (position?.unrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative';
-  const hasCurrentValue = position?.currentValueHome != null;
   const homeCurrency = portfolio.homeCurrency;
   const baseCurrency = portfolio.baseCurrency;
 
@@ -308,11 +319,6 @@ export function PositionDetailPage() {
                 無法取得報價
               </span>
             )}
-            {fetchStatus === 'success' && lastQuote && (
-              <span className="text-sm text-[var(--color-success)]">
-                已更新
-              </span>
-            )}
           </div>
         </div>
 
@@ -329,56 +335,54 @@ export function PositionDetailPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="metric-card metric-card-cream">
+              <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">持股數量</p>
-                <p className="text-xl font-bold text-[var(--accent-cream)] number-display">
+                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
                   {formatNumber(position.totalShares, 4)}
                 </p>
                 <p className="text-sm text-[var(--text-muted)]">股</p>
               </div>
 
-              <div className="metric-card metric-card-sand">
+              <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">單位成本</p>
-                <p className="text-xl font-bold text-[var(--accent-sand)] number-display">
+                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
                   {formatNumber(position.averageCostPerShareSource)}
                 </p>
                 <p className="text-sm text-[var(--text-muted)]">{baseCurrency}/股</p>
               </div>
 
-              <div className="metric-card metric-card-butter">
+              <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">總成本</p>
-                <p className="text-xl font-bold text-[var(--accent-butter)] number-display">
+                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
                   {formatTWD(position.totalCostHome)}
                 </p>
                 <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
               </div>
 
-              {lastQuote && (
-                <div className="metric-card metric-card-peach">
-                  <p className="text-sm text-[var(--text-muted)] mb-1">現價</p>
-                  <p className="text-xl font-bold text-[var(--accent-peach)] number-display">
-                    {formatNumber(lastQuote.price)}
-                  </p>
-                  <p className="text-sm text-[var(--text-muted)]">
-                    {baseCurrency} · 匯率 {formatNumber(lastQuote.exchangeRate ?? 0, 4)}
-                  </p>
-                </div>
-              )}
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">現價</p>
+                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                  {lastQuote ? formatNumber(lastQuote.price) : '-'}
+                </p>
+                <p className="text-sm text-[var(--text-muted)]">
+                  {lastQuote ? `${baseCurrency} · 匯率 ${formatNumber(lastQuote.exchangeRate ?? 0, 4)}` : baseCurrency}
+                </p>
+              </div>
             </div>
 
-            {hasCurrentValue && (
+            {lastQuote && (
               <>
                 <hr className="border-[var(--border-color)] my-4" />
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="metric-card metric-card-sand">
+                  <div className="metric-card">
                     <p className="text-sm text-[var(--text-muted)] mb-1">目前市值</p>
-                    <p className="text-xl font-bold text-[var(--accent-sand)] number-display">
+                    <p className="text-xl font-bold text-[var(--text-primary)] number-display">
                       {formatTWD(position.currentValueHome)}
                     </p>
                     <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
                   </div>
 
-                  <div className="metric-card metric-card-peach">
+                  <div className="metric-card">
                     <p className="text-sm text-[var(--text-muted)] mb-1">未實現損益</p>
                     <p className={`text-xl font-bold number-display ${pnlColor}`}>
                       {formatTWD(position.unrealizedPnlHome)}
@@ -388,17 +392,19 @@ export function PositionDetailPage() {
                     </p>
                   </div>
 
-                  {positionXirr?.xirrPercentage != null && (
-                    <div className="metric-card metric-card-cream">
-                      <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
+                  <div className="metric-card">
+                    <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
+                    {positionXirr?.xirrPercentage != null ? (
                       <p className={`text-xl font-bold number-display ${positionXirr.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
                         {formatPercent(positionXirr.xirrPercentage)}
                       </p>
-                      <p className="text-sm text-[var(--text-muted)]">
-                        含 {positionXirr.cashFlowCount} 筆現金流
-                      </p>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xl font-bold text-[var(--text-primary)] number-display">-</p>
+                    )}
+                    <p className="text-sm text-[var(--text-muted)]">
+                      {positionXirr?.cashFlowCount ? `含 ${positionXirr.cashFlowCount} 筆現金流` : ''}
+                    </p>
+                  </div>
                 </div>
               </>
             )}
