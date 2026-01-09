@@ -156,6 +156,7 @@ builder.Services.AddScoped<UpdateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
 
 // Stock Price Service
+builder.Services.AddSingleton<ITwseRateLimiter, TwseRateLimiter>(); // Singleton to share rate limit across all requests
 builder.Services.AddHttpClient<IStockPriceProvider, SinaStockPriceProvider>();
 builder.Services.AddHttpClient<TwseStockPriceProvider>();
 builder.Services.AddHttpClient<IExchangeRateProvider, SinaExchangeRateProvider>();
@@ -173,8 +174,11 @@ builder.Services.AddScoped<IIndexPriceService, IndexPriceService>();
 // CAPE Data Service
 builder.Services.AddHttpClient<ICapeDataService, CapeDataService>();
 
-// Market YTD Service
-builder.Services.AddScoped<IMarketYtdService, MarketYtdService>();
+// TWSE Dividend Service (for YTD dividend adjustment)
+builder.Services.AddHttpClient<ITwseDividendService, TwseDividendService>();
+
+// Market YTD Service (needs HttpClient for TWSE 0050 historical data)
+builder.Services.AddHttpClient<IMarketYtdService, MarketYtdService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();

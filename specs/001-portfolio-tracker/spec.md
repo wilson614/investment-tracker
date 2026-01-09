@@ -226,12 +226,16 @@ As an investor, I want to see my portfolio's historical performance and current 
   - Taiwan: 0050 (元大台灣50)
   - Emerging Markets: VFEM (Vanguard FTSE Emerging Markets)
 - **FR-042b**: System MUST calculate YTD return using formula: ((Current Price - Jan 1 Price) / Jan 1 Price) × 100.
-- **FR-042c**: System MUST cache Jan 1 reference prices permanently in database.
+- **FR-042c**: System MUST cache Jan 1 reference prices permanently in database using YearMonth format YYYYMM (e.g., 202512 for 2025 December year-end price).
+- **FR-042d**: System MUST auto-fetch missing year-end prices from external sources (Stooq for UK ETFs, TWSE for Taiwan) when not found in database.
+- **FR-042e**: System MUST calculate dividend-adjusted total return for Taiwan 0050: ((Current Price + Dividends Paid - Jan 1 Price) / Jan 1 Price) × 100.
+- **FR-042f**: System MUST fetch 0050 dividend data from TWSE TWT49U API and only count dividends where ex-dividend date ≤ today.
 
 #### Taiwan Stock Support
 - **FR-043**: System MUST correctly handle Taiwan stocks where source currency equals home currency (TWD).
 - **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD).
 - **FR-043b**: System MUST support both TWSE (上市) and TPEx (上櫃) markets via TWSE API.
+- **FR-043c**: System MUST implement rate limiting for TWSE API: maximum 3 requests per 5 seconds to avoid IP blocking.
 
 #### Currency Ledger
 - **FR-007**: System MUST track foreign currency balance with weighted average cost methodology.

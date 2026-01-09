@@ -9,6 +9,7 @@ public interface IMarketYtdService
 {
     /// <summary>
     /// Get YTD comparison for all benchmark ETFs
+    /// Auto-fetches missing year-end prices from Stooq/TWSE if needed
     /// </summary>
     Task<MarketYtdComparisonDto> GetYtdComparisonAsync(CancellationToken cancellationToken = default);
 
@@ -16,9 +17,4 @@ public interface IMarketYtdService
     /// Refresh current prices for all benchmarks
     /// </summary>
     Task<MarketYtdComparisonDto> RefreshYtdComparisonAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Store Jan 1 reference price for a benchmark
-    /// </summary>
-    Task StoreJan1PriceAsync(string marketKey, decimal price, CancellationToken cancellationToken = default);
 }

@@ -162,25 +162,6 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Store Jan 1 reference price for a benchmark (used at year start)
-    /// </summary>
-    [HttpPost("ytd-jan1-price")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> StoreJan1Price(
-        [FromBody] Jan1PriceRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!MarketYtdService.SupportedBenchmarks.ContainsKey(request.MarketKey))
-        {
-            return BadRequest($"Unsupported market: {request.MarketKey}. Supported: {string.Join(", ", MarketYtdService.SupportedBenchmarks.Keys)}");
-        }
-
-        await _marketYtdService.StoreJan1PriceAsync(request.MarketKey, request.Price, cancellationToken);
-        return Ok(new { Message = $"Stored Jan 1 price for {request.MarketKey}: {request.Price}" });
-    }
-
-    /// <summary>
     /// Get supported benchmarks for YTD comparison
     /// </summary>
     [HttpGet("ytd-benchmarks")]
@@ -198,4 +179,3 @@ public class MarketDataController : ControllerBase
 }
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
-public record Jan1PriceRequest(string MarketKey, decimal Price);

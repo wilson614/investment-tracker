@@ -6,16 +6,22 @@ namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
 /// Stock price provider using TWSE (Taiwan Stock Exchange) API
+/// Includes rate limiting to avoid being blocked (3 requests per 5 seconds)
 /// </summary>
 public class TwseStockPriceProvider : IStockPriceProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly ITwseRateLimiter _rateLimiter;
     private readonly ILogger<TwseStockPriceProvider> _logger;
     private const string BaseUrl = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp";
 
-    public TwseStockPriceProvider(HttpClient httpClient, ILogger<TwseStockPriceProvider> logger)
+    public TwseStockPriceProvider(
+        HttpClient httpClient,
+        ITwseRateLimiter rateLimiter,
+        ILogger<TwseStockPriceProvider> logger)
     {
         _httpClient = httpClient;
+        _rateLimiter = rateLimiter;
         _logger = logger;
     }
 
@@ -50,6 +56,9 @@ public class TwseStockPriceProvider : IStockPriceProvider
 
         try
         {
+            // Wait for rate limit slot before making request
+            await _rateLimiter.WaitForSlotAsync(cancellationToken);
+
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0");
 

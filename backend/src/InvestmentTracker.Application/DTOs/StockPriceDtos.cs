@@ -67,14 +67,20 @@ public record MarketYtdReturnDto
     /// <summary>Human-readable name</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>Jan 1 reference price</summary>
+    /// <summary>Jan 1 reference price (previous year-end closing price)</summary>
     public decimal? Jan1Price { get; init; }
 
     /// <summary>Current price</summary>
     public decimal? CurrentPrice { get; init; }
 
-    /// <summary>YTD return percentage</summary>
+    /// <summary>Total dividends paid YTD (for dividend-adjusted return)</summary>
+    public decimal? DividendsPaid { get; init; }
+
+    /// <summary>YTD return percentage (price return only, excluding dividends)</summary>
     public decimal? YtdReturnPercent { get; init; }
+
+    /// <summary>YTD total return percentage (including dividends)</summary>
+    public decimal? YtdTotalReturnPercent { get; init; }
 
     /// <summary>When current price was fetched</summary>
     public DateTime? FetchedAt { get; init; }

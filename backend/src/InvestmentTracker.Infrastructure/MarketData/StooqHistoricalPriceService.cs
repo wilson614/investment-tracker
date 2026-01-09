@@ -17,8 +17,9 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     // ETF symbol mappings for Stooq (UK-listed, USD denominated)
     private static readonly Dictionary<string, string> StooqSymbols = new()
     {
-        ["All Country"] = "vwra.uk",  // Vanguard FTSE All-World UCITS ETF (Acc)
-        ["US Large"] = "vuaa.uk",      // Vanguard S&P 500 UCITS ETF (Acc)
+        ["All Country"] = "vwra.uk",       // Vanguard FTSE All-World UCITS ETF (Acc)
+        ["US Large"] = "vuaa.uk",          // Vanguard S&P 500 UCITS ETF (Acc)
+        ["Emerging Markets"] = "vfem.uk",  // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
     };
 
     public StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHistoricalPriceService> logger)
