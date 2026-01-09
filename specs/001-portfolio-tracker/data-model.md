@@ -1,8 +1,8 @@
 # Data Model: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-08
-**Status**: Complete (Updated for Dashboard Analytics)
+**Date**: 2026-01-09
+**Status**: Complete (Updated for Page Refresh Behavior, CSV Export, Market YTD Comparison)
 
 ## Entity Relationship Diagram
 
@@ -432,3 +432,84 @@ modelBuilder.Entity<HistoricalPrice>(entity =>
     entity.Property(e => e.ExchangeRate).HasPrecision(18, 6);
 });
 ```
+
+---
+
+## 8. BenchmarkPrice (Virtual Entity)
+
+Benchmark prices are stored in the `HistoricalPrice` table using a special ticker prefix.
+
+**Ticker Convention**: `BENCHMARK:{symbol}`
+
+| Symbol | Ticker in DB | Description |
+|--------|--------------|-------------|
+| VWRA | BENCHMARK:VWRA | Vanguard FTSE All-World (All Country) |
+| VUAA | BENCHMARK:VUAA | Vanguard S&P 500 (US Large) |
+| 0050 | BENCHMARK:0050 | 元大台灣50 (Taiwan) |
+| VFEM | BENCHMARK:VFEM | Vanguard FTSE EM (Emerging Markets) |
+
+**Query Example**:
+```csharp
+// Get Jan 1 price for VWRA benchmark
+var jan1Price = await _context.HistoricalPrices
+    .Where(p => p.Ticker == "BENCHMARK:VWRA" && p.PriceDate == jan1Date)
+    .FirstOrDefaultAsync();
+```
+
+---
+
+## CSV Export DTOs
+
+### TransactionExportDto
+DTO for CSV export of transactions.
+
+| Field | Type | CSV Header |
+|-------|------|------------|
+| TransactionDate | DateTime | 日期 |
+| Ticker | string | 股票代號 |
+| TransactionType | string | 類型 |
+| Shares | decimal | 股數 |
+| PricePerShare | decimal | 價格 |
+| Fees | decimal | 手續費 |
+| ExchangeRate | decimal | 匯率 |
+| TotalCostSource | decimal | 總成本(原幣) |
+| TotalCostHome | decimal | 總成本(台幣) |
+
+### PositionExportDto
+DTO for CSV export of positions.
+
+| Field | Type | CSV Header |
+|-------|------|------------|
+| Ticker | string | 股票代號 |
+| TotalShares | decimal | 持股數量 |
+| AverageCostPerShareSource | decimal | 平均成本(原幣) |
+| TotalCostHome | decimal | 總成本(台幣) |
+| CurrentPrice | decimal? | 現價 |
+| CurrentValueHome | decimal? | 市值(台幣) |
+| UnrealizedPnlHome | decimal? | 未實現損益 |
+| UnrealizedPnlPercentage | decimal? | 報酬率(%) |
+
+---
+
+## Market YTD Response DTOs
+
+### MarketYtdReturnDto
+DTO for market benchmark YTD returns.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| MarketName | string | Display name (e.g., "全球市場", "美國大型股") |
+| Symbol | string | ETF symbol (e.g., "VWRA", "VUAA") |
+| Jan1Price | decimal | Price on Jan 1 |
+| CurrentPrice | decimal | Current price |
+| YtdReturnPercent | decimal | YTD return percentage |
+| FetchedAt | DateTime | When current price was fetched |
+
+### MarketYtdComparisonDto
+Aggregated response for dashboard.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| AsOfDate | DateTime | Data timestamp |
+| Benchmarks | List<MarketYtdReturnDto> | All benchmark YTD returns |
+| PortfolioYtdReturn | decimal? | User's portfolio YTD (if calculable) |

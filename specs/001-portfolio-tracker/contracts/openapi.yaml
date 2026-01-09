@@ -508,6 +508,54 @@ components:
         totalPages:
           type: integer
 
+    # ==================== Market Data ====================
+    MarketYtdReturnDto:
+      type: object
+      properties:
+        marketName:
+          type: string
+          description: Display name (e.g., "全球市場", "美國大型股")
+          example: "全球市場"
+        symbol:
+          type: string
+          description: ETF symbol
+          example: "VWRA"
+        jan1Price:
+          type: number
+          format: decimal
+          description: Price on January 1st
+        currentPrice:
+          type: number
+          format: decimal
+          description: Current price
+        ytdReturnPercent:
+          type: number
+          format: decimal
+          description: Year-to-date return percentage
+          example: 12.34
+        fetchedAt:
+          type: string
+          format: date-time
+          description: When current price was fetched
+
+    MarketYtdComparisonDto:
+      type: object
+      properties:
+        asOfDate:
+          type: string
+          format: date-time
+          description: Data timestamp
+        benchmarks:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketYtdReturnDto'
+          description: All benchmark YTD returns
+        portfolioYtdReturn:
+          type: number
+          format: decimal
+          nullable: true
+          description: User's portfolio YTD return (if calculable)
+
 security:
   - bearerAuth: []
 
@@ -1030,3 +1078,24 @@ paths:
           description: Transaction deleted
         '404':
           description: Transaction not found
+
+  # ==================== Market Data ====================
+  /market-data/ytd-comparison:
+    get:
+      tags: [MarketData]
+      summary: Get YTD returns for benchmark ETFs
+      description: |
+        Returns Year-to-Date returns for major market benchmark ETFs:
+        - VWRA (All Country)
+        - VUAA (US Large)
+        - 0050 (Taiwan)
+        - VFEM (Emerging Markets)
+      responses:
+        '200':
+          description: Benchmark YTD returns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketYtdComparisonDto'
+        '503':
+          description: External API unavailable

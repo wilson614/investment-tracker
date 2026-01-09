@@ -1,8 +1,8 @@
 # Research: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-08
-**Status**: Complete (Updated for Dashboard Analytics)
+**Date**: 2026-01-09
+**Status**: Complete (Updated for Page Refresh Behavior, CSV Export, Market YTD Comparison)
 
 ## Executive Summary
 
@@ -619,5 +619,223 @@ public AnnualReturn CalculateAnnualReturn(
 | **CAPE API** | Frontend fetch, 24hr localStorage cache |
 | **Historical Prices** | Backend fetch, permanent DB cache |
 | **Historical Returns** | Modified Dietz method |
+
+---
+
+## 14. Quote Caching Strategy (Revised)
+
+### Decision
+Cache is used **solely to prevent UI flickering**. Every page load triggers fresh quote fetch from API.
+
+### Rationale
+- User expects page refresh to get new data
+- Cache prevents jarring "-" or empty states during initial render
+- Simple mental model: refresh = new data
+
+### Implementation Details
+```typescript
+// Page load sequence:
+// 1. Display cached values immediately (if available)
+// 2. Trigger API fetch for all positions
+// 3. Update display with fresh data
+// 4. Save new data to cache for next page load
+
+const loadWithCache = async () => {
+  // Step 1: Show cached immediately
+  const cached = loadFromLocalStorage();
+  if (cached) {
+    setData(cached); // Instant display, no flicker
+  }
+
+  // Step 2-3: Fetch and update
+  setIsLoading(true);
+  const fresh = await fetchFromApi();
+  setData(fresh);
+  setIsLoading(false);
+
+  // Step 4: Update cache
+  saveToLocalStorage(fresh);
+};
+```
+
+### Previous Approach (Rejected)
+| Approach | Why Rejected |
+|----------|--------------|
+| TTL-based cache (1 hour) | User expects refresh to get new data |
+| No auto-fetch on page load | Values show stale or "-" until manual click |
+
+---
+
+## 15. CSV Export Implementation
+
+### Decision
+**Frontend-only CSV generation** using Blob API with UTF-8 BOM for Excel compatibility.
+
+### Rationale
+- Simple implementation, no backend changes needed
+- Works offline after initial data load
+- BOM ensures Excel opens file with correct encoding
+
+### Implementation Details
+```typescript
+// services/csvExport.ts
+export function generateTransactionsCsv(transactions: StockTransaction[]): string {
+  const headers = [
+    '日期', '股票代號', '類型', '股數', '價格', '手續費',
+    '匯率', '總成本(原幣)', '總成本(台幣)'
+  ];
+
+  const rows = transactions.map(tx => [
+    formatDate(tx.transactionDate),
+    tx.ticker,
+    tx.transactionType === 1 ? '買入' : '賣出',
+    tx.shares.toFixed(4),
+    tx.pricePerShare.toFixed(4),
+    tx.fees.toFixed(2),
+    tx.exchangeRate.toFixed(6),
+    tx.totalCostSource.toFixed(2),
+    tx.totalCostHome.toFixed(0),
+  ]);
+
+  return [headers, ...rows].map(row => row.join(',')).join('\n');
+}
+
+export function downloadCsv(content: string, filename: string): void {
+  // UTF-8 BOM for Excel compatibility
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+```
+
+### Export Types
+| Export | Content | Filename |
+|--------|---------|----------|
+| Transactions | All transaction fields | `transactions_YYYYMMDD.csv` |
+| Positions | Current holdings with values | `positions_YYYYMMDD.csv` |
+| Portfolio Summary | Aggregate metrics | `portfolio_summary_YYYYMMDD.csv` |
+
+---
+
+## 16. Market YTD Comparison
+
+### Decision
+**Backend service** fetching benchmark ETF prices with database cache for Jan 1 reference prices.
+
+### Rationale
+- Consistent with historical price approach (backend + DB cache)
+- Jan 1 prices are immutable, can cache permanently
+- Current prices fetched on-demand (same as position quotes)
+
+### Benchmark ETFs
+| Market | ETF | Symbol | Source |
+|--------|-----|--------|--------|
+| All Country | Vanguard FTSE All-World | VWRA | Sina (lse_vwra) |
+| US Large | Vanguard S&P 500 | VUAA | Sina (lse_vuaa) |
+| Taiwan | 元大台灣50 | 0050 | TWSE |
+| Emerging Markets | Vanguard FTSE EM | VFEM | Sina (lse_vfem) |
+
+### YTD Calculation
+```csharp
+// Domain Service: MarketBenchmarkService.cs
+public record MarketYtdReturn(
+    string MarketName,
+    string Symbol,
+    decimal Jan1Price,
+    decimal CurrentPrice,
+    decimal YtdReturnPercent
+);
+
+public async Task<MarketYtdReturn> CalculateYtd(string symbol, DateTime today)
+{
+    var jan1 = new DateTime(today.Year, 1, 1);
+    var jan1Price = await _priceCache.GetOrFetchPrice(symbol, jan1);
+    var currentPrice = await _priceService.GetCurrentPrice(symbol);
+
+    var ytdReturn = ((currentPrice - jan1Price) / jan1Price) * 100;
+
+    return new MarketYtdReturn(
+        GetMarketName(symbol),
+        symbol,
+        jan1Price,
+        currentPrice,
+        ytdReturn
+    );
+}
+```
+
+### Database Schema Addition
+```sql
+-- Reuse historical_prices table for benchmark prices
+-- Add entries with special ticker format: "BENCHMARK:{symbol}"
+INSERT INTO historical_prices (id, ticker, price_date, close_price, source)
+VALUES (gen_random_uuid(), 'BENCHMARK:VWRA', '2026-01-02', 120.50, 'stooq');
+```
+
+---
+
+## 17. Taiwan Stock Currency Handling
+
+### Decision
+When source currency equals home currency (TWD), exchange rate is always **1.0**.
+
+### Rationale
+- Simplifies calculation: no currency conversion needed
+- Consistent with existing exchange rate field (never null)
+- UI can detect same-currency transactions for display
+
+### Implementation Details
+```csharp
+// When creating Taiwan stock transaction:
+var exchangeRate = portfolio.BaseCurrency == portfolio.HomeCurrency
+    ? 1.0m
+    : fetchedExchangeRate;
+
+// For Taiwan stocks specifically:
+if (market == StockMarket.TW)
+{
+    // Source currency is TWD, home currency is TWD
+    exchangeRate = 1.0m;
+}
+```
+
+### Frontend Display
+```typescript
+// Don't show "匯率" for Taiwan stocks
+const isSameCurrency = baseCurrency === homeCurrency;
+if (!isSameCurrency) {
+  return <span>匯率: {formatNumber(exchangeRate, 4)}</span>;
+}
+```
+
+---
+
+## Summary (Updated)
+
+| Topic | Decision |
+|-------|----------|
+| XIRR Algorithm | Newton-Raphson with Brent's fallback |
+| Cost Calculation | Moving average, recalculate from T=0 |
+| Multi-Tenancy | Row-level filtering with EF Core global filters |
+| Transaction Atomicity | EF Core database transactions |
+| Authentication | JWT Bearer with refresh token rotation |
+| Decimal Precision | decimal(18,4) shares, decimal(18,6) rates |
+| Deployment | Docker Compose (3 containers) |
+| API Versioning | URL path `/api/v1/` |
+| Frontend State | React Query + Context |
+| CAPE API | Frontend fetch, 24hr localStorage cache |
+| Historical Prices | Backend fetch, permanent DB cache |
+| Historical Returns | Modified Dietz method |
+| **Quote Caching** | **Flicker-prevention only, always fetch on page load** |
+| **CSV Export** | **Frontend Blob API with UTF-8 BOM** |
+| **Market YTD** | **Backend service with benchmark ETF prices** |
+| **Taiwan Currency** | **Exchange rate = 1.0 when TWD/TWD** |
 
 **All research complete. Ready for Phase 1: Design & Contracts.**

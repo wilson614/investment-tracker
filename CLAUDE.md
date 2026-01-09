@@ -4,6 +4,7 @@ Auto-generated from all feature plans. Last updated: 2026-01-06
 
 ## Active Technologies
 - SQLite (development), PostgreSQL (production-compatible) (001-portfolio-tracker)
+- C# .NET 8 (Backend), TypeScript 5.x with React (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query (001-portfolio-tracker)
 
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) (001-portfolio-tracker)
 
@@ -24,6 +25,7 @@ npm test; npm run lint
 C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Recent Changes
+- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x with React (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend)
 
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend)

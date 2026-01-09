@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-08
+**Updated**: 2026-01-09
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -180,7 +180,9 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-023**: System MUST display visual feedback for quote fetch status: loading spinner, success ("已更新"), or error ("無法取得報價").
 - **FR-024**: System MUST provide "獲取全部報價" button to batch-fetch quotes for all positions.
 - **FR-025**: System MUST cache fetched quotes in browser localStorage with timestamp.
-- **FR-026**: System MUST load cached quotes (max 1 hour old) on Dashboard page load for approximate metrics.
+- **FR-026**: System MUST load cached quotes on page load for immediate display (preventing flickering), then automatically fetch fresh quotes from API.
+- **FR-026a**: System MUST display loading indicator (spinner on "更新報價" button) during automatic quote fetch on page load.
+- **FR-026b**: System MUST replace cached values with fresh data after successful fetch.
 - **FR-027**: System MUST support Taiwan (TW), US, and UK stock markets for quote fetching.
 - **FR-028**: System MUST auto-detect market based on ticker format:
   - Taiwan: Pure digits or digits with letters (e.g., 2330, 00878, 6547M)
@@ -201,9 +203,35 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-034**: System MUST display allocation weight (%) for each position relative to total portfolio value.
 - **FR-035**: System MUST calculate Year-to-Date (YTD) return based on Jan 1 valuation vs current value.
 - **FR-036**: Historical returns calculation formula: ((Year-End Value - Year-Start Value - Net Contributions) / Year-Start Value) × 100.
-- **FR-037**: System MUST fetch historical closing prices via API to calculate year-end valuations.
+- **FR-037**: System MUST fetch historical **adjusted closing prices** (含息價格) via API to calculate year-end valuations. For US/UK stocks, use Yahoo Finance `adjclose` field which accounts for dividends and splits.
 - **FR-038**: System MUST cache historical prices permanently (historical data does not change).
 - **FR-039**: System MUST use Dec 31 closing price (or last trading day) for year-end valuation.
+
+#### Page Refresh Behavior
+- **FR-040**: System MUST automatically trigger quote fetch for all positions when any portfolio-related page is refreshed (F5 or navigation).
+- **FR-040a**: System MUST show loading state on "更新報價" button during automatic fetch on page load.
+- **FR-040b**: Position Detail page MUST display cached market value and unrealized PnL immediately on load, then update with fresh data after fetch.
+
+#### Data Export
+- **FR-041**: System MUST provide CSV export functionality for transactions.
+- **FR-041a**: CSV export MUST include all transaction fields: Date, Ticker, Type, Shares, Price, Fees, Exchange Rate, Total Cost (Source), Total Cost (Home).
+- **FR-041b**: System MUST provide CSV export for portfolio positions with current values and performance metrics.
+- **FR-041c**: CSV files MUST use UTF-8 encoding with BOM for Excel compatibility.
+
+#### Market YTD Comparison
+- **FR-042**: Dashboard MUST display YTD (Year-to-Date) returns for major market benchmark ETFs.
+- **FR-042a**: System MUST support the following benchmark ETFs for YTD comparison:
+  - All Country: VWRA (Vanguard FTSE All-World)
+  - US Large: VUAA (Vanguard S&P 500)
+  - Taiwan: 0050 (元大台灣50)
+  - Emerging Markets: VFEM (Vanguard FTSE Emerging Markets)
+- **FR-042b**: System MUST calculate YTD return using formula: ((Current Price - Jan 1 Price) / Jan 1 Price) × 100.
+- **FR-042c**: System MUST cache Jan 1 reference prices permanently in database.
+
+#### Taiwan Stock Support
+- **FR-043**: System MUST correctly handle Taiwan stocks where source currency equals home currency (TWD).
+- **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD).
+- **FR-043b**: System MUST support both TWSE (上市) and TPEx (上櫃) markets via TWSE API.
 
 #### Currency Ledger
 - **FR-007**: System MUST track foreign currency balance with weighted average cost methodology.
@@ -257,8 +285,13 @@ As an investor, I want to see my portfolio's historical performance and current 
 3. **Position Detail Page** (`/portfolio/:id/position/:ticker`)
    - Header: Ticker symbol with market tag (台股/美股/英股)
    - "獲取報價" button with visual status feedback
-   - Position Metrics: Shares, average cost, total cost, current price (after fetch)
-   - Value section (after quote): Current value, unrealized PnL with percentage
+   - Position Metrics: Shares, average cost, total cost, current price
+   - **Initial Load Behavior**:
+     - Display cached values for market value and unrealized PnL immediately (no flickering)
+     - Show loading spinner on "獲取報價" button during auto-fetch
+     - Automatically fetch fresh quote on page mount
+     - Update display with fresh data after fetch completes
+   - Value section: Current value, unrealized PnL with percentage, position XIRR
    - Transaction List: Filtered to this ticker only
 
 4. **Dashboard Page** (`/dashboard`)
@@ -266,19 +299,25 @@ As an investor, I want to see my portfolio's historical performance and current 
      - Global CAPE (Cyclically Adjusted P/E) from Research Affiliates API
      - Display current value, expected return, and valuation percentile
      - Provides macro context for investment decisions
+   - **Market YTD Comparison Section**:
+     - YTD returns for benchmark ETFs (VWRA, VUAA, 0050, VFEM)
+     - Compare portfolio YTD against market benchmarks
    - **Portfolio Summary Section**:
      - Total market value, total cost, unrealized PnL (amount + percentage)
      - Year-to-date (YTD) return
      - Annual XIRR (annualized return rate)
    - **Historical Returns Table**:
      - Portfolio historical returns by year (e.g., 2024: +15.2%, 2023: +8.7%)
-     - Calculated from actual transaction data and year-end valuations
+     - Calculated from actual transaction data and year-end valuations (using adjusted prices for total return)
    - **Position Performance Grid**:
      - All positions with current value, unrealized PnL, allocation weight (%)
      - Historical returns per position by year
      - Sortable by performance, allocation, or alphabetically
-   - Auto-loads cached quotes (max 1 hour) on page load
-   - "獲取全部報價" button to refresh all position prices
+   - **Initial Load Behavior**:
+     - Display cached quotes immediately to prevent flickering
+     - Automatically trigger quote fetch for all positions
+     - Show loading indicator during fetch
+   - "獲取全部報價" button to manually refresh all position prices
 
 ### Display Conventions
 
@@ -292,10 +331,22 @@ As an investor, I want to see my portfolio's historical performance and current 
 
 ### Quote Caching Strategy
 
+**Purpose**: Cache is used **solely to prevent UI flickering** during initial page render. Once the page loads, fresh data should always be fetched from the source.
+
+**Behavior**:
+1. **Initial Render**: Display cached values immediately (if available) to avoid showing "-" or empty states
+2. **After Mount**: Automatically trigger quote fetch to get fresh data from API
+3. **Cache Update**: Save fetched quotes to cache for next page load
+
+**Cache Structure**:
 - **Cache Key Pattern**: `quote_cache_${ticker}`
 - **Cache Structure**: `{ quote: StockQuoteResponse, updatedAt: string, market: StockMarketType }`
-- **Position Card Cache TTL**: 5 minutes (for individual refresh)
-- **Dashboard Cache TTL**: 1 hour (for page load pre-population)
+- **Cache TTL**: No TTL for display purposes - cache is always shown initially, then replaced with fresh data
+
+**Page Refresh Behavior**:
+- Page refresh (F5) MUST trigger automatic quote fetch for all visible positions
+- User should see loading indicator during fetch
+- Fresh data replaces cached data after fetch completes
 
 ## Success Criteria *(mandatory)*
 
@@ -326,12 +377,38 @@ As an investor, I want to see my portfolio's historical performance and current 
 - Q: 投資組合是否需要命名？ → A: 否，移除命名功能，只保留選填的描述欄位
 - Q: 是否需要顯示 "USD → TWD" 標示？ → A: 否，系統目前只支援台幣與美金，最終報酬都以台幣呈現
 - Q: 投資組合頁面應顯示哪些交易紀錄？ → A: 顯示全部持倉的交易紀錄（包含編輯/刪除功能）
-- Q: 儀表板是否讀取快取的股價資料？ → A: 是，載入時自動讀取 1 小時內的 localStorage 快取
+- Q: 儀表板是否讀取快取的股價資料？ → A: 是，載入時先顯示快取防閃爍，然後自動獲取最新報價
 - Q: 儀表板應顯示哪些投資人關注的資訊？ → A:
   - 持倉的歷年報酬紀錄（各年度報酬率）
   - 投資組合的歷年報酬紀錄
   - 當前全球 CAPE（使用 Research Affiliates API）
   - 各持倉配置比重（%）
+
+### Session 2026-01-09
+
+- Q: 為何使用 GUID 而非自動遞增 ID？ → A: GUID 提供以下優點：
+  - 分散式系統友好（不需中央 ID 分配）
+  - 安全性較佳（無法猜測其他用戶的資源 ID）
+  - 可在客戶端生成
+  - 適合未來擴展到多資料庫
+  - 雖然每人只有一個投資組合，但保持 GUID 架構以確保一致性和安全性
+
+- Q: 為何使用 Email 登入而非帳號密碼？ → A:
+  - Email 作為唯一識別符是現代標準做法
+  - 方便密碼重設流程（可直接寄信到 email）
+  - 避免 username 重複問題
+  - 如需簡化，未來可考慮新增 username 欄位
+
+- Q: 快取邏輯的設計目的？ → A: 快取僅用於「初始顯示防閃爍」：
+  - 頁面載入時立即顯示快取資料（避免空白或 "-" 狀態）
+  - 載入完成後自動觸發 API 獲取最新報價
+  - 獲取成功後更新畫面並儲存新快取
+  - 頁面重整 = 獲取新資料（快取只是過渡顯示）
+
+- Q: 台股的幣別處理？ → A:
+  - 台股的 source currency 為 TWD
+  - 當 source currency = home currency (TWD) 時，exchange rate = 1.0
+  - 系統支援 TWSE（上市）和 TPEx（上櫃）市場
 
 ## Assumptions
 
