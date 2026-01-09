@@ -275,7 +275,7 @@ export default function CurrencyDetail() {
   };
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
-    if (value == null) return '-';
+    if (value == null || isNaN(value)) return '-';
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
@@ -284,7 +284,7 @@ export default function CurrencyDetail() {
 
   // Format TWD as integer
   const formatTWD = (value: number | null | undefined) => {
-    if (value == null) return '-';
+    if (value == null || isNaN(value)) return '-';
     return Math.round(value).toLocaleString('zh-TW');
   };
 
@@ -437,17 +437,17 @@ export default function CurrencyDetail() {
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">已實現損益</p>
-              <p className={`text-2xl font-bold number-display ${ledger.realizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {ledger.realizedPnl >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)}
+              <p className={`text-2xl font-bold number-display ${(ledger.realizedPnl ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+                {(ledger.realizedPnl ?? 0) >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
           </div>
 
           {/* Additional metrics row */}
-          {(ledger.totalInterest > 0 || ledger.totalSpentOnStocks > 0) && (
+          {((ledger.totalInterest ?? 0) > 0 || (ledger.totalSpentOnStocks ?? 0) > 0) && (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4 pt-4 border-t border-[var(--border-color)]">
-              {ledger.totalInterest > 0 && (
+              {(ledger.totalInterest ?? 0) > 0 && (
                 <div className="metric-card">
                   <p className="text-[var(--text-muted)] text-sm mb-1">利息收入</p>
                   <p className="text-xl font-bold text-[var(--accent-peach)] number-display">
@@ -456,7 +456,7 @@ export default function CurrencyDetail() {
                   <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
                 </div>
               )}
-              {ledger.totalSpentOnStocks > 0 && (
+              {(ledger.totalSpentOnStocks ?? 0) > 0 && (
                 <div className="metric-card">
                   <div className="flex items-center gap-1 mb-1">
                     <p className="text-[var(--text-muted)] text-sm">股票投入</p>

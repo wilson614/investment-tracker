@@ -263,7 +263,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Portfolio**: Contains holdings and transactions for a specific user. Each user has exactly one portfolio with optional description.
 - **Stock Transaction**: Records buy/sell activity with date, ticker, shares, price, fees, and exchange rate.
 - **Position**: Aggregated view of holdings for a specific ticker within a portfolio (derived from transactions).
-- **Currency Ledger**: Tracks foreign currency holdings with balance and weighted average rate.
+- **Currency Ledger**: Tracks foreign currency holdings with balance and weighted average rate. One ledger per currency per user (currently USD only). Not nameable - system auto-names based on currency code.
 - **Currency Transaction**: Records currency exchanges, interest, and spend events.
 
 ## UI/UX Specifications
@@ -295,16 +295,32 @@ As an investor, I want to see my portfolio's historical performance and current 
    - Value section: Current value, unrealized PnL with percentage, position XIRR
    - Transaction List: Filtered to this ticker only (with "檔案" dropdown for export)
 
-4. **Currency Detail Page** (`/currency/:id`)
-   - Header: Currency code with editable name
-   - Summary Metrics: Balance, current exchange rate, average rate, net investment, stock investment
-   - Current Rate: Display with real-time fetch button, compare to average rate
+4. **Currency Overview Page** (`/currency`)
+   - Header: 「外幣帳本」
+   - Summary Metrics: 淨投入（累計台幣淨投入金額）
+   - Ledger Cards Grid: One card per currency
+   - "新增帳本" button to create new currency ledger (user selects from supported currencies; each currency can only have one ledger)
+
+5. **Currency Detail Page** (`/currency/:id`)
+   - Header: Currency code with real-time exchange rate (e.g., "USD @ 32.15"), NOT editable
+   - Summary Metrics: Balance, Average Rate, Net Investment
+   - Real-time rate displayed next to currency code, with refresh button
+   - NO "Current Cost" or "Realized PnL" metrics (removed as not meaningful for holding accounts)
    - Transaction List: All currency transactions with running balance (with "檔案" dropdown for import/export)
    - **Initial Load Behavior**:
      - Display cached exchange rate immediately on load (no flickering)
      - Automatically fetch fresh exchange rate on page mount
      - Update display with fresh rate after fetch completes
    - CSV export for currency transactions
+
+6. **Currency Ledger Card** (used in Currency Overview)
+   - Currency code with real-time exchange rate (e.g., "USD @ 32.15")
+   - Balance (large display)
+   - TWD equivalent (Balance × Current Rate)
+   - Net Investment amount (淨投入)
+   - Average Exchange Rate (換匯均價)
+   - Interest income (shown only if > 0)
+   - NO "Current Cost" or "Realized PnL" (removed)
 
 ### Common UI Components
 
@@ -313,7 +329,7 @@ As an investor, I want to see my portfolio's historical performance and current 
   - When only export available: Shows simple "匯出" button (no dropdown)
   - Used in: Transaction lists (Portfolio, CurrencyDetail, PositionDetail)
 
-5. **Dashboard Page** (`/dashboard`)
+7. **Dashboard Page** (`/dashboard`)
    - **Market Context Section**:
      - Global CAPE (Cyclically Adjusted P/E) from Research Affiliates API
      - Display current value, expected return, and valuation percentile
@@ -408,7 +424,41 @@ As an investor, I want to see my portfolio's historical performance and current 
   - 當前全球 CAPE（使用 Research Affiliates API）
   - 各持倉配置比重（%）
 
-### Session 2026-01-09
+### Session 2026-01-09 (Currency Ledger Redesign)
+
+- Q: 外幣帳本如何建立？ → A: 用戶透過按鈕手動建立，但每個幣別限一本（不可重複建立同幣別帳本）
+
+- Q: 系統可觀測性需求？ → A: 僅基本 logging（console + React error boundary），無需外部監控服務
+
+- Q: 外幣帳本的設計原則？ → A:
+  - **一幣別一本**：每個幣別只能有一個帳本（目前僅支援 USD，後續可擴充其他幣別）
+  - **不可命名**：帳本名稱由系統根據幣別自動產生（如「美金帳本」），用戶無需也無法自行命名
+  - 這樣設計簡化了使用流程，避免同幣別建立多個帳本造成混亂
+
+- Q: 外幣帳本應該顯示哪些指標？ → A:
+  - **保留的指標**：
+    - 餘額（核心資訊）
+    - 即時匯率（應放在幣別代碼旁邊，如「USD @ 32.15」，而非獨立的統計框）
+    - 換匯均價（判斷現在換匯是否划算）
+    - 淨投入（累計換入台幣 - 累計換出台幣，不受循環操作影響）
+    - 利息收入（有時顯示，無則隱藏）
+  - **移除的指標**：
+    - 目前成本：因為若有「定存優惠需新換美金」等循環操作（原美金換回台幣再換美金），此指標會失真
+    - 已實現損益：對於「持有外幣以便投資」的用途無意義，這不是外幣交易帳戶
+
+- Q: 為何用「淨投入」而非「成本」？ → A:
+  - 淨投入 = 累計換匯買入的台幣金額 - 累計換匯賣出的台幣金額
+  - 代表「實際淨投入的台幣」，即使中間有任何換進換出操作也不會失真
+  - 成本會因循環操作而膨脹，無法反映真實投入
+
+- Q: 帳本卡片應該如何顯示？ → A:
+  - 幣別代碼 + 即時匯率（如「USD @ 32.15」）
+  - 餘額（大字顯示）
+  - 餘額的台幣等值（餘額 × 即時匯率）
+  - 淨投入金額
+  - 移除：成本、已實現損益
+
+### Session 2026-01-09 (Technical)
 
 - Q: 為何使用 GUID 而非自動遞增 ID？ → A: GUID 提供以下優點：
   - 分散式系統友好（不需中央 ID 分配）
@@ -445,6 +495,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Stock Split Handling**: Stock splits are recorded as adjustment transactions that modify share count without affecting total cost basis.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.
 - **CAPE Adjustment Markets**: Default supported markets are All Country (VWRA), US Large (VUAA), and Taiwan (TWII). Additional markets use accumulating ETFs from Sina (real-time) + Stooq (historical) when available; markets without data sources show original CAPE only.
+- **Observability**: Basic console logging for backend errors; React error boundary for frontend crash recovery. No external APM or monitoring services required.
 
 ## Technology Stack
 

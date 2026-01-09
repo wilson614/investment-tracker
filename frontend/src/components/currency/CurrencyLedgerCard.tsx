@@ -7,7 +7,7 @@ interface CurrencyLedgerCardProps {
 
 export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps) {
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
-    if (value == null) return '-';
+    if (value == null || isNaN(value)) return '-';
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
@@ -16,7 +16,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
   // Format TWD as integer
   const formatTWD = (value: number | null | undefined) => {
-    if (value == null) return '-';
+    if (value == null || isNaN(value)) return '-';
     return Math.round(value).toLocaleString('zh-TW');
   };
 
@@ -54,12 +54,12 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">已實現損益:</span>
-          <span className={`font-medium number-display ${ledger.realizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
-            {ledger.realizedPnl >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)} {ledger.ledger.homeCurrency}
+          <span className={`font-medium number-display ${(ledger.realizedPnl ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+            {(ledger.realizedPnl ?? 0) >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)} {ledger.ledger.homeCurrency}
           </span>
         </div>
 
-        {ledger.totalInterest > 0 && (
+        {(ledger.totalInterest ?? 0) > 0 && (
           <div className="flex justify-between">
             <span className="text-[var(--text-muted)]">利息收入:</span>
             <span className="font-medium text-[var(--accent-peach)] number-display">

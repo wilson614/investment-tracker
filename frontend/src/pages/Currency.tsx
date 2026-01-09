@@ -66,10 +66,10 @@ export default function Currency() {
     return Math.round(value).toLocaleString('zh-TW');
   };
 
-  const totalExchanged = ledgers.reduce((sum, l) => sum + l.totalExchanged, 0);
-  const totalCost = ledgers.reduce((sum, l) => sum + l.totalCost, 0);
-  const totalRealizedPnl = ledgers.reduce((sum, l) => sum + l.realizedPnl, 0);
-  const totalInterest = ledgers.reduce((sum, l) => sum + l.totalInterest, 0);
+  const totalExchanged = ledgers.reduce((sum, l) => sum + (l.totalExchanged ?? 0), 0);
+  const totalCost = ledgers.reduce((sum, l) => sum + (l.totalCost ?? 0), 0);
+  const totalRealizedPnl = ledgers.reduce((sum, l) => sum + (l.realizedPnl ?? 0), 0);
+  const totalInterest = ledgers.reduce((sum, l) => sum + (l.totalInterest ?? 0), 0);
   const realizedPnlColor = totalRealizedPnl >= 0 ? 'number-positive' : 'number-negative';
 
   if (loading) {

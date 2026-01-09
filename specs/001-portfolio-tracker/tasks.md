@@ -690,5 +690,81 @@ T174 → T175 → T176 → T177 → T178
 | Phase 13 | US8 (Page Refresh) | 7 tasks | 🆕 Pending |
 | Phase 14 | US9 (CSV Export) | 9 tasks | 🆕 Pending |
 | Phase 15 | US10 (Market YTD) | 18 tasks | 🆕 Pending |
-| Phase 16 | US11 (Taiwan Stock) | 4 tasks | 🆕 Pending |
+| Phase 16 | US11 (Taiwan Stock) | 4 tasks | ✅ Complete |
 | **Total New** | | **38 tasks** | |
+
+---
+
+## Phase 17: Currency Ledger UI Redesign (Priority: P12) 🆕
+
+**Goal**: Redesign Currency Ledger UI to focus on "holding currency for investment" use case, not currency trading
+
+**Independent Test**:
+1. Navigate to `/currency` → Only 淨投入 shown in summary (no 成本/損益)
+2. View ledger card → Shows "USD @ 32.15" format, balance with TWD equivalent, no 成本/損益
+3. Navigate to `/currency/:id` → Rate in header, no name editing, only Balance/AvgRate/NetInvestment metrics
+
+**Spec Reference**: Session 2026-01-09 (Currency Ledger Redesign) in spec.md
+
+### Implementation for Currency Overview Page
+
+- [ ] T217 [US12] Remove `totalCost` calculation and display from summary in `frontend/src/pages/Currency.tsx`
+- [ ] T218 [US12] Remove `totalRealizedPnl` calculation and display from summary in `frontend/src/pages/Currency.tsx`
+- [ ] T219 [US12] Remove `totalInterest` from summary section in `frontend/src/pages/Currency.tsx`
+- [ ] T220 [US12] Keep only 淨投入 (`totalExchanged`) as the summary metric in `frontend/src/pages/Currency.tsx`
+
+### Implementation for Currency Ledger Card Redesign
+
+- [ ] T221 [P] [US12] Add real-time exchange rate fetching state to CurrencyLedgerCard in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T222 [P] [US12] Add stockPriceApi.getExchangeRate call on component mount in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T223 [US12] Restructure header to display "USD @ rate" format in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T224 [US12] Add TWD equivalent display (balance × current rate) below balance in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T225 [US12] Remove 目前成本 (`totalCost`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T226 [US12] Remove 已實現損益 (`realizedPnl`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [ ] T227 [US12] Ensure 利息收入 only shows when `totalInterest > 0` in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+
+### Implementation for Currency Detail Page Updates
+
+- [ ] T228 [P] [US12] Move exchange rate display to header next to currency code in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T229 [P] [US12] Remove name editing state variables (`isEditingName`, `editName`) in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T230 [P] [US12] Remove `handleStartEditName` and `handleSaveName` functions in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T231 [US12] Remove name editing UI (pencil icon, input field, save/cancel buttons) in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T232 [US12] Remove "目前成本" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T233 [US12] Remove "已實現損益" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T234 [US12] Remove "即時匯率" metric card (rate is now in header) in `frontend/src/pages/CurrencyDetail.tsx`
+- [ ] T235 [US12] Reorganize remaining metric cards (Balance, Average Rate, Net Investment) in `frontend/src/pages/CurrencyDetail.tsx`
+
+### Validation
+
+- [ ] T236 [US12] Run `npm run build` to verify no TypeScript errors in `frontend/`
+- [ ] T237 [US12] Manual test: Navigate through Currency pages and verify all changes match spec
+
+**Checkpoint**: Currency Ledger UI simplified - metrics focused on investment holding use case
+
+---
+
+## Phase 17 Parallel Opportunities
+
+```bash
+# All three file groups can be modified in parallel (different files):
+
+# Group A: Currency.tsx (T217-T220) - Overview page summary
+# Group B: CurrencyLedgerCard.tsx (T221-T227) - Card redesign
+# Group C: CurrencyDetail.tsx (T228-T235) - Detail page updates
+
+# Within Group B and C, [P] marked tasks can run in parallel
+```
+
+---
+
+## Updated Task Count Summary
+
+| Phase | Story | Task Count | Status |
+|-------|-------|------------|--------|
+| Phase 1-12 | US1-US7 | 178 tasks | ✅ Complete |
+| Phase 13 | US8 (Page Refresh) | 7 tasks | ✅ Complete |
+| Phase 14 | US9 (CSV Export) | 9 tasks | ✅ Complete |
+| Phase 15 | US10 (Market YTD) | 18 tasks | ✅ Complete |
+| Phase 16 | US11 (Taiwan Stock) | 4 tasks | ✅ Complete |
+| Phase 17 | US12 (Currency UI Redesign) | 21 tasks | 🆕 Pending |
+| **Total** | | **237 tasks** | |
