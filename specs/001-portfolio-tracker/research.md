@@ -1,8 +1,8 @@
 # Research: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-09
-**Status**: Complete (Updated for Page Refresh Behavior, CSV Export, Market YTD Comparison)
+**Date**: 2026-01-10
+**Status**: Complete (Updated for Stock Split Handling)
 
 ## Executive Summary
 
@@ -838,4 +838,133 @@ if (!isSameCurrency) {
 | **Market YTD** | **Backend service with benchmark ETF prices** |
 | **Taiwan Currency** | **Exchange rate = 1.0 when TWD/TWD** |
 
-**All research complete. Ready for Phase 1: Design & Contracts.**
+---
+
+## 18. Stock Split Handling
+
+### Decision
+**Dedicated StockSplits table** with split adjustments applied at display/calculation time, preserving original transaction data.
+
+### Rationale
+- Users should be able to enter historical transactions using original prices (matching their trade confirmations)
+- System automatically adjusts for comparison with current post-split prices
+- Preserves audit trail of original transaction data
+- Supports cumulative splits (multiple splits over time)
+
+### Known Stock Splits
+| Symbol | Market | Split Date | Ratio | Description |
+|--------|--------|------------|-------|-------------|
+| 0050   | TW     | 2025-06-18 | 4.0   | 1股拆為4股 |
+
+### Database Schema
+```sql
+CREATE TABLE stock_splits (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    market INTEGER NOT NULL,  -- StockMarket enum (1=TW, 2=US, 3=UK)
+    split_date DATE NOT NULL,
+    split_ratio DECIMAL(10,4) NOT NULL,  -- e.g., 4.0 for 1:4 split
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol, market, split_date)
+);
+
+CREATE INDEX idx_stock_splits_symbol_market ON stock_splits(symbol, market);
+```
+
+### Adjustment Logic
+```csharp
+// Domain Service: StockSplitService.cs
+public record SplitAdjustment(
+    decimal AdjustedShares,
+    decimal AdjustedPricePerShare,
+    decimal CumulativeRatio
+);
+
+public SplitAdjustment GetAdjustment(
+    string symbol,
+    StockMarket market,
+    DateTime transactionDate)
+{
+    // Get all splits for this stock AFTER the transaction date
+    var applicableSplits = _dbContext.StockSplits
+        .Where(s => s.Symbol == symbol
+                 && s.Market == market
+                 && s.SplitDate > transactionDate)
+        .OrderBy(s => s.SplitDate)
+        .ToList();
+
+    if (!applicableSplits.Any())
+    {
+        return new SplitAdjustment(1m, 1m, 1m); // No adjustment
+    }
+
+    // Calculate cumulative ratio
+    var cumulativeRatio = applicableSplits
+        .Aggregate(1m, (acc, split) => acc * split.SplitRatio);
+
+    return new SplitAdjustment(
+        AdjustedShares: cumulativeRatio,      // Multiply shares by this
+        AdjustedPricePerShare: 1m / cumulativeRatio,  // Divide price by this
+        CumulativeRatio: cumulativeRatio
+    );
+}
+```
+
+### Example Calculation
+```
+Transaction: 2020-03-15, Buy 1 share of 0050 at 100 TWD
+
+Split: 2025-06-18, 1:4 (ratio = 4.0)
+
+Adjustment:
+- Adjusted Shares = 1 × 4.0 = 4 shares
+- Adjusted Price = 100 / 4.0 = 25 TWD per share
+- Total Cost = 4 × 25 = 100 TWD (unchanged)
+
+Current price: 45 TWD
+Unrealized PnL = (4 × 45) - 100 = 80 TWD (+80%)
+```
+
+### Display Strategy
+| Context | Display |
+|---------|---------|
+| Transaction List | Show original values with split indicator icon |
+| Transaction Detail | Show both original and adjusted values |
+| Position Summary | Use adjusted values for all calculations |
+| Average Cost | Calculate using adjusted historical prices |
+| XIRR Calculation | Use original cash flow amounts (not affected by splits) |
+
+### Alternatives Considered
+| Alternative | Why Rejected |
+|-------------|--------------|
+| Modify original transactions | Loses audit trail, confuses users comparing to trade confirmations |
+| Separate Split transaction type | More complex, doesn't help with historical data entry |
+| Auto-detect splits via price anomaly | Unreliable, can confuse splits with market crashes |
+
+---
+
+## Summary (Updated)
+
+| Topic | Decision |
+|-------|----------|
+| XIRR Algorithm | Newton-Raphson with Brent's fallback |
+| Cost Calculation | Moving average, recalculate from T=0 |
+| Multi-Tenancy | Row-level filtering with EF Core global filters |
+| Transaction Atomicity | EF Core database transactions |
+| Authentication | JWT Bearer with refresh token rotation |
+| Decimal Precision | decimal(18,4) shares, decimal(18,6) rates |
+| Deployment | Docker Compose (3 containers) |
+| API Versioning | URL path `/api/v1/` |
+| Frontend State | React Query + Context |
+| CAPE API | Frontend fetch, 24hr localStorage cache |
+| Historical Prices | Backend fetch, permanent DB cache |
+| Historical Returns | Modified Dietz method |
+| Quote Caching | Flicker-prevention only, always fetch on page load |
+| CSV Export | Frontend Blob API with UTF-8 BOM |
+| Market YTD | Backend service with benchmark ETF prices |
+| Taiwan Currency | Exchange rate = 1.0 when TWD/TWD |
+| **Stock Split** | **Dedicated table, adjust at display time, preserve original data** |
+
+**All research complete. Ready for implementation.**

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-09
+**Updated**: 2026-01-10
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -145,7 +145,9 @@ As an investor, I want to see my portfolio's historical performance and current 
   - System MUST validate and reject invalid exchange rates.
 
 - How does the system handle a stock split?
-  - System MUST allow recording stock split events that adjust share count without affecting cost basis.
+  - System MUST maintain a Stock Splits table to record split events with symbol, date, and ratio.
+  - When user enters historical transactions (before split date), system MUST automatically adjust displayed values using the split ratio.
+  - Original transaction data is preserved; adjustments are applied at display/calculation time only.
 
 - What happens when Currency Ledger balance goes negative due to concurrent transactions?
   - System MUST use optimistic locking or similar mechanism to prevent race conditions.
@@ -256,6 +258,19 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-015**: System MUST calculate Realized PnL (Home) when stocks are sold using **Moving Average Cost method**: Realized Amount (Home) - Cost Basis (Home), where Cost Basis = Shares Sold × Average Cost per Share (Home).
 - **FR-016**: System MUST display Return Rate % = (Realized Profit / Cost Basis) × 100.
 
+#### Stock Split Handling
+- **FR-050**: System MUST maintain a `StockSplits` table to record stock split events with: Symbol, Market, SplitDate, and SplitRatio.
+- **FR-050a**: SplitRatio represents the multiplier for shares (e.g., 4.0 for a 1:4 split where 1 share becomes 4 shares).
+- **FR-050b**: System MUST allow administrators to add, edit, and delete stock split records.
+- **FR-051**: When displaying or calculating historical transactions dated BEFORE a split date, system MUST automatically apply split adjustment:
+  - Adjusted Shares = Original Shares × SplitRatio
+  - Adjusted Price = Original Price / SplitRatio
+  - Total Cost remains unchanged (Shares × Price = Adjusted Shares × Adjusted Price)
+- **FR-051a**: Original transaction data MUST be preserved unchanged in the database; adjustments are applied at display/calculation time only.
+- **FR-051b**: System MUST apply cumulative adjustments when multiple splits occur for the same stock (e.g., if stock splits 2:1 in 2020 and 4:1 in 2025, a 2019 transaction uses combined ratio of 8).
+- **FR-052**: When calculating portfolio metrics (average cost, unrealized PnL, XIRR), system MUST use split-adjusted values for accurate comparison with current prices.
+- **FR-052a**: System MUST display both original and adjusted values in transaction detail view for transparency.
+
 #### Multi-Tenancy
 - **FR-017**: System MUST isolate all portfolio data by user.
 - **FR-018**: System MUST include user context filtering in all data queries using EF Core global query filters.
@@ -269,6 +284,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Position**: Aggregated view of holdings for a specific ticker within a portfolio (derived from transactions).
 - **Currency Ledger**: Tracks foreign currency holdings with balance and weighted average rate. One ledger per currency per user (currently USD only). Not nameable - system auto-names based on currency code.
 - **Currency Transaction**: Records currency exchanges, interest, and spend events.
+- **Stock Split**: Records stock split events with symbol, market, effective date, and split ratio. Used to adjust historical transaction values for accurate portfolio calculations.
 
 ## UI/UX Specifications
 
@@ -496,7 +512,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Market Data**: Stock prices are fetched on-demand via external APIs (Sina Finance for TW, Yahoo Finance for US/UK). Quotes are cached in browser localStorage.
 - **Authentication**: Standard email/password authentication via JWT tokens.
 - **Interest Tracking**: Bank interest in Currency Ledger defaults to 0 cost basis (lowering average cost).
-- **Stock Split Handling**: Stock splits are recorded as adjustment transactions that modify share count without affecting total cost basis.
+- **Stock Split Handling**: Stock splits are recorded in a dedicated table with symbol, date, and ratio. Historical transactions are automatically adjusted at display/calculation time while preserving original data. Known splits include: 0050 (Taiwan) 1:4 split effective 2025-06-18.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.
 - **CAPE Adjustment Markets**: Supported markets for real-time CAPE adjustment include All Country (VWRA), US Large (VUAA), US Small (XRSU), Taiwan (TWII), Emerging Markets (VFEM), Europe (VEUA), Japan (VJPA), China (HCHA), Developed Markets Large (VHVE), Developed Markets Small (WSML), and Dev ex US Large (EXUS). Markets without data sources show original CAPE only.
 - **Observability**: Basic console logging for backend errors; React error boundary for frontend crash recovery. No external APM or monitoring services required.
@@ -626,5 +642,22 @@ As an investor, I want to see my portfolio's historical performance and current 
 - ExchangeRate: decimal (to home currency)
 - CreatedAt: datetime
 ```
+
+**Database Table**: `stock_splits`
+```
+- Id: GUID
+- Symbol: string (e.g., "0050", "AAPL")
+- Market: StockMarket enum (TW, US, UK)
+- SplitDate: date (effective date of the split)
+- SplitRatio: decimal (e.g., 4.0 for 1:4 split, 0.5 for reverse 2:1 split)
+- Description: string (optional, e.g., "1拆4")
+- CreatedAt: datetime
+- UpdatedAt: datetime
+```
+
+**Example Stock Split Records**:
+| Symbol | Market | SplitDate   | SplitRatio | Description |
+|--------|--------|-------------|------------|-------------|
+| 0050   | TW     | 2025-06-18  | 4.0        | 1拆4        |
 
 

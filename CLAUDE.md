@@ -27,8 +27,8 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Recent Changes
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
+- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x with React (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
-- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend)
 
 
 <!-- MANUAL ADDITIONS START -->

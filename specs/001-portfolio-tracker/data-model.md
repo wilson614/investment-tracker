@@ -1,8 +1,8 @@
 # Data Model: Family Investment Portfolio Tracker
 
 **Feature**: 001-portfolio-tracker
-**Date**: 2026-01-09
-**Status**: Complete (Updated for Page Refresh Behavior, CSV Export, Market YTD Comparison)
+**Date**: 2026-01-10
+**Status**: Complete (Updated for Stock Split Handling)
 
 ## Entity Relationship Diagram
 
@@ -24,6 +24,10 @@
 │                                                                             │
 │   ┌─────────────────┐                                                       │
 │   │ HistoricalPrice │  (Standalone - price cache for year-end valuations)  │
+│   └─────────────────┘                                                       │
+│                                                                             │
+│   ┌─────────────────┐                                                       │
+│   │   StockSplit    │  (Standalone - tracks stock split events)            │
 │   └─────────────────┘                                                       │
 │                                                                             │
 │   Legend: 1───* = One-to-Many                                              │
@@ -288,6 +292,7 @@ public record ExchangeRateValue(
 | CurrencyLedger | IX_CurrencyLedger_UserId_CurrencyCode | Unique | One ledger per currency per user |
 | StockTransaction | FK_StockTransaction_Portfolio | Foreign Key | Cascade delete |
 | CurrencyTransaction | FK_CurrencyTransaction_CurrencyLedger | Foreign Key | Cascade delete |
+| StockSplit | IX_StockSplit_Symbol_Market_SplitDate | Unique | One split per symbol/market/date |
 
 ---
 
@@ -435,7 +440,57 @@ modelBuilder.Entity<HistoricalPrice>(entity =>
 
 ---
 
-## 8. BenchmarkPrice (Virtual Entity)
+## 8. StockSplit
+
+Records stock split events for automatic adjustment of historical transaction values.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| Id | Guid | PK | Unique identifier |
+| Symbol | string(20) | Required | Stock/ETF symbol (e.g., "0050", "AAPL") |
+| Market | StockMarket | Required | Market enum (TW, US, UK) |
+| SplitDate | DateTime | Required | Effective date of the split |
+| SplitRatio | decimal(10,4) | Required | Multiplier for shares (e.g., 4.0 for 1:4 split) |
+| Description | string(100) | Optional | Human-readable description (e.g., "1拆4") |
+| CreatedAt | DateTime | Required | UTC timestamp |
+| UpdatedAt | DateTime | Required | UTC timestamp |
+
+**Relationships**:
+- Standalone entity (no foreign keys)
+
+**Indexes**:
+- `IX_StockSplit_Symbol_Market_SplitDate` (Unique)
+- `IX_StockSplit_Symbol_Market`
+
+**Validation Rules**:
+- SplitRatio > 0 (use < 1 for reverse splits, e.g., 0.5 for 2:1 reverse)
+- SplitDate must be a valid date
+
+**EF Core Configuration**:
+```csharp
+modelBuilder.Entity<StockSplit>(entity =>
+{
+    entity.HasKey(e => e.Id);
+    entity.HasIndex(e => new { e.Symbol, e.Market, e.SplitDate }).IsUnique();
+    entity.HasIndex(e => new { e.Symbol, e.Market });
+    entity.Property(e => e.SplitRatio).HasPrecision(10, 4);
+});
+```
+
+**Example Data**:
+| Symbol | Market | SplitDate | SplitRatio | Description |
+|--------|--------|-----------|------------|-------------|
+| 0050 | TW | 2025-06-18 | 4.0 | 1拆4 |
+
+**Adjustment Calculation**:
+For transactions dated BEFORE a split:
+- `AdjustedShares = OriginalShares × SplitRatio`
+- `AdjustedPrice = OriginalPrice / SplitRatio`
+- `TotalCost = AdjustedShares × AdjustedPrice` (unchanged)
+
+---
+
+## 9. BenchmarkPrice (Virtual Entity)
 
 Benchmark prices are stored in the `HistoricalPrice` table using a special ticker prefix.
 
