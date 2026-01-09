@@ -310,7 +310,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
                 <option value="">選擇帳本...</option>
                 {currencyLedgers.map((ledger) => (
                   <option key={ledger.ledger.id} value={ledger.ledger.id}>
-                    {ledger.ledger.currencyCode} - {ledger.ledger.name}
+                    {ledger.ledger.currencyCode}
                   </option>
                 ))}
               </select>

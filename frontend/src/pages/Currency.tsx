@@ -4,6 +4,11 @@ import { currencyLedgerApi } from '../services/api';
 import { CurrencyLedgerCard } from '../components/currency/CurrencyLedgerCard';
 import type { CurrencyLedgerSummary, CreateCurrencyLedgerRequest } from '../types';
 
+// Supported currencies (expand later)
+const SUPPORTED_CURRENCIES = [
+  { code: 'USD', name: '美金' },
+];
+
 export default function Currency() {
   const navigate = useNavigate();
   const [ledgers, setLedgers] = useState<CurrencyLedgerSummary[]>([]);
@@ -12,8 +17,7 @@ export default function Currency() {
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Create form state
-  const [currencyCode, setCurrencyCode] = useState('');
-  const [name, setName] = useState('');
+  const [selectedCurrency, setSelectedCurrency] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadLedgers = async () => {
@@ -32,17 +36,22 @@ export default function Currency() {
     loadLedgers();
   }, []);
 
+  // Get existing currency codes
+  const existingCurrencies = new Set(ledgers.map(l => l.ledger.currencyCode));
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedCurrency) return;
+    
     setIsSubmitting(true);
     try {
+      const currency = SUPPORTED_CURRENCIES.find(c => c.code === selectedCurrency);
       const request: CreateCurrencyLedgerRequest = {
-        currencyCode: currencyCode.toUpperCase(),
-        name,
+        currencyCode: selectedCurrency,
+        name: currency?.name || selectedCurrency,
       };
       await currencyLedgerApi.create(request);
-      setCurrencyCode('');
-      setName('');
+      setSelectedCurrency('');
       setShowCreateForm(false);
       await loadLedgers();
     } catch (err) {
@@ -52,26 +61,6 @@ export default function Currency() {
     }
   };
 
-  const formatNumber = (value: number | null | undefined) => {
-    if (value == null) return '0';
-    return value.toLocaleString('zh-TW', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  // Format TWD as integer
-  const formatTWD = (value: number | null | undefined) => {
-    if (value == null) return '0';
-    return Math.round(value).toLocaleString('zh-TW');
-  };
-
-  const totalExchanged = ledgers.reduce((sum, l) => sum + (l.totalExchanged ?? 0), 0);
-  const totalCost = ledgers.reduce((sum, l) => sum + (l.totalCost ?? 0), 0);
-  const totalRealizedPnl = ledgers.reduce((sum, l) => sum + (l.realizedPnl ?? 0), 0);
-  const totalInterest = ledgers.reduce((sum, l) => sum + (l.totalInterest ?? 0), 0);
-  const realizedPnlColor = totalRealizedPnl >= 0 ? 'number-positive' : 'number-negative';
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -80,6 +69,10 @@ export default function Currency() {
     );
   }
 
+  // Check if all currencies are already created
+  const availableCurrencies = SUPPORTED_CURRENCIES.filter(c => !existingCurrencies.has(c.code));
+  const canCreateNew = availableCurrencies.length > 0;
+
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -87,7 +80,9 @@ export default function Currency() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">外幣帳本</h1>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="btn-accent"
+            disabled={!canCreateNew}
+            className="btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
+            title={!canCreateNew ? '所有幣別已建立' : undefined}
           >
             新增帳本
           </button>
@@ -100,35 +95,6 @@ export default function Currency() {
           </div>
         )}
 
-        {/* Summary Card */}
-        <div className="card-dark p-6 mb-8">
-          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">總覽</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatTWD(totalExchanged)}</p>
-              <p className="text-sm text-[var(--text-muted)]">TWD</p>
-            </div>
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">目前成本</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatTWD(totalCost)}</p>
-              <p className="text-sm text-[var(--text-muted)]">TWD</p>
-            </div>
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">已實現損益</p>
-              <p className={`text-2xl font-bold number-display ${realizedPnlColor}`}>
-                {totalRealizedPnl >= 0 ? '+' : ''}{formatTWD(totalRealizedPnl)}
-              </p>
-              <p className="text-sm text-[var(--text-muted)]">TWD</p>
-            </div>
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">利息收入</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatNumber(totalInterest)}</p>
-              <p className="text-sm text-[var(--text-muted)]">外幣</p>
-            </div>
-          </div>
-        </div>
-
         {/* Create Form Modal */}
         {showCreateForm && (
           <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
@@ -137,30 +103,28 @@ export default function Currency() {
               <form onSubmit={handleCreate} className="space-y-5">
                 <div>
                   <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                    幣別代碼
+                    幣別
                   </label>
-                  <input
-                    type="text"
-                    value={currencyCode}
-                    onChange={(e) => setCurrencyCode(e.target.value)}
+                  <select
+                    value={selectedCurrency}
+                    onChange={(e) => setSelectedCurrency(e.target.value)}
                     className="input-dark w-full"
-                    placeholder="USD"
-                    maxLength={3}
                     required
-                  />
-                </div>
-                <div>
-                  <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                    帳本名稱
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="input-dark w-full"
-                    placeholder="美金存款"
-                    required
-                  />
+                  >
+                    <option value="">請選擇幣別</option>
+                    {SUPPORTED_CURRENCIES.map((currency) => {
+                      const isDisabled = existingCurrencies.has(currency.code);
+                      return (
+                        <option 
+                          key={currency.code} 
+                          value={currency.code}
+                          disabled={isDisabled}
+                        >
+                          {currency.code} - {currency.name}{isDisabled ? ' (已建立)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -172,7 +136,7 @@ export default function Currency() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !selectedCurrency}
                     className="btn-accent flex-1 py-2 disabled:opacity-50"
                   >
                     {isSubmitting ? '建立中...' : '建立'}

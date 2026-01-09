@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, RefreshCw, Loader2, Info } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
 import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
@@ -18,12 +18,11 @@ interface CachedRate {
 }
 
 // Load cached rate from localStorage (no time limit - always show cached, then refresh)
-const loadCachedRate = (from: string, to: string): number | null => {
+const loadCachedRate = (from: string, to: string): CachedRate | null => {
   try {
     const cached = localStorage.getItem(getRateCacheKey(from, to));
     if (cached) {
-      const data: CachedRate = JSON.parse(cached);
-      return data.rate;
+      return JSON.parse(cached);
     }
   } catch {
     // Ignore cache errors
@@ -93,10 +92,9 @@ export default function CurrencyDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<CurrencyTransaction | null>(null);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState('');
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [currentRate, setCurrentRate] = useState<number | null>(null);
+  const [rateUpdatedAt, setRateUpdatedAt] = useState<Date | null>(null);
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const hasFetchedRate = useRef(false);
   const importTriggerRef = useRef<(() => void) | null>(null);
@@ -114,9 +112,10 @@ export default function CurrencyDetail() {
       setSelectedIds(new Set());
 
       // Load cached rate immediately for initial display
-      const cachedRate = loadCachedRate(ledgerData.ledger.currencyCode, ledgerData.ledger.homeCurrency);
-      if (cachedRate !== null) {
-        setCurrentRate(cachedRate);
+      const cachedData = loadCachedRate(ledgerData.ledger.currencyCode, ledgerData.ledger.homeCurrency);
+      if (cachedData !== null) {
+        setCurrentRate(cachedData.rate);
+        setRateUpdatedAt(new Date(cachedData.cachedAt));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -138,12 +137,14 @@ export default function CurrencyDetail() {
         ledger.ledger.homeCurrency
       );
       if (rateResponse?.rate) {
+        const now = new Date();
         setCurrentRate(rateResponse.rate);
+        setRateUpdatedAt(now);
         // Save to cache
         try {
           localStorage.setItem(
             getRateCacheKey(ledger.ledger.currencyCode, ledger.ledger.homeCurrency),
-            JSON.stringify({ rate: rateResponse.rate, cachedAt: new Date().toISOString() })
+            JSON.stringify({ rate: rateResponse.rate, cachedAt: now.toISOString() })
           );
         } catch {
           // Ignore cache errors
@@ -164,24 +165,6 @@ export default function CurrencyDetail() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ledger]);
-
-  const handleStartEditName = () => {
-    if (ledger) {
-      setEditName(ledger.ledger.name);
-      setIsEditingName(true);
-    }
-  };
-
-  const handleSaveName = async () => {
-    if (!ledger || !editName.trim()) return;
-    try {
-      await currencyLedgerApi.update(ledger.ledger.id, { name: editName.trim() });
-      setIsEditingName(false);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update name');
-    }
-  };
 
   const handleAddTransaction = async (data: CreateCurrencyTransactionRequest) => {
     await currencyTransactionApi.create(data);
@@ -292,6 +275,10 @@ export default function CurrencyDetail() {
     return new Date(dateString).toLocaleDateString('zh-TW');
   };
 
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -338,152 +325,86 @@ export default function CurrencyDetail() {
 
         {/* Summary Card */}
         <div className="card-dark p-6 mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+          {/* Header with title and update time */}
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-[var(--accent-cream)]">
                 {ledger.ledger.currencyCode}
               </h1>
-              {isEditingName ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="input-dark py-1 px-2 text-base"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveName();
-                      if (e.key === 'Escape') setIsEditingName(false);
-                    }}
-                  />
-                  <button
-                    onClick={handleSaveName}
-                    className="btn-accent py-1 px-3 text-sm"
-                  >
-                    儲存
-                  </button>
-                  <button
-                    onClick={() => setIsEditingName(false)}
-                    className="btn-dark py-1 px-3 text-sm"
-                  >
-                    取消
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-[var(--text-muted)] text-base">{ledger.ledger.name}</p>
-                  <button
-                    onClick={handleStartEditName}
-                    className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                    title="編輯名稱"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-1">
+                <span className="text-lg text-[var(--text-muted)]">@</span>
+                <span className="text-lg font-medium text-[var(--accent-peach)]">
+                  {currentRate ? formatNumber(currentRate, 2) : '-'}
+                </span>
+                <button
+                  onClick={handleFetchRate}
+                  disabled={isFetchingRate}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] transition-colors disabled:opacity-50"
+                  title="更新匯率"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isFetchingRate ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
+            {rateUpdatedAt && (
+              <span className="text-sm text-[var(--text-muted)]">
+                匯率更新於 {formatTime(rateUpdatedAt)}
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Metrics grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">餘額</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {formatNumber(ledger.balance, 4)}
+              <p className="text-sm text-[var(--text-muted)] mb-1">餘額</p>
+              <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
+                {formatNumber(ledger.balance, 2)} {ledger.ledger.currencyCode}
               </p>
-              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
               {currentRate && ledger.balance > 0 && (
-                <p className="text-[var(--accent-peach)] text-sm mt-1">
+                <p className="text-xs text-[var(--text-muted)] mt-1">
                   ≈ {formatTWD(ledger.balance * currentRate)} TWD
                 </p>
               )}
             </div>
             <div className="metric-card">
-              <div className="flex items-center gap-1 mb-1">
-                <p className="text-[var(--text-muted)] text-sm">即時匯率</p>
-                <button
-                  onClick={handleFetchRate}
-                  disabled={isFetchingRate}
-                  className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] transition-colors disabled:opacity-50"
-                  title="更新匯率"
-                >
-                  {isFetchingRate ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3 h-3" />
-                  )}
-                </button>
-              </div>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {currentRate ? formatNumber(currentRate, 4) : '-'}
-              </p>
-              {currentRate && ledger.averageExchangeRate && (
-                <p className={`text-sm ${currentRate > ledger.averageExchangeRate ? 'text-red-400' : 'text-green-400'}`}>
-                  {currentRate > ledger.averageExchangeRate ? '↑' : '↓'} vs 均價
-                </p>
-              )}
-            </div>
-            <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">換匯均價</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
+              <p className="text-sm text-[var(--text-muted)] mb-1">換匯均價</p>
+              <p className="text-lg font-bold text-[var(--text-primary)] number-display">
                 {formatNumber(ledger.averageExchangeRate, 4)}
               </p>
             </div>
             <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">目前成本</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {formatTWD(ledger.totalCost)}
+              <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
+              <p className="text-lg font-bold text-[var(--text-primary)] number-display">
+                {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
               </p>
-              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
-            <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">已實現損益</p>
-              <p className={`text-2xl font-bold number-display ${(ledger.realizedPnl ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {(ledger.realizedPnl ?? 0) >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)}
-              </p>
-              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
-            </div>
-          </div>
-
-          {/* Additional metrics row */}
-          {((ledger.totalInterest ?? 0) > 0 || (ledger.totalSpentOnStocks ?? 0) > 0) && (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4 pt-4 border-t border-[var(--border-color)]">
-              {(ledger.totalInterest ?? 0) > 0 && (
-                <div className="metric-card">
-                  <p className="text-[var(--text-muted)] text-sm mb-1">利息收入</p>
-                  <p className="text-xl font-bold text-[var(--accent-peach)] number-display">
-                    {formatNumber(ledger.totalInterest, 2)}
-                  </p>
-                  <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
-                </div>
-              )}
-              {(ledger.totalSpentOnStocks ?? 0) > 0 && (
-                <div className="metric-card">
-                  <div className="flex items-center gap-1 mb-1">
-                    <p className="text-[var(--text-muted)] text-sm">股票投入</p>
-                    <div className="relative group">
-                      <Info className="w-3 h-3 text-[var(--text-muted)] cursor-help" />
-                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                          從此帳本用於購買股票的外幣金額
-                        </div>
+            {(ledger.totalInterest ?? 0) > 0 && (
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">利息收入</p>
+                <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
+                  {formatNumber(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
+                </p>
+              </div>
+            )}
+            {(ledger.totalSpentOnStocks ?? 0) > 0 && (
+              <div className="metric-card">
+                <div className="flex items-center gap-1 mb-1">
+                  <p className="text-sm text-[var(--text-muted)]">股票投入</p>
+                  <div className="relative group">
+                    <Info className="w-3 h-3 text-[var(--text-muted)] cursor-help" />
+                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                      <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                        從此帳本用於購買股票的外幣金額
                       </div>
                     </div>
                   </div>
-                  <p className="text-xl font-bold text-[var(--text-primary)] number-display">
-                    {formatNumber(ledger.totalSpentOnStocks, 4)}
-                  </p>
-                  <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
                 </div>
-              )}
-              <div className="metric-card">
-                <p className="text-[var(--text-muted)] text-sm mb-1">淨投入</p>
-                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
-                  {formatTWD(ledger.totalExchanged)}
+                <p className="text-lg font-bold text-[var(--text-primary)] number-display">
+                  {formatNumber(ledger.totalSpentOnStocks, 2)} {ledger.ledger.currencyCode}
                 </p>
-                <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Add Transaction Modal */}
