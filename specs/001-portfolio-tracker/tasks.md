@@ -767,4 +767,77 @@ T174 → T175 → T176 → T177 → T178
 | Phase 15 | US10 (Market YTD) | 18 tasks | ✅ Complete |
 | Phase 16 | US11 (Taiwan Stock) | 4 tasks | ✅ Complete |
 | Phase 17 | US12 (Currency UI Redesign) | 21 tasks | ✅ Complete |
-| **Total** | | **237 tasks** | |
+| Phase 18 | US13 (Stock Split Handling) | 17 tasks | 🆕 Pending |
+| **Total** | | **254 tasks** | |
+
+---
+
+## Phase 18: Stock Split Handling (Priority: P13)
+
+**Goal**: Track stock split events and automatically adjust historical transaction values at display time
+
+**Independent Test**: Add 0050 split record (1:4 on 2025-06-18) → View transactions before split date → Verify adjusted shares = original × 4, adjusted price = original / 4
+
+**Spec Reference**: plan.md §Recent Updates (2026-01-10), data-model.md §8, research.md §18
+
+### Tests for User Story 13
+
+- [ ] T251 [P] [US13] Create StockSplitAdjustmentService unit tests (including cumulative splits) in `backend/tests/InvestmentTracker.Domain.Tests/Services/StockSplitAdjustmentServiceTests.cs`
+
+### Domain Layer (US13)
+
+- [ ] T238 [P] [US13] Create StockMarket enum (TW, US, UK) in `backend/src/InvestmentTracker.Domain/Enums/StockMarket.cs`
+- [ ] T239 [US13] Create StockSplit entity in `backend/src/InvestmentTracker.Domain/Entities/StockSplit.cs`
+- [ ] T240 [US13] Create StockSplitAdjustmentService (GetAdjustedShares, GetAdjustedPrice) in `backend/src/InvestmentTracker.Domain/Services/StockSplitAdjustmentService.cs`
+
+### Infrastructure Layer (US13)
+
+- [ ] T241 [US13] Create StockSplitConfiguration in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockSplitConfiguration.cs`
+- [ ] T242 [US13] Add DbSet<StockSplit> to AppDbContext in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
+- [ ] T243 [US13] Create and apply EF Core migration for stock_splits table
+- [ ] T244 [US13] Create IStockSplitRepository interface in `backend/src/InvestmentTracker.Domain/Interfaces/IStockSplitRepository.cs`
+- [ ] T245 [US13] Implement StockSplitRepository in `backend/src/InvestmentTracker.Infrastructure/Repositories/StockSplitRepository.cs`
+
+### Application Layer (US13)
+
+- [ ] T246 [P] [US13] Create StockSplitDto in `backend/src/InvestmentTracker.Application/DTOs/StockSplitDtos.cs`
+- [ ] T247 [US13] Create GetStockSplitsUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/GetStockSplitsUseCase.cs`
+- [ ] T248 [US13] Create CreateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/CreateStockSplitUseCase.cs`
+- [ ] T252 [US13] Create UpdateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/UpdateStockSplitUseCase.cs`
+- [ ] T253 [US13] Create DeleteStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/DeleteStockSplitUseCase.cs`
+
+### API Layer (US13)
+
+- [ ] T249 [US13] Create StockSplitsController (GET, POST, PUT, DELETE) in `backend/src/InvestmentTracker.API/Controllers/StockSplitsController.cs`
+
+### Integration (US13)
+
+- [ ] T250 [US13] Update GetPortfolioSummaryUseCase to apply split adjustments when returning positions in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+
+### Frontend (US13)
+
+- [ ] T254 [US13] Update TransactionList to display original and adjusted values (shares, price) for split-affected transactions in `frontend/src/components/transactions/TransactionList.tsx`
+
+**Checkpoint**: Stock split records can be created/updated/deleted, portfolio displays adjusted shares/prices, and transaction list shows both original and adjusted values
+
+---
+
+## Phase 18 Parallel Opportunities
+
+```bash
+# Tests (parallel with Domain setup)
+T251 (unit tests for adjustment service)
+
+# Domain (T238 parallel, then sequential)
+T238 (StockMarket enum)
+→ T239 (StockSplit entity) → T240 (AdjustmentService)
+
+# Infrastructure (sequential - schema changes)
+T241 → T242 → T243 → T244 → T245
+
+# Application (T246 parallel, then sequential)
+T246 (DTO) + T247 + T248 + T252 + T253 (parallel after T245)
+
+# API + Integration + Frontend (sequential)
+T249 → T250 → T254
+```
