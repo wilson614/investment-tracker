@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Trash2, Download, RefreshCw, Loader2, Info } from 'lucide-react';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
@@ -7,6 +7,28 @@ import { CurrencyTransactionForm } from '../components/currency/CurrencyTransact
 import { CurrencyImportButton } from '../components/import';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
 import { CurrencyTransactionType } from '../types';
+
+// Cache key for exchange rate
+const getRateCacheKey = (from: string, to: string) => `rate_cache_${from}_${to}`;
+
+interface CachedRate {
+  rate: number;
+  cachedAt: string;
+}
+
+// Load cached rate from localStorage (no time limit - always show cached, then refresh)
+const loadCachedRate = (from: string, to: string): number | null => {
+  try {
+    const cached = localStorage.getItem(getRateCacheKey(from, to));
+    if (cached) {
+      const data: CachedRate = JSON.parse(cached);
+      return data.rate;
+    }
+  } catch {
+    // Ignore cache errors
+  }
+  return null;
+};
 
 const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.ExchangeBuy]: '換匯買入',
@@ -75,6 +97,7 @@ export default function CurrencyDetail() {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [isFetchingRate, setIsFetchingRate] = useState(false);
+  const hasFetchedRate = useRef(false);
 
   const loadData = async () => {
     if (!id) return;
@@ -87,6 +110,12 @@ export default function CurrencyDetail() {
       setLedger(ledgerData);
       setTransactions(txData);
       setSelectedIds(new Set());
+
+      // Load cached rate immediately for initial display
+      const cachedRate = loadCachedRate(ledgerData.ledger.currencyCode, ledgerData.ledger.homeCurrency);
+      if (cachedRate !== null) {
+        setCurrentRate(cachedRate);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -108,6 +137,15 @@ export default function CurrencyDetail() {
       );
       if (rateResponse?.rate) {
         setCurrentRate(rateResponse.rate);
+        // Save to cache
+        try {
+          localStorage.setItem(
+            getRateCacheKey(ledger.ledger.currencyCode, ledger.ledger.homeCurrency),
+            JSON.stringify({ rate: rateResponse.rate, cachedAt: new Date().toISOString() })
+          );
+        } catch {
+          // Ignore cache errors
+        }
       }
     } catch {
       // Silently fail
@@ -116,9 +154,10 @@ export default function CurrencyDetail() {
     }
   };
 
-  // Auto-fetch rate when ledger loads
+  // Auto-fetch rate when ledger loads (always fetch fresh, use cache only for initial display)
   useEffect(() => {
-    if (ledger && !currentRate) {
+    if (ledger && !hasFetchedRate.current) {
+      hasFetchedRate.current = true;
       handleFetchRate();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

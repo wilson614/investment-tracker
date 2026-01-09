@@ -38,18 +38,16 @@ interface CachedQuote {
   market: StockMarketType;
 }
 
-// Load cached quotes for tickers (same logic as Dashboard)
+// Load cached quotes for tickers (no time limit - always show cached, then refresh)
 const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
-  const maxAge = 60 * 60 * 1000; // 1 hour
 
   for (const ticker of tickers) {
     try {
       const cached = localStorage.getItem(getQuoteCacheKey(ticker));
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
-        const cacheAge = Date.now() - new Date(data.updatedAt).getTime();
-        if (cacheAge <= maxAge && data.quote.exchangeRate) {
+        if (data.quote.exchangeRate) {
           prices[ticker] = {
             price: data.quote.price,
             exchangeRate: data.quote.exchangeRate,
@@ -66,18 +64,14 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 export function PortfolioPage() {
   const { id } = useParams<{ id: string }>();
 
-  // Load cached performance data on init
+  // Load cached performance data on init (no time limit - always show cached, then refresh)
   const loadCachedPerformance = (): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
     if (!id) return { summary: null, xirrResult: null };
     try {
       const cached = localStorage.getItem(getPerformanceCacheKey(id));
       if (cached) {
         const data: CachedPerformance = JSON.parse(cached);
-        // Only use cache if less than 1 hour old
-        const cacheAge = Date.now() - new Date(data.cachedAt).getTime();
-        if (cacheAge < 60 * 60 * 1000) {
-          return { summary: data.summary, xirrResult: data.xirrResult };
-        }
+        return { summary: data.summary, xirrResult: data.xirrResult };
       }
     } catch {
       // Ignore cache errors
@@ -136,9 +130,19 @@ export function PortfolioPage() {
     }
   }, [id]);
 
+  const hasFetchedOnLoad = useRef(false);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Auto-fetch all prices on page load (after summary is loaded)
+  useEffect(() => {
+    if (summary && !isLoading && !hasFetchedOnLoad.current && summary.positions.length > 0) {
+      hasFetchedOnLoad.current = true;
+      handleFetchAllPrices();
+    }
+  }, [summary, isLoading]);
 
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
     if (editingTransaction) {
@@ -439,6 +443,7 @@ export function PortfolioPage() {
                     baseCurrency={summary.portfolio.baseCurrency}
                     homeCurrency={summary.portfolio.homeCurrency}
                     onPriceUpdate={handlePositionPriceUpdate}
+                    autoFetch={false}
                     refreshTrigger={refreshTrigger}
                   />
                 </Link>

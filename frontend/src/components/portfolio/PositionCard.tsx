@@ -91,16 +91,14 @@ export function PositionCard({
     }
   }, [refreshTrigger]);
 
-  // Auto-fetch on mount (only if no cache or cache is old)
+  // Auto-fetch on mount (always fetch fresh, use cache only for initial display)
   useEffect(() => {
     if (autoFetch && !hasFetched.current) {
       hasFetched.current = true;
-      // If cache is older than 5 minutes, refresh
-      const cacheAge = lastUpdated ? Date.now() - lastUpdated.getTime() : Infinity;
-      if (cacheAge > 5 * 60 * 1000) {
-        handleFetchQuote();
-      } else if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
-        // Notify parent with cached data
+      // Always fetch fresh quote on mount
+      handleFetchQuote();
+      // Also notify parent with cached data immediately if available
+      if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
         onPriceUpdate(position.ticker, lastQuote.price, lastQuote.exchangeRate);
       }
     }

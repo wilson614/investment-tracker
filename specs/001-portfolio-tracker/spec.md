@@ -294,7 +294,18 @@ As an investor, I want to see my portfolio's historical performance and current 
    - Value section: Current value, unrealized PnL with percentage, position XIRR
    - Transaction List: Filtered to this ticker only
 
-4. **Dashboard Page** (`/dashboard`)
+4. **Currency Detail Page** (`/currency/:id`)
+   - Header: Currency code with editable name
+   - Summary Metrics: Balance, current exchange rate, average rate, net investment, stock investment
+   - Current Rate: Display with real-time fetch button, compare to average rate
+   - Transaction List: All currency transactions with running balance
+   - **Initial Load Behavior**:
+     - Display cached exchange rate immediately on load (no flickering)
+     - Automatically fetch fresh exchange rate on page mount
+     - Update display with fresh rate after fetch completes
+   - CSV export for currency transactions
+
+5. **Dashboard Page** (`/dashboard`)
    - **Market Context Section**:
      - Global CAPE (Cyclically Adjusted P/E) from Research Affiliates API
      - Display current value, expected return, and valuation percentile
@@ -329,22 +340,27 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **Negative PnL**: Red color (`number-negative` class)
 - **No "USD → TWD" display**: System only supports TWD home currency with USD/TWD transactions
 
-### Quote Caching Strategy
+### Caching Strategy (Stale-While-Revalidate)
 
 **Purpose**: Cache is used **solely to prevent UI flickering** during initial page render. Once the page loads, fresh data should always be fetched from the source.
 
 **Behavior**:
 1. **Initial Render**: Display cached values immediately (if available) to avoid showing "-" or empty states
-2. **After Mount**: Automatically trigger quote fetch to get fresh data from API
-3. **Cache Update**: Save fetched quotes to cache for next page load
+2. **After Mount**: Automatically trigger data fetch to get fresh data from API
+3. **Cache Update**: Save fetched data to cache for next page load
+4. **No TTL**: Cache has no time limit - always show cached, then refresh
 
-**Cache Structure**:
-- **Cache Key Pattern**: `quote_cache_${ticker}`
-- **Cache Structure**: `{ quote: StockQuoteResponse, updatedAt: string, market: StockMarketType }`
-- **Cache TTL**: No TTL for display purposes - cache is always shown initially, then replaced with fresh data
+**Cache Types**:
+
+| Cache Type | Key Pattern | Data Cached | Used In |
+|------------|-------------|-------------|---------|
+| Stock Quote | `quote_cache_${ticker}` | Price, change%, exchange rate, market | Portfolio, Dashboard, PositionCard, PositionDetail |
+| Performance | `perf_cache_${portfolioId}` | Summary, XIRR result | Portfolio |
+| Position XIRR | `xirr_cache_${portfolioId}_${ticker}` | XIRR for single position | PositionDetail |
+| Exchange Rate | `rate_cache_${from}_${to}` | Exchange rate | CurrencyDetail |
 
 **Page Refresh Behavior**:
-- Page refresh (F5) MUST trigger automatic quote fetch for all visible positions
+- Page refresh (F5) MUST trigger automatic data fetch for all visible data
 - User should see loading indicator during fetch
 - Fresh data replaces cached data after fetch completes
 

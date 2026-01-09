@@ -13,18 +13,16 @@ interface CachedQuote {
 
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
-// Load cached quotes for a list of tickers
+// Load cached quotes for a list of tickers (no time limit - always show cached, then refresh)
 const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
-  const maxAge = 60 * 60 * 1000; // 1 hour max cache age for dashboard
 
   for (const ticker of tickers) {
     try {
       const cached = localStorage.getItem(getQuoteCacheKey(ticker));
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
-        const cacheAge = Date.now() - new Date(data.updatedAt).getTime();
-        if (cacheAge <= maxAge && data.quote.exchangeRate) {
+        if (data.quote.exchangeRate) {
           prices[ticker] = {
             price: data.quote.price,
             exchangeRate: data.quote.exchangeRate,
