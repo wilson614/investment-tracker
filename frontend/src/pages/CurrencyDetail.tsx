@@ -354,7 +354,7 @@ export default function CurrencyDetail() {
           </div>
 
           {/* Metrics grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             <div className="metric-card">
               <p className="text-sm text-[var(--text-muted)] mb-1">餘額</p>
               <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
