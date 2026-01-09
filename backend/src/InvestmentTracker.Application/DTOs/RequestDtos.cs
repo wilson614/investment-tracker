@@ -120,6 +120,16 @@ public record CalculateXirrRequest
 }
 
 /// <summary>
+/// Request for calculating XIRR for a single position.
+/// </summary>
+public record CalculatePositionXirrRequest
+{
+    public decimal? CurrentPrice { get; init; }
+    public decimal? CurrentExchangeRate { get; init; }
+    public DateTime? AsOfDate { get; init; }
+}
+
+/// <summary>
 /// Result of XIRR calculation.
 /// </summary>
 public record XirrResultDto

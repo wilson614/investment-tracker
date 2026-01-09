@@ -10,6 +10,7 @@ import type {
   StockTransaction,
   StockMarket as StockMarketType,
   StockQuoteResponse,
+  XirrResult,
 } from '../types';
 
 const guessMarket = (ticker: string): StockMarketType => {
@@ -66,6 +67,7 @@ export function PositionDetailPage() {
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [lastQuote, setLastQuote] = useState<StockQuoteResponse | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [positionXirr, setPositionXirr] = useState<XirrResult | null>(null);
 
   const loadData = useCallback(async () => {
     if (!portfolioId || !ticker) return;
@@ -146,6 +148,22 @@ export function PositionDetailPage() {
             unrealizedPnlHome: pnl,
             unrealizedPnlPercentage: pnlPct,
           });
+
+          // Calculate XIRR for this position
+          try {
+            const xirrResult = await portfolioApi.calculatePositionXirr(
+              portfolioId!,
+              ticker!,
+              {
+                currentPrice: quote.price,
+                currentExchangeRate: quote.exchangeRate,
+              }
+            );
+            setPositionXirr(xirrResult);
+          } catch {
+            // XIRR calculation failed, ignore
+            setPositionXirr(null);
+          }
         }
       } else {
         setFetchStatus('error');
@@ -325,6 +343,18 @@ export function PositionDetailPage() {
                       {formatPercent(position.unrealizedPnlPercentage)}
                     </p>
                   </div>
+
+                  {positionXirr?.xirrPercentage != null && (
+                    <div className="metric-card metric-card-cream">
+                      <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
+                      <p className={`text-xl font-bold number-display ${positionXirr.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {formatPercent(positionXirr.xirrPercentage)}
+                      </p>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        含 {positionXirr.cashFlowCount} 筆現金流
+                      </p>
+                    </div>
+                  )}
                 </div>
               </>
             )}

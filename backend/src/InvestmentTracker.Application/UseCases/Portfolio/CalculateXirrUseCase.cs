@@ -91,4 +91,81 @@ public class CalculateXirrUseCase
             AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
         };
     }
+
+    /// <summary>
+    /// Calculate XIRR for a single position (ticker).
+    /// </summary>
+    public async Task<XirrResultDto> ExecuteForPositionAsync(
+        Guid portfolioId,
+        string ticker,
+        CalculatePositionXirrRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var portfolio = await _portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
+            ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
+
+        if (portfolio.UserId != _currentUserService.UserId)
+        {
+            throw new UnauthorizedAccessException("You do not have access to this portfolio");
+        }
+
+        var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+
+        // Filter to only this ticker's transactions
+        var tickerTransactions = allTransactions
+            .Where(t => !t.IsDeleted && t.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.TransactionDate)
+            .ToList();
+
+        if (tickerTransactions.Count == 0)
+        {
+            return new XirrResultDto
+            {
+                Xirr = null,
+                XirrPercentage = null,
+                CashFlowCount = 0,
+                AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
+            };
+        }
+
+        // Build cash flows list for this position
+        var cashFlows = new List<CashFlow>();
+
+        foreach (var tx in tickerTransactions)
+        {
+            if (tx.TransactionType == TransactionType.Buy)
+            {
+                // Outflow (investment)
+                cashFlows.Add(new CashFlow(-tx.TotalCostHome, tx.TransactionDate));
+            }
+            else if (tx.TransactionType == TransactionType.Sell)
+            {
+                // Inflow (return)
+                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate) - (tx.Fees * tx.ExchangeRate);
+                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+            }
+        }
+
+        // Add current position value as final cash flow
+        if (request.CurrentPrice.HasValue && request.CurrentExchangeRate.HasValue)
+        {
+            var position = _portfolioCalculator.CalculatePosition(ticker, allTransactions);
+
+            if (position.TotalShares > 0)
+            {
+                var currentValue = position.TotalShares * request.CurrentPrice.Value * request.CurrentExchangeRate.Value;
+                cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
+            }
+        }
+
+        var xirr = _portfolioCalculator.CalculateXirr(cashFlows);
+
+        return new XirrResultDto
+        {
+            Xirr = xirr,
+            XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
+            CashFlowCount = cashFlows.Count,
+            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
+        };
+    }
 }

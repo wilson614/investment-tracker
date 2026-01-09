@@ -160,6 +160,33 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
+    /// Calculate XIRR for a single position (ticker).
+    /// </summary>
+    [HttpPost("{id:guid}/positions/{ticker}/xirr")]
+    [ProducesResponseType(typeof(XirrResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<XirrResultDto>> CalculatePositionXirr(
+        Guid id,
+        string ticker,
+        [FromBody] CalculatePositionXirrRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _calculateXirrUseCase.ExecuteForPositionAsync(id, ticker, request, cancellationToken);
+            return Ok(result);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>
     /// Create a new portfolio.
     /// </summary>
     [HttpPost]

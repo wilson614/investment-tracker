@@ -95,6 +95,16 @@ export const portfolioApi = {
       body: JSON.stringify(request),
     }),
 
+  calculatePositionXirr: (
+    portfolioId: string,
+    ticker: string,
+    request: { currentPrice?: number; currentExchangeRate?: number; asOfDate?: string }
+  ) =>
+    fetchApi<XirrResult>(`/portfolios/${portfolioId}/positions/${encodeURIComponent(ticker)}/xirr`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
   create: (data: CreatePortfolioRequest) =>
     fetchApi<Portfolio>('/portfolios', {
       method: 'POST',
