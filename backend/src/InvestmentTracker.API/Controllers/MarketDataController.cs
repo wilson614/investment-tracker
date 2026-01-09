@@ -1,6 +1,9 @@
+using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
+using InvestmentTracker.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,11 +16,16 @@ namespace InvestmentTracker.API.Controllers;
 public class MarketDataController : ControllerBase
 {
     private readonly ICapeDataService _capeDataService;
+    private readonly IMarketYtdService _marketYtdService;
     private readonly AppDbContext _dbContext;
 
-    public MarketDataController(ICapeDataService capeDataService, AppDbContext dbContext)
+    public MarketDataController(
+        ICapeDataService capeDataService,
+        IMarketYtdService marketYtdService,
+        AppDbContext dbContext)
     {
         _capeDataService = capeDataService;
+        _marketYtdService = marketYtdService;
         _dbContext = dbContext;
     }
 
@@ -129,6 +137,65 @@ public class MarketDataController : ControllerBase
     {
         return Ok(IndexPriceService.SupportedMarkets);
     }
+
+    /// <summary>
+    /// Get YTD (Year-to-Date) returns for benchmark ETFs
+    /// Benchmarks: VWRA (All Country), VUAA (US Large), 0050 (Taiwan), VFEM (Emerging Markets)
+    /// </summary>
+    [HttpGet("ytd-comparison")]
+    [ProducesResponseType(typeof(MarketYtdComparisonDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<MarketYtdComparisonDto>> GetYtdComparison(CancellationToken cancellationToken)
+    {
+        var data = await _marketYtdService.GetYtdComparisonAsync(cancellationToken);
+        return Ok(data);
+    }
+
+    /// <summary>
+    /// Force refresh YTD comparison data
+    /// </summary>
+    [HttpPost("ytd-comparison/refresh")]
+    [ProducesResponseType(typeof(MarketYtdComparisonDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<MarketYtdComparisonDto>> RefreshYtdComparison(CancellationToken cancellationToken)
+    {
+        var data = await _marketYtdService.RefreshYtdComparisonAsync(cancellationToken);
+        return Ok(data);
+    }
+
+    /// <summary>
+    /// Store Jan 1 reference price for a benchmark (used at year start)
+    /// </summary>
+    [HttpPost("ytd-jan1-price")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult> StoreJan1Price(
+        [FromBody] Jan1PriceRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!MarketYtdService.SupportedBenchmarks.ContainsKey(request.MarketKey))
+        {
+            return BadRequest($"Unsupported market: {request.MarketKey}. Supported: {string.Join(", ", MarketYtdService.SupportedBenchmarks.Keys)}");
+        }
+
+        await _marketYtdService.StoreJan1PriceAsync(request.MarketKey, request.Price, cancellationToken);
+        return Ok(new { Message = $"Stored Jan 1 price for {request.MarketKey}: {request.Price}" });
+    }
+
+    /// <summary>
+    /// Get supported benchmarks for YTD comparison
+    /// </summary>
+    [HttpGet("ytd-benchmarks")]
+    [ProducesResponseType(typeof(IEnumerable<object>), StatusCodes.Status200OK)]
+    public ActionResult GetYtdBenchmarks()
+    {
+        var benchmarks = MarketYtdService.SupportedBenchmarks.Select(b => new
+        {
+            MarketKey = b.Key,
+            Symbol = b.Value.Symbol,
+            Name = b.Value.Name
+        });
+        return Ok(benchmarks);
+    }
 }
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
+public record Jan1PriceRequest(string MarketKey, decimal Price);

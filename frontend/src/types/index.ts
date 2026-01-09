@@ -289,3 +289,20 @@ export interface CapeDisplayItem {
   range75th: number;
 }
 
+// Market YTD (Year-to-Date) Types
+export interface MarketYtdReturn {
+  marketKey: string;
+  symbol: string;
+  name: string;
+  jan1Price: number | null;
+  currentPrice: number | null;
+  ytdReturnPercent: number | null;
+  fetchedAt: string | null;
+  error: string | null;
+}
+
+export interface MarketYtdComparison {
+  year: number;
+  benchmarks: MarketYtdReturn[];
+  generatedAt: string;
+}

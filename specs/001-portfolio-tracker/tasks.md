@@ -597,7 +597,7 @@ T174 → T175 → T176 → T177 → T178
 
 ---
 
-## Phase 15: User Story 10 - Market YTD Comparison (Priority: P10) 🆕
+## Phase 15: User Story 10 - Market YTD Comparison (Priority: P10) ✅ COMPLETE
 
 **Goal**: Display YTD returns for benchmark ETFs (VWRA, VUAA, 0050, VFEM) on Dashboard
 
@@ -607,27 +607,27 @@ T174 → T175 → T176 → T177 → T178
 
 ### Backend Implementation (US10)
 
-- [ ] T195 [P] [US10] Create MarketYtdReturnDto in backend/src/InvestmentTracker.Api/DTOs/MarketDataDtos.cs
-- [ ] T196 [P] [US10] Create MarketYtdComparisonDto in backend/src/InvestmentTracker.Api/DTOs/MarketDataDtos.cs
-- [ ] T197 [US10] Create IMarketDataService interface in backend/src/InvestmentTracker.Domain/Interfaces/IMarketDataService.cs
-- [ ] T198 [US10] Implement MarketDataService in backend/src/InvestmentTracker.Infrastructure/Services/MarketDataService.cs
-- [ ] T199 [US10] Add GetJan1BenchmarkPrice method to fetch/cache Jan 1 prices in MarketDataService
-- [ ] T200 [US10] Add GetCurrentBenchmarkPrice method to fetch real-time prices in MarketDataService
-- [ ] T201 [US10] Add CalculateYtdReturn method in MarketDataService
-- [ ] T202 [US10] Create MarketDataController in backend/src/InvestmentTracker.Api/Controllers/MarketDataController.cs
-- [ ] T203 [US10] Implement GET /api/v1/market-data/ytd-comparison endpoint
-- [ ] T204 [US10] Register IMarketDataService in DI container in backend/src/InvestmentTracker.Api/Program.cs
+- [x] T195 [P] [US10] Create MarketYtdReturnDto in backend/src/InvestmentTracker.Application/DTOs/StockPriceDtos.cs
+- [x] T196 [P] [US10] Create MarketYtdComparisonDto in backend/src/InvestmentTracker.Application/DTOs/StockPriceDtos.cs
+- [x] T197 [US10] Create IMarketYtdService interface in backend/src/InvestmentTracker.Application/Interfaces/IMarketYtdService.cs
+- [x] T198 [US10] Implement MarketYtdService in backend/src/InvestmentTracker.Infrastructure/Services/MarketYtdService.cs
+- [x] T199 [US10] Add GetJan1BenchmarkPrice method using IndexPriceSnapshot with YYYY01 format
+- [x] T200 [US10] Add GetCurrentBenchmarkPrice method using IStockPriceService
+- [x] T201 [US10] Add CalculateYtdReturn method: ((Current - Jan1) / Jan1) × 100
+- [x] T202 [US10] Add YTD endpoints to MarketDataController (ytd-comparison, ytd-jan1-price, ytd-benchmarks)
+- [x] T203 [US10] Implement GET /api/market-data/ytd-comparison endpoint
+- [x] T204 [US10] Register IMarketYtdService in DI container in backend/src/InvestmentTracker.Api/Program.cs
 
 ### Frontend Implementation (US10)
 
-- [ ] T205 [P] [US10] Create MarketYtdReturnDto type in frontend/src/types/marketData.ts
-- [ ] T206 [P] [US10] Create MarketYtdComparisonDto type in frontend/src/types/marketData.ts
-- [ ] T207 [US10] Add fetchMarketYtdComparison API client in frontend/src/services/api.ts
-- [ ] T208 [US10] Create MarketYtdSection component in frontend/src/components/dashboard/MarketYtdSection.tsx
-- [ ] T209 [US10] Display benchmark ETF names and YTD percentages in MarketYtdSection
-- [ ] T210 [US10] Add visual styling (green/red for positive/negative) in MarketYtdSection
-- [ ] T211 [US10] Integrate MarketYtdSection into Dashboard page in frontend/src/pages/Dashboard.tsx
-- [ ] T212 [US10] Add loading and error states to MarketYtdSection
+- [x] T205 [P] [US10] Create MarketYtdReturn type in frontend/src/types/index.ts
+- [x] T206 [P] [US10] Create MarketYtdComparison type in frontend/src/types/index.ts
+- [x] T207 [US10] Add getYtdComparison API client in frontend/src/services/api.ts
+- [x] T208 [US10] Create MarketYtdSection component in frontend/src/components/dashboard/MarketYtdSection.tsx
+- [x] T209 [US10] Display benchmark ETF names and YTD percentages in MarketYtdSection
+- [x] T210 [US10] Add visual styling (green/red for positive/negative) in MarketYtdSection
+- [x] T211 [US10] Integrate MarketYtdSection into Dashboard page in frontend/src/pages/Dashboard.tsx
+- [x] T212 [US10] Add loading and error states to MarketYtdSection
 
 **Checkpoint**: Dashboard shows YTD returns for VWRA, VUAA, 0050, VFEM with correct calculations
 

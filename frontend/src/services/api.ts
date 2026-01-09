@@ -23,6 +23,7 @@ import type {
   ExchangeRateResponse,
   MarketInfo,
   CapeData,
+  MarketYtdComparison,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -251,13 +252,19 @@ export const stockPriceApi = {
     fetchApi<MarketInfo[]>('/stock-prices/markets'),
 };
 
-// Market Data API (CAPE)
+// Market Data API (CAPE & YTD)
 export const marketDataApi = {
   getCapeData: () =>
     fetchApi<CapeData>('/market-data/cape'),
 
   refreshCapeData: () =>
     fetchApi<CapeData>('/market-data/cape/refresh', { method: 'POST' }),
+
+  getYtdComparison: () =>
+    fetchApi<MarketYtdComparison>('/market-data/ytd-comparison'),
+
+  refreshYtdComparison: () =>
+    fetchApi<MarketYtdComparison>('/market-data/ytd-comparison/refresh', { method: 'POST' }),
 };
 
 export type { ApiErrorType };

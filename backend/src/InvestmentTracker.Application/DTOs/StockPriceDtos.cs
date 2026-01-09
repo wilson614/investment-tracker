@@ -52,3 +52,48 @@ public record ExchangeRateResponse
     public string Source { get; init; } = string.Empty;
     public DateTime FetchedAt { get; init; }
 }
+
+/// <summary>
+/// YTD return for a single benchmark ETF
+/// </summary>
+public record MarketYtdReturnDto
+{
+    /// <summary>Market category (e.g., "All Country", "US Large", "Taiwan", "Emerging Markets")</summary>
+    public string MarketKey { get; init; } = string.Empty;
+
+    /// <summary>ETF ticker symbol (e.g., "VWRA", "VUAA", "0050", "VFEM")</summary>
+    public string Symbol { get; init; } = string.Empty;
+
+    /// <summary>Human-readable name</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>Jan 1 reference price</summary>
+    public decimal? Jan1Price { get; init; }
+
+    /// <summary>Current price</summary>
+    public decimal? CurrentPrice { get; init; }
+
+    /// <summary>YTD return percentage</summary>
+    public decimal? YtdReturnPercent { get; init; }
+
+    /// <summary>When current price was fetched</summary>
+    public DateTime? FetchedAt { get; init; }
+
+    /// <summary>Error message if price fetch failed</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>
+/// Collection of YTD returns for all benchmarks
+/// </summary>
+public record MarketYtdComparisonDto
+{
+    /// <summary>Year for YTD calculation</summary>
+    public int Year { get; init; }
+
+    /// <summary>List of benchmark YTD returns</summary>
+    public List<MarketYtdReturnDto> Benchmarks { get; init; } = [];
+
+    /// <summary>When this data was generated</summary>
+    public DateTime GeneratedAt { get; init; }
+}

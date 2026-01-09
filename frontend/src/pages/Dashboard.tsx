@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
-import { MarketContext } from '../components/dashboard';
+import { MarketContext, MarketYtdSection } from '../components/dashboard';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 
@@ -314,8 +314,11 @@ export function DashboardPage() {
           </button>
         </div>
 
-        {/* Market Context - CAPE */}
-        <MarketContext className="mb-6" />
+        {/* Market Context - CAPE & YTD */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <MarketContext />
+          <MarketYtdSection />
+        </div>
 
         {/* Portfolio Summary */}
         <div className="card-dark p-6 mb-6">

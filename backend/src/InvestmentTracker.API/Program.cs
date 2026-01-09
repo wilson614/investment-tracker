@@ -173,6 +173,9 @@ builder.Services.AddScoped<IIndexPriceService, IndexPriceService>();
 // CAPE Data Service
 builder.Services.AddHttpClient<ICapeDataService, CapeDataService>();
 
+// Market YTD Service
+builder.Services.AddScoped<IMarketYtdService, MarketYtdService>();
+
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();
 
