@@ -42,6 +42,9 @@ public class GetCurrencyLedgerSummaryUseCase
         var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
         var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
         var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
+        var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
+        var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
+        var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
 
         var recentTransactions = transactions
             .OrderByDescending(t => t.TransactionDate)
@@ -57,6 +60,9 @@ public class GetCurrencyLedgerSummaryUseCase
             AverageExchangeRate = avgExchangeRate,
             TotalExchanged = totalExchanged,
             TotalSpentOnStocks = totalSpentOnStocks,
+            TotalInterest = totalInterest,
+            TotalCost = totalCost,
+            RealizedPnl = realizedPnl,
             CurrentExchangeRate = null, // TODO: Integrate with exchange rate API
             CurrentValueHome = null,
             UnrealizedPnlHome = null,
@@ -84,6 +90,9 @@ public class GetCurrencyLedgerSummaryUseCase
                 var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
                 var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
                 var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
+                var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
+                var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
+                var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
 
                 results.Add(new CurrencyLedgerSummaryDto
                 {
@@ -92,6 +101,9 @@ public class GetCurrencyLedgerSummaryUseCase
                     AverageExchangeRate = avgExchangeRate,
                     TotalExchanged = totalExchanged,
                     TotalSpentOnStocks = totalSpentOnStocks,
+                    TotalInterest = totalInterest,
+                    TotalCost = totalCost,
+                    RealizedPnl = realizedPnl,
                     CurrentExchangeRate = null,
                     CurrentValueHome = null,
                     UnrealizedPnlHome = null,

@@ -169,6 +169,9 @@ export interface CurrencyLedgerSummary {
   averageExchangeRate: number;
   totalExchanged: number;
   totalSpentOnStocks: number;
+  totalInterest: number;
+  totalCost: number;
+  realizedPnl: number;
   currentExchangeRate?: number;
   currentValueHome?: number;
   unrealizedPnlHome?: number;

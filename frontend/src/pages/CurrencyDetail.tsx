@@ -429,30 +429,61 @@ export default function CurrencyDetail() {
               </p>
             </div>
             <div className="metric-card">
-              <p className="text-[var(--text-muted)] text-sm mb-1">淨投入</p>
+              <p className="text-[var(--text-muted)] text-sm mb-1">目前成本</p>
               <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {formatTWD(ledger.totalExchanged)}
+                {formatTWD(ledger.totalCost)}
               </p>
               <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
             <div className="metric-card">
-              <div className="flex items-center gap-1 mb-1">
-                <p className="text-[var(--text-muted)] text-sm">股票投入</p>
-                <div className="relative group">
-                  <Info className="w-3 h-3 text-[var(--text-muted)] cursor-help" />
-                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                      從此帳本用於購買股票的外幣金額
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {formatNumber(ledger.totalSpentOnStocks, 4)}
+              <p className="text-[var(--text-muted)] text-sm mb-1">已實現損益</p>
+              <p className={`text-2xl font-bold number-display ${ledger.realizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
+                {ledger.realizedPnl >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)}
               </p>
-              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
+              <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
             </div>
           </div>
+
+          {/* Additional metrics row */}
+          {(ledger.totalInterest > 0 || ledger.totalSpentOnStocks > 0) && (
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4 pt-4 border-t border-[var(--border-color)]">
+              {ledger.totalInterest > 0 && (
+                <div className="metric-card">
+                  <p className="text-[var(--text-muted)] text-sm mb-1">利息收入</p>
+                  <p className="text-xl font-bold text-[var(--accent-peach)] number-display">
+                    {formatNumber(ledger.totalInterest, 2)}
+                  </p>
+                  <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
+                </div>
+              )}
+              {ledger.totalSpentOnStocks > 0 && (
+                <div className="metric-card">
+                  <div className="flex items-center gap-1 mb-1">
+                    <p className="text-[var(--text-muted)] text-sm">股票投入</p>
+                    <div className="relative group">
+                      <Info className="w-3 h-3 text-[var(--text-muted)] cursor-help" />
+                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                          從此帳本用於購買股票的外幣金額
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                    {formatNumber(ledger.totalSpentOnStocks, 4)}
+                  </p>
+                  <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.currencyCode}</p>
+                </div>
+              )}
+              <div className="metric-card">
+                <p className="text-[var(--text-muted)] text-sm mb-1">淨投入</p>
+                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                  {formatTWD(ledger.totalExchanged)}
+                </p>
+                <p className="text-[var(--text-muted)] text-sm">{ledger.ledger.homeCurrency}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Add Transaction Modal */}

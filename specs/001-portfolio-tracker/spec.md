@@ -276,11 +276,12 @@ As an investor, I want to see my portfolio's historical performance and current 
 
 2. **Portfolio Page** (`/portfolio/:id`)
    - Header: "投資組合" with optional description (editable via pencil icon)
-   - Actions: "+ 新增交易" button, "匯入" button
+   - Header Actions: "檔案" dropdown (positions CSV export), "更新報價" button
    - Performance Metrics: Total cost, current value, unrealized PnL, return percentage
    - Positions Grid: Card-based layout showing each holding
-   - "獲取全部報價" button to batch-fetch all position prices
-   - Full Transaction History: All transactions with edit/delete actions
+   - Full Transaction History Section:
+     - "檔案" dropdown (import/export transactions), "+ 新增" button
+     - All transactions with edit/delete actions
 
 3. **Position Detail Page** (`/portfolio/:id/position/:ticker`)
    - Header: Ticker symbol with market tag (台股/美股/英股)
@@ -292,18 +293,25 @@ As an investor, I want to see my portfolio's historical performance and current 
      - Automatically fetch fresh quote on page mount
      - Update display with fresh data after fetch completes
    - Value section: Current value, unrealized PnL with percentage, position XIRR
-   - Transaction List: Filtered to this ticker only
+   - Transaction List: Filtered to this ticker only (with "檔案" dropdown for export)
 
 4. **Currency Detail Page** (`/currency/:id`)
    - Header: Currency code with editable name
    - Summary Metrics: Balance, current exchange rate, average rate, net investment, stock investment
    - Current Rate: Display with real-time fetch button, compare to average rate
-   - Transaction List: All currency transactions with running balance
+   - Transaction List: All currency transactions with running balance (with "檔案" dropdown for import/export)
    - **Initial Load Behavior**:
      - Display cached exchange rate immediately on load (no flickering)
      - Automatically fetch fresh exchange rate on page mount
      - Update display with fresh rate after fetch completes
    - CSV export for currency transactions
+
+### Common UI Components
+
+- **FileDropdown** ("檔案" button):
+  - When both import and export available: Shows dropdown with "匯入" and "匯出" options
+  - When only export available: Shows simple "匯出" button (no dropdown)
+  - Used in: Transaction lists (Portfolio, CurrencyDetail, PositionDetail)
 
 5. **Dashboard Page** (`/dashboard`)
    - **Market Context Section**:

@@ -48,6 +48,12 @@ public record CurrencyLedgerSummaryDto
     public decimal TotalExchanged { get; init; }
     /// <summary>Total foreign currency spent on stocks</summary>
     public decimal TotalSpentOnStocks { get; init; }
+    /// <summary>Total interest income in foreign currency</summary>
+    public decimal TotalInterest { get; init; }
+    /// <summary>Current cost basis for remaining balance (using moving average)</summary>
+    public decimal TotalCost { get; init; }
+    /// <summary>Realized profit/loss from selling foreign currency</summary>
+    public decimal RealizedPnl { get; init; }
     public decimal? CurrentExchangeRate { get; init; }
     public decimal? CurrentValueHome { get; init; }
     public decimal? UnrealizedPnlHome { get; init; }

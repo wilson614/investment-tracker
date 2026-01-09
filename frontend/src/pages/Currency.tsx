@@ -67,7 +67,10 @@ export default function Currency() {
   };
 
   const totalExchanged = ledgers.reduce((sum, l) => sum + l.totalExchanged, 0);
-  const totalSpentOnStocks = ledgers.reduce((sum, l) => sum + l.totalSpentOnStocks, 0);
+  const totalCost = ledgers.reduce((sum, l) => sum + l.totalCost, 0);
+  const totalRealizedPnl = ledgers.reduce((sum, l) => sum + l.realizedPnl, 0);
+  const totalInterest = ledgers.reduce((sum, l) => sum + l.totalInterest, 0);
+  const realizedPnlColor = totalRealizedPnl >= 0 ? 'number-positive' : 'number-negative';
 
   if (loading) {
     return (
@@ -100,17 +103,27 @@ export default function Currency() {
         {/* Summary Card */}
         <div className="card-dark p-6 mb-8">
           <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">總覽</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="metric-card">
               <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
               <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatTWD(totalExchanged)}</p>
               <p className="text-sm text-[var(--text-muted)]">TWD</p>
             </div>
             <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">股票投入</p>
-              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-                {formatNumber(totalSpentOnStocks)}
+              <p className="text-sm text-[var(--text-muted)] mb-1">目前成本</p>
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatTWD(totalCost)}</p>
+              <p className="text-sm text-[var(--text-muted)]">TWD</p>
+            </div>
+            <div className="metric-card">
+              <p className="text-sm text-[var(--text-muted)] mb-1">已實現損益</p>
+              <p className={`text-2xl font-bold number-display ${realizedPnlColor}`}>
+                {totalRealizedPnl >= 0 ? '+' : ''}{formatTWD(totalRealizedPnl)}
               </p>
+              <p className="text-sm text-[var(--text-muted)]">TWD</p>
+            </div>
+            <div className="metric-card">
+              <p className="text-sm text-[var(--text-muted)] mb-1">利息收入</p>
+              <p className="text-2xl font-bold text-[var(--text-primary)] number-display">{formatNumber(totalInterest)}</p>
               <p className="text-sm text-[var(--text-muted)]">外幣</p>
             </div>
           </div>

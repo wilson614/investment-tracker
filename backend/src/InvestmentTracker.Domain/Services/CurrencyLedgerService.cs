@@ -85,6 +85,16 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
+    /// Calculates the total interest income (Interest type transactions).
+    /// </summary>
+    public decimal CalculateTotalInterest(IEnumerable<CurrencyTransaction> transactions)
+    {
+        return transactions
+            .Where(t => !t.IsDeleted && t.TransactionType == CurrencyTransactionType.Interest)
+            .Sum(t => t.ForeignAmount);
+    }
+
+    /// <summary>
     /// Calculates the weighted average cost per unit of foreign currency.
     /// Uses the moving average cost method.
     /// </summary>

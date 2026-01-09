@@ -37,27 +37,36 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
       <div className="space-y-3 text-base">
         <div className="flex justify-between">
+          <span className="text-[var(--text-muted)]">目前成本:</span>
+          <span className="font-medium text-[var(--text-primary)] number-display">
+            {formatTWD(ledger.totalCost)} {ledger.ledger.homeCurrency}
+          </span>
+        </div>
+
+        <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">換匯均價:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
             {formatNumber(ledger.averageExchangeRate, 4)}
           </span>
         </div>
 
-        <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">累計換匯:</span>
-          <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
-          </span>
-        </div>
-
         <hr className="border-[var(--border-color)] my-3" />
 
         <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">股票投入:</span>
-          <span className="font-medium text-[var(--accent-peach)] number-display">
-            {formatNumber(ledger.totalSpentOnStocks, 4)} {ledger.ledger.currencyCode}
+          <span className="text-[var(--text-muted)]">已實現損益:</span>
+          <span className={`font-medium number-display ${ledger.realizedPnl >= 0 ? 'number-positive' : 'number-negative'}`}>
+            {ledger.realizedPnl >= 0 ? '+' : ''}{formatTWD(ledger.realizedPnl)} {ledger.ledger.homeCurrency}
           </span>
         </div>
+
+        {ledger.totalInterest > 0 && (
+          <div className="flex justify-between">
+            <span className="text-[var(--text-muted)]">利息收入:</span>
+            <span className="font-medium text-[var(--accent-peach)] number-display">
+              {formatNumber(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
