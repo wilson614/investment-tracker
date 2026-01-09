@@ -30,8 +30,13 @@ public class MarketYtdService : IMarketYtdService
     {
         ["All Country"] = ("VWRA", "Vanguard FTSE All-World", StockMarket.UK),
         ["US Large"] = ("VUAA", "Vanguard S&P 500", StockMarket.UK),
-        ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW),
+        ["US Small"] = ("XRSU", "Xtrackers Russell 2000", StockMarket.UK),
+        ["Developed Markets Large"] = ("VHVE", "Vanguard FTSE Developed World", StockMarket.UK),
+        ["Dev ex US Large"] = ("EXUS", "Vanguard FTSE Developed ex US", StockMarket.UK),
         ["Emerging Markets"] = ("VFEM", "Vanguard FTSE Emerging Markets", StockMarket.UK),
+        ["Europe"] = ("VEUA", "Vanguard FTSE Developed Europe", StockMarket.UK),
+        ["Japan"] = ("VJPA", "Vanguard FTSE Japan", StockMarket.UK),
+        ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW),
     };
 
     public MarketYtdService(

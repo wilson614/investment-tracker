@@ -13,8 +13,13 @@ const YTD_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - after this, data is stal
 const MARKET_DISPLAY_NAMES: Record<string, string> = {
   'All Country': '全球',
   'US Large': '美國大型',
-  'Taiwan 0050': '台灣 0050',
+  'US Small': '美國小型',
+  'Developed Markets Large': '已開發大型',
+  'Dev ex US Large': '已開發非美',
   'Emerging Markets': '新興市場',
+  'Europe': '歐洲',
+  'Japan': '日本',
+  'Taiwan 0050': '台灣 0050',
 };
 
 // Cache the last fetched data in memory for quick access
