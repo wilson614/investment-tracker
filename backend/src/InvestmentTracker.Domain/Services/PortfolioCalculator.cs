@@ -118,11 +118,15 @@ public class PortfolioCalculator
         // Cost basis for sold shares (using average cost)
         var costBasis = sellTransaction.Shares * positionBeforeSell.AverageCostPerShareHome;
 
-        // Sale proceeds in home currency
-        var saleProceeds = sellTransaction.Shares * sellTransaction.PricePerShare * sellTransaction.ExchangeRate;
+        // Sale proceeds subtotal (Shares × Price)
+        var subtotal = sellTransaction.Shares * sellTransaction.PricePerShare;
 
-        // Subtract fees from proceeds (fees reduce realized gain)
-        saleProceeds -= sellTransaction.Fees * sellTransaction.ExchangeRate;
+        // Taiwan stocks use floor for transaction subtotal (無條件捨去)
+        if (sellTransaction.IsTaiwanStock)
+            subtotal = Math.Floor(subtotal);
+
+        // Sale proceeds in home currency, minus fees
+        var saleProceeds = (subtotal - sellTransaction.Fees) * sellTransaction.ExchangeRate;
 
         return saleProceeds - costBasis;
     }

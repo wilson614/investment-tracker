@@ -238,6 +238,56 @@ public class PortfolioCalculatorTests
         Assert.Equal(-3750m, realizedPnl);
     }
 
+    [Fact]
+    public void CalculateRealizedPnl_TaiwanStock_UsesFloorForProceeds()
+    {
+        // Arrange: Taiwan stock with non-integer subtotal
+        // Buy 10 shares at 100 TWD = 1000 cost basis
+        var buyTransactions = new List<StockTransaction>
+        {
+            CreateBuyTransaction("0050", 10m, 100m, 1m, 0m)
+        };
+        // Sell 3 shares at 27.25 TWD
+        // Subtotal = 3 × 27.25 = 81.75, floor to 81
+        // Proceeds = 81 - 0 fees = 81
+        var sellTransaction = CreateSellTransaction("0050", 3m, 27.25m, 1m, 0m);
+        var position = _calculator.CalculatePosition("0050", buyTransactions);
+
+        // Act
+        var realizedPnl = _calculator.CalculateRealizedPnl(position, sellTransaction);
+
+        // Assert
+        // Avg cost per share = 1000 / 10 = 100 TWD
+        // Cost basis for 3 shares = 3 * 100 = 300 TWD
+        // Sale proceeds = Floor(3 × 27.25) = 81 TWD
+        // Realized PnL = 81 - 300 = -219 TWD
+        Assert.Equal(-219m, realizedPnl);
+    }
+
+    [Fact]
+    public void CalculateRealizedPnl_USStock_DoesNotUseFloor()
+    {
+        // Arrange: US stock keeps decimal precision
+        var buyTransactions = new List<StockTransaction>
+        {
+            CreateBuyTransaction("VOO", 10m, 100m, 30m, 0m)
+        };
+        // Sell 3 shares at 27.25 USD
+        // Subtotal = 3 × 27.25 = 81.75 (no floor)
+        var sellTransaction = CreateSellTransaction("VOO", 3m, 27.25m, 30m, 0m);
+        var position = _calculator.CalculatePosition("VOO", buyTransactions);
+
+        // Act
+        var realizedPnl = _calculator.CalculateRealizedPnl(position, sellTransaction);
+
+        // Assert
+        // Avg cost per share home = (10 * 100 * 30) / 10 = 3000 TWD
+        // Cost basis for 3 shares = 3 * 3000 = 9000 TWD
+        // Sale proceeds = 81.75 * 30 = 2452.5 TWD
+        // Realized PnL = 2452.5 - 9000 = -6547.5 TWD
+        Assert.Equal(-6547.5m, realizedPnl);
+    }
+
     #endregion
 
     #region Helper Methods
