@@ -219,18 +219,24 @@ public class MarketYtdService : IMarketYtdService
 
                 if (yearEndPrice.HasValue)
                 {
-                    // Store in database
-                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    // Check if record already exists (prevent duplicates from concurrent requests)
+                    var exists = await _dbContext.IndexPriceSnapshots
+                        .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
+
+                    if (!exists)
                     {
-                        MarketKey = marketKey,
-                        YearMonth = yearMonth,
-                        Price = yearEndPrice.Value,
-                        RecordedAt = DateTime.UtcNow
-                    });
+                        _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                        {
+                            MarketKey = marketKey,
+                            YearMonth = yearMonth,
+                            Price = yearEndPrice.Value,
+                            RecordedAt = DateTime.UtcNow
+                        });
+                        _logger.LogInformation("Fetched and stored {Year}/12 year-end price for {MarketKey}: {Price}",
+                            year, marketKey, yearEndPrice.Value);
+                    }
 
                     yearEndPrices[marketKey] = yearEndPrice.Value;
-                    _logger.LogInformation("Fetched and stored {Year}/12 year-end price for {MarketKey}: {Price}",
-                        year, marketKey, yearEndPrice.Value);
                 }
                 else
                 {

@@ -113,11 +113,7 @@ public class SinaStockPriceProvider : IStockPriceProvider
         }
 
         var name = fields[0];
-        if (!decimal.TryParse(fields[1], out var price) || price <= 0)
-        {
-            _logger.LogWarning("Invalid price in Sina response for {Symbol}: {Price}", symbol, fields[1]);
-            return null;
-        }
+        decimal.TryParse(fields[1], out var price);
 
         decimal? change = null;
         string? changePercent = null;
@@ -127,9 +123,23 @@ public class SinaStockPriceProvider : IStockPriceProvider
         // US: 0:name, 1:price, 2:change%, 3:timestamp, 4:change, ...
         if (market == StockMarket.UK)
         {
-            // UK: Calculate change from yesterday's close (fields[5])
-            if (fields.Length > 5 && decimal.TryParse(fields[5], out var yesterdayClose) && yesterdayClose > 0)
+            // UK: Try to get yesterday's close for fallback and change calculation
+            decimal yesterdayClose = 0;
+            if (fields.Length > 5)
             {
+                decimal.TryParse(fields[5], out yesterdayClose);
+            }
+
+            // If current price is 0, use yesterday's close as fallback
+            if (price <= 0 && yesterdayClose > 0)
+            {
+                _logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Symbol} (current price is 0)", yesterdayClose, symbol);
+                price = yesterdayClose;
+                // No change data available when using fallback
+            }
+            else if (price > 0 && yesterdayClose > 0)
+            {
+                // Calculate change from yesterday's close
                 change = price - yesterdayClose;
                 var pctValue = (change.Value / yesterdayClose) * 100;
                 var sign = pctValue >= 0 ? "+" : "";
@@ -153,6 +163,13 @@ public class SinaStockPriceProvider : IStockPriceProvider
                     changePercent = $"{sign}{percentValue:F2}%";
                 }
             }
+        }
+
+        // Final validation: price must be positive
+        if (price <= 0)
+        {
+            _logger.LogWarning("Invalid price in Sina response for {Symbol}: {Price}", symbol, fields[1]);
+            return null;
         }
 
         return new StockQuoteResponse
