@@ -168,7 +168,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 #### Portfolio Management
 - **FR-001**: System MUST record stock transactions with: Date, Ticker, Transaction Type (Buy/Sell), Shares (up to 4 decimal places), Price per Share (source currency), Transaction Fees, and Exchange Rate.
 - **FR-001a**: System MUST allow users to edit or delete any previously recorded transaction.
-- **FR-001b**: System MUST automatically recalculate all derived values (moving average cost, unrealized PnL, position totals) when any transaction is added, modified, or deleted.
+- **FR-001b**: System MUST automatically recalculate all derived values (moving average cost, unrealized PnL, realized PnL for sell transactions, position totals) when any transaction is added, modified, or deleted.
 - **FR-002**: System MUST calculate Total Cost (Source) = (Shares × Price) + Fees for each transaction.
 - **FR-002a**: For Taiwan stocks (ticker starting with digit), system MUST use Floor(Shares × Price) + Fees per Taiwan market convention (無條件捨去).
 - **FR-003**: System MUST calculate Total Cost (Home) = Total Cost (Source) × Exchange Rate for each transaction.

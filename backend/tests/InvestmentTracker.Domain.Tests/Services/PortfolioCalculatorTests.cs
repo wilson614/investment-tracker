@@ -288,6 +288,64 @@ public class PortfolioCalculatorTests
         Assert.Equal(-6547.5m, realizedPnl);
     }
 
+    [Fact]
+    public void CalculateRealizedPnl_WithSellFees_ReducesPnl()
+    {
+        // Arrange: Same as SellAtProfit but WITH fees
+        var buyTransactions = new List<StockTransaction>
+        {
+            CreateBuyTransaction("VWRA", 10m, 100m, 31.5m, 0m)
+        };
+        // Sell with 100 USD fees
+        var sellTransactionWithFees = CreateSellTransaction("VWRA", 5m, 120m, 32m, 100m);
+        var sellTransactionNoFees = CreateSellTransaction("VWRA", 5m, 120m, 32m, 0m);
+        var position = _calculator.CalculatePosition("VWRA", buyTransactions);
+
+        // Act
+        var pnlWithFees = _calculator.CalculateRealizedPnl(position, sellTransactionWithFees);
+        var pnlNoFees = _calculator.CalculateRealizedPnl(position, sellTransactionNoFees);
+
+        // Assert
+        // Without fees: proceeds = 5 * 120 * 32 = 19200, cost = 15750, PnL = 3450
+        // With 100 fees: proceeds = (600 - 100) * 32 = 16000, cost = 15750, PnL = 250
+        // Difference should be 100 * 32 = 3200
+        Assert.Equal(3450m, pnlNoFees);
+        Assert.Equal(250m, pnlWithFees);
+        Assert.Equal(3200m, pnlNoFees - pnlWithFees);  // Fee impact = 100 * 32
+    }
+
+    [Fact]
+    public void CalculateRealizedPnl_WithBuyFees_ReducesPnl()
+    {
+        // Arrange: Buy WITH fees vs WITHOUT fees
+        var buyWithFees = new List<StockTransaction>
+        {
+            CreateBuyTransaction("VWRA", 10m, 100m, 31.5m, 100m)  // 100 fees
+        };
+        var buyNoFees = new List<StockTransaction>
+        {
+            CreateBuyTransaction("VWRA", 10m, 100m, 31.5m, 0m)
+        };
+        var sellTransaction = CreateSellTransaction("VWRA", 5m, 120m, 32m, 0m);
+
+        var positionWithFees = _calculator.CalculatePosition("VWRA", buyWithFees);
+        var positionNoFees = _calculator.CalculatePosition("VWRA", buyNoFees);
+
+        // Act
+        var pnlWithBuyFees = _calculator.CalculateRealizedPnl(positionWithFees, sellTransaction);
+        var pnlNoBuyFees = _calculator.CalculateRealizedPnl(positionNoFees, sellTransaction);
+
+        // Assert
+        // Without buy fees: avg cost = 31500/10 = 3150, cost basis = 15750
+        // With 100 buy fees: total cost = (1000+100)*31.5 = 34650, avg = 3465, cost basis = 17325
+        // Sale proceeds = 19200 for both
+        // PnL without fees = 19200 - 15750 = 3450
+        // PnL with fees = 19200 - 17325 = 1875
+        Assert.Equal(3450m, pnlNoBuyFees);
+        Assert.Equal(1875m, pnlWithBuyFees);
+        Assert.True(pnlWithBuyFees < pnlNoBuyFees);  // Buy fees reduce PnL
+    }
+
     #endregion
 
     #region Helper Methods
