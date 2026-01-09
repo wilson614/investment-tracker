@@ -549,7 +549,7 @@ T174 → T175 → T176 → T177 → T178
 
 ---
 
-## Phase 13: User Story 8 - Page Refresh Behavior (Priority: P8) 🆕
+## Phase 13: User Story 8 - Page Refresh Behavior (Priority: P8) ✅ COMPLETE
 
 **Goal**: Auto-trigger quote fetch on page load/refresh, display cached values immediately to prevent flickering
 
@@ -557,21 +557,23 @@ T174 → T175 → T176 → T177 → T178
 
 **Requirements**: FR-040, FR-040a, FR-040b (Added 2026-01-09)
 
+**Note**: This phase was already fully implemented. Cache logic is embedded in pages rather than in a separate hook.
+
 ### Implementation for User Story 8
 
-- [ ] T179 [US8] Update useQuoteCache hook to initialize cache on mount in frontend/src/hooks/useQuoteCache.ts
-- [ ] T180 [US8] Add auto-fetch on mount to Portfolio page in frontend/src/pages/Portfolio.tsx
-- [ ] T181 [US8] Add auto-fetch on mount to Dashboard page in frontend/src/pages/Dashboard.tsx
-- [ ] T182 [US8] Update PositionDetail to display cached values immediately in frontend/src/pages/PositionDetail.tsx
-- [ ] T183 [US8] Add loading state to "更新報價" button during auto-fetch in frontend/src/components/PositionCard.tsx
-- [ ] T184 [US8] Ensure quote cache is populated before rendering market value in frontend/src/components/PositionCard.tsx
-- [ ] T185 [US8] Verify cache-first display prevents "-" flickering in PositionDetail value section
+- [x] T179 [US8] Quote cache logic embedded in loadCachedQuote/loadCachedPrices functions in Portfolio.tsx, Dashboard.tsx, PositionDetail.tsx
+- [x] T180 [US8] Auto-fetch on mount implemented in Portfolio.tsx:103-140 (loadData with cached prices)
+- [x] T181 [US8] Auto-fetch on mount implemented in Dashboard.tsx:74-126 (loadDashboardData with cached prices)
+- [x] T182 [US8] PositionDetail.tsx:68-76 initializes state from cache, 118-150 auto-fetches on mount
+- [x] T183 [US8] Loading state implemented in Portfolio.tsx:369-379 (isFetchingAll) and PositionCard.tsx:152 (fetchStatus)
+- [x] T184 [US8] PositionCard.tsx:70-76 loads cached quote before render
+- [x] T185 [US8] Cache-first display prevents flickering - all pages show cached values immediately
 
 **Checkpoint**: Page refresh shows cached values instantly, then updates with fresh data
 
 ---
 
-## Phase 14: User Story 9 - CSV Export (Priority: P9) 🆕
+## Phase 14: User Story 9 - CSV Export (Priority: P9) ✅ COMPLETE
 
 **Goal**: Export transactions and positions to CSV with UTF-8 BOM for Excel compatibility
 
@@ -581,15 +583,15 @@ T174 → T175 → T176 → T177 → T178
 
 ### Implementation for User Story 9
 
-- [ ] T186 [P] [US9] Create CSV export service in frontend/src/services/csvExport.ts
-- [ ] T187 [P] [US9] Define TransactionExportDto type in frontend/src/types/export.ts
-- [ ] T188 [P] [US9] Define PositionExportDto type in frontend/src/types/export.ts
-- [ ] T189 [US9] Implement generateTransactionsCsv function in frontend/src/services/csvExport.ts
-- [ ] T190 [US9] Implement generatePositionsCsv function in frontend/src/services/csvExport.ts
-- [ ] T191 [US9] Implement downloadCsv function with UTF-8 BOM in frontend/src/services/csvExport.ts
-- [ ] T192 [US9] Add "匯出交易" button to Portfolio page in frontend/src/pages/Portfolio.tsx
-- [ ] T193 [US9] Add "匯出持倉" button to Portfolio page in frontend/src/pages/Portfolio.tsx
-- [ ] T194 [US9] Wire up export buttons to CSV service in frontend/src/pages/Portfolio.tsx
+- [x] T186 [P] [US9] Create CSV export service in frontend/src/services/csvExport.ts
+- [x] T187 [P] [US9] TransactionExportDto - using existing StockTransaction type directly
+- [x] T188 [P] [US9] PositionExportDto - using existing StockPosition type directly
+- [x] T189 [US9] Implement generateTransactionsCsv function in frontend/src/services/csvExport.ts
+- [x] T190 [US9] Implement generatePositionsCsv function in frontend/src/services/csvExport.ts
+- [x] T191 [US9] Implement downloadCsv function with UTF-8 BOM in frontend/src/services/csvExport.ts
+- [x] T192 [US9] Add "匯出交易" button to Portfolio page in frontend/src/pages/Portfolio.tsx
+- [x] T193 [US9] Add "匯出持倉" button to Portfolio page in frontend/src/pages/Portfolio.tsx
+- [x] T194 [US9] Wire up export buttons to CSV service in frontend/src/pages/Portfolio.tsx
 
 **Checkpoint**: Both transaction and position CSV exports work with correct Chinese headers in Excel
 
@@ -631,7 +633,7 @@ T174 → T175 → T176 → T177 → T178
 
 ---
 
-## Phase 16: Taiwan Stock Support Enhancement (Priority: P11) 🆕
+## Phase 16: Taiwan Stock Support Enhancement (Priority: P11) ✅ COMPLETE
 
 **Goal**: Ensure Taiwan stocks (TWD source currency) work correctly with exchange rate = 1.0
 
@@ -639,10 +641,10 @@ T174 → T175 → T176 → T177 → T178
 
 **Requirements**: FR-043, FR-043a, FR-043b (Added 2026-01-09)
 
-- [ ] T213 [P] [US11] Verify Taiwan stock detection (pure digits or digits with letters) in frontend/src/services/marketDetection.ts
-- [ ] T214 [US11] Auto-set exchange rate to 1.0 for Taiwan stocks in TransactionForm
-- [ ] T215 [US11] Add visual indicator for Taiwan market in PositionCard (台股 tag)
-- [ ] T216 [US11] Ensure TWSE and TPEx quotes work correctly in backend quote service
+- [x] T213 [P] [US11] Taiwan stock detection using isTaiwanStock() in TransactionForm (pattern: /^\d+[A-Za-z]*$/)
+- [x] T214 [US11] Auto-set exchange rate to 1.0 for Taiwan stocks in TransactionForm (handleChange + handleTickerBlur)
+- [x] T215 [US11] Visual indicator for Taiwan market already exists in PositionCard (MARKET_LABELS with 台股 tag)
+- [x] T216 [US11] TWSE and TPEx quotes working via TwseStockPriceProvider.cs
 
 **Checkpoint**: Taiwan stock transactions work correctly with TWD/TWD = 1.0 exchange rate
 

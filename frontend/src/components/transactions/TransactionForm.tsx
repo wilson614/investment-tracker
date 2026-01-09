@@ -3,6 +3,11 @@ import { currencyLedgerApi } from '../../services/api';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary } from '../../types';
 import { FundSource as FundSourceEnum } from '../../types';
 
+// Detect if ticker is Taiwan stock (pure digits or digits ending with letters)
+const isTaiwanStock = (ticker: string): boolean => {
+  return /^\d+[A-Za-z]*$/.test(ticker.trim());
+};
+
 interface TransactionFormProps {
   portfolioId: string;
   initialData?: StockTransaction;
@@ -52,11 +57,28 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
     }
   }, [formData.currencyLedgerId, currencyLedgers]);
 
+  // Derived state: is current ticker a Taiwan stock?
+  const isTW = isTaiwanStock(formData.ticker);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: value };
+      // Auto-set exchange rate to 1 for Taiwan stocks
+      if (name === 'ticker' && isTaiwanStock(value) && !prev.exchangeRate) {
+        newData.exchangeRate = '1';
+      }
+      return newData;
+    });
+  };
+
+  // Handle ticker blur to auto-set exchange rate for Taiwan stocks
+  const handleTickerBlur = () => {
+    if (isTaiwanStock(formData.ticker) && !formData.exchangeRate) {
+      setFormData((prev) => ({ ...prev, exchangeRate: '1' }));
+    }
   };
 
   const handleFundSourceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -141,16 +163,18 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             股票代號
+            {isTW && <span className="ml-2 text-xs text-[var(--accent-peach)]">台股</span>}
           </label>
           <input
             type="text"
             name="ticker"
             value={formData.ticker}
             onChange={handleChange}
+            onBlur={handleTickerBlur}
             required
             maxLength={20}
             className="input-dark w-full"
-            placeholder="例如：VWRA"
+            placeholder="例如：VWRA, 2330"
           />
         </div>
 
@@ -220,6 +244,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             匯率
+            {isTW && <span className="ml-2 text-xs text-[var(--text-muted)]">(台股預設 1)</span>}
           </label>
           <input
             type="number"
@@ -230,7 +255,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
             min="0.000001"
             step="0.000001"
             className="input-dark w-full"
-            placeholder="31.5"
+            placeholder={isTW ? "1" : "31.5"}
           />
         </div>
 

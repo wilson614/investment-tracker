@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Pencil, RefreshCw, Loader2 } from 'lucide-react';
+import { Pencil, RefreshCw, Loader2, Download } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { StockImportButton } from '../components/import';
+import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
 import { StockMarket } from '../types';
 import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
@@ -299,6 +300,24 @@ export function PortfolioPage() {
     }
   };
 
+  const handleExportTransactions = () => {
+    if (!summary || transactions.length === 0) return;
+    exportTransactionsToCsv(
+      transactions,
+      summary.portfolio.baseCurrency,
+      summary.portfolio.homeCurrency
+    );
+  };
+
+  const handleExportPositions = () => {
+    if (!summary || summary.positions.length === 0) return;
+    exportPositionsToCsv(
+      summary.positions,
+      summary.portfolio.baseCurrency,
+      summary.portfolio.homeCurrency
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -363,20 +382,32 @@ export function PortfolioPage() {
             )}
           </div>
           {!isEditingDescription && (
-            <button
-              type="button"
-              onClick={handleFetchAllPrices}
-              disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
-              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-              title="更新報價"
-            >
-              {isFetchingAll ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              更新報價
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportPositions}
+                disabled={summary.positions.length === 0}
+                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+                title="匯出持倉"
+              >
+                <Download className="w-4 h-4" />
+                匯出持倉
+              </button>
+              <button
+                type="button"
+                onClick={handleFetchAllPrices}
+                disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
+                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+                title="更新報價"
+              >
+                {isFetchingAll ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                更新報價
+              </button>
+            </div>
           )}
         </div>
 
@@ -427,6 +458,15 @@ export function PortfolioPage() {
               全部交易紀錄
             </h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportTransactions}
+                disabled={transactions.length === 0}
+                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+                title="匯出交易"
+              >
+                <Download className="w-4 h-4" />
+                匯出
+              </button>
               <button
                 onClick={() => setShowForm(true)}
                 className="btn-accent px-3 py-1.5 text-sm"
