@@ -695,7 +695,7 @@ T174 → T175 → T176 → T177 → T178
 
 ---
 
-## Phase 17: Currency Ledger UI Redesign (Priority: P12) 🆕
+## Phase 17: Currency Ledger UI Redesign (Priority: P12) ✅ COMPLETE
 
 **Goal**: Redesign Currency Ledger UI to focus on "holding currency for investment" use case, not currency trading
 
@@ -708,35 +708,35 @@ T174 → T175 → T176 → T177 → T178
 
 ### Implementation for Currency Overview Page
 
-- [ ] T217 [US12] Remove `totalCost` calculation and display from summary in `frontend/src/pages/Currency.tsx`
-- [ ] T218 [US12] Remove `totalRealizedPnl` calculation and display from summary in `frontend/src/pages/Currency.tsx`
-- [ ] T219 [US12] Remove `totalInterest` from summary section in `frontend/src/pages/Currency.tsx`
-- [ ] T220 [US12] Keep only 淨投入 (`totalExchanged`) as the summary metric in `frontend/src/pages/Currency.tsx`
+- [x] T217 [US12] Remove `totalCost` calculation and display from summary in `frontend/src/pages/Currency.tsx`
+- [x] T218 [US12] Remove `totalRealizedPnl` calculation and display from summary in `frontend/src/pages/Currency.tsx`
+- [x] T219 [US12] Remove `totalInterest` from summary section in `frontend/src/pages/Currency.tsx`
+- [x] T220 [US12] Keep only 淨投入 (`totalExchanged`) as the summary metric in `frontend/src/pages/Currency.tsx`
 
 ### Implementation for Currency Ledger Card Redesign
 
-- [ ] T221 [P] [US12] Add real-time exchange rate fetching state to CurrencyLedgerCard in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T222 [P] [US12] Add stockPriceApi.getExchangeRate call on component mount in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T223 [US12] Restructure header to display "USD @ rate" format in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T224 [US12] Add TWD equivalent display (balance × current rate) below balance in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T225 [US12] Remove 目前成本 (`totalCost`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T226 [US12] Remove 已實現損益 (`realizedPnl`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-- [ ] T227 [US12] Ensure 利息收入 only shows when `totalInterest > 0` in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T221 [P] [US12] Add real-time exchange rate fetching state to CurrencyLedgerCard in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T222 [P] [US12] Add stockPriceApi.getExchangeRate call on component mount in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T223 [US12] Restructure header to display "USD @ rate" format in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T224 [US12] Add TWD equivalent display (balance × current rate) below balance in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T225 [US12] Remove 目前成本 (`totalCost`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T226 [US12] Remove 已實現損益 (`realizedPnl`) display section in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
+- [x] T227 [US12] Ensure 利息收入 only shows when `totalInterest > 0` in `frontend/src/components/currency/CurrencyLedgerCard.tsx`
 
 ### Implementation for Currency Detail Page Updates
 
-- [ ] T228 [P] [US12] Move exchange rate display to header next to currency code in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T229 [P] [US12] Remove name editing state variables (`isEditingName`, `editName`) in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T230 [P] [US12] Remove `handleStartEditName` and `handleSaveName` functions in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T231 [US12] Remove name editing UI (pencil icon, input field, save/cancel buttons) in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T232 [US12] Remove "目前成本" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T233 [US12] Remove "已實現損益" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T234 [US12] Remove "即時匯率" metric card (rate is now in header) in `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T235 [US12] Reorganize remaining metric cards (Balance, Average Rate, Net Investment) in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T228 [P] [US12] Move exchange rate display to header next to currency code in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T229 [P] [US12] Remove name editing state variables (`isEditingName`, `editName`) in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T230 [P] [US12] Remove `handleStartEditName` and `handleSaveName` functions in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T231 [US12] Remove name editing UI (pencil icon, input field, save/cancel buttons) in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T232 [US12] Remove "目前成本" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T233 [US12] Remove "已實現損益" metric card from grid in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T234 [US12] Remove "即時匯率" metric card (rate is now in header) in `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T235 [US12] Reorganize remaining metric cards (Balance, Average Rate, Net Investment) in `frontend/src/pages/CurrencyDetail.tsx`
 
 ### Validation
 
-- [ ] T236 [US12] Run `npm run build` to verify no TypeScript errors in `frontend/`
+- [x] T236 [US12] Run `npm run build` to verify no TypeScript errors in `frontend/`
 - [ ] T237 [US12] Manual test: Navigate through Currency pages and verify all changes match spec
 
 **Checkpoint**: Currency Ledger UI simplified - metrics focused on investment holding use case
@@ -766,5 +766,5 @@ T174 → T175 → T176 → T177 → T178
 | Phase 14 | US9 (CSV Export) | 9 tasks | ✅ Complete |
 | Phase 15 | US10 (Market YTD) | 18 tasks | ✅ Complete |
 | Phase 16 | US11 (Taiwan Stock) | 4 tasks | ✅ Complete |
-| Phase 17 | US12 (Currency UI Redesign) | 21 tasks | 🆕 Pending |
+| Phase 17 | US12 (Currency UI Redesign) | 21 tasks | ✅ Complete |
 | **Total** | | **237 tasks** | |
