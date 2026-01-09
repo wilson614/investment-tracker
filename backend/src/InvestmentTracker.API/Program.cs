@@ -5,6 +5,7 @@ using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.CurrencyLedger;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.Portfolio;
+using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
@@ -136,10 +137,12 @@ builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();
 builder.Services.AddScoped<IStockTransactionRepository, StockTransactionRepository>();
 builder.Services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>();
 builder.Services.AddScoped<ICurrencyTransactionRepository, CurrencyTransactionRepository>();
+builder.Services.AddScoped<IStockSplitRepository, StockSplitRepository>();
 
 // Register Domain Services
 builder.Services.AddScoped<PortfolioCalculator>();
 builder.Services.AddScoped<CurrencyLedgerService>();
+builder.Services.AddScoped<StockSplitAdjustmentService>();
 
 // Register Use Cases
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
@@ -154,6 +157,10 @@ builder.Services.AddScoped<DeleteCurrencyLedgerUseCase>();
 builder.Services.AddScoped<CreateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<UpdateCurrencyTransactionUseCase>();
 builder.Services.AddScoped<DeleteCurrencyTransactionUseCase>();
+builder.Services.AddScoped<GetStockSplitsUseCase>();
+builder.Services.AddScoped<CreateStockSplitUseCase>();
+builder.Services.AddScoped<UpdateStockSplitUseCase>();
+builder.Services.AddScoped<DeleteStockSplitUseCase>();
 
 // Stock Price Service
 builder.Services.AddSingleton<ITwseRateLimiter, TwseRateLimiter>(); // Singleton to share rate limit across all requests

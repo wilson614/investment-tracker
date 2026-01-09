@@ -429,4 +429,86 @@ public class StockTransactionTests
     }
 
     #endregion
+
+    #region Taiwan Stock Floor Tests
+
+    [Theory]
+    [InlineData("0050", true)]
+    [InlineData("2330", true)]
+    [InlineData("6547R", true)]
+    [InlineData("AAPL", false)]
+    [InlineData("VOO", false)]
+    [InlineData("VWRA", false)]
+    [InlineData("HSBA.L", false)]
+    public void IsTaiwanStock_CorrectlyIdentifiesMarket(string ticker, bool expected)
+    {
+        // Arrange & Act
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            ticker,
+            TransactionType.Buy,
+            1m,
+            100m,
+            1m);
+
+        // Assert
+        Assert.Equal(expected, transaction.IsTaiwanStock);
+    }
+
+    [Fact]
+    public void TotalCostSource_TaiwanStock_UsesFloorForSubtotal()
+    {
+        // Arrange: 3 shares × 27.25 = 81.75, should floor to 81, plus 0 fees = 81
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "0050",
+            TransactionType.Buy,
+            3m,
+            27.25m,
+            1m,  // ExchangeRate = 1 for TWD
+            0m); // No fees
+
+        // Act & Assert
+        Assert.Equal(81m, transaction.TotalCostSource);
+    }
+
+    [Fact]
+    public void TotalCostSource_TaiwanStock_FloorThenAddFees()
+    {
+        // Arrange: 3 shares × 27.25 = 81.75 -> floor to 81, plus 20 fees = 101
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "2330",
+            TransactionType.Buy,
+            3m,
+            27.25m,
+            1m,
+            20m);
+
+        // Act & Assert
+        Assert.Equal(101m, transaction.TotalCostSource);
+    }
+
+    [Fact]
+    public void TotalCostSource_USStock_DoesNotUseFloor()
+    {
+        // Arrange: 3 shares × 27.25 = 81.75 (no floor for US stocks)
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VOO",
+            TransactionType.Buy,
+            3m,
+            27.25m,
+            30m,
+            0m);
+
+        // Act & Assert
+        Assert.Equal(81.75m, transaction.TotalCostSource);
+    }
+
+    #endregion
 }

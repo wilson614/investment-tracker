@@ -7,23 +7,30 @@ namespace InvestmentTracker.Application.UseCases.Portfolio;
 
 /// <summary>
 /// Use case for getting portfolio summary with calculated positions.
+/// Applies stock split adjustments when calculating positions for accurate comparison with current prices.
 /// </summary>
 public class GetPortfolioSummaryUseCase
 {
     private readonly IPortfolioRepository _portfolioRepository;
     private readonly IStockTransactionRepository _transactionRepository;
+    private readonly IStockSplitRepository _stockSplitRepository;
     private readonly PortfolioCalculator _portfolioCalculator;
+    private readonly StockSplitAdjustmentService _splitAdjustmentService;
     private readonly ICurrentUserService _currentUserService;
 
     public GetPortfolioSummaryUseCase(
         IPortfolioRepository portfolioRepository,
         IStockTransactionRepository transactionRepository,
+        IStockSplitRepository stockSplitRepository,
         PortfolioCalculator portfolioCalculator,
+        StockSplitAdjustmentService splitAdjustmentService,
         ICurrentUserService currentUserService)
     {
         _portfolioRepository = portfolioRepository;
         _transactionRepository = transactionRepository;
+        _stockSplitRepository = stockSplitRepository;
         _portfolioCalculator = portfolioCalculator;
+        _splitAdjustmentService = splitAdjustmentService;
         _currentUserService = currentUserService;
     }
 
@@ -41,7 +48,11 @@ public class GetPortfolioSummaryUseCase
         }
 
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
-        var positions = _portfolioCalculator.RecalculateAllPositions(transactions);
+        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
+
+        // Use split-adjusted positions for accurate comparison with current prices (FR-052)
+        var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
+            transactions, stockSplits, _splitAdjustmentService);
 
         var positionDtos = new List<StockPositionDto>();
         decimal totalCostHome = 0m;

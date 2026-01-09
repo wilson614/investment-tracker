@@ -767,7 +767,7 @@ T174 → T175 → T176 → T177 → T178
 | Phase 15 | US10 (Market YTD) | 18 tasks | ✅ Complete |
 | Phase 16 | US11 (Taiwan Stock) | 4 tasks | ✅ Complete |
 | Phase 17 | US12 (Currency UI Redesign) | 21 tasks | ✅ Complete |
-| Phase 18 | US13 (Stock Split Handling) | 17 tasks | 🆕 Pending |
+| Phase 18 | US13 (Stock Split Handling) | 17 tasks | ✅ Complete |
 | **Total** | | **254 tasks** | |
 
 ---
@@ -782,41 +782,41 @@ T174 → T175 → T176 → T177 → T178
 
 ### Tests for User Story 13
 
-- [ ] T251 [P] [US13] Create StockSplitAdjustmentService unit tests (including cumulative splits) in `backend/tests/InvestmentTracker.Domain.Tests/Services/StockSplitAdjustmentServiceTests.cs`
+- [x] T251 [P] [US13] Create StockSplitAdjustmentService unit tests (including cumulative splits) in `backend/tests/InvestmentTracker.Domain.Tests/Services/StockSplitAdjustmentServiceTests.cs`
 
 ### Domain Layer (US13)
 
-- [ ] T238 [P] [US13] Create StockMarket enum (TW, US, UK) in `backend/src/InvestmentTracker.Domain/Enums/StockMarket.cs`
-- [ ] T239 [US13] Create StockSplit entity in `backend/src/InvestmentTracker.Domain/Entities/StockSplit.cs`
-- [ ] T240 [US13] Create StockSplitAdjustmentService (GetAdjustedShares, GetAdjustedPrice) in `backend/src/InvestmentTracker.Domain/Services/StockSplitAdjustmentService.cs`
+- [x] T238 [P] [US13] Create StockMarket enum (TW, US, UK) in `backend/src/InvestmentTracker.Domain/Enums/StockMarket.cs`
+- [x] T239 [US13] Create StockSplit entity in `backend/src/InvestmentTracker.Domain/Entities/StockSplit.cs`
+- [x] T240 [US13] Create StockSplitAdjustmentService (GetAdjustedShares, GetAdjustedPrice) in `backend/src/InvestmentTracker.Domain/Services/StockSplitAdjustmentService.cs`
 
 ### Infrastructure Layer (US13)
 
-- [ ] T241 [US13] Create StockSplitConfiguration in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockSplitConfiguration.cs`
-- [ ] T242 [US13] Add DbSet<StockSplit> to AppDbContext in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
-- [ ] T243 [US13] Create and apply EF Core migration for stock_splits table
-- [ ] T244 [US13] Create IStockSplitRepository interface in `backend/src/InvestmentTracker.Domain/Interfaces/IStockSplitRepository.cs`
-- [ ] T245 [US13] Implement StockSplitRepository in `backend/src/InvestmentTracker.Infrastructure/Repositories/StockSplitRepository.cs`
+- [x] T241 [US13] Create StockSplitConfiguration in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockSplitConfiguration.cs`
+- [x] T242 [US13] Add DbSet<StockSplit> to AppDbContext in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
+- [x] T243 [US13] Create and apply EF Core migration for stock_splits table
+- [x] T244 [US13] Create IStockSplitRepository interface in `backend/src/InvestmentTracker.Domain/Interfaces/IStockSplitRepository.cs`
+- [x] T245 [US13] Implement StockSplitRepository in `backend/src/InvestmentTracker.Infrastructure/Repositories/StockSplitRepository.cs`
 
 ### Application Layer (US13)
 
-- [ ] T246 [P] [US13] Create StockSplitDto in `backend/src/InvestmentTracker.Application/DTOs/StockSplitDtos.cs`
-- [ ] T247 [US13] Create GetStockSplitsUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/GetStockSplitsUseCase.cs`
-- [ ] T248 [US13] Create CreateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/CreateStockSplitUseCase.cs`
-- [ ] T252 [US13] Create UpdateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/UpdateStockSplitUseCase.cs`
-- [ ] T253 [US13] Create DeleteStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/DeleteStockSplitUseCase.cs`
+- [x] T246 [P] [US13] Create StockSplitDto in `backend/src/InvestmentTracker.Application/DTOs/StockSplitDtos.cs`
+- [x] T247 [US13] Create GetStockSplitsUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/GetStockSplitsUseCase.cs`
+- [x] T248 [US13] Create CreateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/CreateStockSplitUseCase.cs`
+- [x] T252 [US13] Create UpdateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/UpdateStockSplitUseCase.cs`
+- [x] T253 [US13] Create DeleteStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplits/DeleteStockSplitUseCase.cs`
 
 ### API Layer (US13)
 
-- [ ] T249 [US13] Create StockSplitsController (GET, POST, PUT, DELETE) in `backend/src/InvestmentTracker.API/Controllers/StockSplitsController.cs`
+- [x] T249 [US13] Create StockSplitsController (GET, POST, PUT, DELETE) in `backend/src/InvestmentTracker.API/Controllers/StockSplitsController.cs`
 
 ### Integration (US13)
 
-- [ ] T250 [US13] Update GetPortfolioSummaryUseCase to apply split adjustments when returning positions in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+- [x] T250 [US13] Update GetPortfolioSummaryUseCase to apply split adjustments when returning positions in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
 
 ### Frontend (US13)
 
-- [ ] T254 [US13] Update TransactionList to display original and adjusted values (shares, price) for split-affected transactions in `frontend/src/components/transactions/TransactionList.tsx`
+- [x] T254 [US13] Update TransactionList to display original and adjusted values (shares, price) for split-affected transactions in `frontend/src/components/transactions/TransactionList.tsx`
 
 **Checkpoint**: Stock split records can be created/updated/deleted, portfolio displays adjusted shares/prices, and transaction list shows both original and adjusted values
 

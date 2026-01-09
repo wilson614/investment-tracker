@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Infrastructure.StockPrices;
 

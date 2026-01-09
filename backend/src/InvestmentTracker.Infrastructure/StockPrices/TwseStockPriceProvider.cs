@@ -1,5 +1,6 @@
 using System.Text.Json;
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Infrastructure.StockPrices;

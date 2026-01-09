@@ -77,6 +77,11 @@ export interface StockTransaction {
   realizedPnlHome?: number;
   createdAt: string;
   updatedAt: string;
+  // Split adjustment fields (FR-052a)
+  adjustedShares?: number;
+  adjustedPricePerShare?: number;
+  splitRatio: number;
+  hasSplitAdjustment: boolean;
 }
 
 export interface CreateStockTransactionRequest {

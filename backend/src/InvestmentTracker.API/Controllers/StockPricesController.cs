@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Infrastructure.StockPrices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

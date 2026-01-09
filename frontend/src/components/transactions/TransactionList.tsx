@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, SplitSquareHorizontal } from 'lucide-react';
 import type { StockTransaction, TransactionType } from '../../types';
 
 interface TransactionListProps {
@@ -42,6 +42,42 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
     return Math.round(value).toLocaleString('zh-TW');
   };
 
+  // Render shares with split adjustment indicator (FR-052a)
+  const renderShares = (tx: StockTransaction) => {
+    if (tx.hasSplitAdjustment && tx.adjustedShares != null) {
+      return (
+        <div className="flex flex-col items-end">
+          <span className="text-[var(--text-muted)] text-xs line-through">
+            {formatNumber(tx.shares, 4)}
+          </span>
+          <span className="flex items-center gap-1">
+            <SplitSquareHorizontal className="w-3 h-3 text-[var(--accent-cream)]" />
+            {formatNumber(tx.adjustedShares, 4)}
+          </span>
+        </div>
+      );
+    }
+    return formatNumber(tx.shares, 4);
+  };
+
+  // Render price with split adjustment indicator (FR-052a)
+  const renderPrice = (tx: StockTransaction) => {
+    if (tx.hasSplitAdjustment && tx.adjustedPricePerShare != null) {
+      return (
+        <div className="flex flex-col items-end">
+          <span className="text-[var(--text-muted)] text-xs line-through">
+            {formatNumber(tx.pricePerShare, 5)}
+          </span>
+          <span className="flex items-center gap-1">
+            <SplitSquareHorizontal className="w-3 h-3 text-[var(--accent-cream)]" />
+            {formatNumber(tx.adjustedPricePerShare, 5)}
+          </span>
+        </div>
+      );
+    }
+    return formatNumber(tx.pricePerShare, 5);
+  };
+
   if (transactions.length === 0) {
     return (
       <div className="text-center py-12 text-[var(--text-muted)] text-base">
@@ -82,10 +118,10 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 </span>
               </td>
               <td className="text-right number-display whitespace-nowrap">
-                {formatNumber(tx.shares, 4)}
+                {renderShares(tx)}
               </td>
               <td className="text-right number-display whitespace-nowrap">
-                {formatNumber(tx.pricePerShare, 5)}
+                {renderPrice(tx)}
               </td>
               <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.exchangeRate, 4)}

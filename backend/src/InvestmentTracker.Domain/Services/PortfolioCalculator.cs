@@ -3,6 +3,10 @@ using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Services;
 
+// Note: PortfolioCalculator handles TransactionType.Split for manual split adjustments.
+// For automatic split adjustments based on StockSplits table, use StockSplitAdjustmentService
+// in the Application layer to pre-adjust transaction values before calling CalculatePosition.
+
 /// <summary>
 /// Domain service for portfolio calculations including position tracking,
 /// moving average cost, and PnL calculations.
@@ -132,6 +136,96 @@ public class PortfolioCalculator
         var tickers = transactionList.Select(t => t.Ticker).Distinct();
 
         return tickers.Select(ticker => CalculatePosition(ticker, transactionList));
+    }
+
+    /// <summary>
+    /// Recalculates all positions with stock split adjustments applied.
+    /// Uses the StockSplitAdjustmentService to adjust historical transactions.
+    /// </summary>
+    public IEnumerable<StockPosition> RecalculateAllPositionsWithSplitAdjustments(
+        IEnumerable<StockTransaction> transactions,
+        IEnumerable<StockSplit> splits,
+        StockSplitAdjustmentService splitService)
+    {
+        var transactionList = transactions.Where(t => !t.IsDeleted).ToList();
+        var splitList = splits.ToList();
+        var tickers = transactionList.Select(t => t.Ticker).Distinct();
+
+        return tickers.Select(ticker => CalculatePositionWithSplitAdjustments(
+            ticker, transactionList, splitList, splitService));
+    }
+
+    /// <summary>
+    /// Calculates position for a ticker with stock split adjustments applied.
+    /// </summary>
+    private StockPosition CalculatePositionWithSplitAdjustments(
+        string ticker,
+        IEnumerable<StockTransaction> transactions,
+        IEnumerable<StockSplit> splits,
+        StockSplitAdjustmentService splitService)
+    {
+        var tickerTransactions = transactions
+            .Where(t => t.Ticker == ticker && !t.IsDeleted)
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+        if (!tickerTransactions.Any())
+        {
+            return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m);
+        }
+
+        decimal totalShares = 0m;
+        decimal totalCostHome = 0m;
+        decimal totalCostSource = 0m;
+
+        foreach (var transaction in tickerTransactions)
+        {
+            // Get split-adjusted values for this transaction
+            var adjusted = splitService.GetAdjustedValues(transaction, splits);
+            var adjustedShares = adjusted.AdjustedShares;
+
+            switch (transaction.TransactionType)
+            {
+                case TransactionType.Buy:
+                    totalShares += adjustedShares;
+                    // Total cost remains unchanged after split adjustment
+                    totalCostHome += transaction.TotalCostHome;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+
+                case TransactionType.Sell:
+                    if (totalShares > 0)
+                    {
+                        var avgCostPerShareHome = totalCostHome / totalShares;
+                        var avgCostPerShareSource = totalCostSource / totalShares;
+                        totalCostHome -= adjustedShares * avgCostPerShareHome;
+                        totalCostSource -= adjustedShares * avgCostPerShareSource;
+                        totalShares -= adjustedShares;
+                    }
+                    break;
+
+                case TransactionType.Split:
+                    // Manual split transactions still apply
+                    totalShares *= transaction.Shares;
+                    break;
+
+                case TransactionType.Adjustment:
+                    totalShares += adjustedShares;
+                    totalCostHome += transaction.TotalCostHome;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+            }
+        }
+
+        totalShares = Math.Max(0, totalShares);
+        totalCostHome = Math.Max(0, totalCostHome);
+        totalCostSource = Math.Max(0, totalCostSource);
+
+        var averageCostHome = totalShares > 0 ? totalCostHome / totalShares : 0m;
+        var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
+
+        return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource);
     }
 
     /// <summary>

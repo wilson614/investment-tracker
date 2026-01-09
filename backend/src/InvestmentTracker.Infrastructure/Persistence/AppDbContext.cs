@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<CurrencyTransaction> CurrencyTransactions => Set<CurrencyTransaction>();
     public DbSet<CapeDataSnapshot> CapeDataSnapshots => Set<CapeDataSnapshot>();
     public DbSet<IndexPriceSnapshot> IndexPriceSnapshots => Set<IndexPriceSnapshot>();
+    public DbSet<StockSplit> StockSplits => Set<StockSplit>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

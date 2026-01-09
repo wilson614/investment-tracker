@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Domain.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,17 +13,23 @@ namespace InvestmentTracker.API.Controllers;
 public class StockTransactionsController : ControllerBase
 {
     private readonly IStockTransactionRepository _transactionRepository;
+    private readonly IStockSplitRepository _stockSplitRepository;
+    private readonly StockSplitAdjustmentService _splitAdjustmentService;
     private readonly CreateStockTransactionUseCase _createUseCase;
     private readonly UpdateStockTransactionUseCase _updateUseCase;
     private readonly DeleteStockTransactionUseCase _deleteUseCase;
 
     public StockTransactionsController(
         IStockTransactionRepository transactionRepository,
+        IStockSplitRepository stockSplitRepository,
+        StockSplitAdjustmentService splitAdjustmentService,
         CreateStockTransactionUseCase createUseCase,
         UpdateStockTransactionUseCase updateUseCase,
         DeleteStockTransactionUseCase deleteUseCase)
     {
         _transactionRepository = transactionRepository;
+        _stockSplitRepository = stockSplitRepository;
+        _splitAdjustmentService = splitAdjustmentService;
         _createUseCase = createUseCase;
         _updateUseCase = updateUseCase;
         _deleteUseCase = deleteUseCase;
@@ -30,6 +37,7 @@ public class StockTransactionsController : ControllerBase
 
     /// <summary>
     /// Get all transactions for a portfolio.
+    /// Includes split-adjusted values for transparency (FR-052a).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<StockTransactionDto>), StatusCodes.Status200OK)]
@@ -38,31 +46,43 @@ public class StockTransactionsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
+        var splitList = stockSplits.ToList();
 
-        return Ok(transactions.Select(t => new StockTransactionDto
+        return Ok(transactions.Select(t =>
         {
-            Id = t.Id,
-            PortfolioId = t.PortfolioId,
-            TransactionDate = t.TransactionDate,
-            Ticker = t.Ticker,
-            TransactionType = t.TransactionType,
-            Shares = t.Shares,
-            PricePerShare = t.PricePerShare,
-            ExchangeRate = t.ExchangeRate,
-            Fees = t.Fees,
-            FundSource = t.FundSource,
-            CurrencyLedgerId = t.CurrencyLedgerId,
-            Notes = t.Notes,
-            TotalCostSource = t.TotalCostSource,
-            TotalCostHome = t.TotalCostHome,
-            RealizedPnlHome = t.RealizedPnlHome,
-            CreatedAt = t.CreatedAt,
-            UpdatedAt = t.UpdatedAt
+            var adjusted = _splitAdjustmentService.GetAdjustedValues(t, splitList);
+            return new StockTransactionDto
+            {
+                Id = t.Id,
+                PortfolioId = t.PortfolioId,
+                TransactionDate = t.TransactionDate,
+                Ticker = t.Ticker,
+                TransactionType = t.TransactionType,
+                Shares = t.Shares,
+                PricePerShare = t.PricePerShare,
+                ExchangeRate = t.ExchangeRate,
+                Fees = t.Fees,
+                FundSource = t.FundSource,
+                CurrencyLedgerId = t.CurrencyLedgerId,
+                Notes = t.Notes,
+                TotalCostSource = t.TotalCostSource,
+                TotalCostHome = t.TotalCostHome,
+                RealizedPnlHome = t.RealizedPnlHome,
+                CreatedAt = t.CreatedAt,
+                UpdatedAt = t.UpdatedAt,
+                // Split adjustment fields
+                AdjustedShares = adjusted.HasSplitAdjustment ? adjusted.AdjustedShares : null,
+                AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
+                SplitRatio = adjusted.SplitRatio,
+                HasSplitAdjustment = adjusted.HasSplitAdjustment
+            };
         }));
     }
 
     /// <summary>
     /// Get a transaction by ID.
+    /// Includes split-adjusted values for transparency (FR-052a).
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
@@ -73,6 +93,9 @@ public class StockTransactionsController : ControllerBase
 
         if (transaction == null)
             return NotFound();
+
+        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
+        var adjusted = _splitAdjustmentService.GetAdjustedValues(transaction, stockSplits);
 
         return Ok(new StockTransactionDto
         {
@@ -92,7 +115,12 @@ public class StockTransactionsController : ControllerBase
             TotalCostHome = transaction.TotalCostHome,
             RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
-            UpdatedAt = transaction.UpdatedAt
+            UpdatedAt = transaction.UpdatedAt,
+            // Split adjustment fields
+            AdjustedShares = adjusted.HasSplitAdjustment ? adjusted.AdjustedShares : null,
+            AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
+            SplitRatio = adjusted.SplitRatio,
+            HasSplitAdjustment = adjusted.HasSplitAdjustment
         });
     }
 

@@ -27,8 +27,27 @@ public class StockTransaction : BaseEntity
     public CurrencyLedger? CurrencyLedger { get; private set; }
 
     // Computed properties (not stored in DB)
-    /// <summary>Total cost in source currency: (Shares × Price) + Fees</summary>
-    public decimal TotalCostSource => (Shares * PricePerShare) + Fees;
+    /// <summary>
+    /// Determines if this is a Taiwan stock based on ticker pattern.
+    /// Taiwan stocks start with a digit (e.g., 0050, 2330, 6547R).
+    /// </summary>
+    public bool IsTaiwanStock => !string.IsNullOrEmpty(Ticker) && char.IsDigit(Ticker[0]);
+
+    /// <summary>
+    /// Total cost in source currency: (Shares × Price) + Fees.
+    /// For Taiwan stocks, Floor(Shares × Price) is used per market convention.
+    /// </summary>
+    public decimal TotalCostSource
+    {
+        get
+        {
+            var subtotal = Shares * PricePerShare;
+            // Taiwan market uses floor for transaction subtotal (無條件捨去)
+            if (IsTaiwanStock)
+                subtotal = Math.Floor(subtotal);
+            return subtotal + Fees;
+        }
+    }
 
     /// <summary>Total cost in home currency: TotalCostSource × ExchangeRate</summary>
     public decimal TotalCostHome => TotalCostSource * ExchangeRate;

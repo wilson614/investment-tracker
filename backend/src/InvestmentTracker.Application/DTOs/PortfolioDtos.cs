@@ -38,6 +38,16 @@ public record StockTransactionDto
     public decimal? RealizedPnlHome { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
+
+    // Split adjustment fields (FR-052a: display both original and adjusted values)
+    /// <summary>Adjusted shares after applying split ratio (= Shares × SplitRatio)</summary>
+    public decimal? AdjustedShares { get; init; }
+    /// <summary>Adjusted price after applying split ratio (= PricePerShare / SplitRatio)</summary>
+    public decimal? AdjustedPricePerShare { get; init; }
+    /// <summary>Cumulative split ratio applied to this transaction (1.0 if no split)</summary>
+    public decimal SplitRatio { get; init; } = 1.0m;
+    /// <summary>Whether this transaction has been adjusted for stock splits</summary>
+    public bool HasSplitAdjustment { get; init; }
 }
 
 /// <summary>
