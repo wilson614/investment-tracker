@@ -170,6 +170,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-001a**: System MUST allow users to edit or delete any previously recorded transaction.
 - **FR-001b**: System MUST automatically recalculate all derived values (moving average cost, unrealized PnL, position totals) when any transaction is added, modified, or deleted.
 - **FR-002**: System MUST calculate Total Cost (Source) = (Shares × Price) + Fees for each transaction.
+- **FR-002a**: For Taiwan stocks (ticker starting with digit), system MUST use Floor(Shares × Price) + Fees per Taiwan market convention (無條件捨去).
 - **FR-003**: System MUST calculate Total Cost (Home) = Total Cost (Source) × Exchange Rate for each transaction.
 - **FR-004**: System MUST calculate and display moving average cost per share for each position in source currency.
 - **FR-005**: System MUST calculate XIRR (Extended Internal Rate of Return) for portfolio performance when current prices are provided.
