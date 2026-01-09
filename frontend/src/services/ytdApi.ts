@@ -15,10 +15,12 @@ const MARKET_DISPLAY_NAMES: Record<string, string> = {
   'US Large': '美國大型',
   'US Small': '美國小型',
   'Developed Markets Large': '已開發大型',
+  'Developed Markets Small': '已開發小型',
   'Dev ex US Large': '已開發非美',
   'Emerging Markets': '新興市場',
   'Europe': '歐洲',
   'Japan': '日本',
+  'China': '中國',
   'Taiwan 0050': '台灣 0050',
 };
 

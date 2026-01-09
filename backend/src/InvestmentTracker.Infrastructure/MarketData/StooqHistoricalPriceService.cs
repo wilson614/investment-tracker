@@ -21,10 +21,12 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
         ["US Large"] = "vuaa.uk",                   // Vanguard S&P 500 UCITS ETF (Acc)
         ["US Small"] = "xrsu.uk",                   // Xtrackers Russell 2000 UCITS ETF (Acc)
         ["Developed Markets Large"] = "vhve.uk",   // Vanguard FTSE Developed World UCITS ETF (Acc)
+        ["Developed Markets Small"] = "wsml.uk",   // iShares MSCI World Small Cap UCITS ETF (Acc)
         ["Dev ex US Large"] = "exus.uk",           // Vanguard FTSE Developed ex US UCITS ETF (Acc)
         ["Emerging Markets"] = "vfem.uk",          // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
         ["Europe"] = "veua.uk",                    // Vanguard FTSE Developed Europe UCITS ETF (Acc)
         ["Japan"] = "vjpa.uk",                     // Vanguard FTSE Japan UCITS ETF (Acc)
+        ["China"] = "hcha.uk",                     // HSBC MSCI China A UCITS ETF (Acc)
     };
 
     public StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHistoricalPriceService> logger)
