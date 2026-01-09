@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Pencil, RefreshCw, Loader2, Download } from 'lucide-react';
+import { Pencil, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { StockImportButton } from '../components/import';
+import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
 import { StockMarket } from '../types';
 import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
@@ -94,6 +95,7 @@ export function PortfolioPage() {
   const [editDescription, setEditDescription] = useState('');
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
+  const importTriggerRef = useRef<(() => void) | null>(null);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -387,16 +389,10 @@ export function PortfolioPage() {
           </div>
           {!isEditingDescription && (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleExportPositions}
-                disabled={summary.positions.length === 0}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="匯出持倉明細"
-              >
-                <Download className="w-4 h-4" />
-                匯出
-              </button>
+              <FileDropdown
+                onExport={handleExportPositions}
+                exportDisabled={summary.positions.length === 0}
+              />
               <button
                 type="button"
                 onClick={handleFetchAllPrices}
@@ -463,25 +459,24 @@ export function PortfolioPage() {
               全部交易紀錄
             </h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportTransactions}
-                disabled={transactions.length === 0}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="匯出交易"
-              >
-                <Download className="w-4 h-4" />
-                匯出
-              </button>
+              <FileDropdown
+                onImport={() => importTriggerRef.current?.()}
+                onExport={handleExportTransactions}
+                exportDisabled={transactions.length === 0}
+              />
               <button
                 onClick={() => setShowForm(true)}
                 className="btn-accent px-3 py-1.5 text-sm"
               >
-                + 新增交易
+                + 新增
               </button>
               <StockImportButton
                 portfolioId={id!}
                 onImportComplete={loadData}
-                compact
+                renderTrigger={(onClick) => {
+                  importTriggerRef.current = onClick;
+                  return null;
+                }}
               />
             </div>
           </div>

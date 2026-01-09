@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Loader2, Download } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, transactionApi, stockPriceApi } from '../services/api';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { TransactionList } from '../components/transactions/TransactionList';
+import { FileDropdown } from '../components/common';
 import { StockMarket } from '../types';
 import type {
   Portfolio,
@@ -481,15 +482,10 @@ export function PositionDetailPage() {
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
               {ticker} 交易紀錄
             </h2>
-            <button
-              onClick={handleExportTransactions}
-              disabled={transactions.length === 0}
-              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-              title="匯出交易紀錄"
-            >
-              <Download className="w-4 h-4" />
-              匯出
-            </button>
+            <FileDropdown
+              onExport={handleExportTransactions}
+              exportDisabled={transactions.length === 0}
+            />
           </div>
           {transactions.length > 0 ? (
             <TransactionList

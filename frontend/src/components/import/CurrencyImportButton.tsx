@@ -17,6 +17,8 @@ import type { CreateCurrencyTransactionRequest } from '../../types';
 interface CurrencyImportButtonProps {
   ledgerId: string;
   onImportComplete: () => void;
+  /** If provided, renders custom trigger instead of default button */
+  renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
 // Field definitions for currency transaction CSV
@@ -98,8 +100,11 @@ function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
 export function CurrencyImportButton({
   ledgerId,
   onImportComplete,
+  renderTrigger,
 }: CurrencyImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleOpenImport = () => setIsModalOpen(true);
 
   const handleImport = async (
     csvData: ParsedCSV,
@@ -223,13 +228,17 @@ export function CurrencyImportButton({
 
   return (
     <>
-      <button
-        onClick={() => setIsModalOpen(true)}
-        className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
-      >
-        <Upload className="w-3.5 h-3.5" />
-        匯入
-      </button>
+      {renderTrigger ? (
+        renderTrigger(handleOpenImport)
+      ) : (
+        <button
+          onClick={handleOpenImport}
+          className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          匯入
+        </button>
+      )}
 
       <CSVImportModal
         isOpen={isModalOpen}

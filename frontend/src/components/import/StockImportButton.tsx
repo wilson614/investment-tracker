@@ -18,6 +18,8 @@ interface StockImportButtonProps {
   portfolioId: string;
   onImportComplete: () => void;
   compact?: boolean;
+  /** If provided, renders custom trigger instead of default button */
+  renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
 // Field definitions for stock transaction CSV (exchangeRate is optional when using currency ledger)
@@ -103,6 +105,7 @@ export function StockImportButton({
   portfolioId,
   onImportComplete,
   compact = false,
+  renderTrigger,
 }: StockImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSelectingLedger, setIsSelectingLedger] = useState(false);
@@ -255,16 +258,20 @@ export function StockImportButton({
 
   return (
     <>
-      <button
-        onClick={handleOpenImport}
-        className={compact
-          ? "btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
-          : "btn-dark flex items-center gap-2"
-        }
-      >
-        <Upload className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
-        匯入
-      </button>
+      {renderTrigger ? (
+        renderTrigger(handleOpenImport)
+      ) : (
+        <button
+          onClick={handleOpenImport}
+          className={compact
+            ? "btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
+            : "btn-dark flex items-center gap-2"
+          }
+        >
+          <Upload className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
+          匯入
+        </button>
+      )}
 
       {/* Currency Ledger Selection Modal */}
       {isSelectingLedger && (

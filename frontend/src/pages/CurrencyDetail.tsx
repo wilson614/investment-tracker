@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Download, RefreshCw, Loader2, Info } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, RefreshCw, Loader2, Info } from 'lucide-react';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
 import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
 import { CurrencyImportButton } from '../components/import';
+import { FileDropdown } from '../components/common';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
 import { CurrencyTransactionType } from '../types';
 
@@ -98,6 +99,7 @@ export default function CurrencyDetail() {
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const hasFetchedRate = useRef(false);
+  const importTriggerRef = useRef<(() => void) | null>(null);
 
   const loadData = async () => {
     if (!id) return;
@@ -524,24 +526,24 @@ export default function CurrencyDetail() {
                   刪除選取 ({selectedIds.size})
                 </button>
               )}
-              <button
-                onClick={handleExportTransactions}
-                disabled={transactions.length === 0}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="匯出交易"
-              >
-                <Download className="w-4 h-4" />
-                匯出
-              </button>
+              <FileDropdown
+                onImport={() => importTriggerRef.current?.()}
+                onExport={handleExportTransactions}
+                exportDisabled={transactions.length === 0}
+              />
               <button
                 onClick={() => setShowAddForm(true)}
                 className="btn-accent px-3 py-1.5 text-sm"
               >
-                + 新增交易
+                + 新增
               </button>
               <CurrencyImportButton
                 ledgerId={ledger.ledger.id}
                 onImportComplete={loadData}
+                renderTrigger={(onClick) => {
+                  importTriggerRef.current = onClick;
+                  return null;
+                }}
               />
             </div>
           </div>
