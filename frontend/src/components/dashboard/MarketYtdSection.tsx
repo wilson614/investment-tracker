@@ -3,7 +3,7 @@
  * Displays YTD (Year-to-Date) returns for benchmark ETFs
  */
 
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, AlertCircle, Info } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { useMarketYtdData } from '../../hooks/useMarketYtdData';
 import type { MarketYtdReturn } from '../../types';
 
@@ -57,40 +57,11 @@ interface MarketYtdSectionProps {
 }
 
 export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
-  const { data, isLoading, error, refresh } = useMarketYtdData();
-
-  if (error) {
-    return (
-      <div className={`card-dark ${className}`}>
-        <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">年初至今報酬</h2>
-            <p className="text-xs text-[var(--text-muted)]">基準 ETF 年度績效</p>
-          </div>
-          <button
-            onClick={refresh}
-            className="btn-dark p-2"
-            title="重新整理"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5">
-          <div className="flex items-center gap-3 text-[var(--text-muted)]">
-            <AlertCircle className="w-5 h-5 text-yellow-500" />
-            <div>
-              <p className="text-sm">暫時無法取得資料</p>
-              <p className="text-xs mt-1">{error}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const { data, isLoading } = useMarketYtdData();
 
   return (
     <div className={`card-dark ${className}`}>
-      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-[var(--border-color)]">
         <div className="flex items-center gap-2">
           <div>
             <h2 className="text-lg font-bold text-[var(--text-primary)]">年初至今報酬</h2>
@@ -107,18 +78,6 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             </div>
           </div>
         </div>
-        <button
-          onClick={refresh}
-          disabled={isLoading}
-          className="btn-dark p-2 disabled:opacity-50"
-          title="重新整理"
-        >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RefreshCw className="w-4 h-4" />
-          )}
-        </button>
       </div>
 
       <div className="p-5">

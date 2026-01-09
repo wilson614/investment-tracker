@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search } from 'lucide-react';
 import { useCapeData } from '../../hooks/useCapeData';
 import type { CapeDisplayItem, CapeValuation } from '../../types';
 
@@ -106,7 +106,7 @@ interface MarketContextProps {
 }
 
 export function MarketContext({ className = '' }: MarketContextProps) {
-  const { data, dataDate, isLoading, error, selectedRegions, availableRegions, setSelectedRegions, refresh } = useCapeData();
+  const { data, dataDate, isLoading, error, selectedRegions, availableRegions, setSelectedRegions } = useCapeData();
   const [showSettings, setShowSettings] = useState(false);
   const [tempSelectedRegions, setTempSelectedRegions] = useState<string[]>(selectedRegions);
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,18 +154,9 @@ export function MarketContext({ className = '' }: MarketContextProps) {
   if (error) {
     return (
       <div className={`card-dark ${className}`}>
-        <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">市場估值指標</h2>
-            <p className="text-xs text-[var(--text-muted)]">CAPE (Shiller P/E)</p>
-          </div>
-          <button
-            onClick={refresh}
-            className="btn-dark p-2"
-            title="重新整理"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+        <div className="px-5 py-4 border-b border-[var(--border-color)]">
+          <h2 className="text-lg font-bold text-[var(--text-primary)]">市場估值指標</h2>
+          <p className="text-xs text-[var(--text-muted)]">CAPE (Shiller P/E)</p>
         </div>
         <div className="p-5">
           <div className="flex items-center gap-3 text-[var(--text-muted)]">
@@ -189,27 +180,13 @@ export function MarketContext({ className = '' }: MarketContextProps) {
             CAPE (Shiller P/E) {dataDate && `• 資料日期: ${dataDate}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleOpenSettings}
-            className="btn-dark p-2"
-            title="選擇市場"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={refresh}
-            disabled={isLoading}
-            className="btn-dark p-2 disabled:opacity-50"
-            title="重新整理"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-          </button>
-        </div>
+        <button
+          onClick={handleOpenSettings}
+          className="btn-dark p-2"
+          title="選擇市場"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Settings Modal */}

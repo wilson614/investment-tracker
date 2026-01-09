@@ -4,6 +4,8 @@ import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
 import { MarketContext, MarketYtdSection } from '../components/dashboard';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
+import { refreshCapeData } from '../services/capeApi';
+import { refreshYtdData } from '../services/ytdApi';
 
 interface CachedQuote {
   quote: StockQuoteResponse;
@@ -140,6 +142,12 @@ export function DashboardPage() {
     setIsFetchingPrices(true);
 
     try {
+      // Refresh market data (CAPE, YTD) in parallel with stock prices
+      const marketDataPromise = Promise.allSettled([
+        refreshCapeData(),
+        refreshYtdData(),
+      ]);
+
       const homeCurrency = portfolio.homeCurrency;
       const fetchPromises = summary.positions.map(async (position) => {
         try {
@@ -199,6 +207,9 @@ export function DashboardPage() {
 
       const allPrices = { ...currentPricesRef.current, ...newPrices };
       currentPricesRef.current = allPrices;
+
+      // Wait for market data refresh to complete (fire and forget, but wait)
+      await marketDataPromise;
 
       if (Object.keys(newPrices).length > 0) {
         const [summaryWithPrices, xirr] = await Promise.all([
@@ -319,7 +330,7 @@ export function DashboardPage() {
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
-            更新報價
+            更新全部
           </button>
         </div>
 
