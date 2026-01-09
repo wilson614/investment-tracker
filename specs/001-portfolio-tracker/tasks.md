@@ -336,31 +336,31 @@
 
 ---
 
-## Phase 10: Real-Time Data Integration (Enhancement)
+## Phase 10: Real-Time Data Integration (Required Advanced Feature)
 
 **Purpose**: Integrate external APIs for real-time stock prices and exchange rates
 
-**Note**: This phase is optional and can be implemented after core features are complete.
+**Note**: This is a required advanced feature that has been FULLY IMPLEMENTED.
 
 ### External API Integration
 
-- [ ] T125 [P] Research and select stock price API provider (Yahoo Finance, Alpha Vantage, etc.)
-- [ ] T126 [P] Research and select exchange rate API provider
-- [ ] T127 Create IStockPriceService interface in backend/src/InvestmentTracker.Application/Interfaces/IStockPriceService.cs
-- [ ] T128 Create IExchangeRateService interface in backend/src/InvestmentTracker.Application/Interfaces/IExchangeRateService.cs
-- [ ] T129 Implement StockPriceService with caching in backend/src/InvestmentTracker.Infrastructure/Services/StockPriceService.cs
-- [ ] T130 Implement ExchangeRateService with caching in backend/src/InvestmentTracker.Infrastructure/Services/ExchangeRateService.cs
+- [x] T125 [P] Research and select stock price API provider (Yahoo Finance, Alpha Vantage, etc.)
+- [x] T126 [P] Research and select exchange rate API provider
+- [x] T127 Create IStockPriceService interface in backend/src/InvestmentTracker.Infrastructure/StockPrices/StockPriceService.cs
+- [x] T128 Create IExchangeRateProvider interface in backend/src/InvestmentTracker.Infrastructure/StockPrices/SinaExchangeRateProvider.cs
+- [x] T129 Implement StockPriceService with caching in backend/src/InvestmentTracker.Infrastructure/StockPrices/StockPriceService.cs
+- [x] T130 Implement ExchangeRateService with caching in backend/src/InvestmentTracker.Infrastructure/StockPrices/SinaExchangeRateProvider.cs
 
 ### API Endpoints
 
-- [ ] T131 Create PricesController for stock price lookups in backend/src/InvestmentTracker.API/Controllers/PricesController.cs
-- [ ] T132 Create ExchangeRatesController for rate lookups in backend/src/InvestmentTracker.API/Controllers/ExchangeRatesController.cs
+- [x] T131 Create PricesController for stock price lookups in backend/src/InvestmentTracker.API/Controllers/StockPricesController.cs
+- [x] T132 Create ExchangeRatesController for rate lookups in backend/src/InvestmentTracker.API/Controllers/StockPricesController.cs (integrated)
 
 ### Frontend Integration
 
-- [ ] T133 Update CurrentPriceInput to auto-fetch prices in frontend/src/components/portfolio/CurrentPriceInput.tsx
-- [ ] T134 Update CurrencyTransactionForm to auto-calculate exchange rate
-- [ ] T135 Add price refresh button to Portfolio page
+- [x] T133 Update PositionCard to auto-fetch prices in frontend/src/components/portfolio/PositionCard.tsx
+- [x] T134 Update stockPriceApi to support exchange rate queries in frontend/src/services/api.ts
+- [x] T135 Add price refresh button to Portfolio page in frontend/src/pages/Portfolio.tsx
 
 **Checkpoint**: Real-time data integration complete - prices and exchange rates auto-populated
 
@@ -546,3 +546,147 @@ T174 → T175 → T176 → T177 → T178
 - Stop at any checkpoint to validate story independently
 - All monetary values use `decimal` type (constitution mandate)
 - All entities include CreatedAt/UpdatedAt timestamps (constitution mandate)
+
+---
+
+## Phase 13: User Story 8 - Page Refresh Behavior (Priority: P8) 🆕
+
+**Goal**: Auto-trigger quote fetch on page load/refresh, display cached values immediately to prevent flickering
+
+**Independent Test**: Refresh Portfolio page with F5 → cached values appear immediately → loading spinner shows → fresh data replaces cached after fetch
+
+**Requirements**: FR-040, FR-040a, FR-040b (Added 2026-01-09)
+
+### Implementation for User Story 8
+
+- [ ] T179 [US8] Update useQuoteCache hook to initialize cache on mount in frontend/src/hooks/useQuoteCache.ts
+- [ ] T180 [US8] Add auto-fetch on mount to Portfolio page in frontend/src/pages/Portfolio.tsx
+- [ ] T181 [US8] Add auto-fetch on mount to Dashboard page in frontend/src/pages/Dashboard.tsx
+- [ ] T182 [US8] Update PositionDetail to display cached values immediately in frontend/src/pages/PositionDetail.tsx
+- [ ] T183 [US8] Add loading state to "更新報價" button during auto-fetch in frontend/src/components/PositionCard.tsx
+- [ ] T184 [US8] Ensure quote cache is populated before rendering market value in frontend/src/components/PositionCard.tsx
+- [ ] T185 [US8] Verify cache-first display prevents "-" flickering in PositionDetail value section
+
+**Checkpoint**: Page refresh shows cached values instantly, then updates with fresh data
+
+---
+
+## Phase 14: User Story 9 - CSV Export (Priority: P9) 🆕
+
+**Goal**: Export transactions and positions to CSV with UTF-8 BOM for Excel compatibility
+
+**Independent Test**: Click export button → CSV file downloads → opens correctly in Excel with Chinese headers
+
+**Requirements**: FR-041, FR-041a, FR-041b, FR-041c (Added 2026-01-09)
+
+### Implementation for User Story 9
+
+- [ ] T186 [P] [US9] Create CSV export service in frontend/src/services/csvExport.ts
+- [ ] T187 [P] [US9] Define TransactionExportDto type in frontend/src/types/export.ts
+- [ ] T188 [P] [US9] Define PositionExportDto type in frontend/src/types/export.ts
+- [ ] T189 [US9] Implement generateTransactionsCsv function in frontend/src/services/csvExport.ts
+- [ ] T190 [US9] Implement generatePositionsCsv function in frontend/src/services/csvExport.ts
+- [ ] T191 [US9] Implement downloadCsv function with UTF-8 BOM in frontend/src/services/csvExport.ts
+- [ ] T192 [US9] Add "匯出交易" button to Portfolio page in frontend/src/pages/Portfolio.tsx
+- [ ] T193 [US9] Add "匯出持倉" button to Portfolio page in frontend/src/pages/Portfolio.tsx
+- [ ] T194 [US9] Wire up export buttons to CSV service in frontend/src/pages/Portfolio.tsx
+
+**Checkpoint**: Both transaction and position CSV exports work with correct Chinese headers in Excel
+
+---
+
+## Phase 15: User Story 10 - Market YTD Comparison (Priority: P10) 🆕
+
+**Goal**: Display YTD returns for benchmark ETFs (VWRA, VUAA, 0050, VFEM) on Dashboard
+
+**Independent Test**: Open Dashboard → see Market YTD section → shows YTD % for each benchmark
+
+**Requirements**: FR-042, FR-042a, FR-042b, FR-042c (Added 2026-01-09)
+
+### Backend Implementation (US10)
+
+- [ ] T195 [P] [US10] Create MarketYtdReturnDto in backend/src/InvestmentTracker.Api/DTOs/MarketDataDtos.cs
+- [ ] T196 [P] [US10] Create MarketYtdComparisonDto in backend/src/InvestmentTracker.Api/DTOs/MarketDataDtos.cs
+- [ ] T197 [US10] Create IMarketDataService interface in backend/src/InvestmentTracker.Domain/Interfaces/IMarketDataService.cs
+- [ ] T198 [US10] Implement MarketDataService in backend/src/InvestmentTracker.Infrastructure/Services/MarketDataService.cs
+- [ ] T199 [US10] Add GetJan1BenchmarkPrice method to fetch/cache Jan 1 prices in MarketDataService
+- [ ] T200 [US10] Add GetCurrentBenchmarkPrice method to fetch real-time prices in MarketDataService
+- [ ] T201 [US10] Add CalculateYtdReturn method in MarketDataService
+- [ ] T202 [US10] Create MarketDataController in backend/src/InvestmentTracker.Api/Controllers/MarketDataController.cs
+- [ ] T203 [US10] Implement GET /api/v1/market-data/ytd-comparison endpoint
+- [ ] T204 [US10] Register IMarketDataService in DI container in backend/src/InvestmentTracker.Api/Program.cs
+
+### Frontend Implementation (US10)
+
+- [ ] T205 [P] [US10] Create MarketYtdReturnDto type in frontend/src/types/marketData.ts
+- [ ] T206 [P] [US10] Create MarketYtdComparisonDto type in frontend/src/types/marketData.ts
+- [ ] T207 [US10] Add fetchMarketYtdComparison API client in frontend/src/services/api.ts
+- [ ] T208 [US10] Create MarketYtdSection component in frontend/src/components/dashboard/MarketYtdSection.tsx
+- [ ] T209 [US10] Display benchmark ETF names and YTD percentages in MarketYtdSection
+- [ ] T210 [US10] Add visual styling (green/red for positive/negative) in MarketYtdSection
+- [ ] T211 [US10] Integrate MarketYtdSection into Dashboard page in frontend/src/pages/Dashboard.tsx
+- [ ] T212 [US10] Add loading and error states to MarketYtdSection
+
+**Checkpoint**: Dashboard shows YTD returns for VWRA, VUAA, 0050, VFEM with correct calculations
+
+---
+
+## Phase 16: Taiwan Stock Support Enhancement (Priority: P11) 🆕
+
+**Goal**: Ensure Taiwan stocks (TWD source currency) work correctly with exchange rate = 1.0
+
+**Independent Test**: Add Taiwan stock transaction → verify exchange rate = 1.0, totals correct
+
+**Requirements**: FR-043, FR-043a, FR-043b (Added 2026-01-09)
+
+- [ ] T213 [P] [US11] Verify Taiwan stock detection (pure digits or digits with letters) in frontend/src/services/marketDetection.ts
+- [ ] T214 [US11] Auto-set exchange rate to 1.0 for Taiwan stocks in TransactionForm
+- [ ] T215 [US11] Add visual indicator for Taiwan market in PositionCard (台股 tag)
+- [ ] T216 [US11] Ensure TWSE and TPEx quotes work correctly in backend quote service
+
+**Checkpoint**: Taiwan stock transactions work correctly with TWD/TWD = 1.0 exchange rate
+
+---
+
+## Updated Dependencies & Execution Order
+
+### New Phase Dependencies
+
+- **Phase 13 (US8 - Page Refresh)**: Can start immediately - frontend only, no backend changes
+- **Phase 14 (US9 - CSV Export)**: Can start immediately - frontend only, no backend changes
+- **Phase 15 (US10 - Market YTD)**: Requires backend + frontend work, depends on Phase 12 patterns
+- **Phase 16 (US11 - Taiwan Stock)**: Can start immediately - mostly frontend validation
+
+### Parallel Execution Opportunities
+
+```bash
+# All three new phases can start in parallel:
+# Developer A: Phase 13 (US8 Page Refresh) - T179-T185
+# Developer B: Phase 14 (US9 CSV Export) - T186-T194
+# Developer C: Phase 15 Backend (US10) - T195-T204
+# Developer D: Phase 16 (US11 Taiwan) - T213-T216
+
+# After US10 Backend completes:
+# Developer C continues: Phase 15 Frontend - T205-T212
+```
+
+---
+
+## Implementation Strategy for New Features
+
+### Suggested Priority Order (Single Developer)
+
+1. **Phase 13 (US8)** first - Quickest, highest UX impact (fixes flickering)
+2. **Phase 14 (US9)** second - Frontend-only, immediate user value
+3. **Phase 16 (US11)** third - Quick validation fix for Taiwan stocks
+4. **Phase 15 (US10)** fourth - Requires backend work, more complex
+
+### Task Count Summary
+
+| Phase | Story | Task Count | Status |
+|-------|-------|------------|--------|
+| Phase 13 | US8 (Page Refresh) | 7 tasks | 🆕 Pending |
+| Phase 14 | US9 (CSV Export) | 9 tasks | 🆕 Pending |
+| Phase 15 | US10 (Market YTD) | 18 tasks | 🆕 Pending |
+| Phase 16 | US11 (Taiwan Stock) | 4 tasks | 🆕 Pending |
+| **Total New** | | **38 tasks** | |
