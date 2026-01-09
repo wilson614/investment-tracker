@@ -21,12 +21,13 @@ interface UseMarketYtdDataResult {
 }
 
 export function useMarketYtdData(): UseMarketYtdDataResult {
-  // Try to load cached data immediately for instant rendering
-  const cachedYtdData = loadCachedYtdData();
-  const initialData = cachedYtdData ? transformYtdData(cachedYtdData) : null;
+  // Try to load cached data immediately for instant rendering (even if stale)
+  const cached = loadCachedYtdData();
+  const initialData = cached.data ? transformYtdData(cached.data) : null;
 
   const [data, setData] = useState<MarketYtdComparison | null>(initialData);
-  const [isLoading, setIsLoading] = useState(!cachedYtdData); // Only loading if no cache
+  // Only show loading if we have no cached data at all
+  const [isLoading, setIsLoading] = useState(!cached.data);
   const [error, setError] = useState<string | null>(null);
 
   const hasFetchedRef = useRef(false);
@@ -63,12 +64,18 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
   }, [fetchData]);
 
   useEffect(() => {
-    // Only fetch once on mount
+    // Fetch on mount if:
+    // 1. We haven't fetched yet, AND
+    // 2. Either no cached data OR cached data is stale
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
-      fetchData();
+      // Always revalidate in background if we have stale data
+      // This ensures fresh data without blocking UI
+      if (!cached.data || cached.isStale) {
+        fetchData();
+      }
     }
-  }, [fetchData]);
+  }, [fetchData, cached.data, cached.isStale]);
 
   return {
     data,

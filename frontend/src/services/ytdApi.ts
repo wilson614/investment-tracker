@@ -7,7 +7,7 @@ import type { MarketYtdComparison } from '../types';
 import { marketDataApi } from './api';
 
 const YTD_CACHE_KEY = 'ytd_data_cache';
-const YTD_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes (prices change frequently)
+const YTD_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - after this, data is stale but still usable
 
 // Market key display names (Chinese)
 const MARKET_DISPLAY_NAMES: Record<string, string> = {
@@ -20,24 +20,31 @@ const MARKET_DISPLAY_NAMES: Record<string, string> = {
 // Cache the last fetched data in memory for quick access
 let cachedData: MarketYtdComparison | null = null;
 
+export interface CachedYtdResult {
+  data: MarketYtdComparison | null;
+  isStale: boolean;
+}
+
 /**
- * Load YTD data from localStorage cache
+ * Load YTD data from localStorage cache (stale-while-revalidate)
+ * Returns data even if stale, with isStale flag
  */
-export function loadCachedYtdData(): MarketYtdComparison | null {
+export function loadCachedYtdData(): CachedYtdResult {
   try {
     const cached = localStorage.getItem(YTD_CACHE_KEY);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
       const age = Date.now() - timestamp;
-      if (age <= YTD_CACHE_MAX_AGE) {
-        cachedData = data;
-        return data;
-      }
+      cachedData = data;
+      return {
+        data,
+        isStale: age > YTD_CACHE_MAX_AGE,
+      };
     }
   } catch {
     // Ignore cache errors
   }
-  return null;
+  return { data: null, isStale: true };
 }
 
 /**
