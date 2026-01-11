@@ -607,8 +607,9 @@ As an investor, I want to see my portfolio's historical performance and current 
 - Current prices fetched on each CAPE API request (no caching for real-time data)
 
 **Fallback Strategy**:
+- If real-time current price is 0, use yesterday's closing price from Sina API (field 5)
 - If external API unavailable, use cached reference price from database
-- If no cached price exists, return null for adjustedValue (display original CAPE only)
+- If current price or reference price is 0/null, return null for adjustedValue (display original CAPE only)
 
 ### Historical Price API
 

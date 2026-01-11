@@ -108,11 +108,23 @@ public class SinaEtfPriceService : ISinaEtfPriceService
             return null;
         }
 
-        // Field 1 is the current price
+        // Field 1 is the current price, Field 5 is yesterday's close
         if (decimal.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
         {
-            _logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
-            return price;
+            // If current price is 0, use yesterday's close as fallback
+            if (price <= 0 && parts.Length > 5 &&
+                decimal.TryParse(parts[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var yesterdayClose) &&
+                yesterdayClose > 0)
+            {
+                _logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Market} (current price is 0)", yesterdayClose, marketKey);
+                return yesterdayClose;
+            }
+
+            if (price > 0)
+            {
+                _logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
+                return price;
+            }
         }
 
         _logger.LogWarning("Could not parse price from Sina for {Market}: {Data}", marketKey, parts[1]);

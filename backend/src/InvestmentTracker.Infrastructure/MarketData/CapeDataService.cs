@@ -122,7 +122,7 @@ public class CapeDataService : ICapeDataService
                 referenceDate,
                 cancellationToken);
 
-            if (indexPrices == null || indexPrices.ReferencePrice == 0)
+            if (indexPrices == null || indexPrices.CurrentPrice == 0 || indexPrices.ReferencePrice == 0)
             {
                 _logger.LogDebug("Could not get index prices for {Market}", marketKey);
                 return null;
