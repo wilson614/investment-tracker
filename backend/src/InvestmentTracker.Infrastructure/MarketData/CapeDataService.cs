@@ -217,35 +217,51 @@ public class CapeDataService : ICapeDataService
 
     private async Task SaveSnapshotAsync(CapeDataResponse data, CancellationToken cancellationToken)
     {
-        // Check if we already have this date
-        var existing = await _dbContext.CapeDataSnapshots
-            .FirstOrDefaultAsync(s => s.DataDate == data.Date, cancellationToken);
-
-        // Store items without AdjustedValue (it's calculated on-the-fly)
-        var itemsToStore = data.Items.Select(i => new StoredCapeItem(
-            i.BoxName, i.CurrentValue, i.CurrentValuePercentile,
-            i.Range25th, i.Range50th, i.Range75th
-        )).ToList();
-
-        if (existing != null)
+        try
         {
-            existing.ItemsJson = JsonSerializer.Serialize(itemsToStore);
-            existing.FetchedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            var snapshot = new CapeDataSnapshot
+            // Check if we already have this date
+            var existing = await _dbContext.CapeDataSnapshots
+                .FirstOrDefaultAsync(s => s.DataDate == data.Date, cancellationToken);
+
+            // Store items without AdjustedValue (it's calculated on-the-fly)
+            var itemsToStore = data.Items.Select(i => new StoredCapeItem(
+                i.BoxName, i.CurrentValue, i.CurrentValuePercentile,
+                i.Range25th, i.Range50th, i.Range75th
+            )).ToList();
+
+            if (existing != null)
             {
-                DataDate = data.Date,
-                ItemsJson = JsonSerializer.Serialize(itemsToStore),
-                FetchedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            };
-            _dbContext.CapeDataSnapshots.Add(snapshot);
-        }
+                existing.ItemsJson = JsonSerializer.Serialize(itemsToStore);
+                existing.FetchedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                var snapshot = new CapeDataSnapshot
+                {
+                    DataDate = data.Date,
+                    ItemsJson = JsonSerializer.Serialize(itemsToStore),
+                    FetchedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _dbContext.CapeDataSnapshots.Add(snapshot);
+            }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+        {
+            // Another concurrent request already inserted this record - that's fine
+            _logger.LogDebug("Duplicate CAPE snapshot ignored for {Date} - already exists", data.Date);
+        }
+    }
+
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        // PostgreSQL unique constraint violation: 23505
+        // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
+        return ex.InnerException?.Message?.Contains("23505") == true ||
+               ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
     }
 
     private static CapeDataResponse DeserializeSnapshot(CapeDataSnapshot snapshot)

@@ -229,9 +229,22 @@ public class IndexPriceService : IIndexPriceService
             await _dbContext.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("Cached reference price {Price} for {Market} {YearMonth}", price, marketKey, yearMonth);
         }
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+        {
+            // Another concurrent request already inserted this record - that's fine
+            _logger.LogDebug("Duplicate key ignored for {Market} {YearMonth} - already exists", marketKey, yearMonth);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to cache reference price for {Market} {YearMonth}", marketKey, yearMonth);
         }
+    }
+
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        // PostgreSQL unique constraint violation: 23505
+        // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
+        return ex.InnerException?.Message?.Contains("23505") == true ||
+               ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
     }
 }

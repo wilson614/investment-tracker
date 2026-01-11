@@ -203,6 +203,7 @@ public class MarketYtdService : IMarketYtdService
         CancellationToken cancellationToken)
     {
         var yearMonth = $"{year}12";  // Store as YYYYMM format (e.g., 202512)
+        var recordsToAdd = new List<IndexPriceSnapshot>();
 
         foreach (var marketKey in missingMarkets)
         {
@@ -223,24 +224,16 @@ public class MarketYtdService : IMarketYtdService
 
                 if (yearEndPrice.HasValue)
                 {
-                    // Check if record already exists (prevent duplicates from concurrent requests)
-                    var exists = await _dbContext.IndexPriceSnapshots
-                        .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
-
-                    if (!exists)
+                    recordsToAdd.Add(new IndexPriceSnapshot
                     {
-                        _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
-                        {
-                            MarketKey = marketKey,
-                            YearMonth = yearMonth,
-                            Price = yearEndPrice.Value,
-                            RecordedAt = DateTime.UtcNow
-                        });
-                        _logger.LogInformation("Fetched and stored {Year}/12 year-end price for {MarketKey}: {Price}",
-                            year, marketKey, yearEndPrice.Value);
-                    }
-
+                        MarketKey = marketKey,
+                        YearMonth = yearMonth,
+                        Price = yearEndPrice.Value,
+                        RecordedAt = DateTime.UtcNow
+                    });
                     yearEndPrices[marketKey] = yearEndPrice.Value;
+                    _logger.LogInformation("Fetched {Year}/12 year-end price for {MarketKey}: {Price}",
+                        year, marketKey, yearEndPrice.Value);
                 }
                 else
                 {
@@ -253,10 +246,44 @@ public class MarketYtdService : IMarketYtdService
             }
         }
 
-        if (yearEndPrices.Count > 0)
+        // Save records one by one to handle concurrent duplicates gracefully
+        foreach (var record in recordsToAdd)
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            try
+            {
+                // Check again before insert (another request might have inserted it)
+                var exists = await _dbContext.IndexPriceSnapshots
+                    .AnyAsync(s => s.MarketKey == record.MarketKey && s.YearMonth == record.YearMonth, cancellationToken);
+
+                if (!exists)
+                {
+                    _dbContext.IndexPriceSnapshots.Add(record);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogDebug("Stored year-end price for {MarketKey}", record.MarketKey);
+                }
+            }
+            catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+            {
+                // Another concurrent request already inserted this record - that's fine
+                _logger.LogDebug("Duplicate key ignored for {MarketKey} {YearMonth} - already exists",
+                    record.MarketKey, record.YearMonth);
+                // Detach the entity to avoid issues with subsequent saves
+                _dbContext.Entry(record).State = EntityState.Detached;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save year-end price for {MarketKey}", record.MarketKey);
+                _dbContext.Entry(record).State = EntityState.Detached;
+            }
         }
+    }
+
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        // PostgreSQL unique constraint violation: 23505
+        // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
+        return ex.InnerException?.Message?.Contains("23505") == true ||
+               ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
     }
 
     /// <summary>
