@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -11,6 +12,56 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "CapeDataSnapshots",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    DataDate = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
+                    ItemsJson = table.Column<string>(type: "text", nullable: false),
+                    FetchedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CapeDataSnapshots", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "IndexPriceSnapshots",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    MarketKey = table.Column<string>(type: "text", nullable: false),
+                    YearMonth = table.Column<string>(type: "text", nullable: false),
+                    Price = table.Column<decimal>(type: "numeric", nullable: false),
+                    RecordedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IndexPriceSnapshots", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "stock_splits",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Symbol = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    Market = table.Column<int>(type: "integer", nullable: false),
+                    SplitDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    SplitRatio = table.Column<decimal>(type: "numeric(10,4)", precision: 10, scale: 4, nullable: false),
+                    Description = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_stock_splits", x => x.Id);
+                });
+
             migrationBuilder.CreateTable(
                 name: "users",
                 columns: table => new
@@ -58,7 +109,6 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     Description = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     BaseCurrency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false, defaultValue: "USD"),
                     HomeCurrency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false, defaultValue: "TWD"),
@@ -124,6 +174,7 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     CurrencyLedgerId = table.Column<Guid>(type: "uuid", nullable: true),
                     Notes = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     IsDeleted = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    RealizedPnlHome = table.Column<decimal>(type: "numeric", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
@@ -179,6 +230,12 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_CapeDataSnapshots_DataDate",
+                table: "CapeDataSnapshots",
+                column: "DataDate",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_CurrencyLedger_UserId",
                 table: "currency_ledgers",
                 column: "UserId");
@@ -226,6 +283,17 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_StockSplit_Symbol_Market",
+                table: "stock_splits",
+                columns: new[] { "Symbol", "Market" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StockSplit_Symbol_Market_SplitDate",
+                table: "stock_splits",
+                columns: new[] { "Symbol", "Market", "SplitDate" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_stock_transactions_CurrencyLedgerId",
                 table: "stock_transactions",
                 column: "CurrencyLedgerId");
@@ -256,10 +324,19 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "CapeDataSnapshots");
+
+            migrationBuilder.DropTable(
                 name: "currency_transactions");
 
             migrationBuilder.DropTable(
+                name: "IndexPriceSnapshots");
+
+            migrationBuilder.DropTable(
                 name: "refresh_tokens");
+
+            migrationBuilder.DropTable(
+                name: "stock_splits");
 
             migrationBuilder.DropTable(
                 name: "stock_transactions");
