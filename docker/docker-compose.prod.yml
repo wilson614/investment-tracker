@@ -27,6 +27,8 @@ services:
       - default # 資料庫只需要讓後端連得到，不需要給 Tunnel
 
   backend:
+    # 這裡不用改字，但前提是你上一各步驟的 GitHub Action 必須跑成功
+    # 這樣 ghcr.io 裡面才會有 ARM64 的版本給這台機器拉
     image: ghcr.io/${GITHUB_REPO}/backend:latest
     container_name: investmenttracker-api
     restart: unless-stopped
@@ -47,9 +49,12 @@ services:
       timeout: 10s
       retries: 3
     networks:
-      - default    # 給前端和資料庫連
-      # 如果你的前端是 Server-Side Render 或是 Nginx Proxy，後端不一定要上 tunnel
-      # 但如果你的前端 JS 會直接打 API，這裡也需要加入 tunnel-net
+      - default
+      # 如果前端是透過瀏覽器直接打 API (Client-side rendering)，
+      # 後端也需要加入 tunnel-net 才能被 Cloudflare 轉發
+      # 如果你是 Server-Side Rendering (Next.js 等) 則看架構
+      # 保險起見，若 API 需要對外開放，請加：
+      - tunnel-net 
 
   frontend:
     image: ghcr.io/${GITHUB_REPO}/frontend:latest
@@ -57,16 +62,16 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    # ports:       <-- 移除，不佔用 Host Port 80
-    #   - "80:80"
     networks:
-      - default    # 連後端用
-      - tunnel-net # 給 Cloudflare Tunnel 連線用 (對外入口)
+      - default
+      - tunnel-net
 
   webhook:
-    image: almir/webhook
+    # [修改重點] 換成這個支援 ARM64 的官方映像檔
+    image: adnanh/webhook:latest
     container_name: investmenttracker-webhook
     restart: unless-stopped
+    # 這裡的 command 參數跟 almir 版是相容的，不用動
     command: ["-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload"]
     environment:
       DEPLOY_TOKEN: ${DEPLOY_WEBHOOK_SECRET:?DEPLOY_WEBHOOK_SECRET is required}
@@ -74,16 +79,14 @@ services:
       - ./webhook-hooks.json:/etc/webhook/hooks.json:ro
       - ./deploy.sh:/scripts/deploy.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
-    # ports:         <-- 移除，避免跟 SonarQube 搶 9000
-    #   - "9000:9000"
     networks:
-      - tunnel-net   # 給 Cloudflare Tunnel 連線用 (GitHub Webhook 入口)
+      - tunnel-net
 
 volumes:
   pgdata:
 
 networks:
-  default:         # 這是這個專案內部的私有網路
+  default:
     driver: bridge
-  tunnel-net:      # 這是跟 Tunnel 溝通的公共網路
+  tunnel-net:
     external: true
