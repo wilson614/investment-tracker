@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { AuthProvider } from './hooks/useAuth';
 import { DashboardPage } from './pages/Dashboard';
@@ -15,18 +15,19 @@ import { portfolioApi } from './services/api';
 import './index.css';
 
 function HomePage() {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ensurePortfolio = async () => {
       try {
-        setIsLoading(true);
         setError(null);
 
         const portfolios = await portfolioApi.getAll();
         if (portfolios.length > 0) {
-          window.location.href = `/portfolio/${portfolios[0].id}`;
+          // Use navigate instead of window.location.href to avoid flash
+          navigate(`/portfolio/${portfolios[0].id}`, { replace: true });
           return;
         }
 
@@ -35,16 +36,16 @@ function HomePage() {
           homeCurrency: 'TWD',
         });
 
-        window.location.href = `/portfolio/${created.id}`;
+        navigate(`/portfolio/${created.id}`, { replace: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : '載入投資組合失敗');
-      } finally {
         setIsLoading(false);
       }
+      // Don't set isLoading to false on success - we're navigating away
     };
 
     ensurePortfolio();
-  }, []);
+  }, [navigate]);
 
   if (isLoading) {
     return <PageLoader text="準備投資組合中..." />;
