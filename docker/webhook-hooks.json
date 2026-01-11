@@ -1,13 +1,19 @@
 [
   {
     "id": "deploy",
-    "execute-command": "/scripts/deploy.sh",
-    "command-working-directory": "/scripts",
-    "response-message": "Deployment started",
+    "execute-command": "/bin/bash",
+    "pass-arguments-to-command": [
+      {
+        "source": "string",
+        "name": "/scripts/deploy.sh"
+      }
+    ],
+    "command-working-directory": "/app",
+    "include-command-output-in-response": true,
     "trigger-rule": {
       "match": {
         "type": "value",
-        "value": "{{ getenv \"DEPLOY_TOKEN\" }}",
+        "value": "$DEPLOY_TOKEN",
         "parameter": {
           "source": "header",
           "name": "X-Webhook-Token"

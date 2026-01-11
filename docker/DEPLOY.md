@@ -31,6 +31,7 @@ cd /opt/investmenttracker
 curl -O https://raw.githubusercontent.com/YOUR_REPO/main/docker/docker-compose.prod.yml
 curl -O https://raw.githubusercontent.com/YOUR_REPO/main/docker/deploy.sh
 curl -O https://raw.githubusercontent.com/YOUR_REPO/main/docker/webhook-hooks.json
+curl -O https://raw.githubusercontent.com/YOUR_REPO/main/docker/webhook.Dockerfile
 curl -O https://raw.githubusercontent.com/YOUR_REPO/main/docker/.env.example
 
 chmod +x deploy.sh
