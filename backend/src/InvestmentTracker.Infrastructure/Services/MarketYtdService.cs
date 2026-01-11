@@ -69,9 +69,12 @@ public class MarketYtdService : IMarketYtdService
         var yearEndYearMonth = $"{previousYear}12";  // Use previous year December as baseline
 
         // Load year-end reference prices from database (e.g., 202512 for 2026 YTD)
+        // Use GroupBy to handle potential duplicates gracefully
         var yearEndPrices = await _dbContext.IndexPriceSnapshots
             .Where(s => s.YearMonth == yearEndYearMonth && Benchmarks.Keys.Contains(s.MarketKey))
-            .ToDictionaryAsync(s => s.MarketKey, s => s.Price, cancellationToken);
+            .GroupBy(s => s.MarketKey)
+            .Select(g => new { MarketKey = g.Key, Price = g.First().Price })
+            .ToDictionaryAsync(x => x.MarketKey, x => x.Price, cancellationToken);
 
         // Auto-fetch missing year-end prices from previous year
         var missingMarkets = Benchmarks.Keys.Where(k => !yearEndPrices.ContainsKey(k)).ToList();

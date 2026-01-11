@@ -41,6 +41,16 @@ public class AppDbContext : DbContext
 
         // Global query filters for multi-tenancy
         ConfigureQueryFilters(modelBuilder);
+
+        // Unique index for IndexPriceSnapshot (MarketKey + YearMonth)
+        modelBuilder.Entity<IndexPriceSnapshot>()
+            .HasIndex(s => new { s.MarketKey, s.YearMonth })
+            .IsUnique();
+
+        // Unique index for CapeDataSnapshot (DataDate)
+        modelBuilder.Entity<CapeDataSnapshot>()
+            .HasIndex(s => s.DataDate)
+            .IsUnique();
     }
 
     private void ConfigureQueryFilters(ModelBuilder modelBuilder)
