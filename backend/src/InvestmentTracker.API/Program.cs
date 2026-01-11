@@ -237,8 +237,10 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("Checking for pending database migrations...");
         var context = services.GetRequiredService<AppDbContext>();
 
-        if (context.Database.GetPendingMigrations().Any())
+        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+        if (pendingMigrations.Any())
         {
+            Console.WriteLine($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
             Console.WriteLine("Applying database migrations...");
             context.Database.Migrate();
             Console.WriteLine("Database migrations applied successfully.");
@@ -246,6 +248,43 @@ using (var scope = app.Services.CreateScope())
         else
         {
             Console.WriteLine("No pending migrations found.");
+        }
+    }
+    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P07")
+    {
+        // Table already exists - this happens when database was created with EnsureCreated()
+        // but no migration history exists. We need to mark migrations as applied.
+        Console.WriteLine($"Database tables already exist (likely from EnsureCreated). Attempting to sync migration history...");
+
+        var context = services.GetRequiredService<AppDbContext>();
+        try
+        {
+            // Ensure __EFMigrationsHistory table exists
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" character varying(150) NOT NULL,
+                    ""ProductVersion"" character varying(32) NOT NULL,
+                    CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
+                )");
+
+            // Get all migrations and mark them as applied
+            var allMigrations = context.Database.GetMigrations();
+            foreach (var migration in allMigrations)
+            {
+                // Migration names are safe (from EF Core internals), suppress SQL injection warning
+                #pragma warning disable EF1002
+                await context.Database.ExecuteSqlRawAsync($@"
+                    INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                    VALUES ('{migration}', '8.0.0')
+                    ON CONFLICT DO NOTHING");
+                #pragma warning restore EF1002
+            }
+            Console.WriteLine("Migration history synchronized. Application will continue.");
+        }
+        catch (Exception syncEx)
+        {
+            Console.WriteLine($"Failed to sync migration history: {syncEx.Message}");
+            throw;
         }
     }
     catch (Exception ex)
