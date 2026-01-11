@@ -13,8 +13,8 @@ COPY src/InvestmentTracker.Application/InvestmentTracker.Application.csproj src/
 COPY src/InvestmentTracker.Infrastructure/InvestmentTracker.Infrastructure.csproj src/InvestmentTracker.Infrastructure/
 COPY src/InvestmentTracker.API/InvestmentTracker.API.csproj src/InvestmentTracker.API/
 
-# Restore dependencies
-RUN dotnet restore
+# Restore dependencies (only API project, skip test projects)
+RUN dotnet restore src/InvestmentTracker.API/InvestmentTracker.API.csproj
 
 # Copy remaining source code
 COPY src/ src/
