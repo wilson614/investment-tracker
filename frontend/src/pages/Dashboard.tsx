@@ -93,6 +93,11 @@ export function DashboardPage() {
 
       const portfolios = await portfolioApi.getAll();
       if (portfolios.length === 0) {
+        // No portfolio yet - that's okay, we'll still show market data
+        setPortfolio(null);
+        setSummary(null);
+        setXirrResult(null);
+        setRecentTransactions([]);
         setIsLoading(false);
         return;
       }
@@ -299,6 +304,13 @@ export function DashboardPage() {
       <div className="min-h-screen py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
+
+          {/* Market Context - CAPE & YTD (always show even without portfolio) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <MarketContext />
+            <MarketYtdSection />
+          </div>
+
           <div className="card-dark p-8 text-center">
             <p className="text-[var(--text-muted)] text-lg">尚無投資組合，請先建立一個投資組合。</p>
           </div>
