@@ -1,0 +1,89 @@
+# =============================================================================
+# Production Docker Compose - 使用預建 images + Webhook 自動部署
+# =============================================================================
+# 使用方式:
+#   1. 複製 .env.example 為 .env 並填入設定
+#   2. docker compose -f docker-compose.prod.yml up -d
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: investmenttracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-investmenttracker}
+      POSTGRES_USER: ${DB_USER:-investmenttracker}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-investmenttracker} -d ${DB_NAME:-investmenttracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default # 資料庫只需要讓後端連得到，不需要給 Tunnel
+
+  backend:
+    image: ghcr.io/${GITHUB_REPO}/backend:latest
+    container_name: investmenttracker-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5000
+      # 注意：這裡的 host 是 container_name
+      ConnectionStrings__DefaultConnection: Host=investmenttracker-db;Database=${DB_NAME:-investmenttracker};Username=${DB_USER:-investmenttracker};Password=${DB_PASSWORD}
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET is required}
+      Jwt__Issuer: InvestmentTracker
+      Jwt__Audience: InvestmentTracker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - default    # 給前端和資料庫連
+      # 如果你的前端是 Server-Side Render 或是 Nginx Proxy，後端不一定要上 tunnel
+      # 但如果你的前端 JS 會直接打 API，這裡也需要加入 tunnel-net
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPO}/frontend:latest
+    container_name: investmenttracker-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # ports:       <-- 移除，不佔用 Host Port 80
+    #   - "80:80"
+    networks:
+      - default    # 連後端用
+      - tunnel-net # 給 Cloudflare Tunnel 連線用 (對外入口)
+
+  webhook:
+    image: almir/webhook
+    container_name: investmenttracker-webhook
+    restart: unless-stopped
+    command: ["-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload"]
+    environment:
+      DEPLOY_TOKEN: ${DEPLOY_WEBHOOK_SECRET:?DEPLOY_WEBHOOK_SECRET is required}
+    volumes:
+      - ./webhook-hooks.json:/etc/webhook/hooks.json:ro
+      - ./deploy.sh:/scripts/deploy.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    # ports:         <-- 移除，避免跟 SonarQube 搶 9000
+    #   - "9000:9000"
+    networks:
+      - tunnel-net   # 給 Cloudflare Tunnel 連線用 (GitHub Webhook 入口)
+
+volumes:
+  pgdata:
+
+networks:
+  default:         # 這是這個專案內部的私有網路
+    driver: bridge
+  tunnel-net:      # 這是跟 Tunnel 溝通的公共網路
+    external: true
