@@ -55,6 +55,16 @@ async function fetchApi<T>(
   });
 
   if (!response.ok) {
+    // Handle 401 Unauthorized - token expired or invalid
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      // Redirect to login page
+      window.location.href = '/login';
+      throw createApiError(401, 'Session expired. Please login again.');
+    }
+
     const errorText = await response.text();
     // Try to parse as JSON to extract error message
     let errorMessage = errorText || response.statusText;

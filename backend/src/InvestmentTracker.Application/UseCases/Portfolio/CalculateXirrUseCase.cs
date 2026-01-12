@@ -64,12 +64,16 @@ public class CalculateXirrUseCase
         // Add current portfolio value as final cash flow
         if (request.CurrentPrices != null && request.CurrentPrices.Count > 0)
         {
+            // Convert to case-insensitive dictionary for reliable ticker matching
+            var currentPrices = new Dictionary<string, CurrentPriceInfo>(
+                request.CurrentPrices, StringComparer.OrdinalIgnoreCase);
+
             var positions = _portfolioCalculator.RecalculateAllPositions(transactions).ToList();
             decimal currentValue = 0m;
 
             foreach (var position in positions)
             {
-                if (request.CurrentPrices.TryGetValue(position.Ticker, out var priceInfo))
+                if (currentPrices.TryGetValue(position.Ticker, out var priceInfo))
                 {
                     currentValue += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
                 }

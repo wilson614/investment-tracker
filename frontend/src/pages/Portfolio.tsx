@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Pencil, RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
@@ -90,8 +90,6 @@ export function PortfolioPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
-  const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [editDescription, setEditDescription] = useState('');
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
@@ -165,6 +163,8 @@ export function PortfolioPage() {
     if (editingTransaction) {
       await transactionApi.update(editingTransaction.id, {
         transactionDate: data.transactionDate,
+        ticker: data.ticker,
+        transactionType: data.transactionType,
         shares: data.shares,
         pricePerShare: data.pricePerShare,
         exchangeRate: data.exchangeRate ?? 1,
@@ -302,25 +302,6 @@ export function PortfolioPage() {
     }
   };
 
-  const handleStartEditDescription = () => {
-    if (!summary) return;
-    setEditDescription(summary.portfolio.description ?? '');
-    setIsEditingDescription(true);
-  };
-
-  const handleSaveDescription = async () => {
-    if (!summary) return;
-    try {
-      await portfolioApi.update(summary.portfolio.id, {
-        description: editDescription.trim() || undefined,
-      });
-      setIsEditingDescription(false);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update');
-    }
-  };
-
   const handleExportTransactions = () => {
     if (!summary || transactions.length === 0) return;
     exportTransactionsToCsv(
@@ -369,61 +350,31 @@ export function PortfolioPage() {
         {/* Header */}
         <div className="flex justify-between items-start mb-6">
           <div>
-            {isEditingDescription ? (
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="input-dark w-full"
-                  autoFocus
-                  placeholder="描述（選填）"
-                />
-                <div className="flex gap-2">
-                  <button onClick={handleSaveDescription} className="btn-accent py-1 px-4">儲存</button>
-                  <button onClick={() => setIsEditingDescription(false)} className="btn-dark py-1 px-4">取消</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
-                  <button
-                    onClick={handleStartEditDescription}
-                    className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                    title="編輯描述"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                </div>
-                {summary.portfolio.description && (
-                  <p className="text-[var(--text-secondary)] text-base mt-1">{summary.portfolio.description}</p>
-                )}
-              </>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
+            {summary.portfolio.description && (
+              <p className="text-[var(--text-secondary)] text-base mt-1">{summary.portfolio.description}</p>
             )}
           </div>
-          {!isEditingDescription && (
-            <div className="flex items-center gap-2">
-              <FileDropdown
-                onExport={handleExportPositions}
-                exportDisabled={summary.positions.length === 0}
-              />
-              <button
-                type="button"
-                onClick={handleFetchAllPrices}
-                disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="更新報價"
-              >
-                {isFetchingAll ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                更新報價
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <FileDropdown
+              onExport={handleExportPositions}
+              exportDisabled={summary.positions.length === 0}
+            />
+            <button
+              type="button"
+              onClick={handleFetchAllPrices}
+              disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
+              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+              title="更新報價"
+            >
+              {isFetchingAll ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              更新報價
+            </button>
+          </div>
         </div>
 
         {/* Performance Metrics - horizontal layout */}

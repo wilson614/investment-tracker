@@ -276,7 +276,7 @@ export function PositionCard({
               <button
                 key={value}
                 type="button"
-                onClick={() => handleMarketChange(Number(value) as StockMarketType)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMarketChange(Number(value) as StockMarketType); }}
                 className={`px-3 py-1 text-sm rounded transition-colors ${
                   selectedMarket === Number(value)
                     ? 'bg-[var(--accent-peach)] text-[var(--bg-primary)]'

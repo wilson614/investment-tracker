@@ -54,6 +54,12 @@ public class GetPortfolioSummaryUseCase
         var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
             transactions, stockSplits, _splitAdjustmentService);
 
+        // Convert to case-insensitive dictionary for reliable ticker matching
+        var currentPrices = performanceRequest?.CurrentPrices != null
+            ? new Dictionary<string, CurrentPriceInfo>(
+                performanceRequest.CurrentPrices, StringComparer.OrdinalIgnoreCase)
+            : null;
+
         var positionDtos = new List<StockPositionDto>();
         decimal totalCostHome = 0m;
         decimal? totalValueHome = null;
@@ -72,7 +78,7 @@ public class GetPortfolioSummaryUseCase
             };
 
             // If current prices provided, calculate unrealized PnL
-            if (performanceRequest?.CurrentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
+            if (currentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
             {
                 var pnl = _portfolioCalculator.CalculateUnrealizedPnl(
                     position, priceInfo.Price, priceInfo.ExchangeRate);

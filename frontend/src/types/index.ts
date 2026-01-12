@@ -100,6 +100,8 @@ export interface CreateStockTransactionRequest {
 
 export interface UpdateStockTransactionRequest {
   transactionDate: string;
+  ticker: string;
+  transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
   exchangeRate: number;

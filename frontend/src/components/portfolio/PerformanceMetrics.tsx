@@ -136,9 +136,9 @@ export function PerformanceMetrics({
           <p className={`text-xl font-bold number-display ${displayValues.xirrPercentage != null ? xirrColor : 'text-[var(--text-muted)]'}`}>
             {formatPercent(displayValues.xirrPercentage)}
           </p>
-          {displayValues.cashFlowCount != null && (
+          {displayValues.cashFlowCount != null && displayValues.cashFlowCount > 1 && (
             <p className="text-sm text-[var(--text-muted)]">
-              基於 {displayValues.cashFlowCount} 筆交易計算
+              基於 {displayValues.cashFlowCount - 1} 筆交易計算
             </p>
           )}
         </div>

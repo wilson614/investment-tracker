@@ -48,6 +48,8 @@ public class UpdateStockTransactionUseCase
 
         // Update transaction properties
         transaction.SetTransactionDate(request.TransactionDate);
+        transaction.SetTicker(request.Ticker);
+        transaction.SetTransactionType(request.TransactionType);
         transaction.SetShares(request.Shares);
         transaction.SetPricePerShare(request.PricePerShare);
         transaction.SetExchangeRate(request.ExchangeRate);

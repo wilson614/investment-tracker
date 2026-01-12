@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-12
+**Updated**: 2026-01-13
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -174,6 +174,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-003**: System MUST calculate Total Cost (Home) = Total Cost (Source) × Exchange Rate for each transaction.
 - **FR-004**: System MUST calculate and display moving average cost per share for each position in source currency.
 - **FR-005**: System MUST calculate XIRR (Extended Internal Rate of Return) for portfolio performance when current prices are provided.
+- **FR-005a**: System MUST use case-insensitive ticker matching when mapping current prices to positions for XIRR calculation.
 - **FR-006**: System MUST calculate Unrealized PnL = (Current Market Price × Total Shares × Current Exchange Rate) - Total Cost (Home Currency).
 - **FR-020**: System MUST create exactly one portfolio per user account automatically on first login.
 - **FR-021**: System MUST NOT allow portfolio naming - each user has one default portfolio with optional description only.
@@ -516,13 +517,25 @@ As an investor, I want to see my portfolio's historical performance and current 
   - Portfolio 頁面改為自動獲取用戶的投資組合（如果沒有則自動建立）
   - 相關頁面（PositionDetail, Transactions）也改為自動獲取 portfolio
 
+### Session 2026-01-13 (Bug Fixes)
+
+- 修正交易紀錄編輯問題：變更交易類型或股票代號後存檔無效
+  - 根本原因：UpdateStockTransactionRequest DTO 缺少 Ticker 和 TransactionType 欄位
+  - 修正方式：後端 DTO 新增必要欄位，前端呼叫時傳送完整資料
+- 實作 Token 過期自動跳轉登入頁
+  - 前端 API 層統一處理 401 Unauthorized 回應
+  - 自動清除 localStorage 中的認證資訊並導向 /login
+- 修正 XIRR 計算問題：只有買入交易時即使有即時價格也無法計算
+  - 根本原因：currentPrices Dictionary 使用 case-sensitive key 匹配
+  - 修正方式：使用 StringComparer.OrdinalIgnoreCase 建立 Dictionary
+
 ## Assumptions
 
 - **Home Currency**: TWD (New Taiwan Dollar) is the only supported home currency. The system uses TWD for all final value calculations.
 - **Foreign Currency**: USD is the primary investment currency. All stock prices are in source currency (typically USD).
 - **Single Portfolio**: Each user account has exactly one portfolio, automatically created on first access.
 - **Market Data**: Stock prices are fetched on-demand via external APIs (Sina Finance for TW, Yahoo Finance for US/UK). Quotes are cached in browser localStorage.
-- **Authentication**: Standard email/password authentication via JWT tokens.
+- **Authentication**: Standard email/password authentication via JWT tokens. Access tokens expire after 24 hours. When a 401 Unauthorized response is received, the frontend automatically clears stored credentials and redirects to the login page.
 - **Interest Tracking**: Bank interest in Currency Ledger defaults to 0 cost basis (lowering average cost).
 - **Stock Split Handling**: Stock splits are recorded in a dedicated table with symbol, date, and ratio. Historical transactions are automatically adjusted at display/calculation time while preserving original data. Known splits include: 0050 (Taiwan) 1:4 split effective 2025-06-18.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.

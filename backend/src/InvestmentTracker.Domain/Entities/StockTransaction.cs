@@ -156,6 +156,11 @@ public class StockTransaction : BaseEntity
         Notes = notes?.Trim();
     }
 
+    public void SetTransactionType(TransactionType transactionType)
+    {
+        TransactionType = transactionType;
+    }
+
     public void MarkAsDeleted() => IsDeleted = true;
     public void Restore() => IsDeleted = false;
 

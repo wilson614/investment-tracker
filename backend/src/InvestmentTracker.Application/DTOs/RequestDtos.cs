@@ -80,6 +80,13 @@ public record UpdateStockTransactionRequest
     public DateTime TransactionDate { get; init; }
 
     [Required]
+    [StringLength(20, MinimumLength = 1)]
+    public string Ticker { get; init; } = string.Empty;
+
+    [Required]
+    public TransactionType TransactionType { get; init; }
+
+    [Required]
     [Range(0.0001, double.MaxValue)]
     public decimal Shares { get; init; }
 
