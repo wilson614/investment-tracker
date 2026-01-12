@@ -51,7 +51,8 @@ public class CurrencyTransaction : BaseEntity
         if (date > DateTime.UtcNow.AddDays(1))
             throw new ArgumentException("Transaction date cannot be in the future", nameof(date));
 
-        TransactionDate = date.Date;
+        // Ensure UTC kind for PostgreSQL compatibility
+        TransactionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
 
     public void SetAmounts(
