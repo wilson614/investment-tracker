@@ -19,8 +19,8 @@ const YTD_SORT_OPTIONS: { value: YtdSortKey; label: string }[] = [
 
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 const DEFAULT_BENCHMARKS = [
-  'All Country', 'US Large', 'Developed Markets Large',
-  'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
+  '全球', '美國大型', '已開發大型',
+  '已開發非美', '新興市場', '歐洲', '日本', '中國', '台灣 0050'
 ];
 
 function getSelectedBenchmarks(): string[] {
