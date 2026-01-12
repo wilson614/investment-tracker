@@ -79,8 +79,9 @@ const loadCachedXirr = (portfolioId: string, ticker: string): XirrResult | null 
 };
 
 export function PositionDetailPage() {
-  const { id: portfolioId, ticker } = useParams<{ id: string; ticker: string }>();
+  const { ticker } = useParams<{ ticker: string }>();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [position, setPosition] = useState<StockPosition | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +90,8 @@ export function PositionDetailPage() {
   // Load cached quote on init (use useRef to avoid re-creating on every render)
   const cachedDataRef = useRef(ticker ? loadCachedQuote(ticker) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType });
   const cachedData = cachedDataRef.current;
-  const cachedXirrRef = useRef(portfolioId && ticker ? loadCachedXirr(portfolioId, ticker) : null);
+  // XIRR cache will be loaded after we have portfolioId
+  const cachedXirrRef = useRef<XirrResult | null>(null);
 
   // Quote state - initialize from cache
   const [selectedMarket, setSelectedMarket] = useState<StockMarketType>(cachedData.market);
@@ -105,15 +107,32 @@ export function PositionDetailPage() {
   const hasAppliedCache = useRef(false);
 
   const loadData = useCallback(async () => {
-    if (!portfolioId || !ticker) return;
+    if (!ticker) return;
 
     try {
       setIsLoading(true);
       setError(null);
 
+      // Get user's portfolio
+      const portfolios = await portfolioApi.getAll();
+      if (portfolios.length === 0) {
+        setError('找不到投資組合');
+        return;
+      }
+      const currentPortfolioId = portfolios[0].id;
+      setPortfolioId(currentPortfolioId);
+
+      // Load cached XIRR now that we have portfolioId
+      if (!cachedXirrRef.current) {
+        cachedXirrRef.current = loadCachedXirr(currentPortfolioId, ticker);
+        if (cachedXirrRef.current) {
+          setPositionXirr(cachedXirrRef.current);
+        }
+      }
+
       const [summaryData, txData] = await Promise.all([
-        portfolioApi.getSummary(portfolioId),
-        transactionApi.getByPortfolio(portfolioId),
+        portfolioApi.getSummary(currentPortfolioId),
+        transactionApi.getByPortfolio(currentPortfolioId),
       ]);
 
       setPortfolio(summaryData.portfolio);
@@ -151,7 +170,7 @@ export function PositionDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [portfolioId, ticker]);
+  }, [ticker]);
 
   useEffect(() => {
     loadData();
@@ -159,7 +178,7 @@ export function PositionDetailPage() {
 
   // Auto-fetch quote on mount (always fetch fresh on page load)
   useEffect(() => {
-    if (!hasFetched.current && portfolio && position && !isLoading) {
+    if (!hasFetched.current && portfolio && portfolioId && position && !isLoading) {
       hasFetched.current = true;
       // Always fetch fresh quote on page load
       handleFetchQuote();
@@ -167,7 +186,7 @@ export function PositionDetailPage() {
       // If we have cached quote and haven't calculated XIRR yet (and no cached XIRR), do it now
       if (hasAppliedCache.current && lastQuote && !cachedXirrRef.current) {
         portfolioApi.calculatePositionXirr(
-          portfolioId!,
+          portfolioId,
           ticker!,
           {
             currentPrice: lastQuote.price,
@@ -177,7 +196,7 @@ export function PositionDetailPage() {
           setPositionXirr(result);
           // Save to cache
           try {
-            localStorage.setItem(getXirrCacheKey(portfolioId!, ticker!), JSON.stringify({
+            localStorage.setItem(getXirrCacheKey(portfolioId, ticker!), JSON.stringify({
               xirr: result,
               cachedAt: new Date().toISOString(),
             }));
@@ -188,10 +207,10 @@ export function PositionDetailPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolio, position, isLoading]);
+  }, [portfolio, portfolioId, position, isLoading]);
 
   const handleFetchQuote = async () => {
-    if (!portfolio) return;
+    if (!portfolio || !portfolioId) return;
 
     setFetchStatus('loading');
 
@@ -249,7 +268,7 @@ export function PositionDetailPage() {
           // Calculate XIRR for this position
           try {
             const xirrResult = await portfolioApi.calculatePositionXirr(
-              portfolioId!,
+              portfolioId,
               ticker!,
               {
                 currentPrice: quote.price,
@@ -259,7 +278,7 @@ export function PositionDetailPage() {
             setPositionXirr(xirrResult);
             // Save to cache
             try {
-              localStorage.setItem(getXirrCacheKey(portfolioId!, ticker!), JSON.stringify({
+              localStorage.setItem(getXirrCacheKey(portfolioId, ticker!), JSON.stringify({
                 xirr: xirrResult,
                 cachedAt: new Date().toISOString(),
               }));
@@ -344,7 +363,7 @@ export function PositionDetailPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Back button */}
         <Link
-          to={`/portfolio/${portfolioId}`}
+          to="/portfolio"
           className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-6 text-base transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink as RouterNavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { authApi, portfolioApi } from '../../services/api';
+import { authApi } from '../../services/api';
 import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp, User, ChevronDown, Lock, Mail, Save } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -13,56 +13,49 @@ interface NavLinkProps {
 }
 
 function NavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
-  const location = useLocation();
-  const isActive = location.pathname === to ||
-    (to !== '/' && location.pathname.startsWith(to));
-
   return (
-    <Link
+    <RouterNavLink
       to={to}
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-base font-medium transition-all duration-200 ${
-        isActive
-          ? 'bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-      }`}
+      className={({ isActive }) =>
+        `flex items-center gap-2 px-4 py-2.5 rounded-lg text-base font-medium transition-all duration-200 ${
+          isActive
+            ? 'bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
+            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+        }`
+      }
     >
       {Icon && <Icon className="w-5 h-5" />}
       {children}
-    </Link>
+    </RouterNavLink>
   );
 }
 
 function MobileNavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
-  const location = useLocation();
-  const isActive = location.pathname === to ||
-    (to !== '/' && location.pathname.startsWith(to));
-
   return (
-    <Link
+    <RouterNavLink
       to={to}
       onClick={onClick}
-      className={`flex items-center gap-3 px-5 py-4 text-lg font-medium border-l-4 transition-all duration-200 ${
-        isActive
-          ? 'border-[var(--accent-peach)] bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
-          : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
-      }`}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-5 py-4 text-lg font-medium border-l-4 transition-all duration-200 ${
+          isActive
+            ? 'border-[var(--accent-peach)] bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
+            : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
+        }`
+      }
     >
       {Icon && <Icon className="w-6 h-6" />}
       {children}
-    </Link>
+    </RouterNavLink>
   );
 }
 
 export function Navigation() {
   const { user, logout, setUser } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Profile form state
@@ -111,52 +104,6 @@ export function Navigation() {
       setPasswordSuccess(false);
     }
   }, [showPasswordModal]);
-
-  // Load portfolio ID on mount
-  useEffect(() => {
-    const loadPortfolioId = async () => {
-      // Check localStorage first
-      const cached = localStorage.getItem('default_portfolio_id');
-      if (cached) {
-        setPortfolioId(cached);
-        return;
-      }
-      // Fetch from API
-      try {
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length > 0) {
-          const id = portfolios[0].id;
-          localStorage.setItem('default_portfolio_id', id);
-          setPortfolioId(id);
-        }
-      } catch {
-        // Ignore errors
-      }
-    };
-    loadPortfolioId();
-  }, []);
-
-  const handlePortfolioClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (portfolioId) {
-      navigate(`/portfolio/${portfolioId}`);
-    } else {
-      // Fallback: fetch and navigate
-      try {
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length > 0) {
-          const id = portfolios[0].id;
-          localStorage.setItem('default_portfolio_id', id);
-          navigate(`/portfolio/${id}`);
-        } else {
-          navigate('/');
-        }
-      } catch {
-        navigate('/');
-      }
-    }
-    closeMobileMenu();
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -252,18 +199,7 @@ export function Navigation() {
             {/* Desktop Navigation */}
             <nav className="hidden md:flex md:ml-10 md:space-x-2">
               <NavLink to="/dashboard" icon={LayoutDashboard}>儀表板</NavLink>
-              <a
-                href="#"
-                onClick={handlePortfolioClick}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-base font-medium transition-all duration-200 ${
-                  location.pathname.startsWith('/portfolio')
-                    ? 'bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                <Briefcase className="w-5 h-5" />
-                投資組合
-              </a>
+              <NavLink to="/portfolio" icon={Briefcase}>投資組合</NavLink>
               <NavLink to="/currency" icon={Wallet}>外幣帳本</NavLink>
             </nav>
           </div>
@@ -341,18 +277,9 @@ export function Navigation() {
             <MobileNavLink to="/dashboard" icon={LayoutDashboard} onClick={closeMobileMenu}>
               儀表板
             </MobileNavLink>
-            <a
-              href="#"
-              onClick={handlePortfolioClick}
-              className={`flex items-center gap-3 px-5 py-4 text-lg font-medium border-l-4 transition-all duration-200 ${
-                location.pathname.startsWith('/portfolio')
-                  ? 'border-[var(--accent-peach)] bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
-                  : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Briefcase className="w-6 h-6" />
+            <MobileNavLink to="/portfolio" icon={Briefcase} onClick={closeMobileMenu}>
               投資組合
-            </a>
+            </MobileNavLink>
             <MobileNavLink to="/currency" icon={Wallet} onClick={closeMobileMenu}>
               外幣帳本
             </MobileNavLink>

@@ -42,17 +42,27 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ### Spec-Driven Development (SDD) 工作流程
 
-當用戶同意執行需求修改後，**必須**依照以下順序執行：
+**⚠️ 強制性 Checklist** - 任何涉及功能/架構變更的請求，必須依照以下順序執行：
 
-1. **檢查 spec.md**：先檢視 `specs/001-portfolio-tracker/spec.md` 確認是否需要同步更新規格
-2. **更新規格**：如果需求涉及變更，先更新 spec.md
-3. **規劃任務**：使用 TodoWrite 規劃實作步驟
-4. **開始實作**：依照規劃執行程式碼修改
-5. **完成後檢查**：commit 前再次確認 spec.md 是否需要補充
+1. **第一步永遠是讀取 spec.md**：`specs/001-portfolio-tracker/spec.md`
+2. **確認變更範圍**：這個變更是否需要更新規格？
+3. **先更新規格**：如果需求涉及變更，**必須先**更新 spec.md 再開始實作
+4. **規劃任務**：使用 TodoWrite 規劃實作步驟
+5. **開始實作**：依照規劃執行程式碼修改
+6. **Commit 前檢查**：再次確認 spec.md 是否完整反映變更
+
+**觸發條件**（以下情況必須執行 SDD 流程）：
+- 路由結構變更
+- 資料模型變更
+- 新增/移除功能
+- 架構重構
+- UI/UX 流程變更
+- Cache 策略變更
 
 ### 其他規則
 
 - **規格優先**：spec.md 是需求的唯一真實來源 (Single Source of Truth)
 - **同步更新**：任何影響功能行為的修改都必須反映在 spec.md
+- **不要跳過**：即使是「簡單的重構」也要先確認 spec.md
 
 <!-- MANUAL ADDITIONS END -->

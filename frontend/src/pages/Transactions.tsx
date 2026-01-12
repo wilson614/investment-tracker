@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { transactionApi } from '../services/api';
+import { transactionApi, portfolioApi } from '../services/api';
 import { TransactionList } from '../components/transactions/TransactionList';
 import type { StockTransaction } from '../types';
 
 export function TransactionsPage() {
-  const { portfolioId } = useParams<{ portfolioId: string }>();
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,11 +13,18 @@ export function TransactionsPage() {
   });
 
   useEffect(() => {
-    if (!portfolioId) return;
-
     const loadTransactions = async () => {
       try {
         setIsLoading(true);
+
+        // Get user's portfolio
+        const portfolios = await portfolioApi.getAll();
+        if (portfolios.length === 0) {
+          setError('找不到投資組合');
+          return;
+        }
+        const portfolioId = portfolios[0].id;
+
         const data = await transactionApi.getByPortfolio(portfolioId);
         setTransactions(data);
       } catch (err) {
@@ -30,7 +35,7 @@ export function TransactionsPage() {
     };
 
     loadTransactions();
-  }, [portfolioId]);
+  }, []);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) {

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-10
+**Updated**: 2026-01-12
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -292,10 +292,10 @@ As an investor, I want to see my portfolio's historical performance and current 
 ### Page Structure
 
 1. **Home Page** (`/`)
-   - Auto-redirects to user's portfolio (creates default if none exists)
+   - Auto-redirects to user's portfolio page (creates default if none exists)
    - No portfolio selection UI (single portfolio per user)
 
-2. **Portfolio Page** (`/portfolio/:id`)
+2. **Portfolio Page** (`/portfolio`)
    - Header: "投資組合" with optional description (editable via pencil icon)
    - Header Actions: "檔案" dropdown (positions CSV export), "更新報價" button
    - Performance Metrics: Total cost, current value, unrealized PnL, return percentage
@@ -304,7 +304,7 @@ As an investor, I want to see my portfolio's historical performance and current 
      - "檔案" dropdown (import/export transactions), "+ 新增" button
      - All transactions with edit/delete actions
 
-3. **Position Detail Page** (`/portfolio/:id/position/:ticker`)
+3. **Position Detail Page** (`/portfolio/position/:ticker`)
    - Header: Ticker symbol with market tag (台股/美股/英股)
    - "獲取報價" button with visual status feedback
    - Position Metrics: Shares, average cost, total cost, current price
@@ -400,9 +400,11 @@ As an investor, I want to see my portfolio's historical performance and current 
 | Cache Type | Key Pattern | Data Cached | Used In |
 |------------|-------------|-------------|---------|
 | Stock Quote | `quote_cache_${ticker}` | Price, change%, exchange rate, market | Portfolio, Dashboard, PositionCard, PositionDetail |
-| Performance | `perf_cache_${portfolioId}` | Summary, XIRR result | Portfolio |
+| Performance | `portfolio_perf_cache` | Summary, XIRR result | Portfolio |
 | Position XIRR | `xirr_cache_${portfolioId}_${ticker}` | XIRR for single position | PositionDetail |
 | Exchange Rate | `rate_cache_${from}_${to}` | Exchange rate | CurrencyDetail |
+
+**Note**: Performance cache uses a single key (`portfolio_perf_cache`) since each user has only one portfolio. Position XIRR cache still includes portfolioId for future extensibility.
 
 **Page Refresh Behavior**:
 - Page refresh (F5) MUST trigger automatic data fetch for all visible data
@@ -504,6 +506,15 @@ As an investor, I want to see my portfolio's historical performance and current 
   - 台股的 source currency 為 TWD
   - 當 source currency = home currency (TWD) 時，exchange rate = 1.0
   - 系統支援 TWSE（上市）和 TPEx（上櫃）市場
+
+### Session 2026-01-12 (Route Simplification)
+
+- Q: 前端路由是否需要包含 portfolio ID？ → A: 否，因為每個用戶只有一個投資組合
+  - 路由從 `/portfolio/:id` 簡化為 `/portfolio`
+  - 路由從 `/portfolio/:id/position/:ticker` 簡化為 `/portfolio/position/:ticker`
+  - 移除 localStorage 中不必要的 portfolio ID 存儲
+  - Portfolio 頁面改為自動獲取用戶的投資組合（如果沒有則自動建立）
+  - 相關頁面（PositionDetail, Transactions）也改為自動獲取 portfolio
 
 ## Assumptions
 
