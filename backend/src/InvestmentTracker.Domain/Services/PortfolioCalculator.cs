@@ -286,11 +286,16 @@ public class PortfolioCalculator
                 return Math.Round(newRate, 6);
             }
 
-            // Prevent rate from becoming too extreme
+            // Prevent rate from becoming invalid/extreme
+            if (double.IsNaN(newRate) || double.IsInfinity(newRate))
+            {
+                break;
+            }
+
             if (newRate < -0.999)
                 newRate = -0.999;
-            else if (newRate > 10)
-                newRate = 10;
+            else if (newRate > 1_000_000)
+                newRate = 1_000_000;
 
             rate = newRate;
         }
@@ -321,14 +326,34 @@ public class PortfolioCalculator
 
     private static double? CalculateXirrBisection(List<double> amounts, List<double> yearFractions, int maxIterations = 100)
     {
+        static bool SameSign(double a, double b) =>
+            (a > 0 && b > 0) || (a < 0 && b < 0);
+
         double low = -0.999;
         double high = 10.0;
+        const double maxHigh = 1_000_000;
 
         var npvLow = CalculateNpv(amounts, yearFractions, low);
         var npvHigh = CalculateNpv(amounts, yearFractions, high);
 
+        if (Math.Abs(npvLow) < 1e-7)
+            return Math.Round(low, 6);
+
+        if (Math.Abs(npvHigh) < 1e-7)
+            return Math.Round(high, 6);
+
+        // Expand high bound for very short holding periods (high annualized returns)
+        while (SameSign(npvLow, npvHigh) && high < maxHigh)
+        {
+            high = Math.Min(maxHigh, high * 10);
+            npvHigh = CalculateNpv(amounts, yearFractions, high);
+
+            if (Math.Abs(npvHigh) < 1e-7)
+                return Math.Round(high, 6);
+        }
+
         // Check if solution exists in range
-        if (npvLow * npvHigh > 0)
+        if (SameSign(npvLow, npvHigh))
             return null;
 
         for (int i = 0; i < maxIterations; i++)
@@ -339,15 +364,15 @@ public class PortfolioCalculator
             if (Math.Abs(npvMid) < 1e-7)
                 return Math.Round(mid, 6);
 
-            if (npvLow * npvMid < 0)
-            {
-                high = mid;
-                npvHigh = npvMid;
-            }
-            else
+            if (SameSign(npvLow, npvMid))
             {
                 low = mid;
                 npvLow = npvMid;
+            }
+            else
+            {
+                high = mid;
+                npvHigh = npvMid;
             }
         }
 

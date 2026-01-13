@@ -115,19 +115,10 @@ export function Navigation() {
   // Load portfolio ID on mount
   useEffect(() => {
     const loadPortfolioId = async () => {
-      // Check localStorage first
-      const cached = localStorage.getItem('default_portfolio_id');
-      if (cached) {
-        setPortfolioId(cached);
-        return;
-      }
-      // Fetch from API
       try {
         const portfolios = await portfolioApi.getAll();
         if (portfolios.length > 0) {
-          const id = portfolios[0].id;
-          localStorage.setItem('default_portfolio_id', id);
-          setPortfolioId(id);
+          setPortfolioId(portfolios[0].id);
         }
       } catch {
         // Ignore errors
@@ -138,23 +129,28 @@ export function Navigation() {
 
   const handlePortfolioClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (portfolioId) {
-      navigate(`/portfolio/${portfolioId}`);
-    } else {
-      // Fallback: fetch and navigate
+
+    let targetId = portfolioId;
+
+    if (!targetId) {
       try {
         const portfolios = await portfolioApi.getAll();
         if (portfolios.length > 0) {
-          const id = portfolios[0].id;
-          localStorage.setItem('default_portfolio_id', id);
-          navigate(`/portfolio/${id}`);
+          targetId = portfolios[0].id;
+          setPortfolioId(targetId);
         } else {
           navigate('/');
+          closeMobileMenu();
+          return;
         }
       } catch {
         navigate('/');
+        closeMobileMenu();
+        return;
       }
     }
+
+    navigate(`/portfolio/${targetId}`);
     closeMobileMenu();
   };
 

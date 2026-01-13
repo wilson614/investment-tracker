@@ -46,7 +46,13 @@ public class UpdateStockTransactionUseCase
             throw new UnauthorizedAccessException("You do not have access to this transaction");
         }
 
-        // Update transaction properties
+        // Track original values for calculations
+        var originalTicker = transaction.Ticker;
+        var originalType = transaction.TransactionType;
+
+        // Update transaction properties (including ticker and type)
+        transaction.SetTicker(request.Ticker);
+        transaction.SetTransactionType(request.TransactionType);
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetShares(request.Shares);
         transaction.SetPricePerShare(request.PricePerShare);
@@ -55,22 +61,29 @@ public class UpdateStockTransactionUseCase
         transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
         transaction.SetNotes(request.Notes);
 
-        // Recalculate realized PnL for sell transactions
+        // Recalculate realized PnL for sell transactions (supports changing Buy/Sell)
         if (transaction.TransactionType == TransactionType.Sell)
         {
-            // Get all transactions for this portfolio before the sell transaction
+            // Get all transactions for this portfolio
             var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(
                 transaction.PortfolioId, cancellationToken);
 
             // Calculate position BEFORE this sell transaction using only earlier transactions
             var transactionsBeforeSell = allTransactions
-                .Where(t => t.Id != transaction.Id)  // Exclude current transaction
+                .Where(t => t.Id != transaction.Id) // Exclude current transaction
                 .Where(t => t.TransactionDate < transaction.TransactionDate ||
                            (t.TransactionDate == transaction.TransactionDate && t.CreatedAt < transaction.CreatedAt))
                 .ToList();
 
             var positionBeforeSell = _portfolioCalculator.CalculatePosition(
                 transaction.Ticker, transactionsBeforeSell);
+
+            // Validate sufficient shares
+            if (positionBeforeSell.TotalShares < request.Shares)
+            {
+                throw new InvalidOperationException(
+                    $"持股不足。可賣出: {positionBeforeSell.TotalShares:F4}，欲賣出: {request.Shares:F4}");
+            }
 
             // Create a temporary transaction with updated values for PnL calculation
             var tempSellTransaction = new StockTransaction(
@@ -85,6 +98,11 @@ public class UpdateStockTransactionUseCase
 
             var realizedPnl = _portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
             transaction.SetRealizedPnl(realizedPnl);
+        }
+        else if (originalType == TransactionType.Sell)
+        {
+            // If changed from Sell to Buy, clear realized PnL
+            transaction.SetRealizedPnl(null);
         }
 
         await _transactionRepository.UpdateAsync(transaction, cancellationToken);

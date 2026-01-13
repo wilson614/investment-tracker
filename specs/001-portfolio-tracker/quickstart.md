@@ -473,8 +473,8 @@ Expected VTI position:
 1. **401 Unauthorized**
    - Token expired. Call `/auth/refresh` with your refresh token.
 
-2. **400 Bad Request: Insufficient shares**
-   - Cannot sell more shares than you own. Check current position.
+2. **400 Bad Request: 持股不足**
+   - 無法賣出超過持有股數的數量，請檢查目前持倉。
 
 3. **400 Bad Request: Insufficient currency balance**
    - Currency ledger doesn't have enough funds for the stock purchase.

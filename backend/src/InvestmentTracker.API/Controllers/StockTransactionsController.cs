@@ -154,6 +154,7 @@ public class StockTransactionsController : ControllerBase
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockTransactionDto>> Update(
         Guid id,
@@ -165,9 +166,14 @@ public class StockTransactionsController : ControllerBase
             var result = await _updateUseCase.ExecuteAsync(id, request, cancellationToken);
             return Ok(result);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("not found", System.StringComparison.OrdinalIgnoreCase))
         {
-            return NotFound();
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
         catch (UnauthorizedAccessException)
         {

@@ -148,6 +148,12 @@ export function DashboardPage() {
         refreshYtdData(),
       ]);
 
+      // If there are no positions, still refresh market data and exit
+      if (summary.positions.length === 0) {
+        await marketDataPromise;
+        return;
+      }
+
       const homeCurrency = portfolio.homeCurrency;
       const fetchPromises = summary.positions.map(async (position) => {
         try {
@@ -322,7 +328,7 @@ export function DashboardPage() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
           <button
             onClick={handleFetchAllPrices}
-            disabled={isFetchingPrices || !summary?.positions.length}
+            disabled={isFetchingPrices || !summary}
             className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
           >
             {isFetchingPrices ? (

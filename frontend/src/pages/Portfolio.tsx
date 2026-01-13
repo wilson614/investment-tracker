@@ -147,6 +147,9 @@ export function PortfolioPage() {
   }, [summary, isLoading]);
 
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
+    const nextTicker = data.ticker.toUpperCase();
+    const isNewPosition = !summary?.positions.some(p => p.ticker.toUpperCase() === nextTicker);
+
     if (editingTransaction) {
       await transactionApi.update(editingTransaction.id, {
         ticker: data.ticker,
@@ -163,6 +166,33 @@ export function PortfolioPage() {
     } else {
       await transactionApi.create(data);
     }
+
+    // If this creates a new position, prefetch and cache quote so the PositionCard shows price immediately
+    if (isNewPosition) {
+      try {
+        const homeCurrency = summary?.portfolio.homeCurrency ?? 'TWD';
+        const market = guessMarket(nextTicker);
+        let quote = await stockPriceApi.getQuoteWithRate(market, nextTicker, homeCurrency);
+        let finalMarket = market;
+
+        if (!quote && market === StockMarket.US) {
+          quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, nextTicker, homeCurrency);
+          if (quote) finalMarket = StockMarket.UK;
+        }
+
+        if (quote?.exchangeRate) {
+          const cacheData: CachedQuote = {
+            quote,
+            updatedAt: new Date().toISOString(),
+            market: finalMarket,
+          };
+          localStorage.setItem(getQuoteCacheKey(nextTicker), JSON.stringify(cacheData));
+        }
+      } catch {
+        // Ignore prefetch errors
+      }
+    }
+
     await loadData();
     setShowForm(false);
     setEditingTransaction(null);

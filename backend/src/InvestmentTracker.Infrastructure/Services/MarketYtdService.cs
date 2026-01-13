@@ -38,7 +38,7 @@ public class MarketYtdService : IMarketYtdService
         ["Emerging Markets"] = ("VFEM", "Vanguard FTSE Emerging Markets", StockMarket.UK),
         ["Europe"] = ("VEUA", "Vanguard FTSE Developed Europe", StockMarket.UK),
         ["Japan"] = ("VJPA", "Vanguard FTSE Japan", StockMarket.UK),
-        ["China"] = ("HCHA", "HSBC MSCI China A", StockMarket.UK),
+        ["China"] = ("HCHA", "HSBC MSCI China UCITS", StockMarket.UK),
         ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW),
     };
 

@@ -111,7 +111,7 @@ public class CreateStockTransactionUseCase
             if (currentPosition.TotalShares < request.Shares)
             {
                 throw new InvalidOperationException(
-                    $"Insufficient shares. Available: {currentPosition.TotalShares:F4}, Requested: {request.Shares:F4}");
+                    $"持股不足。可賣出: {currentPosition.TotalShares:F4}，欲賣出: {request.Shares:F4}");
             }
 
             // Create a temporary sell transaction for PnL calculation

@@ -61,9 +61,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
 
+    // Clear portfolio-specific cached data (prevents cross-account leakage)
+    const portfolioKeysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('perf_cache_') || key.startsWith('xirr_cache_'))) {
+        portfolioKeysToRemove.push(key);
+      }
+    }
+    portfolioKeysToRemove.forEach(key => localStorage.removeItem(key));
+
+    // Clear exchange rate caches (safe to refresh on new login)
+    const rateKeysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('rate_cache_')) {
+        rateKeysToRemove.push(key);
+      }
+    }
+    rateKeysToRemove.forEach(key => localStorage.removeItem(key));
+
     // Clear market data caches (user-independent but should refresh on new login)
     localStorage.removeItem('ytd_data_cache');
     localStorage.removeItem('cape_data_cache');
+
+    // Remove legacy navigation cache (do not persist across accounts)
+    localStorage.removeItem('default_portfolio_id');
 
     // Keep user preferences (ytd_benchmark_preferences, cape_region_preferences)
     // These are UI preferences and can persist across accounts
