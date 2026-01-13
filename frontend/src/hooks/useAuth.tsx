@@ -45,9 +45,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAuthData = () => {
+    // Clear auth tokens
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+
+    // Clear all user-specific cached data
+    // This prevents data leakage between accounts
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('quote_cache_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+
+    // Clear market data caches (user-independent but should refresh on new login)
+    localStorage.removeItem('ytd_data_cache');
+    localStorage.removeItem('cape_data_cache');
+
+    // Keep user preferences (ytd_benchmark_preferences, cape_region_preferences)
+    // These are UI preferences and can persist across accounts
+
     setUser(null);
   };
 

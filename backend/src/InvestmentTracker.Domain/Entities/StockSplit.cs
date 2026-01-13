@@ -59,7 +59,8 @@ public class StockSplit : BaseEntity
         if (splitDate == default)
             throw new ArgumentException("Split date is required", nameof(splitDate));
 
-        SplitDate = splitDate.Date;
+        // Ensure UTC Kind for PostgreSQL compatibility
+        SplitDate = DateTime.SpecifyKind(splitDate.Date, DateTimeKind.Utc);
     }
 
     public void SetSplitRatio(decimal splitRatio)

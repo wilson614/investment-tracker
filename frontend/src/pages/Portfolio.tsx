@@ -149,6 +149,8 @@ export function PortfolioPage() {
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
     if (editingTransaction) {
       await transactionApi.update(editingTransaction.id, {
+        ticker: data.ticker,
+        transactionType: data.transactionType,
         transactionDate: data.transactionDate,
         shares: data.shares,
         pricePerShare: data.pricePerShare,
