@@ -57,8 +57,8 @@ public class UpdateStockTransactionUseCase
         transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
         transaction.SetNotes(request.Notes);
 
-        // Recalculate realized PnL for sell transactions
-        if (transaction.TransactionType == TransactionType.Sell)
+        // Recalculate realized PnL for sell transactions, clear for non-sell
+        if (request.TransactionType == TransactionType.Sell)
         {
             // Get all transactions for this portfolio before the sell transaction
             var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(
@@ -67,18 +67,18 @@ public class UpdateStockTransactionUseCase
             // Calculate position BEFORE this sell transaction using only earlier transactions
             var transactionsBeforeSell = allTransactions
                 .Where(t => t.Id != transaction.Id)  // Exclude current transaction
-                .Where(t => t.TransactionDate < transaction.TransactionDate ||
-                           (t.TransactionDate == transaction.TransactionDate && t.CreatedAt < transaction.CreatedAt))
+                .Where(t => t.TransactionDate < request.TransactionDate ||
+                           (t.TransactionDate == request.TransactionDate && t.CreatedAt < transaction.CreatedAt))
                 .ToList();
 
             var positionBeforeSell = _portfolioCalculator.CalculatePosition(
-                transaction.Ticker, transactionsBeforeSell);
+                request.Ticker, transactionsBeforeSell);
 
             // Create a temporary transaction with updated values for PnL calculation
             var tempSellTransaction = new StockTransaction(
                 transaction.PortfolioId,
                 request.TransactionDate,
-                transaction.Ticker,
+                request.Ticker,
                 TransactionType.Sell,
                 request.Shares,
                 request.PricePerShare,
@@ -87,6 +87,11 @@ public class UpdateStockTransactionUseCase
 
             var realizedPnl = _portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
             transaction.SetRealizedPnl(realizedPnl);
+        }
+        else
+        {
+            // Clear realized PnL for non-sell transactions
+            transaction.SetRealizedPnl(null);
         }
 
         await _transactionRepository.UpdateAsync(transaction, cancellationToken);

@@ -162,7 +162,7 @@ public class PortfolioCalculator
     /// <summary>
     /// Calculates position for a ticker with stock split adjustments applied.
     /// </summary>
-    private StockPosition CalculatePositionWithSplitAdjustments(
+    public StockPosition CalculatePositionWithSplitAdjustments(
         string ticker,
         IEnumerable<StockTransaction> transactions,
         IEnumerable<StockSplit> splits,

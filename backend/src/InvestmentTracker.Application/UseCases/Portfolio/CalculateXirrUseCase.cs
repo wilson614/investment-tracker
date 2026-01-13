@@ -3,29 +3,40 @@ using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.UseCases.Portfolio;
 
 /// <summary>
 /// Use case for calculating XIRR (Extended Internal Rate of Return) for a portfolio.
+/// Applies stock split adjustments when calculating current positions for accurate comparison with current prices.
 /// </summary>
 public class CalculateXirrUseCase
 {
     private readonly IPortfolioRepository _portfolioRepository;
     private readonly IStockTransactionRepository _transactionRepository;
+    private readonly IStockSplitRepository _stockSplitRepository;
     private readonly PortfolioCalculator _portfolioCalculator;
+    private readonly StockSplitAdjustmentService _splitAdjustmentService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ILogger<CalculateXirrUseCase> _logger;
 
     public CalculateXirrUseCase(
         IPortfolioRepository portfolioRepository,
         IStockTransactionRepository transactionRepository,
+        IStockSplitRepository stockSplitRepository,
         PortfolioCalculator portfolioCalculator,
-        ICurrentUserService currentUserService)
+        StockSplitAdjustmentService splitAdjustmentService,
+        ICurrentUserService currentUserService,
+        ILogger<CalculateXirrUseCase> logger)
     {
         _portfolioRepository = portfolioRepository;
         _transactionRepository = transactionRepository;
+        _stockSplitRepository = stockSplitRepository;
         _portfolioCalculator = portfolioCalculator;
+        _splitAdjustmentService = splitAdjustmentService;
         _currentUserService = currentUserService;
+        _logger = logger;
     }
 
     public async Task<XirrResultDto> ExecuteAsync(
@@ -42,6 +53,7 @@ public class CalculateXirrUseCase
         }
 
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
         // Build cash flows list
         var cashFlows = new List<CashFlow>();
@@ -64,26 +76,50 @@ public class CalculateXirrUseCase
         // Add current portfolio value as final cash flow
         if (request.CurrentPrices != null && request.CurrentPrices.Count > 0)
         {
+            _logger.LogDebug("XIRR: Received {Count} current prices", request.CurrentPrices.Count);
+
             // Convert to case-insensitive dictionary for reliable ticker matching
             var currentPrices = new Dictionary<string, CurrentPriceInfo>(
                 request.CurrentPrices, StringComparer.OrdinalIgnoreCase);
 
-            var positions = _portfolioCalculator.RecalculateAllPositions(transactions).ToList();
+            // Use split-adjusted positions for accurate comparison with current prices
+            var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
+                transactions, stockSplits, _splitAdjustmentService).ToList();
+
+            _logger.LogDebug("XIRR: Found {Count} positions", positions.Count);
+
             decimal currentValue = 0m;
 
             foreach (var position in positions)
             {
                 if (currentPrices.TryGetValue(position.Ticker, out var priceInfo))
                 {
-                    currentValue += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                    var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                    _logger.LogDebug("XIRR: Position {Ticker}: {Shares} shares * {Price} * {Rate} = {Value}",
+                        position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
+                    currentValue += positionValue;
+                }
+                else
+                {
+                    _logger.LogDebug("XIRR: No price found for position {Ticker}. Available prices: {Keys}",
+                        position.Ticker, string.Join(", ", currentPrices.Keys));
                 }
             }
+
+            _logger.LogDebug("XIRR: Total current value = {Value}", currentValue);
 
             if (currentValue > 0)
             {
                 cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
             }
         }
+        else
+        {
+            _logger.LogDebug("XIRR: No current prices provided. CurrentPrices is {Status}",
+                request.CurrentPrices == null ? "null" : $"empty (count: {request.CurrentPrices.Count})");
+        }
+
+        _logger.LogDebug("XIRR: Total cash flows = {Count}", cashFlows.Count);
 
         var xirr = _portfolioCalculator.CalculateXirr(cashFlows);
 
@@ -114,6 +150,7 @@ public class CalculateXirrUseCase
         }
 
         var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
         // Filter to only this ticker's transactions
         var tickerTransactions = allTransactions
@@ -153,7 +190,9 @@ public class CalculateXirrUseCase
         // Add current position value as final cash flow
         if (request.CurrentPrice.HasValue && request.CurrentExchangeRate.HasValue)
         {
-            var position = _portfolioCalculator.CalculatePosition(ticker, allTransactions);
+            // Use split-adjusted position for accurate comparison with current price
+            var position = _portfolioCalculator.CalculatePositionWithSplitAdjustments(
+                ticker, allTransactions, stockSplits, _splitAdjustmentService);
 
             if (position.TotalShares > 0)
             {
