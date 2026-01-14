@@ -1,0 +1,172 @@
+# Research: Portfolio Enhancements V2
+
+**Date**: 2026-01-14
+**Feature**: 002-portfolio-enhancements
+
+## §1 Nullable Exchange Rate & Mixed Currency Cost Tracking
+
+### Decision
+Make `StockTransaction.ExchangeRate` nullable. When null, display and calculate costs in the stock's native currency without TWD conversion.
+
+### Rationale
+- Users may not use the currency ledger feature
+- Forcing exchange rate input creates inaccurate data when users don't know the actual rate
+- Separating costs by currency prevents mixing incompatible values
+- XIRR calculation for mixed-currency portfolios should either:
+  - Calculate per-currency XIRR separately, OR
+  - Exclude transactions without exchange rate from TWD-based XIRR
+
+### Implementation
+- Backend: Change `ExchangeRate` from `decimal` to `decimal?`
+- Frontend: Make exchange rate field optional in transaction form
+- Display: Show "USD 1,234.56" instead of "TWD 38,876.24" when no rate
+- Grouping: Holdings grouped by (Symbol, Currency, HasExchangeRate)
+
+### Alternatives Considered
+1. **Force exchange rate input**: Rejected - creates bad data
+2. **Use live rate automatically**: Rejected - user may have specific rate from broker
+3. **Separate transaction types**: Rejected - overcomplicates data model
+
+---
+
+## §2 Euronext API Integration
+
+### Decision
+Use Euronext's public quote API at `https://live.euronext.com/en/ajax/getDetailedQuote/{ISIN}-{MIC}` with caching and stale fallback.
+
+### Rationale
+- Euronext provides free public API for real-time quotes
+- ISIN-MIC format ensures unique identification (e.g., IE000FHBZDZ8-XAMS)
+- Caching prevents rate limiting and reduces latency
+- Stale indicator provides transparency when API fails
+
+### Implementation
+- New `EuronextApiClient` in Infrastructure layer
+- Cache quotes for 5 minutes (configurable)
+- On API failure: return cached quote with `IsStale = true`
+- Frontend: Display stale indicator ("Price as of {timestamp}, may be outdated")
+
+### MIC Codes for Common Euronext Markets
+| Market | MIC |
+|--------|-----|
+| Amsterdam | XAMS |
+| Paris | XPAR |
+| Brussels | XBRU |
+| Lisbon | XLIS |
+
+### Historical Prices
+- Euronext historical data requires research for year-end prices
+- Fallback: Manual input via existing HistoricalPrice mechanism
+- Future: Consider scraping or third-party data source
+
+---
+
+## §3 Historical Year Performance
+
+### Decision
+Extend existing YTD performance calculation to accept a year parameter, reusing the same XIRR and return calculation logic.
+
+### Rationale
+- YTD logic already handles date-range performance calculation
+- Parameterizing the year is a minimal change
+- Consistent calculation method across all time periods
+
+### Implementation
+- Add `year` parameter to existing performance endpoints
+- Calculate using transactions from Jan 1 to Dec 31 of specified year
+- Require year-end prices for all held positions (prompt if missing)
+- Available years: derived from earliest transaction date to current year
+
+### Year-End Price Requirements
+- For each position held at year-end, need Dec 31 closing price
+- Use existing `HistoricalPrice` table
+- Prompt user to input missing prices (FR-030a)
+
+---
+
+## §4 ETF Type Classification & Dividend Adjustment
+
+### Decision
+Default unknown ETFs to accumulating type (no dividend adjustment). Only Taiwan stocks get dividend adjustment for YTD calculation.
+
+### Rationale
+- Most international ETFs held by users are accumulating (VWRA, VT, etc.)
+- Taiwan stock dividends are well-documented and can be fetched
+- Conservative approach: not adjusting is safer than wrong adjustment
+- User can manually override classification if needed
+
+### Implementation
+- New `EtfClassification` entity: Symbol, Market, Type (enum)
+- Type values: `Accumulating`, `Distributing`, `Unknown`
+- Unknown defaults to Accumulating behavior
+- Taiwan stocks: fetch dividend data from existing source
+- Display "Unconfirmed type" badge for Unknown classifications
+
+### Future Enhancements (Out of Scope)
+- US stock dividend adjustment
+- Fetch annual total return from reliable sources
+- Auto-detect ETF type from fund data providers
+
+---
+
+## §5 Chart Visualization (Pie Chart & Bar Chart)
+
+### Decision
+Use existing Recharts library for both pie chart (asset allocation) and bar chart (performance comparison).
+
+### Rationale
+- Recharts already in frontend dependencies
+- Consistent look and feel with any existing charts
+- Good React integration and TypeScript support
+- Responsive and accessible
+
+### Implementation
+
+#### Asset Allocation Pie Chart
+```tsx
+<PieChart>
+  <Pie data={allocationData} dataKey="value" nameKey="category">
+    {allocationData.map((entry, index) => (
+      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+    ))}
+  </Pie>
+  <Tooltip formatter={(value) => formatCurrency(value)} />
+  <Legend />
+</PieChart>
+```
+
+#### Performance Bar Chart
+```tsx
+<BarChart data={performanceData}>
+  <XAxis dataKey="name" />
+  <YAxis tickFormatter={(v) => `${v}%`} />
+  <Tooltip />
+  <Bar dataKey="return" fill="#8884d8">
+    <LabelList dataKey="return" position="top" formatter={(v) => `${v}%`} />
+  </Bar>
+</BarChart>
+```
+
+### Color Scheme
+- Use consistent color palette across all charts
+- Distinct colors for different asset categories
+- Positive returns: green tones
+- Negative returns: red tones
+
+---
+
+## §6 XIRR Handling for Mixed Currency Transactions
+
+### Decision
+For portfolios with mixed exchange rate presence, calculate XIRR in source currency when possible; exclude from TWD-based XIRR if exchange rate is null.
+
+### Rationale
+- XIRR requires consistent currency for cash flows
+- Mixing currencies produces meaningless results
+- Per-currency XIRR provides accurate returns in that currency
+
+### Implementation
+- TWD XIRR: Only include transactions with exchange rate
+- USD XIRR: Include all USD transactions (with or without rate)
+- Display both when applicable
+- Clear labeling: "XIRR (TWD)", "XIRR (USD)"

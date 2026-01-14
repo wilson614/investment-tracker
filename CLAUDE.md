@@ -6,6 +6,8 @@ Auto-generated from all feature plans. Last updated: 2026-01-06
 - SQLite (development), PostgreSQL (production-compatible) (001-portfolio-tracker)
 - C# .NET 8 (Backend), TypeScript 5.x with React (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query (001-portfolio-tracker)
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query (001-portfolio-tracker)
+- C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts (002-portfolio-enhancements)
+- PostgreSQL (primary), SQLite (development) (002-portfolio-enhancements)
 
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) (001-portfolio-tracker)
 
@@ -26,9 +28,9 @@ npm test; npm run lint
 C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Recent Changes
+- 002-portfolio-enhancements: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
-- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x with React (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 
 
 <!-- MANUAL ADDITIONS START -->
@@ -53,10 +55,12 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 **⚠️ 強制性流程** - 任何涉及功能/架構變更的請求，**必須**依照以下 Speckit 標準流程執行：
 
 #### 檔案位置
-- 所有 Speckit 產生的檔案存放於 `.speckit/` 目錄
-- 功能規格：`.speckit/spec.md`
-- 實作計畫：`.speckit/plan.md`
-- 任務清單：`.speckit/tasks.md`
+- 規格文件存放於 `specs/<module-name>/` 目錄
+  - 功能規格：`specs/<module-name>/spec.md`
+  - 實作計畫：`specs/<module-name>/plan.md`
+  - 任務清單：`specs/<module-name>/tasks.md`
+- Speckit 配置/模板存放於 `.speckit/` 目錄
+- 目前主要模組：`specs/001-portfolio-tracker/`
 
 #### 標準流程（必須依序執行）
 
@@ -64,18 +68,21 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
    - 新功能必須在對應的 feature branch 上開發
    - 執行 `git checkout -b feature/<feature-name>` 建立新分支
 
-2. **更新規格** → 執行 `/speckit.specify`
-   - 根據使用者需求描述產生或更新 `.speckit/spec.md`
+2. **更新規格**
+   - **全新模組**（如 002-xxx）→ 執行 `/speckit.specify` 產生新的規格文件
+   - **現有模組增量更新** → **直接手動編輯** `specs/<module-name>/spec.md`，不需執行 `/speckit.specify`
 
 3. **釐清需求** → 執行 `/speckit.clarify`
    - 識別規格中不明確的部分，提出最多 5 個針對性問題
    - 將答案編碼回 spec.md
 
 4. **制定計畫** → 執行 `/speckit.plan`
-   - 根據規格產生 `.speckit/plan.md` 設計文件
+   - **全新模組** → 產生新的 plan.md
+   - **現有模組增量更新** → 說明「檢查並更新現有 plan.md」
 
 5. **產生任務** → 執行 `/speckit.tasks`
-   - 產生依賴順序排列的 `.speckit/tasks.md` 任務清單
+   - **全新模組** → 產生新的 tasks.md
+   - **現有模組增量更新** → 說明「檢查並更新現有 tasks.md」
 
 6. **品質分析** → 執行 `/speckit.analyze`
    - 跨文件一致性與品質檢查（spec.md、plan.md、tasks.md）
