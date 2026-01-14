@@ -24,7 +24,7 @@ const guessMarket = (ticker: string): StockMarketType => {
 };
 
 // Cache keys for localStorage
-const PERF_CACHE_KEY = 'portfolio_perf_cache';
+const PERF_CACHE_KEY = 'perf_cache_portfolio';
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
 interface CachedPerformance {
