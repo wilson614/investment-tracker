@@ -77,13 +77,6 @@ public record CreateStockTransactionRequest
 public record UpdateStockTransactionRequest
 {
     [Required]
-    [StringLength(20, MinimumLength = 1)]
-    public string Ticker { get; init; } = string.Empty;
-
-    [Required]
-    public TransactionType TransactionType { get; init; }
-
-    [Required]
     public DateTime TransactionDate { get; init; }
 
     [Required]
