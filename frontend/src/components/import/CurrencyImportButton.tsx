@@ -38,13 +38,13 @@ const currencyFields: FieldDefinition[] = [
   {
     name: 'foreignAmount',
     label: '外幣金額',
-    aliases: ['foreign_amount', 'ForeignAmount', 'amount', 'Amount', '外幣', '金額'],
+    aliases: ['foreign_amount', 'ForeignAmount', 'amount', 'Amount', '外幣', '金額', '外幣金額', '外幣金額(USD)', 'foreignamount(usd)'],
     required: true,
   },
   {
     name: 'homeAmount',
     label: '台幣金額',
-    aliases: ['home_amount', 'HomeAmount', 'twdAmount', 'TWDAmount', '台幣', 'TWD'],
+    aliases: ['home_amount', 'HomeAmount', 'twdAmount', 'TWDAmount', '台幣', 'TWD', '台幣金額', '台幣金額(TWD)', 'homeamount(twd)'],
     required: false,
   },
   {
