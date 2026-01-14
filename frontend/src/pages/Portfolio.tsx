@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, stockPriceApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
@@ -8,9 +8,9 @@ import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
-import { exportTransactionsToCsv } from '../services/csvExport';
+import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
 import { StockMarket } from '../types';
-import type { PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
+import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
 const guessMarket = (ticker: string): StockMarketType => {
@@ -24,7 +24,7 @@ const guessMarket = (ticker: string): StockMarketType => {
 };
 
 // Cache keys for localStorage
-const getPerformanceCacheKey = (portfolioId: string) => `perf_cache_${portfolioId}`;
+const PERF_CACHE_KEY = 'portfolio_perf_cache';
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
 interface CachedPerformance {
@@ -63,14 +63,12 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 };
 
 export function PortfolioPage() {
-  const { id: urlId } = useParams<{ id: string }>();
-  const [portfolioId, setPortfolioId] = useState<string | null>(urlId ?? null);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   // Load cached performance data on init (no time limit - always show cached, then refresh)
-  const loadCachedPerformance = (pid: string | null): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
-    if (!pid) return { summary: null, xirrResult: null };
+  const loadCachedPerformance = (): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
     try {
-      const cached = localStorage.getItem(getPerformanceCacheKey(pid));
+      const cached = localStorage.getItem(PERF_CACHE_KEY);
       if (cached) {
         const data: CachedPerformance = JSON.parse(cached);
         return { summary: data.summary, xirrResult: data.xirrResult };
@@ -81,10 +79,10 @@ export function PortfolioPage() {
     return { summary: null, xirrResult: null };
   };
 
-  const cachedPerf = loadCachedPerformance(portfolioId);
+  const cachedPerf = loadCachedPerformance();
   const [summary, setSummary] = useState<PortfolioSummary | null>(cachedPerf.summary);
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(cachedPerf.xirrResult);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(cachedPerf.summary === null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFetchingAll, setIsFetchingAll] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -96,13 +94,31 @@ export function PortfolioPage() {
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
 
-  const loadData = useCallback(async (pid: string) => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
+
+      // Get or create user's portfolio
+      let portfolios = await portfolioApi.getAll();
+      let currentPortfolio: Portfolio;
+
+      if (portfolios.length === 0) {
+        // Create default portfolio for new users
+        currentPortfolio = await portfolioApi.create({
+          baseCurrency: 'USD',
+          homeCurrency: 'TWD',
+        });
+      } else {
+        currentPortfolio = portfolios[0];
+      }
+
+      setPortfolio(currentPortfolio);
+      const portfolioId = currentPortfolio.id;
+
       const [basicSummary, txData] = await Promise.all([
-        portfolioApi.getSummary(pid),
-        transactionApi.getByPortfolio(pid),
+        portfolioApi.getSummary(portfolioId),
+        transactionApi.getByPortfolio(portfolioId),
       ]);
       setTransactions(txData);
 
@@ -114,8 +130,8 @@ export function PortfolioPage() {
       // If we have cached prices, calculate with them immediately
       if (Object.keys(cachedPrices).length > 0) {
         const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(pid, cachedPrices),
-          portfolioApi.calculateXirr(pid, { currentPrices: cachedPrices }),
+          portfolioApi.getSummary(portfolioId, cachedPrices),
+          portfolioApi.calculateXirr(portfolioId, { currentPrices: cachedPrices }),
         ]);
         setSummary(summaryWithPrices);
         setXirrResult(xirr);
@@ -131,31 +147,9 @@ export function PortfolioPage() {
 
   const hasFetchedOnLoad = useRef(false);
 
-  // Fetch default portfolio if no URL id provided
   useEffect(() => {
-    const initializePortfolio = async () => {
-      if (urlId) {
-        setPortfolioId(urlId);
-        loadData(urlId);
-      } else {
-        try {
-          const portfolios = await portfolioApi.getAll();
-          if (portfolios.length > 0) {
-            const defaultId = portfolios[0].id;
-            setPortfolioId(defaultId);
-            loadData(defaultId);
-          } else {
-            setError('找不到投資組合');
-            setIsLoading(false);
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to load portfolios');
-          setIsLoading(false);
-        }
-      }
-    };
-    initializePortfolio();
-  }, [urlId, loadData]);
+    loadData();
+  }, [loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
   useEffect(() => {
@@ -166,14 +160,11 @@ export function PortfolioPage() {
   }, [summary, isLoading]);
 
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
-    const nextTicker = data.ticker.toUpperCase();
-    const isNewPosition = !summary?.positions.some(p => p.ticker.toUpperCase() === nextTicker);
-
     if (editingTransaction) {
       await transactionApi.update(editingTransaction.id, {
+        transactionDate: data.transactionDate,
         ticker: data.ticker,
         transactionType: data.transactionType,
-        transactionDate: data.transactionDate,
         shares: data.shares,
         pricePerShare: data.pricePerShare,
         exchangeRate: data.exchangeRate ?? 1,
@@ -185,35 +176,7 @@ export function PortfolioPage() {
     } else {
       await transactionApi.create(data);
     }
-
-    // If this creates a new position, prefetch and cache quote so the PositionCard shows price immediately
-    if (isNewPosition) {
-      try {
-        const homeCurrency = summary?.portfolio.homeCurrency ?? 'TWD';
-        const market = guessMarket(nextTicker);
-        let quote = await stockPriceApi.getQuoteWithRate(market, nextTicker, homeCurrency);
-        let finalMarket = market;
-
-        if (!quote && market === StockMarket.US) {
-          quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, nextTicker, homeCurrency);
-          if (quote) finalMarket = StockMarket.UK;
-        }
-
-        if (quote?.exchangeRate) {
-          const cacheData: CachedQuote = {
-            quote,
-            updatedAt: new Date().toISOString(),
-            market: finalMarket,
-          };
-          localStorage.setItem(getQuoteCacheKey(nextTicker), JSON.stringify(cacheData));
-        }
-      } catch {
-        // Ignore prefetch errors
-      }
-    }
-
-    if (!portfolioId) return;
-    await loadData(portfolioId);
+    await loadData();
     setShowForm(false);
     setEditingTransaction(null);
   };
@@ -226,18 +189,18 @@ export function PortfolioPage() {
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
-    if (portfolioId) await loadData(portfolioId);
+    await loadData();
   };
 
   const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
-    if (!portfolioId || Object.keys(prices).length === 0) return;
+    if (!portfolio || Object.keys(prices).length === 0) return;
 
     setIsCalculating(true);
 
     try {
       const [summaryData, xirrData] = await Promise.all([
-        portfolioApi.getSummary(portfolioId, prices),
-        portfolioApi.calculateXirr(portfolioId, { currentPrices: prices }),
+        portfolioApi.getSummary(portfolio.id, prices),
+        portfolioApi.calculateXirr(portfolio.id, { currentPrices: prices }),
       ]);
       setSummary(summaryData);
       setXirrResult(xirrData);
@@ -249,7 +212,7 @@ export function PortfolioPage() {
           xirrResult: xirrData,
           cachedAt: new Date().toISOString(),
         };
-        localStorage.setItem(getPerformanceCacheKey(portfolioId), JSON.stringify(cacheData));
+        localStorage.setItem(PERF_CACHE_KEY, JSON.stringify(cacheData));
       } catch {
         // Ignore cache errors
       }
@@ -263,7 +226,7 @@ export function PortfolioPage() {
   const handlePositionPriceUpdate = useCallback((ticker: string, price: number, exchangeRate: number) => {
     currentPricesRef.current[ticker] = { price, exchangeRate };
     updateSummaryWithPrices({ ...currentPricesRef.current });
-  }, [portfolioId]);
+  }, [portfolio]);
 
   const handleFetchAllPrices = async () => {
     if (!summary) return;
@@ -348,6 +311,15 @@ export function PortfolioPage() {
     );
   };
 
+  const handleExportPositions = () => {
+    if (!summary || summary.positions.length === 0) return;
+    exportPositionsToCsv(
+      summary.positions,
+      summary.portfolio.baseCurrency,
+      summary.portfolio.homeCurrency
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -384,21 +356,25 @@ export function PortfolioPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleFetchAllPrices}
-                disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
-                className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-                title="更新報價"
-              >
-                {isFetchingAll ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                更新報價
-              </button>
-            </div>
+            <FileDropdown
+              onExport={handleExportPositions}
+              exportDisabled={summary.positions.length === 0}
+            />
+            <button
+              type="button"
+              onClick={handleFetchAllPrices}
+              disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
+              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+              title="更新報價"
+            >
+              {isFetchingAll ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              更新報價
+            </button>
+          </div>
         </div>
 
         {/* Performance Metrics - horizontal layout */}
@@ -461,7 +437,7 @@ export function PortfolioPage() {
                 + 新增
               </button>
               <StockImportButton
-                portfolioId={portfolioId!}
+                portfolioId={portfolio?.id ?? ''}
                 onImportComplete={loadData}
                 renderTrigger={(onClick) => {
                   importTriggerRef.current = onClick;
@@ -488,7 +464,7 @@ export function PortfolioPage() {
           <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
             <div className="card-dark p-0 w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
               <TransactionForm
-                portfolioId={portfolioId!}
+                portfolioId={portfolio?.id ?? ''}
                 initialData={editingTransaction ?? undefined}
                 onSubmit={handleAddTransaction}
                 onCancel={() => {
