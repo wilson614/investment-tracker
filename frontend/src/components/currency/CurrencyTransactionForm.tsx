@@ -159,21 +159,6 @@ export function CurrencyTransactionForm({
         </div>
       )}
 
-      {isExchangeType && (
-        <div>
-          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            匯率（自動計算）
-          </label>
-          <input
-            type="number"
-            step="0.0001"
-            value={exchangeRate}
-            readOnly
-            className="input-dark w-full bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
-            placeholder="自動計算"
-          />
-        </div>
-      )}
 
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">

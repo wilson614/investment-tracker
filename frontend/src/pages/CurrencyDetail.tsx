@@ -528,7 +528,10 @@ export default function CurrencyDetail() {
                 <tbody>
                   {(() => {
                     const runningBalances = calculateRunningBalances(transactions);
-                    return transactions.map((tx, index) => (
+                    // Display in reverse order (newest first), calculate original index for selection
+                    return [...transactions].reverse().map((tx, displayIndex) => {
+                      const originalIndex = transactions.length - 1 - displayIndex;
+                      return (
                       <tr
                         key={tx.id}
                         className={selectedIds.has(tx.id) ? 'bg-[var(--accent-peach-soft)]' : ''}
@@ -537,7 +540,7 @@ export default function CurrencyDetail() {
                           <input
                             type="checkbox"
                             checked={selectedIds.has(tx.id)}
-                            onClick={(e) => handleSelectOne(tx.id, index, e)}
+                            onClick={(e) => handleSelectOne(tx.id, originalIndex, e)}
                             onChange={() => {}}
                             className="checkbox-dark cursor-pointer"
                           />
@@ -564,25 +567,31 @@ export default function CurrencyDetail() {
                           {tx.notes || '-'}
                         </td>
                         <td className="text-center">
-                          <div className="flex justify-center gap-2">
-                            <button
-                              onClick={() => setEditingTransaction(tx)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                              title="編輯"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSingle(tx.id)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                              title="刪除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          {tx.relatedStockTransactionId ? (
+                            <span className="text-xs text-[var(--text-muted)]" title="此交易由股票買入自動產生，無法直接編輯或刪除">
+                              🔒
+                            </span>
+                          ) : (
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => setEditingTransaction(tx)}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                                title="編輯"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSingle(tx.id)}
+                                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                                title="刪除"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
-                    ));
+                    );});
                   })()}
                 </tbody>
               </table>

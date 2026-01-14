@@ -60,6 +60,9 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
   // Derived state: is current ticker a Taiwan stock?
   const isTW = isTaiwanStock(formData.ticker);
 
+  // Derived state: is using currency ledger for non-TW stock?
+  const useCurrencyLedger = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -86,7 +89,10 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
     setFormData((prev) => ({
       ...prev,
       fundSource: value,
-      currencyLedgerId: value === FundSourceEnum.None ? '' : prev.currencyLedgerId,
+      // When switching to CurrencyLedger, default to first ledger; when switching away, clear selection
+      currencyLedgerId: value === FundSourceEnum.CurrencyLedger
+        ? (currencyLedgers[0]?.ledger.id ?? '')
+        : '',
     }));
   };
 
@@ -104,6 +110,12 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
     setIsSubmitting(true);
 
     try {
+      // When using currency ledger (and not TW stock), don't send exchange rate - backend will calculate
+      const shouldOmitExchangeRate = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
+
+      // Taiwan stocks always use exchange rate 1
+      const exchangeRateValue = isTW ? 1 : parseFloat(formData.exchangeRate);
+
       const request: CreateStockTransactionRequest = {
         portfolioId,
         ticker: formData.ticker.toUpperCase(),
@@ -111,7 +123,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
         transactionDate: formData.transactionDate,
         shares: parseFloat(formData.shares),
         pricePerShare: parseFloat(formData.pricePerShare),
-        exchangeRate: parseFloat(formData.exchangeRate),
+        exchangeRate: shouldOmitExchangeRate ? undefined : exchangeRateValue,
         fees: parseFloat(formData.fees) || 0,
         fundSource: formData.fundSource,
         currencyLedgerId: formData.currencyLedgerId || undefined,
@@ -226,7 +238,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            每股價格
+            價格
           </label>
           <input
             type="number"
@@ -241,23 +253,25 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
           />
         </div>
 
-        <div>
-          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            匯率
-            {isTW && <span className="ml-2 text-xs text-[var(--text-muted)]">(台股預設 1)</span>}
-          </label>
-          <input
-            type="number"
-            name="exchangeRate"
-            value={formData.exchangeRate}
-            onChange={handleChange}
-            required
-            min="0.000001"
-            step="0.000001"
-            className="input-dark w-full"
-            placeholder={isTW ? "1" : "31.5"}
-          />
-        </div>
+        {/* Exchange rate - hidden for Taiwan stocks and when using currency ledger */}
+        {!useCurrencyLedger && !isTW && (
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              匯率
+            </label>
+            <input
+              type="number"
+              name="exchangeRate"
+              value={formData.exchangeRate}
+              onChange={handleChange}
+              required
+              min="0.000001"
+              step="0.000001"
+              className="input-dark w-full"
+              placeholder="31.5"
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
@@ -307,7 +321,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
                 required
                 className="input-dark w-full"
               >
-                <option value="">選擇帳本...</option>
                 {currencyLedgers.map((ledger) => (
                   <option key={ledger.ledger.id} value={ledger.ledger.id}>
                     {ledger.ledger.currencyCode}

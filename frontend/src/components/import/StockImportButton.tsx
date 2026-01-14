@@ -22,58 +22,68 @@ interface StockImportButtonProps {
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
-// Field definitions for stock transaction CSV (exchangeRate is optional when using currency ledger)
-const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => [
-  {
-    name: 'date',
-    label: '日期',
-    aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
-    required: true,
-  },
-  {
-    name: 'ticker',
-    label: '股票代號',
-    aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票'],
-    required: true,
-  },
-  {
-    name: 'type',
-    label: '交易類型',
-    aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
-    required: true,
-  },
-  {
-    name: 'shares',
-    label: '股數',
-    aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數'],
-    required: true,
-  },
-  {
-    name: 'price',
-    label: '每股價格',
-    aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
-    required: true,
-  },
-  {
-    name: 'exchangeRate',
-    label: '匯率',
-    // When using currency ledger, do not auto-map exchange rate column (prefer ledger calculation)
-    aliases: useCurrencyLedger ? [] : ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
-    required: !useCurrencyLedger, // Optional when using currency ledger
-  },
-  {
-    name: 'fees',
-    label: '手續費',
-    aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
-    required: false,
-  },
-  {
-    name: 'notes',
-    label: '備註',
-    aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
-    required: false,
-  },
-];
+// Field definitions for stock transaction CSV (exchangeRate is hidden when using currency ledger)
+const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
+  const fields: FieldDefinition[] = [
+    {
+      name: 'date',
+      label: '日期',
+      aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
+      required: true,
+    },
+    {
+      name: 'ticker',
+      label: '股票代號',
+      aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票', '股票代號'],
+      required: true,
+    },
+    {
+      name: 'type',
+      label: '交易類型',
+      aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
+      required: true,
+    },
+    {
+      name: 'shares',
+      label: '股數',
+      aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數', '股數'],
+      required: true,
+    },
+    {
+      name: 'price',
+      label: '每股價格',
+      aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
+      required: true,
+    },
+  ];
+
+  // Only include exchange rate field when not using currency ledger
+  if (!useCurrencyLedger) {
+    fields.push({
+      name: 'exchangeRate',
+      label: '匯率',
+      aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
+      required: true,
+    });
+  }
+
+  fields.push(
+    {
+      name: 'fees',
+      label: '手續費',
+      aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
+      required: false,
+    },
+    {
+      name: 'notes',
+      label: '備註',
+      aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
+      required: false,
+    }
+  );
+
+  return fields;
+};
 
 // Map transaction type string to enum
 function parseTransactionType(typeStr: string): TransactionType | null {

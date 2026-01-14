@@ -72,12 +72,12 @@ export function generateTransactionsCsv(
     '股票代號',
     '類型',
     '股數',
-    '價格(原幣)',
-    '手續費(原幣)',
+    '價格（原幣）',
+    '手續費（原幣）',
     '匯率',
-    '總成本(原幣)',
-    `總成本(${homeCurrency})`,
-    `已實現損益(${homeCurrency})`,
+    '總成本（原幣）',
+    `總成本（${homeCurrency}）`,
+    `已實現損益（${homeCurrency}）`,
     '備註',
   ];
 
@@ -117,12 +117,12 @@ export function generatePositionsCsv(
   const headers = [
     '股票代號',
     '持股數量',
-    '平均成本(原幣)',
-    `總成本(${homeCurrency})`,
-    '現價(原幣)',
-    `市值(${homeCurrency})`,
-    `未實現損益(${homeCurrency})`,
-    '報酬率(%)',
+    '平均成本（原幣）',
+    `總成本（${homeCurrency}）`,
+    '現價（原幣）',
+    `市值（${homeCurrency}）`,
+    `未實現損益（${homeCurrency}）`,
+    '報酬率（%）',
   ];
 
   // Generate rows
@@ -199,15 +199,15 @@ export function exportPositionsToCsv(
  */
 export function generateCurrencyTransactionsCsv(
   transactions: CurrencyTransaction[],
-  currencyCode: string,
-  homeCurrency = 'TWD'
+  _currencyCode: string,
+  _homeCurrency = 'TWD'
 ): string {
-  // CSV Headers in Chinese
+  // CSV Headers in Chinese (match table columns without parentheses)
   const headers = [
     '日期',
     '類型',
-    `外幣金額(${currencyCode})`,
-    `台幣金額(${homeCurrency})`,
+    '外幣金額',
+    '台幣金額',
     '匯率',
     '備註',
   ];

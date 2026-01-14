@@ -35,6 +35,10 @@ public class DeleteCurrencyTransactionUseCase
         if (ledger == null || ledger.UserId != _currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this transaction");
 
+        // Prevent deleting transactions linked to stock purchases
+        if (transaction.RelatedStockTransactionId.HasValue)
+            throw new InvalidOperationException("Cannot delete transactions linked to stock purchases. Delete the stock transaction instead.");
+
         await _transactionRepository.SoftDeleteAsync(transactionId, cancellationToken);
 
         return true;

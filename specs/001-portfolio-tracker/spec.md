@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-13
+**Updated**: 2026-01-14
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -227,7 +227,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 #### Data Export
 - **FR-041**: System MUST provide CSV export functionality for transactions.
 - **FR-041a**: CSV export MUST include all transaction fields: Date, Ticker, Type, Shares, Price, Fees, Exchange Rate, Total Cost (Source), Total Cost (Home).
-- **FR-041b**: System MUST provide CSV export for portfolio positions with current values and performance metrics.
+- **FR-041b**: ~~System MUST provide CSV export for portfolio positions with current values and performance metrics.~~ (Removed - not implemented)
 - **FR-041c**: CSV files MUST use UTF-8 encoding with BOM for Excel compatibility.
 
 #### Market YTD Comparison
@@ -253,14 +253,15 @@ As an investor, I want to see my portfolio's historical performance and current 
 
 #### Taiwan Stock Support
 - **FR-043**: System MUST correctly handle Taiwan stocks where source currency equals home currency (TWD).
-- **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD).
+- **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD). The exchange rate input field MUST be hidden in the UI (system auto-sets to 1.0).
 - **FR-043b**: System MUST support both TWSE (上市) and TPEx (上櫃) markets via TWSE API.
 - **FR-043c**: System MUST implement rate limiting for TWSE API: maximum 3 requests per 5 seconds to avoid IP blocking.
 
 #### Currency Ledger
 - **FR-007**: System MUST track foreign currency balance with weighted average cost methodology.
-- **FR-007a**: System MUST allow users to edit or delete any previously recorded currency transaction.
+- **FR-007a**: System MUST allow users to edit or delete any previously recorded currency transaction, **EXCEPT** transactions linked to stock purchases (Spend type with RelatedStockTransactionId). These linked transactions can only be modified by editing/deleting the associated stock transaction.
 - **FR-007b**: System MUST automatically recalculate weighted average rate and balance when any currency transaction is added, modified, or deleted.
+- **FR-007c**: Exchange rate for currency transactions MUST be calculated by the system based on HomeAmount / ForeignAmount. Users do NOT input exchange rate directly.
 - **FR-008**: System MUST support Exchange_Buy transactions that increase foreign balance and update weighted average rate using formula: New Avg Rate = ((Old Balance × Old Avg Rate) + (New Amount × New Rate)) / (Old Balance + New Amount).
 - **FR-009**: System MUST support Exchange_Sell transactions that decrease foreign balance and realize FX Profit/Loss based on difference between transaction rate and weighted average rate.
 - **FR-010**: System MUST support Interest transactions that increase balance with configurable cost basis (0 or market rate).
@@ -313,8 +314,8 @@ As an investor, I want to see my portfolio's historical performance and current 
    - No portfolio selection UI (single portfolio per user)
 
 2. **Portfolio Page** (`/portfolio/:id`)
-   - Header: "投資組合" with optional description (editable via pencil icon)
-   - Header Actions: "檔案" dropdown (positions CSV export), "更新報價" button
+   - Header: "投資組合" with optional description
+   - Header Actions: "更新報價" button
    - Performance Metrics: Total cost, current value, unrealized PnL, return percentage
    - Positions Grid: Card-based layout showing each holding
    - Full Transaction History Section:
@@ -344,7 +345,7 @@ As an investor, I want to see my portfolio's historical performance and current 
    - Summary Metrics: Balance, Average Rate, Net Investment
    - Real-time rate displayed next to currency code, with refresh button
    - NO "Current Cost" or "Realized PnL" metrics (removed as not meaningful for holding accounts)
-   - Transaction List: All currency transactions with running balance (with "檔案" dropdown for import/export)
+   - Transaction List: All currency transactions displayed in reverse chronological order (newest first) with running balance (with "檔案" dropdown for import/export)
    - **Initial Load Behavior**:
      - Display cached exchange rate immediately on load (no flickering)
      - Automatically fetch fresh exchange rate on page mount
