@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-portfolio-tracker`
 **Created**: 2026-01-06
-**Updated**: 2026-01-13
+**Updated**: 2026-01-14
 **Status**: Implementation Complete
 **Input**: User description: "Build a Family Investment Portfolio Tracker to replace a manual spreadsheet system with multi-tenancy support"
 
@@ -138,8 +138,10 @@ As an investor, I want to see my portfolio's historical performance and current 
 
 ### Edge Cases
 
-- What happens when a user enters a sell transaction for more shares than they own?
-  - System MUST reject the transaction and display an error.
+- What happens when a user enters a sell transaction for more shares than they own (including selling a ticker with 0 holdings)?
+  - System MUST reject the transaction (no short selling).
+  - API MUST return `400 Bad Request` with a human-readable error message for validation failures (e.g., "持股不足。可賣出: 0.0000，欲賣出: 1.0000").
+  - UI MUST display the returned error message (not a generic "Not Found").
 
 - What happens when exchange rate is entered as 0 or negative?
   - System MUST validate and reject invalid exchange rates.
@@ -168,23 +170,29 @@ As an investor, I want to see my portfolio's historical performance and current 
 #### Portfolio Management
 - **FR-001**: System MUST record stock transactions with: Date, Ticker, Transaction Type (Buy/Sell), Shares (up to 4 decimal places), Price per Share (source currency), Transaction Fees, and Exchange Rate.
 - **FR-001a**: System MUST allow users to edit or delete any previously recorded transaction.
+- **FR-001c**: Editing a stock transaction MUST persist changes to ticker and transaction type (Buy/Sell).
 - **FR-001b**: System MUST automatically recalculate all derived values (moving average cost, unrealized PnL, realized PnL for sell transactions, position totals) when any transaction is added, modified, or deleted.
 - **FR-002**: System MUST calculate Total Cost (Source) = (Shares × Price) + Fees for each transaction.
 - **FR-002a**: For Taiwan stocks (ticker starting with digit), system MUST use Floor(Shares × Price) + Fees per Taiwan market convention (無條件捨去).
 - **FR-003**: System MUST calculate Total Cost (Home) = Total Cost (Source) × Exchange Rate for each transaction.
 - **FR-004**: System MUST calculate and display moving average cost per share for each position in source currency.
 - **FR-005**: System MUST calculate XIRR (Extended Internal Rate of Return) for portfolio performance when current prices are provided.
-- **FR-005a**: System MUST use case-insensitive ticker matching when mapping current prices to positions for XIRR calculation.
+- **FR-005a**: If current prices are available but one or more tickers are missing an exchange rate in cached quotes, the system MUST still be able to compute portfolio XIRR by resolving the required exchange rate (e.g., USD/TWD) via exchange-rate API.
+- **FR-005b**: If XIRR cannot be computed (e.g., < 2 cash flows, cash flows are all the same sign, or all cash flows fall on the same date), the API MUST return `xirr = null` and the UI MUST display `-`.
+- **FR-005c**: XIRR calculation MUST support short holding periods (e.g., < 30 days). The implementation MUST NOT fail solely due to high annualized rates (e.g., > 1000%); it MUST use a sufficiently wide/expandable search range to find a valid solution when one exists.
 - **FR-006**: System MUST calculate Unrealized PnL = (Current Market Price × Total Shares × Current Exchange Rate) - Total Cost (Home Currency).
 - **FR-020**: System MUST create exactly one portfolio per user account automatically on first login.
+- **FR-020a**: After login/register, the UI MUST navigate to the current user's default portfolio (it MUST NOT preserve a `/portfolio/:id` route from a different user session).
 - **FR-021**: System MUST NOT allow portfolio naming - each user has one default portfolio with optional description only.
 
 #### Real-time Stock Quotes
 - **FR-022**: System MUST provide "獲取報價" button for each position to fetch current market price.
 - **FR-023**: System MUST display visual feedback for quote fetch status: loading spinner, success ("已更新"), or error ("無法取得報價").
 - **FR-024**: System MUST provide "獲取全部報價" button to batch-fetch quotes for all positions.
+- **FR-024a**: Dashboard "更新全部" button MUST be clickable even when there are zero positions, and MUST still refresh market data (CAPE, YTD).
 - **FR-025**: System MUST cache fetched quotes in browser localStorage with timestamp.
 - **FR-026**: System MUST load cached quotes on page load for immediate display (preventing flickering), then automatically fetch fresh quotes from API.
+- **FR-026c**: After creating a new stock transaction that results in a new position (new ticker), the UI MUST auto-fetch the quote for the new position so the position card shows current price without requiring a page refresh or manual "更新報價".
 - **FR-026a**: System MUST display loading indicator (spinner on "更新報價" button) during automatic quote fetch on page load.
 - **FR-026b**: System MUST replace cached values with fresh data after successful fetch.
 - **FR-027**: System MUST support Taiwan (TW), US, and UK stock markets for quote fetching.
@@ -219,7 +227,7 @@ As an investor, I want to see my portfolio's historical performance and current 
 #### Data Export
 - **FR-041**: System MUST provide CSV export functionality for transactions.
 - **FR-041a**: CSV export MUST include all transaction fields: Date, Ticker, Type, Shares, Price, Fees, Exchange Rate, Total Cost (Source), Total Cost (Home).
-- **FR-041b**: System MUST provide CSV export for portfolio positions with current values and performance metrics.
+- **FR-041b**: ~~System MUST provide CSV export for portfolio positions with current values and performance metrics.~~ (Removed - not implemented)
 - **FR-041c**: CSV files MUST use UTF-8 encoding with BOM for Excel compatibility.
 
 #### Market YTD Comparison
@@ -227,24 +235,33 @@ As an investor, I want to see my portfolio's historical performance and current 
 - **FR-042a**: System MUST support the following benchmark ETFs for YTD comparison:
   - All Country: VWRA (Vanguard FTSE All-World)
   - US Large: VUAA (Vanguard S&P 500)
-  - Taiwan: 0050 (元大台灣50)
+  - US Small: XRSU (Xtrackers Russell 2000)
+  - Developed Markets Large: VHVE (Vanguard FTSE Developed World)
+  - Developed Markets Small: WSML (iShares MSCI World Small Cap)
+  - Dev ex US Large: EXUS (Vanguard FTSE Developed ex US)
   - Emerging Markets: VFEM (Vanguard FTSE Emerging Markets)
+  - Europe: VEUA (Vanguard FTSE Developed Europe)
+  - Japan: VJPA (Vanguard FTSE Japan)
+  - China: HCHA (HSBC MSCI China UCITS)
+  - Taiwan 0050: 0050 (元大台灣50)
 - **FR-042b**: System MUST calculate YTD return using formula: ((Current Price - Jan 1 Price) / Jan 1 Price) × 100.
 - **FR-042c**: System MUST cache Jan 1 reference prices permanently in database using YearMonth format YYYYMM (e.g., 202512 for 2025 December year-end price).
 - **FR-042d**: System MUST auto-fetch missing year-end prices from external sources (Stooq for UK ETFs, TWSE for Taiwan) when not found in database.
 - **FR-042e**: System MUST calculate dividend-adjusted total return for Taiwan 0050: ((Current Price + Dividends Paid - Jan 1 Price) / Jan 1 Price) × 100.
 - **FR-042f**: System MUST fetch 0050 dividend data from TWSE TWT49U API and only count dividends where ex-dividend date ≤ today.
+- **FR-042g**: Dashboard YTD comparison MUST default to showing 10 benchmarks (all supported benchmarks except "US Small") for users without saved preferences. User selections MUST be persisted in browser localStorage.
 
 #### Taiwan Stock Support
 - **FR-043**: System MUST correctly handle Taiwan stocks where source currency equals home currency (TWD).
-- **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD).
+- **FR-043a**: For Taiwan stocks, exchange rate MUST be 1.0 (TWD/TWD). The exchange rate input field MUST be hidden in the UI (system auto-sets to 1.0).
 - **FR-043b**: System MUST support both TWSE (上市) and TPEx (上櫃) markets via TWSE API.
 - **FR-043c**: System MUST implement rate limiting for TWSE API: maximum 3 requests per 5 seconds to avoid IP blocking.
 
 #### Currency Ledger
 - **FR-007**: System MUST track foreign currency balance with weighted average cost methodology.
-- **FR-007a**: System MUST allow users to edit or delete any previously recorded currency transaction.
+- **FR-007a**: System MUST allow users to edit or delete any previously recorded currency transaction, **EXCEPT** transactions linked to stock purchases (Spend type with RelatedStockTransactionId). These linked transactions can only be modified by editing/deleting the associated stock transaction.
 - **FR-007b**: System MUST automatically recalculate weighted average rate and balance when any currency transaction is added, modified, or deleted.
+- **FR-007c**: Exchange rate for currency transactions MUST be calculated by the system based on HomeAmount / ForeignAmount. Users do NOT input exchange rate directly.
 - **FR-008**: System MUST support Exchange_Buy transactions that increase foreign balance and update weighted average rate using formula: New Avg Rate = ((Old Balance × Old Avg Rate) + (New Amount × New Rate)) / (Old Balance + New Amount).
 - **FR-009**: System MUST support Exchange_Sell transactions that decrease foreign balance and realize FX Profit/Loss based on difference between transaction rate and weighted average rate.
 - **FR-010**: System MUST support Interest transactions that increase balance with configurable cost basis (0 or market rate).
@@ -293,19 +310,19 @@ As an investor, I want to see my portfolio's historical performance and current 
 ### Page Structure
 
 1. **Home Page** (`/`)
-   - Auto-redirects to user's portfolio page (creates default if none exists)
+   - Auto-redirects to user's portfolio (creates default if none exists)
    - No portfolio selection UI (single portfolio per user)
 
-2. **Portfolio Page** (`/portfolio`)
-   - Header: "投資組合" with optional description (editable via pencil icon)
-   - Header Actions: "檔案" dropdown (positions CSV export), "更新報價" button
+2. **Portfolio Page** (`/portfolio/:id`)
+   - Header: "投資組合" with optional description
+   - Header Actions: "更新報價" button
    - Performance Metrics: Total cost, current value, unrealized PnL, return percentage
    - Positions Grid: Card-based layout showing each holding
    - Full Transaction History Section:
      - "檔案" dropdown (import/export transactions), "+ 新增" button
      - All transactions with edit/delete actions
 
-3. **Position Detail Page** (`/portfolio/position/:ticker`)
+3. **Position Detail Page** (`/portfolio/:id/position/:ticker`)
    - Header: Ticker symbol with market tag (台股/美股/英股)
    - "獲取報價" button with visual status feedback
    - Position Metrics: Shares, average cost, total cost, current price
@@ -328,7 +345,7 @@ As an investor, I want to see my portfolio's historical performance and current 
    - Summary Metrics: Balance, Average Rate, Net Investment
    - Real-time rate displayed next to currency code, with refresh button
    - NO "Current Cost" or "Realized PnL" metrics (removed as not meaningful for holding accounts)
-   - Transaction List: All currency transactions with running balance (with "檔案" dropdown for import/export)
+   - Transaction List: All currency transactions displayed in reverse chronological order (newest first) with running balance (with "檔案" dropdown for import/export)
    - **Initial Load Behavior**:
      - Display cached exchange rate immediately on load (no flickering)
      - Automatically fetch fresh exchange rate on page mount
@@ -357,7 +374,7 @@ As an investor, I want to see my portfolio's historical performance and current 
      - Display current value, expected return, and valuation percentile
      - Provides macro context for investment decisions
    - **Market YTD Comparison Section**:
-     - YTD returns for benchmark ETFs (VWRA, VUAA, 0050, VFEM)
+     - YTD returns for benchmark ETFs (10 shown by default; excludes US Small)
      - Compare portfolio YTD against market benchmarks
    - **Portfolio Summary Section**:
      - Total market value, total cost, unrealized PnL (amount + percentage)
@@ -401,11 +418,9 @@ As an investor, I want to see my portfolio's historical performance and current 
 | Cache Type | Key Pattern | Data Cached | Used In |
 |------------|-------------|-------------|---------|
 | Stock Quote | `quote_cache_${ticker}` | Price, change%, exchange rate, market | Portfolio, Dashboard, PositionCard, PositionDetail |
-| Performance | `portfolio_perf_cache` | Summary, XIRR result | Portfolio |
+| Performance | `perf_cache_${portfolioId}` | Summary, XIRR result | Portfolio |
 | Position XIRR | `xirr_cache_${portfolioId}_${ticker}` | XIRR for single position | PositionDetail |
 | Exchange Rate | `rate_cache_${from}_${to}` | Exchange rate | CurrencyDetail |
-
-**Note**: Performance cache uses a single key (`portfolio_perf_cache`) since each user has only one portfolio. Position XIRR cache still includes portfolioId for future extensibility.
 
 **Page Refresh Behavior**:
 - Page refresh (F5) MUST trigger automatic data fetch for all visible data
@@ -508,34 +523,15 @@ As an investor, I want to see my portfolio's historical performance and current 
   - 當 source currency = home currency (TWD) 時，exchange rate = 1.0
   - 系統支援 TWSE（上市）和 TPEx（上櫃）市場
 
-### Session 2026-01-12 (Route Simplification)
-
-- Q: 前端路由是否需要包含 portfolio ID？ → A: 否，因為每個用戶只有一個投資組合
-  - 路由從 `/portfolio/:id` 簡化為 `/portfolio`
-  - 路由從 `/portfolio/:id/position/:ticker` 簡化為 `/portfolio/position/:ticker`
-  - 移除 localStorage 中不必要的 portfolio ID 存儲
-  - Portfolio 頁面改為自動獲取用戶的投資組合（如果沒有則自動建立）
-  - 相關頁面（PositionDetail, Transactions）也改為自動獲取 portfolio
-
-### Session 2026-01-13 (Bug Fixes)
-
-- 修正交易紀錄編輯問題：變更交易類型或股票代號後存檔無效
-  - 根本原因：UpdateStockTransactionRequest DTO 缺少 Ticker 和 TransactionType 欄位
-  - 修正方式：後端 DTO 新增必要欄位，前端呼叫時傳送完整資料
-- 實作 Token 過期自動跳轉登入頁
-  - 前端 API 層統一處理 401 Unauthorized 回應
-  - 自動清除 localStorage 中的認證資訊並導向 /login
-- 修正 XIRR 計算問題：只有買入交易時即使有即時價格也無法計算
-  - 根本原因：currentPrices Dictionary 使用 case-sensitive key 匹配
-  - 修正方式：使用 StringComparer.OrdinalIgnoreCase 建立 Dictionary
-
 ## Assumptions
 
 - **Home Currency**: TWD (New Taiwan Dollar) is the only supported home currency. The system uses TWD for all final value calculations.
 - **Foreign Currency**: USD is the primary investment currency. All stock prices are in source currency (typically USD).
 - **Single Portfolio**: Each user account has exactly one portfolio, automatically created on first access.
+- **Navigation**: The frontend MUST NOT rely on `default_portfolio_id` persisted in localStorage to resolve the current user's portfolio; it should always obtain the portfolio id from the API for the authenticated user (single-portfolio assumption).
+- **Logout**: On logout, the frontend MUST clear auth tokens and user-scoped caches including `default_portfolio_id` to prevent cross-account leakage.
 - **Market Data**: Stock prices are fetched on-demand via external APIs (Sina Finance for TW, Yahoo Finance for US/UK). Quotes are cached in browser localStorage.
-- **Authentication**: Standard email/password authentication via JWT tokens. Access tokens expire after 24 hours. When a 401 Unauthorized response is received, the frontend automatically clears stored credentials and redirects to the login page.
+- **Authentication**: Standard email/password authentication via JWT tokens.
 - **Interest Tracking**: Bank interest in Currency Ledger defaults to 0 cost basis (lowering average cost).
 - **Stock Split Handling**: Stock splits are recorded in a dedicated table with symbol, date, and ratio. Historical transactions are automatically adjusted at display/calculation time while preserving original data. Known splits include: 0050 (Taiwan) 1:4 split effective 2025-06-18.
 - **Market Detection**: Ticker format determines market - digits for Taiwan, .L suffix for UK, otherwise US.

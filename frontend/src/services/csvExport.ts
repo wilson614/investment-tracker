@@ -63,7 +63,7 @@ function formatNumber(value: number | null | undefined, decimals = 2): string {
  */
 export function generateTransactionsCsv(
   transactions: StockTransaction[],
-  baseCurrency = 'USD',
+  _baseCurrency = 'USD',
   homeCurrency = 'TWD'
 ): string {
   // CSV Headers in Chinese
@@ -72,12 +72,12 @@ export function generateTransactionsCsv(
     '股票代號',
     '類型',
     '股數',
-    `價格(${baseCurrency})`,
-    `手續費(${baseCurrency})`,
+    '價格（原幣）',
+    '手續費（原幣）',
     '匯率',
-    `總成本(${baseCurrency})`,
-    `總成本(${homeCurrency})`,
-    `已實現損益(${homeCurrency})`,
+    '總成本（原幣）',
+    `總成本（${homeCurrency}）`,
+    `已實現損益（${homeCurrency}）`,
     '備註',
   ];
 
@@ -110,19 +110,19 @@ export function generateTransactionsCsv(
  */
 export function generatePositionsCsv(
   positions: StockPosition[],
-  baseCurrency = 'USD',
+  _baseCurrency = 'USD',
   homeCurrency = 'TWD'
 ): string {
   // CSV Headers in Chinese
   const headers = [
     '股票代號',
     '持股數量',
-    `平均成本(${baseCurrency})`,
-    `總成本(${homeCurrency})`,
-    `現價(${baseCurrency})`,
-    `市值(${homeCurrency})`,
-    `未實現損益(${homeCurrency})`,
-    '報酬率(%)',
+    '平均成本（原幣）',
+    `總成本（${homeCurrency}）`,
+    '現價（原幣）',
+    `市值（${homeCurrency}）`,
+    `未實現損益（${homeCurrency}）`,
+    '報酬率（%）',
   ];
 
   // Generate rows
@@ -199,15 +199,15 @@ export function exportPositionsToCsv(
  */
 export function generateCurrencyTransactionsCsv(
   transactions: CurrencyTransaction[],
-  currencyCode: string,
-  homeCurrency = 'TWD'
+  _currencyCode: string,
+  _homeCurrency = 'TWD'
 ): string {
-  // CSV Headers in Chinese
+  // CSV Headers in Chinese (match table columns without parentheses)
   const headers = [
     '日期',
     '類型',
-    `外幣金額(${currencyCode})`,
-    `台幣金額(${homeCurrency})`,
+    '外幣金額',
+    '台幣金額',
     '匯率',
     '備註',
   ];
@@ -240,7 +240,10 @@ export function exportCurrencyTransactionsToCsv(
   homeCurrency = 'TWD',
   filename?: string
 ): void {
-  const csv = generateCurrencyTransactionsCsv(transactions, currencyCode, homeCurrency);
+  const filtered = transactions.filter(
+    (tx) => !(tx.transactionType === CurrencyTransactionType.Spend && tx.relatedStockTransactionId)
+  );
+  const csv = generateCurrencyTransactionsCsv(filtered, currencyCode, homeCurrency);
   const defaultFilename = `${currencyCode}_交易紀錄_${new Date().toISOString().split('T')[0]}.csv`;
   downloadCsv(csv, filename || defaultFilename);
 }

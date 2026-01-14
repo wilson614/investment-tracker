@@ -88,7 +88,7 @@ public class StockTransaction : BaseEntity
         if (date > DateTime.UtcNow.AddDays(1))
             throw new ArgumentException("Transaction date cannot be in the future", nameof(date));
 
-        // Ensure UTC kind for PostgreSQL compatibility
+        // Ensure UTC Kind for PostgreSQL compatibility
         TransactionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
 
@@ -156,16 +156,16 @@ public class StockTransaction : BaseEntity
         Notes = notes?.Trim();
     }
 
-    public void SetTransactionType(TransactionType transactionType)
-    {
-        TransactionType = transactionType;
-    }
-
     public void MarkAsDeleted() => IsDeleted = true;
     public void Restore() => IsDeleted = false;
 
     public void SetRealizedPnl(decimal? realizedPnlHome)
     {
         RealizedPnlHome = realizedPnlHome.HasValue ? Math.Round(realizedPnlHome.Value, 2) : null;
+    }
+
+    public void SetTransactionType(TransactionType transactionType)
+    {
+        TransactionType = transactionType;
     }
 }

@@ -33,6 +33,14 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 <!-- MANUAL ADDITIONS START -->
 
+## 本機偵錯環境備註
+
+- Frontend dev server 使用 `3000` port
+- Backend dev server 使用 `5000` port
+  - 若 `3000` / `5000` 被佔用，允許直接停止佔用程序（這兩個 port 保留給本機偵錯用）
+- 本機偵錯 DB 使用 **PostgreSQL**
+  - 請勿再使用 SQLite，避免與 production 行為不一致
+
 ## Git Commit Preferences
 
 - **不要**在 commit message 結尾加上 `🤖 Generated with [Claude Code]` 和 `Co-Authored-By: Claude` 這幾行

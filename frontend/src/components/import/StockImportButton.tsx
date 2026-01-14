@@ -22,57 +22,68 @@ interface StockImportButtonProps {
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
-// Field definitions for stock transaction CSV (exchangeRate is optional when using currency ledger)
-const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => [
-  {
-    name: 'date',
-    label: '日期',
-    aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
-    required: true,
-  },
-  {
-    name: 'ticker',
-    label: '股票代號',
-    aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票'],
-    required: true,
-  },
-  {
-    name: 'type',
-    label: '交易類型',
-    aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
-    required: true,
-  },
-  {
-    name: 'shares',
-    label: '股數',
-    aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數'],
-    required: true,
-  },
-  {
-    name: 'price',
-    label: '每股價格',
-    aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
-    required: true,
-  },
-  {
-    name: 'exchangeRate',
-    label: '匯率',
-    aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
-    required: !useCurrencyLedger, // Optional when using currency ledger
-  },
-  {
-    name: 'fees',
-    label: '手續費',
-    aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
-    required: false,
-  },
-  {
-    name: 'notes',
-    label: '備註',
-    aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
-    required: false,
-  },
-];
+// Field definitions for stock transaction CSV (exchangeRate is hidden when using currency ledger)
+const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
+  const fields: FieldDefinition[] = [
+    {
+      name: 'date',
+      label: '日期',
+      aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
+      required: true,
+    },
+    {
+      name: 'ticker',
+      label: '股票代號',
+      aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票', '股票代號'],
+      required: true,
+    },
+    {
+      name: 'type',
+      label: '交易類型',
+      aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
+      required: true,
+    },
+    {
+      name: 'shares',
+      label: '股數',
+      aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數', '股數'],
+      required: true,
+    },
+    {
+      name: 'price',
+      label: '每股價格',
+      aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
+      required: true,
+    },
+  ];
+
+  // Only include exchange rate field when not using currency ledger
+  if (!useCurrencyLedger) {
+    fields.push({
+      name: 'exchangeRate',
+      label: '匯率',
+      aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
+      required: true,
+    });
+  }
+
+  fields.push(
+    {
+      name: 'fees',
+      label: '手續費',
+      aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
+      required: false,
+    },
+    {
+      name: 'notes',
+      label: '備註',
+      aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
+      required: false,
+    }
+  );
+
+  return fields;
+};
 
 // Map transaction type string to enum
 function parseTransactionType(typeStr: string): TransactionType | null {
@@ -138,9 +149,25 @@ export function StockImportButton({
     const errors: ParseError[] = [];
     let successCount = 0;
 
-    for (let i = 0; i < csvData.rows.length; i++) {
-      const row = csvData.rows[i];
-      const rowNum = i + 2; // 1-based, skip header row
+    // Ensure chronological order to avoid sell-before-buy issues
+    const sortedRows = csvData.rows
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const aDateStr = getRowValue(a.row, csvData.headers, mapping, 'date') ?? '';
+        const bDateStr = getRowValue(b.row, csvData.headers, mapping, 'date') ?? '';
+        const aDate = parseDate(aDateStr)?.getTime();
+        const bDate = parseDate(bDateStr)?.getTime();
+
+        if (aDate == null && bDate == null) return a.index - b.index;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        if (aDate !== bDate) return aDate - bDate;
+        return a.index - b.index;
+      });
+
+    for (let i = 0; i < sortedRows.length; i++) {
+      const { row, index: originalIndex } = sortedRows[i];
+      const rowNum = originalIndex + 2; // 1-based, skip header row
 
       try {
         // Parse date
@@ -161,6 +188,9 @@ export function StockImportButton({
           errors.push({ row: rowNum, column: '股票代號', message: '股票代號為必填欄位' });
           continue;
         }
+        const normalizedTicker = ticker.toUpperCase().trim();
+        const isTaiwanStock = normalizedTicker !== '' && /^\d/.test(normalizedTicker);
+        const useLedgerForRow = useCurrencyLedger && !isTaiwanStock;
 
         // Parse type
         const typeStr = getRowValue(row, csvData.headers, mapping, 'type');
@@ -198,22 +228,26 @@ export function StockImportButton({
           continue;
         }
 
-        // Parse exchange rate (optional when using currency ledger)
+        // Parse exchange rate
+        // - Taiwan stocks always require exchange rate (typically 1)
+        // - When using currency ledger, exchange rate is optional for non-TW tickers (backend will calculate)
         const exchangeRateStr = getRowValue(row, csvData.headers, mapping, 'exchangeRate');
         let exchangeRate: number | undefined;
 
         if (exchangeRateStr) {
-          exchangeRate = parseNumber(exchangeRateStr) ?? undefined;
-          if (exchangeRate !== undefined && exchangeRate <= 0) {
+          const parsed = parseNumber(exchangeRateStr);
+          if (parsed === null || parsed <= 0) {
             errors.push({ row: rowNum, column: '匯率', message: `無效的匯率: ${exchangeRateStr}` });
             continue;
           }
-        } else if (!useCurrencyLedger) {
-          // Exchange rate is required when not using currency ledger
+          exchangeRate = parsed;
+        } else if (isTaiwanStock) {
+          // Taiwan stocks are priced in TWD; always use exchange rate = 1
+          exchangeRate = 1;
+        } else if (!useLedgerForRow) {
           errors.push({ row: rowNum, column: '匯率', message: '匯率為必填欄位（未選擇外幣帳本時）' });
           continue;
         }
-
         // Parse optional fields
         const feesStr = getRowValue(row, csvData.headers, mapping, 'fees');
         const notes = getRowValue(row, csvData.headers, mapping, 'notes');
@@ -223,15 +257,15 @@ export function StockImportButton({
         // Build request
         const request: CreateStockTransactionRequest = {
           portfolioId,
-          ticker: ticker.toUpperCase().trim(),
+          ticker: normalizedTicker,
           transactionType,
           transactionDate: formatDateISO(parsedDate),
           shares: Math.abs(shares),
           pricePerShare: Math.abs(price),
-          exchangeRate, // undefined when using currency ledger - backend will calculate
+          exchangeRate, // undefined only when using currency ledger for non-TW tickers
           fees,
-          fundSource: useCurrencyLedger ? FundSource.CurrencyLedger : FundSource.None,
-          currencyLedgerId: selectedLedgerId ?? undefined,
+          fundSource: useLedgerForRow ? FundSource.CurrencyLedger : FundSource.None,
+          currencyLedgerId: useLedgerForRow ? (selectedLedgerId ?? undefined) : undefined,
           notes: notes || undefined,
         };
 

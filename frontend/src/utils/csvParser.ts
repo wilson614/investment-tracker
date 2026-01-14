@@ -32,7 +32,8 @@ export interface ParseResult<T> {
  * Parse a CSV string into headers and rows
  */
 export function parseCSV(csvContent: string): ParsedCSV {
-  const lines = csvContent.trim().split(/\r?\n/);
+  const content = csvContent.replace(/^\uFEFF/, '').trim();
+  const lines = content.split(/\r?\n/);
   if (lines.length === 0) {
     return { headers: [], rows: [], rowCount: 0 };
   }
@@ -137,7 +138,13 @@ export function autoMapColumns(
  */
 function normalizeHeader(header: string): string {
   return header
+    .replace(/^\uFEFF/, '')
     .toLowerCase()
+    // Remove unit/currency suffix like (USD) / （USD） for matching
+    .replace(/\([^)]*\)/g, '')
+    .replace(/（[^）]*）/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/\{[^}]*\}/g, '')
     .replace(/[_\s\-\.]/g, '')
     .trim();
 }

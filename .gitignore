@@ -167,3 +167,6 @@ yarn-error.log*
 # VS Code debug browser profiles
 .vscode/.edge-debug-profile/
 .vscode/.chrome-debug-profile/
+
+# Playwright MCP
+.playwright-mcp/

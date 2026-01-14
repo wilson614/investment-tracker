@@ -99,6 +99,24 @@ public class XirrCalculatorTests
     }
 
     [Fact]
+    public void CalculateXirr_VeryShortTermHighAnnualizedReturn_DoesNotReturnNull()
+    {
+        // Arrange - 50% gain in 20 days (annualized return is extremely high)
+        var cashFlows = new List<CashFlow>
+        {
+            new(-1000m, new DateTime(2024, 1, 1)),
+            new(1500m, new DateTime(2024, 1, 21))
+        };
+
+        // Act
+        var xirr = _calculator.CalculateXirr(cashFlows);
+
+        // Assert
+        xirr.Should().NotBeNull();
+        xirr!.Value.Should().BeGreaterThan(10);
+    }
+
+    [Fact]
     public void CalculateXirr_EmptyCashFlows_ReturnsNull()
     {
         // Arrange

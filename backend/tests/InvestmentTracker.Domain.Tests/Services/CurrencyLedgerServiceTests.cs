@@ -191,7 +191,8 @@ public class CurrencyLedgerServiceTests
     {
         // Buy 1000 USD for 32000 TWD
         // Sell 500 USD for 16500 TWD (realized gain of 500)
-        // Net cost = 32000 - 16500 = 15500
+        // Remaining balance: 500 USD
+        // Remaining cost basis = 500 * 32 = 16000
         var transactions = new[]
         {
             CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
@@ -200,7 +201,7 @@ public class CurrencyLedgerServiceTests
 
         var result = _service.CalculateTotalCost(transactions);
 
-        result.Should().Be(15500m);
+        result.Should().Be(16000m);
     }
 
     #endregion

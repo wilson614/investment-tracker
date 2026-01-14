@@ -248,12 +248,113 @@ export const currencyTransactionApi = {
 };
 
 // Stock Price API
+
+interface CachedRate {
+  rate: number;
+  cachedAt: string;
+}
+
+const normalizeCurrency = (currency: string) => currency.trim().toUpperCase();
+
+const getRateCacheKey = (from: string, to: string) =>
+  `rate_cache_${normalizeCurrency(from)}_${normalizeCurrency(to)}`;
+
+const loadCachedRateValue = (from: string, to: string): number | null => {
+  try {
+    const cached = localStorage.getItem(getRateCacheKey(from, to));
+    if (!cached) return null;
+    const data: CachedRate = JSON.parse(cached);
+    return typeof data.rate === 'number' && data.rate > 0 ? data.rate : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveRateToCache = (from: string, to: string, rate: number): void => {
+  try {
+    localStorage.setItem(
+      getRateCacheKey(from, to),
+      JSON.stringify({ rate, cachedAt: new Date().toISOString() })
+    );
+  } catch {
+    // Ignore cache errors
+  }
+};
+
+const inFlightRates = new Map<string, Promise<number | null>>();
+
+const getMarketBaseCurrency = (market: StockMarket): string => {
+  // Keep in sync with backend MarketCurrencies mapping:
+  // TW -> TWD, US/UK -> USD
+  if (market === 1) return 'TWD';
+  return 'USD';
+};
+
+async function resolveExchangeRateValue(from: string, to: string): Promise<number | null> {
+  const fromCur = normalizeCurrency(from);
+  const toCur = normalizeCurrency(to);
+
+  if (!fromCur || !toCur) return null;
+  if (fromCur === toCur) return 1;
+
+  const cached = loadCachedRateValue(fromCur, toCur);
+  if (cached) return cached;
+
+  const inFlightKey = `${fromCur}_${toCur}`;
+  const existing = inFlightRates.get(inFlightKey);
+  if (existing) return existing;
+
+  const promise = fetchApi<ExchangeRateResponse>(
+    `/stock-prices/exchange-rate?from=${encodeURIComponent(fromCur)}&to=${encodeURIComponent(toCur)}`
+  )
+    .then((resp) => (resp?.rate && resp.rate > 0 ? resp.rate : null))
+    .catch(() => null)
+    .then((rate) => {
+      if (rate) saveRateToCache(fromCur, toCur, rate);
+      return rate;
+    })
+    .finally(() => {
+      inFlightRates.delete(inFlightKey);
+    });
+
+  inFlightRates.set(inFlightKey, promise);
+  return promise;
+}
+
+async function ensureQuoteHasExchangeRate(
+  quote: StockQuoteResponse,
+  homeCurrency: string
+): Promise<StockQuoteResponse> {
+  if (quote.exchangeRate && quote.exchangeRate > 0) return quote;
+
+  const baseCurrency = getMarketBaseCurrency(quote.market);
+  const rate = await resolveExchangeRateValue(baseCurrency, homeCurrency);
+  if (!rate) return quote;
+
+  return {
+    ...quote,
+    exchangeRate: rate,
+    exchangeRatePair: `${baseCurrency}/${normalizeCurrency(homeCurrency)}`,
+  };
+}
+
 export const stockPriceApi = {
   getQuote: (market: StockMarket, symbol: string) =>
     fetchApi<StockQuoteResponse>(`/stock-prices?market=${market}&symbol=${encodeURIComponent(symbol)}`),
 
-  getQuoteWithRate: (market: StockMarket, symbol: string, homeCurrency: string) =>
-    fetchApi<StockQuoteResponse>(`/stock-prices/with-rate?market=${market}&symbol=${encodeURIComponent(symbol)}&homeCurrency=${encodeURIComponent(homeCurrency)}`),
+  getQuoteWithRate: async (market: StockMarket, symbol: string, homeCurrency: string) => {
+    const quote = await fetchApi<StockQuoteResponse>(
+      `/stock-prices/with-rate?market=${market}&symbol=${encodeURIComponent(symbol)}&homeCurrency=${encodeURIComponent(homeCurrency)}`
+    );
+    return ensureQuoteHasExchangeRate(quote, homeCurrency);
+  },
+
+  getQuoteWithResolvedRate: async (market: StockMarket, symbol: string, homeCurrency: string) => {
+    const quote = await fetchApi<StockQuoteResponse>(
+      `/stock-prices?market=${market}&symbol=${encodeURIComponent(symbol)}`
+    );
+    return ensureQuoteHasExchangeRate(quote, homeCurrency);
+  },
 
   getExchangeRate: (from: string, to: string) =>
     fetchApi<ExchangeRateResponse>(`/stock-prices/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),

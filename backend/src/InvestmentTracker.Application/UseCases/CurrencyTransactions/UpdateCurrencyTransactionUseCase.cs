@@ -38,6 +38,10 @@ public class UpdateCurrencyTransactionUseCase
         if (ledger == null || ledger.UserId != _currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this transaction");
 
+        // Prevent editing transactions linked to stock purchases
+        if (transaction.RelatedStockTransactionId.HasValue)
+            throw new InvalidOperationException("Cannot edit transactions linked to stock purchases. Edit the stock transaction instead.");
+
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetAmounts(
             request.TransactionType,

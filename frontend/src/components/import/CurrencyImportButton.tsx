@@ -38,19 +38,13 @@ const currencyFields: FieldDefinition[] = [
   {
     name: 'foreignAmount',
     label: '外幣金額',
-    aliases: ['foreign_amount', 'ForeignAmount', 'amount', 'Amount', '外幣', '金額'],
+    aliases: ['foreign_amount', 'ForeignAmount', 'amount', 'Amount', '外幣', '金額', '外幣金額', '外幣金額(USD)', 'foreignamount(usd)'],
     required: true,
   },
   {
     name: 'homeAmount',
     label: '台幣金額',
-    aliases: ['home_amount', 'HomeAmount', 'twdAmount', 'TWDAmount', '台幣', 'TWD'],
-    required: false,
-  },
-  {
-    name: 'exchangeRate',
-    label: '匯率',
-    aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
+    aliases: ['home_amount', 'HomeAmount', 'twdAmount', 'TWDAmount', '台幣', 'TWD', '台幣金額', '台幣金額(TWD)', 'homeamount(twd)'],
     required: false,
   },
   {
@@ -78,7 +72,7 @@ function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
   if (normalized.includes('消費') || (normalized.includes('支出') && !normalized.includes('其他')) || normalized.includes('spend')) {
     return CurrencyTransactionType.Spend;
   }
-  if (normalized.includes('初始') || normalized.includes('期初') || normalized.includes('initial') || normalized.includes('balance')) {
+  if (normalized.includes('初始') || normalized.includes('期初') || normalized.includes('轉入') || normalized.includes('餘額') || normalized.includes('initial') || normalized.includes('balance')) {
     return CurrencyTransactionType.InitialBalance;
   }
   if (normalized.includes('其他收入') || normalized.includes('其他入') || normalized.includes('獎勵') || normalized.includes('股利') || normalized.includes('bonus') || normalized.includes('dividend') || normalized.includes('other income')) {
@@ -156,11 +150,9 @@ export function CurrencyImportButton({
 
         // Parse optional fields
         const homeAmountStr = getRowValue(row, csvData.headers, mapping, 'homeAmount');
-        const exchangeRateStr = getRowValue(row, csvData.headers, mapping, 'exchangeRate');
         const notes = getRowValue(row, csvData.headers, mapping, 'notes');
 
         const homeAmount = homeAmountStr ? parseNumber(homeAmountStr) : undefined;
-        let exchangeRate = exchangeRateStr ? parseNumber(exchangeRateStr) : undefined;
 
         // Exchange types need home amount, and we auto-calculate exchange rate
         const isExchangeType =
@@ -189,8 +181,9 @@ export function CurrencyImportButton({
           continue;
         }
 
-        // Auto-calculate exchange rate for exchange types if not provided
-        if (isExchangeType && homeAmount && foreignAmount && !exchangeRate) {
+        // Auto-calculate exchange rate for exchange types
+        let exchangeRate: number | undefined;
+        if (isExchangeType && homeAmount && foreignAmount) {
           exchangeRate = homeAmount / Math.abs(foreignAmount);
         }
 

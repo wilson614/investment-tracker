@@ -47,6 +47,11 @@ public class AuthController : ControllerBase
         var user = new User(normalizedEmail, passwordHash, request.DisplayName.Trim());
 
         _context.Users.Add(user);
+
+        // Create default portfolio for new user
+        var portfolio = new Portfolio(user.Id, "USD", "TWD");
+        _context.Portfolios.Add(portfolio);
+
         await _context.SaveChangesAsync();
 
         // Generate tokens
