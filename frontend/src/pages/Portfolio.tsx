@@ -63,13 +63,14 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 };
 
 export function PortfolioPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id: urlId } = useParams<{ id: string }>();
+  const [portfolioId, setPortfolioId] = useState<string | null>(urlId ?? null);
 
   // Load cached performance data on init (no time limit - always show cached, then refresh)
-  const loadCachedPerformance = (): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
-    if (!id) return { summary: null, xirrResult: null };
+  const loadCachedPerformance = (pid: string | null): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
+    if (!pid) return { summary: null, xirrResult: null };
     try {
-      const cached = localStorage.getItem(getPerformanceCacheKey(id));
+      const cached = localStorage.getItem(getPerformanceCacheKey(pid));
       if (cached) {
         const data: CachedPerformance = JSON.parse(cached);
         return { summary: data.summary, xirrResult: data.xirrResult };
@@ -80,10 +81,10 @@ export function PortfolioPage() {
     return { summary: null, xirrResult: null };
   };
 
-  const cachedPerf = loadCachedPerformance();
+  const cachedPerf = loadCachedPerformance(portfolioId);
   const [summary, setSummary] = useState<PortfolioSummary | null>(cachedPerf.summary);
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(cachedPerf.xirrResult);
-  const [isLoading, setIsLoading] = useState(cachedPerf.summary === null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFetchingAll, setIsFetchingAll] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -95,15 +96,13 @@ export function PortfolioPage() {
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
 
-  const loadData = useCallback(async () => {
-    if (!id) return;
-
+  const loadData = useCallback(async (pid: string) => {
     try {
       setIsLoading(true);
       setError(null);
       const [basicSummary, txData] = await Promise.all([
-        portfolioApi.getSummary(id),
-        transactionApi.getByPortfolio(id),
+        portfolioApi.getSummary(pid),
+        transactionApi.getByPortfolio(pid),
       ]);
       setTransactions(txData);
 
@@ -115,8 +114,8 @@ export function PortfolioPage() {
       // If we have cached prices, calculate with them immediately
       if (Object.keys(cachedPrices).length > 0) {
         const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(id, cachedPrices),
-          portfolioApi.calculateXirr(id, { currentPrices: cachedPrices }),
+          portfolioApi.getSummary(pid, cachedPrices),
+          portfolioApi.calculateXirr(pid, { currentPrices: cachedPrices }),
         ]);
         setSummary(summaryWithPrices);
         setXirrResult(xirr);
@@ -128,13 +127,35 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, []);
 
   const hasFetchedOnLoad = useRef(false);
 
+  // Fetch default portfolio if no URL id provided
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const initializePortfolio = async () => {
+      if (urlId) {
+        setPortfolioId(urlId);
+        loadData(urlId);
+      } else {
+        try {
+          const portfolios = await portfolioApi.getAll();
+          if (portfolios.length > 0) {
+            const defaultId = portfolios[0].id;
+            setPortfolioId(defaultId);
+            loadData(defaultId);
+          } else {
+            setError('找不到投資組合');
+            setIsLoading(false);
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load portfolios');
+          setIsLoading(false);
+        }
+      }
+    };
+    initializePortfolio();
+  }, [urlId, loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
   useEffect(() => {
@@ -191,7 +212,8 @@ export function PortfolioPage() {
       }
     }
 
-    await loadData();
+    if (!portfolioId) return;
+    await loadData(portfolioId);
     setShowForm(false);
     setEditingTransaction(null);
   };
@@ -204,18 +226,18 @@ export function PortfolioPage() {
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
-    await loadData();
+    if (portfolioId) await loadData(portfolioId);
   };
 
   const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
-    if (!id || Object.keys(prices).length === 0) return;
+    if (!portfolioId || Object.keys(prices).length === 0) return;
 
     setIsCalculating(true);
 
     try {
       const [summaryData, xirrData] = await Promise.all([
-        portfolioApi.getSummary(id, prices),
-        portfolioApi.calculateXirr(id, { currentPrices: prices }),
+        portfolioApi.getSummary(portfolioId, prices),
+        portfolioApi.calculateXirr(portfolioId, { currentPrices: prices }),
       ]);
       setSummary(summaryData);
       setXirrResult(xirrData);
@@ -227,7 +249,7 @@ export function PortfolioPage() {
           xirrResult: xirrData,
           cachedAt: new Date().toISOString(),
         };
-        localStorage.setItem(getPerformanceCacheKey(id), JSON.stringify(cacheData));
+        localStorage.setItem(getPerformanceCacheKey(portfolioId), JSON.stringify(cacheData));
       } catch {
         // Ignore cache errors
       }
@@ -241,7 +263,7 @@ export function PortfolioPage() {
   const handlePositionPriceUpdate = useCallback((ticker: string, price: number, exchangeRate: number) => {
     currentPricesRef.current[ticker] = { price, exchangeRate };
     updateSummaryWithPrices({ ...currentPricesRef.current });
-  }, [id]);
+  }, [portfolioId]);
 
   const handleFetchAllPrices = async () => {
     if (!summary) return;
@@ -399,7 +421,7 @@ export function PortfolioPage() {
               {summary.positions.map((position) => (
                 <Link
                   key={position.ticker}
-                  to={`/portfolio/${id}/position/${position.ticker}`}
+                  to={`/portfolio/position/${position.ticker}`}
                   className="block"
                 >
                   <PositionCard
@@ -439,7 +461,7 @@ export function PortfolioPage() {
                 + 新增
               </button>
               <StockImportButton
-                portfolioId={id!}
+                portfolioId={portfolioId!}
                 onImportComplete={loadData}
                 renderTrigger={(onClick) => {
                   importTriggerRef.current = onClick;
@@ -466,7 +488,7 @@ export function PortfolioPage() {
           <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
             <div className="card-dark p-0 w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
               <TransactionForm
-                portfolioId={id!}
+                portfolioId={portfolioId!}
                 initialData={editingTransaction ?? undefined}
                 onSubmit={handleAddTransaction}
                 onCancel={() => {
