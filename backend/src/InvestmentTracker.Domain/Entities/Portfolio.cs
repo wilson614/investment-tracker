@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Common;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Entities;
 
@@ -13,6 +14,16 @@ public class Portfolio : BaseEntity
     public string HomeCurrency { get; private set; } = "TWD";
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>
+    /// Type of portfolio for different currency handling modes.
+    /// </summary>
+    public PortfolioType PortfolioType { get; private set; } = PortfolioType.Primary;
+
+    /// <summary>
+    /// Display name for the portfolio (e.g., "美股投資組合").
+    /// </summary>
+    public string? DisplayName { get; private set; }
+
     // Navigation properties
     public User User { get; private set; } = null!;
 
@@ -22,13 +33,15 @@ public class Portfolio : BaseEntity
     // Required by EF Core
     private Portfolio() { }
 
-    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD")
+    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD", PortfolioType portfolioType = PortfolioType.Primary, string? displayName = null)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
 
         UserId = userId;
         SetCurrencies(baseCurrency, homeCurrency);
+        PortfolioType = portfolioType;
+        SetDisplayName(displayName);
     }
 
     public void SetDescription(string? description)
@@ -37,6 +50,14 @@ public class Portfolio : BaseEntity
             throw new ArgumentException("Description cannot exceed 500 characters", nameof(description));
 
         Description = description?.Trim();
+    }
+
+    public void SetDisplayName(string? displayName)
+    {
+        if (displayName?.Length > 100)
+            throw new ArgumentException("Display name cannot exceed 100 characters", nameof(displayName));
+
+        DisplayName = displayName?.Trim();
     }
 
     public void SetCurrencies(string baseCurrency, string homeCurrency)

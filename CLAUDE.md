@@ -8,6 +8,7 @@ Auto-generated from all feature plans. Last updated: 2026-01-06
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query (001-portfolio-tracker)
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts (002-portfolio-enhancements)
 - PostgreSQL (primary), SQLite (development) (002-portfolio-enhancements)
+- PostgreSQL (primary), SQLite (development fallback) (002-portfolio-enhancements)
 
 - C# .NET 8 (Backend), TypeScript 5.x (Frontend) (001-portfolio-tracker)
 
@@ -29,7 +30,7 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Recent Changes
 - 002-portfolio-enhancements: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts
-- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
+- 002-portfolio-enhancements: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts
 - 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 
 

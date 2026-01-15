@@ -12,6 +12,8 @@ public record PortfolioDto
     public string BaseCurrency { get; init; } = "USD";
     public string HomeCurrency { get; init; } = "TWD";
     public bool IsActive { get; init; }
+    public PortfolioType PortfolioType { get; init; } = PortfolioType.Primary;
+    public string? DisplayName { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
 }

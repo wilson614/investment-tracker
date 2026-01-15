@@ -33,7 +33,7 @@ public class EuronextQuoteCacheRepository : IEuronextQuoteCacheRepository
         }
         else
         {
-            existing.UpdateQuote(quoteCache.Price, quoteCache.Currency, quoteCache.MarketTime);
+            existing.UpdateQuote(quoteCache.Price, quoteCache.Currency, quoteCache.MarketTime, quoteCache.ChangePercent, quoteCache.Change);
         }
 
         await _context.SaveChangesAsync(cancellationToken);

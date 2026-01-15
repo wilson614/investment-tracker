@@ -13,9 +13,11 @@ interface TransactionFormProps {
   initialData?: StockTransaction;
   onSubmit: (data: CreateStockTransactionRequest) => Promise<void>;
   onCancel?: () => void;
+  /** When true, hides exchange rate field (ForeignCurrency portfolios use source currency only) */
+  isForeignCurrencyPortfolio?: boolean;
 }
 
-export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }: TransactionFormProps) {
+export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, isForeignCurrencyPortfolio = false }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
@@ -111,7 +113,8 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
 
     try {
       // When using currency ledger (and not TW stock), don't send exchange rate - backend will calculate
-      const shouldOmitExchangeRate = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
+      // ForeignCurrency portfolios also don't use exchange rate
+      const shouldOmitExchangeRate = isForeignCurrencyPortfolio || (formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW);
 
       // Taiwan stocks always use exchange rate 1
       // For other stocks, parse the value or use undefined if empty/invalid
@@ -262,8 +265,8 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
           />
         </div>
 
-        {/* Exchange rate - hidden for Taiwan stocks and when using currency ledger */}
-        {!useCurrencyLedger && !isTW && (
+        {/* Exchange rate - hidden for Taiwan stocks, currency ledger, and ForeignCurrency portfolios */}
+        {!useCurrencyLedger && !isTW && !isForeignCurrencyPortfolio && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               匯率（選填）

@@ -55,22 +55,47 @@ public class CalculateXirrUseCase
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
+        // Check if this is a ForeignCurrency portfolio (all metrics in source currency)
+        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
+
         // Build cash flows list
         // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
+        // For ForeignCurrency portfolios: include ALL transactions, use TotalCostSource
         var cashFlows = new List<CashFlow>();
 
-        foreach (var tx in transactions.Where(t => !t.IsDeleted && t.HasExchangeRate).OrderBy(t => t.TransactionDate))
+        var relevantTransactions = isForeignCurrencyPortfolio
+            ? transactions.Where(t => !t.IsDeleted).OrderBy(t => t.TransactionDate)
+            : transactions.Where(t => !t.IsDeleted && t.HasExchangeRate).OrderBy(t => t.TransactionDate);
+
+        foreach (var tx in relevantTransactions)
         {
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Outflow (investment) - TotalCostHome is guaranteed non-null when HasExchangeRate is true
-                cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+                if (isForeignCurrencyPortfolio)
+                {
+                    // ForeignCurrency portfolio: use source currency cost
+                    cashFlows.Add(new CashFlow(-tx.TotalCostSource, tx.TransactionDate));
+                }
+                else
+                {
+                    // Primary portfolio: use home currency cost
+                    cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+                }
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Inflow (return) - ExchangeRate is guaranteed non-null when HasExchangeRate is true
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
-                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                if (isForeignCurrencyPortfolio)
+                {
+                    // ForeignCurrency portfolio: use source currency proceeds
+                    var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                }
+                else
+                {
+                    // Primary portfolio: use home currency proceeds
+                    var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                }
             }
         }
 
@@ -95,9 +120,13 @@ public class CalculateXirrUseCase
             {
                 if (currentPrices.TryGetValue(position.Ticker, out var priceInfo))
                 {
-                    var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                    // For ForeignCurrency portfolios: use source currency (no exchange rate conversion)
+                    var positionValue = isForeignCurrencyPortfolio
+                        ? position.TotalShares * priceInfo.Price
+                        : position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
                     _logger.LogDebug("XIRR: Position {Ticker}: {Shares} shares * {Price} * {Rate} = {Value}",
-                        position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
+                        position.Ticker, position.TotalShares, priceInfo.Price,
+                        isForeignCurrencyPortfolio ? 1m : priceInfo.ExchangeRate, positionValue);
                     currentValue += positionValue;
                 }
                 else
@@ -153,6 +182,9 @@ public class CalculateXirrUseCase
         var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
+        // Check if this is a ForeignCurrency portfolio (all metrics in source currency)
+        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
+
         // Filter to only this ticker's transactions
         var tickerTransactions = allTransactions
             .Where(t => !t.IsDeleted && t.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase))
@@ -172,25 +204,47 @@ public class CalculateXirrUseCase
 
         // Build cash flows list for this position
         // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
+        // For ForeignCurrency portfolios: include ALL transactions, use TotalCostSource
         var cashFlows = new List<CashFlow>();
 
-        foreach (var tx in tickerTransactions.Where(t => t.HasExchangeRate))
+        var relevantTransactions = isForeignCurrencyPortfolio
+            ? tickerTransactions
+            : tickerTransactions.Where(t => t.HasExchangeRate);
+
+        foreach (var tx in relevantTransactions)
         {
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Outflow (investment) - TotalCostHome is guaranteed non-null when HasExchangeRate is true
-                cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+                if (isForeignCurrencyPortfolio)
+                {
+                    // ForeignCurrency portfolio: use source currency cost
+                    cashFlows.Add(new CashFlow(-tx.TotalCostSource, tx.TransactionDate));
+                }
+                else
+                {
+                    // Primary portfolio: use home currency cost
+                    cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+                }
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Inflow (return) - ExchangeRate is guaranteed non-null when HasExchangeRate is true
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
-                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                if (isForeignCurrencyPortfolio)
+                {
+                    // ForeignCurrency portfolio: use source currency proceeds
+                    var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                }
+                else
+                {
+                    // Primary portfolio: use home currency proceeds
+                    var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                }
             }
         }
 
         // Add current position value as final cash flow
-        if (request.CurrentPrice.HasValue && request.CurrentExchangeRate.HasValue)
+        if (request.CurrentPrice.HasValue)
         {
             // Use split-adjusted position for accurate comparison with current price
             var position = _portfolioCalculator.CalculatePositionWithSplitAdjustments(
@@ -198,7 +252,10 @@ public class CalculateXirrUseCase
 
             if (position.TotalShares > 0)
             {
-                var currentValue = position.TotalShares * request.CurrentPrice.Value * request.CurrentExchangeRate.Value;
+                // For ForeignCurrency portfolios: use source currency (no exchange rate conversion)
+                var currentValue = isForeignCurrencyPortfolio
+                    ? position.TotalShares * request.CurrentPrice.Value
+                    : position.TotalShares * request.CurrentPrice.Value * (request.CurrentExchangeRate ?? 1m);
                 cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
             }
         }

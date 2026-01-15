@@ -15,7 +15,7 @@ interface UseHistoricalPerformanceResult {
   isLoadingPerformance: boolean;
   error: string | null;
   setSelectedYear: (year: number) => void;
-  calculatePerformance: (year: number, yearEndPrices?: Record<string, YearEndPriceInfo>) => Promise<void>;
+  calculatePerformance: (year: number, yearEndPrices?: Record<string, YearEndPriceInfo>, yearStartPrices?: Record<string, YearEndPriceInfo>) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -53,7 +53,8 @@ export function useHistoricalPerformance({
 
   const calculatePerformance = useCallback(async (
     year: number,
-    yearEndPrices?: Record<string, YearEndPriceInfo>
+    yearEndPrices?: Record<string, YearEndPriceInfo>,
+    yearStartPrices?: Record<string, YearEndPriceInfo>
   ) => {
     if (!portfolioId) return;
 
@@ -64,6 +65,7 @@ export function useHistoricalPerformance({
       const request: CalculateYearPerformanceRequest = {
         year,
         yearEndPrices,
+        yearStartPrices,
       };
       const result = await portfolioApi.calculateYearPerformance(portfolioId, request);
       setPerformance(result);

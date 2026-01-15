@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -47,6 +48,8 @@ public class PortfoliosController : ControllerBase
             BaseCurrency = p.BaseCurrency,
             HomeCurrency = p.HomeCurrency,
             IsActive = p.IsActive,
+            PortfolioType = p.PortfolioType,
+            DisplayName = p.DisplayName,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt
         }));
@@ -75,6 +78,8 @@ public class PortfoliosController : ControllerBase
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
+            PortfolioType = portfolio.PortfolioType,
+            DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt
         });
@@ -199,7 +204,9 @@ public class PortfoliosController : ControllerBase
         var portfolio = new Portfolio(
             _currentUserService.UserId!.Value,
             request.BaseCurrency,
-            request.HomeCurrency);
+            request.HomeCurrency,
+            request.PortfolioType,
+            request.DisplayName);
 
         if (!string.IsNullOrWhiteSpace(request.Description))
         {
@@ -215,6 +222,8 @@ public class PortfoliosController : ControllerBase
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
+            PortfolioType = portfolio.PortfolioType,
+            DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt
         };
@@ -252,6 +261,8 @@ public class PortfoliosController : ControllerBase
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
+            PortfolioType = portfolio.PortfolioType,
+            DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt
         });

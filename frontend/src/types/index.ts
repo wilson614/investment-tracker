@@ -25,12 +25,21 @@ export interface RegisterRequest {
   displayName: string;
 }
 
+// Portfolio Type Enum
+export const PortfolioType = {
+  Primary: 0,
+  ForeignCurrency: 1,
+} as const;
+export type PortfolioType = (typeof PortfolioType)[keyof typeof PortfolioType];
+
 export interface Portfolio {
   id: string;
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
   isActive: boolean;
+  portfolioType: PortfolioType;
+  displayName?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +48,8 @@ export interface CreatePortfolioRequest {
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
+  portfolioType?: PortfolioType;
+  displayName?: string;
 }
 
 export interface UpdatePortfolioRequest {
@@ -326,17 +337,29 @@ export interface EuronextQuoteResponse {
   name: string | null;
   exchangeRate: number | null;
   fromCache: boolean;
+  changePercent?: string | null;
+  change?: number | null;
 }
 
 // Historical Performance Types
 export interface YearPerformance {
   year: number;
+  // Home currency (TWD)
   xirr: number | null;
   xirrPercentage: number | null;
   totalReturnPercentage: number | null;
   startValueHome: number | null;
   endValueHome: number | null;
   netContributionsHome: number;
+  // Source currency (e.g., USD)
+  sourceCurrency: string | null;
+  xirrSource: number | null;
+  xirrPercentageSource: number | null;
+  totalReturnPercentageSource: number | null;
+  startValueSource: number | null;
+  endValueSource: number | null;
+  netContributionsSource: number | null;
+  // Common
   cashFlowCount: number;
   missingPrices: MissingPrice[];
   isComplete: boolean;
@@ -357,6 +380,7 @@ export interface AvailableYears {
 export interface CalculateYearPerformanceRequest {
   year: number;
   yearEndPrices?: Record<string, YearEndPriceInfo>;
+  yearStartPrices?: Record<string, YearEndPriceInfo>;
 }
 
 export interface YearEndPriceInfo {

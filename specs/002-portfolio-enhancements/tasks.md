@@ -185,7 +185,77 @@
 
 ---
 
-## Phase 9: Polish & Cross-Cutting Concerns
+## Phase 9: User Story 7 - Auto-Fetch Price for New Positions (Priority: P1) *(NEW)*
+
+**Goal**: Automatically fetch real-time stock price when adding a transaction for a new stock
+
+**Independent Test**: Add a Buy transaction for a stock not currently held → price should auto-fetch within 3 seconds
+
+### Frontend Implementation
+
+- [X] T065 [US7] Modify handleAddTransaction to detect new ticker after save in `frontend/src/pages/Portfolio.tsx`
+- [X] T066 [US7] Add auto-fetch logic for new position price using existing stockPriceApi/marketDataApi in `frontend/src/pages/Portfolio.tsx`
+- [X] T067 [US7] Ensure PositionCard displays fetched price immediately in `frontend/src/components/portfolio/PositionCard.tsx`
+
+**Checkpoint**: US7 complete - new positions display current price within 3 seconds
+
+---
+
+## Phase 10: User Story 8 - Euronext Change Percentage Display (Priority: P2) *(NEW)*
+
+**Goal**: Display "Since Previous Close" percentage change for Euronext stocks
+
+**Independent Test**: View a Euronext stock position (e.g., AGAC) → should display change percentage with color coding
+
+### Backend Implementation
+
+- [X] T068 [US8] Add regex pattern to extract change percentage from Euronext HTML in `backend/src/InvestmentTracker.Infrastructure/External/EuronextApiClient.cs`
+- [X] T069 [US8] Update EuronextQuoteResult record to include ChangePercent and Change properties in `backend/src/InvestmentTracker.Infrastructure/External/EuronextApiClient.cs`
+- [X] T070 [US8] Update EuronextQuoteService to persist and return change fields in `backend/src/InvestmentTracker.Infrastructure/Services/EuronextQuoteService.cs`
+- [X] T071 [US8] Add ChangePercent and Change columns to EuronextQuoteCache entity in `backend/src/InvestmentTracker.Domain/Entities/EuronextQuoteCache.cs`
+- [X] T072 [US8] Create EF migration for EuronextQuoteCache new columns in `backend/src/InvestmentTracker.Infrastructure/`
+
+### Frontend Implementation
+
+- [X] T073 [US8] Update frontend EuronextQuoteResponse type to include changePercent in `frontend/src/types/index.ts`
+- [X] T074 [US8] Display change percentage with color coding in PositionCard in `frontend/src/components/portfolio/PositionCard.tsx`
+
+**Checkpoint**: US8 complete - Euronext stocks display change percentage (green/red)
+
+---
+
+## Phase 11: User Story 9 - Foreign Currency Portfolio (Priority: P1) *(NEW)*
+
+**Goal**: Create dedicated portfolio type for foreign currency stocks without exchange rate requirements
+
+**Independent Test**: Create Foreign Currency Portfolio with USD base currency → add USD stock → all metrics display in USD
+
+### Backend Implementation
+
+- [X] T075 [US9] Create PortfolioType enum in `backend/src/InvestmentTracker.Domain/Enums/PortfolioType.cs`
+- [X] T076 [US9] Add PortfolioType and DisplayName properties to Portfolio entity in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+- [X] T077 [US9] Create EF migration for Portfolio new columns in `backend/src/InvestmentTracker.Infrastructure/`
+- [X] T078 [US9] Update PortfolioController to handle portfolioType in create/list endpoints in `backend/src/InvestmentTracker.API/Controllers/PortfolioController.cs`
+- [X] T079 [US9] ~~Update CreatePortfolioUseCase~~ Skipped - validation handled by Portfolio entity constructor
+- [X] T080 [US9] Update GetPortfolioSummaryUseCase to calculate metrics in source currency for FC portfolios in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+- [X] T081 [US9] Modify XIRR calculation to use source currency cash flows for FC portfolios in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
+- [X] T082 [US9] ~~Add stock currency validation~~ Skipped - FC portfolios don't require currency validation
+
+### Frontend Implementation
+
+- [X] T083 [P] [US9] Add PortfolioType type to frontend types in `frontend/src/types/index.ts`
+- [X] T084 [P] [US9] Create PortfolioSelector component for portfolio switching in `frontend/src/components/portfolio/PortfolioSelector.tsx`
+- [X] T085 [US9] Add portfolio creation form with portfolioType selection in `frontend/src/components/portfolio/CreatePortfolioForm.tsx`
+- [X] T086 [US9] Integrate PortfolioSelector into Portfolio page in `frontend/src/pages/Portfolio.tsx`
+- [X] T087 [US9] Update TransactionForm to hide exchange rate for FC portfolios in `frontend/src/components/transactions/TransactionForm.tsx`
+- [X] T088 [US9] ~~Update PositionCard~~ Skipped - already works correctly (backend returns source currency in "Home" fields)
+- [X] T089 [US9] ~~Update api.ts~~ Already implemented in previous session
+
+**Checkpoint**: US9 complete - Foreign Currency Portfolio displays all metrics in source currency
+
+---
+
+## Phase 12: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final improvements across all features
 
@@ -219,8 +289,11 @@
 | US4 (P4) | Phase 2 only | Phase 2 complete |
 | US5 (P5) | Phase 2 only | Phase 2 complete |
 | US6 (P6) | Phase 2 only | Phase 2 complete |
+| US7 (P1) *(NEW)* | Phase 2 only | Phase 2 complete |
+| US8 (P2) *(NEW)* | US3 (Euronext infra) | US3 complete |
+| US9 (P1) *(NEW)* | Phase 2 only | Phase 2 complete |
 
-All user stories are independent and can be implemented in parallel.
+All user stories are independent and can be implemented in parallel (except US8 depends on US3 Euronext infrastructure).
 
 ### Parallel Opportunities
 
@@ -231,6 +304,7 @@ US2: T025 can run in parallel with backend tasks
 US4: T042 can run in parallel with backend tasks
 US5: T051 can run in parallel with backend tasks
 US6: T055 can run in parallel
+US9: T083, T084 can run in parallel with backend tasks (NEW)
 ```
 
 ---
@@ -255,6 +329,9 @@ US6: T055 can run in parallel
 | +3 | US4 | Historical year performance |
 | +4 | US5 | Extended YTD with dividend adjustment |
 | +5 | US6 | Bar chart performance visualization |
+| +6 | US7 | Auto-fetch price for new positions *(NEW)* |
+| +7 | US8 | Euronext change percentage display *(NEW)* |
+| +8 | US9 | Foreign Currency Portfolio *(NEW)* |
 
 ---
 
@@ -262,7 +339,7 @@ US6: T055 can run in parallel
 
 | Metric | Count |
 |--------|-------|
-| Total Tasks | 64 |
+| Total Tasks | 89 |
 | Setup Tasks | 7 |
 | Foundational Tasks | 5 |
 | US1 Tasks | 9 |
@@ -271,5 +348,8 @@ US6: T055 can run in parallel
 | US4 Tasks | 9 |
 | US5 Tasks | 9 |
 | US6 Tasks | 4 |
+| US7 Tasks *(NEW)* | 3 |
+| US8 Tasks *(NEW)* | 7 |
+| US9 Tasks *(NEW)* | 15 |
 | Polish Tasks | 6 |
-| Parallel Opportunities | 12 tasks marked [P] |
+| Parallel Opportunities | 14 tasks marked [P] |

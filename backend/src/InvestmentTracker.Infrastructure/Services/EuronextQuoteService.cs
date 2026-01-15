@@ -66,7 +66,9 @@ public class EuronextQuoteService
                         cached.MarketTime,
                         cached.Isin,
                         rate,
-                        true);
+                        true,
+                        cached.ChangePercent,
+                        cached.Change);
                 }
             }
 
@@ -86,7 +88,9 @@ public class EuronextQuoteService
                 mic,
                 quote.Price,
                 quote.Currency,
-                quote.MarketTime ?? DateTime.UtcNow);
+                quote.MarketTime ?? DateTime.UtcNow,
+                quote.ChangePercent,
+                quote.Change);
 
             await _cacheRepository.UpsertAsync(cacheEntry, cancellationToken);
 
@@ -99,7 +103,9 @@ public class EuronextQuoteService
                 quote.MarketTime,
                 quote.Name,
                 exchangeRate,
-                false);
+                false,
+                quote.ChangePercent,
+                quote.Change);
         }
         catch (Exception ex)
         {
@@ -146,4 +152,6 @@ public record EuronextQuoteResult(
     DateTime? MarketTime,
     string? Name,
     decimal? ExchangeRate,
-    bool FromCache);
+    bool FromCache,
+    string? ChangePercent = null,
+    decimal? Change = null);

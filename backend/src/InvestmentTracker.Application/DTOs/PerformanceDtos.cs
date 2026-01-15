@@ -8,13 +8,15 @@ public record YearPerformanceDto
     /// <summary>The year for this performance calculation.</summary>
     public int Year { get; init; }
 
-    /// <summary>XIRR for the year (annualized return rate).</summary>
+    // ===== Home Currency Performance (TWD) =====
+
+    /// <summary>XIRR for the year in home currency (annualized return rate).</summary>
     public double? Xirr { get; init; }
 
-    /// <summary>XIRR as percentage (e.g., 12.5 for 12.5%).</summary>
+    /// <summary>XIRR as percentage in home currency (e.g., 12.5 for 12.5%).</summary>
     public double? XirrPercentage { get; init; }
 
-    /// <summary>Total return percentage for the year.</summary>
+    /// <summary>Total return percentage for the year in home currency.</summary>
     public double? TotalReturnPercentage { get; init; }
 
     /// <summary>Portfolio value at year start (home currency).</summary>
@@ -25,6 +27,31 @@ public record YearPerformanceDto
 
     /// <summary>Net contributions during the year (home currency).</summary>
     public decimal NetContributionsHome { get; init; }
+
+    // ===== Source Currency Performance (e.g., USD) =====
+
+    /// <summary>The source/base currency for this portfolio (e.g., USD).</summary>
+    public string? SourceCurrency { get; init; }
+
+    /// <summary>XIRR for the year in source currency (annualized return rate).</summary>
+    public double? XirrSource { get; init; }
+
+    /// <summary>XIRR as percentage in source currency (e.g., 12.5 for 12.5%).</summary>
+    public double? XirrPercentageSource { get; init; }
+
+    /// <summary>Total return percentage for the year in source currency.</summary>
+    public double? TotalReturnPercentageSource { get; init; }
+
+    /// <summary>Portfolio value at year start (source currency).</summary>
+    public decimal? StartValueSource { get; init; }
+
+    /// <summary>Portfolio value at year end (source currency).</summary>
+    public decimal? EndValueSource { get; init; }
+
+    /// <summary>Net contributions during the year (source currency).</summary>
+    public decimal? NetContributionsSource { get; init; }
+
+    // ===== Common Fields =====
 
     /// <summary>Number of cash flows used in XIRR calculation.</summary>
     public int CashFlowCount { get; init; }
@@ -74,8 +101,11 @@ public record CalculateYearPerformanceRequest
     /// <summary>The year to calculate performance for.</summary>
     public int Year { get; init; }
 
-    /// <summary>Reference prices for positions (keyed by ticker) used for calculation.</summary>
+    /// <summary>Reference prices for positions at year END (keyed by ticker).</summary>
     public Dictionary<string, YearEndPriceInfo>? YearEndPrices { get; init; }
+
+    /// <summary>Reference prices for positions at year START (keyed by ticker). If not provided, falls back to YearEndPrices.</summary>
+    public Dictionary<string, YearEndPriceInfo>? YearStartPrices { get; init; }
 }
 
 /// <summary>

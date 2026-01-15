@@ -2,12 +2,13 @@
 
 **Feature Branch**: `002-portfolio-enhancements`
 **Created**: 2026-01-14
+**Updated**: 2026-01-16
 **Status**: Draft
-**Input**: 6 portfolio enhancement features
+**Input**: 9 portfolio enhancement features
 
 ## Overview
 
-This module contains 6 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, and performance tracking capabilities.
+This module contains 9 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, and multi-portfolio support for foreign currency investments.
 
 ## Clarifications
 
@@ -17,6 +18,18 @@ This module contains 6 enhancements to the existing investment portfolio trackin
 - Q: How to handle Euronext API failures? → A: Display last successfully fetched cached price, marked as "stale"
 - Q: How to handle missing year-end closing prices for historical years? → A: Prompt user to manually input missing year-end closing prices
 - Q: Default behavior when ETF type cannot be determined? → A: Default to accumulating type (no dividend adjustment), marked as "unconfirmed type". Note: Currently only Taiwan stocks support dividend adjustment; others should use accumulating ETFs for accurate data; future consideration to add US stock dividend adjustment or fetch reliable sources for annual total return
+
+### Session 2026-01-15
+
+- Q: Foreign Currency Portfolio base currency handling? → A: Single currency mode - each Foreign Currency Portfolio has one designated Base Currency (e.g., USD), only stocks denominated in that currency can be added
+- Q: Pie chart asset classification basis? → A: By market/exchange - Taiwan stocks, US stocks, UK stocks, Euronext each as separate segments
+- Q: Historical year selector range? → A: Dynamic range - only show years where user has transaction records
+
+### Session 2026-01-16
+
+- Q: What metrics to display on performance page? → A: Only XIRR is meaningful; total return percentage cards removed. Yearly summary (value sections) retained for reference.
+- Q: Performance comparison format? → A: Compare portfolio XIRR (USD) against selected benchmark's annual return. Benchmarks: 全球 (VWRA), 美國大型 (VUAA), 已開發大型 (VHVE), 新興市場 (VFEM), 台灣 0050.
+- Q: TWD performance exchange rate source? → A: Use real historical exchange rates from Stooq API for year-start/year-end valuations (e.g., 2024-12-31 USD/TWD = 32.7897), not hardcoded approximate values.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -117,12 +130,64 @@ As an investor, I want performance comparison to use bar charts or other more in
 
 ---
 
+### User Story 7 - Auto-Fetch Price for New Positions (Priority: P1)
+
+As an investor, I want the system to automatically fetch real-time stock prices when I add a transaction for a new stock (new position), so I can immediately see the current market value without manually refreshing.
+
+**Why this priority**: This is a core UX issue affecting new position visibility.
+
+**Independent Test**: Can be verified by adding a new stock transaction and checking if the price is automatically fetched.
+
+**Acceptance Scenarios**:
+
+1. **Given** user adds a Buy transaction for a stock not currently held, **When** transaction is saved, **Then** system automatically fetches real-time price for that stock
+2. **Given** user adds a Buy transaction for an existing position, **When** transaction is saved, **Then** system does not re-fetch (uses cached price)
+3. **Given** auto-fetch completes, **When** viewing portfolio, **Then** the new position shows current price and unrealized P&L
+
+---
+
+### User Story 8 - Euronext Change Percentage Display (Priority: P2)
+
+As an investor, I want to see the "Since Previous Close" percentage change for Euronext-listed stocks (such as AGAC), so I can quickly understand daily price movement.
+
+**Why this priority**: Completes the Euronext integration with proper display parity.
+
+**Independent Test**: Can be verified by viewing a Euronext stock position and checking if change percentage is displayed.
+
+**Acceptance Scenarios**:
+
+1. **Given** user holds a Euronext stock, **When** viewing position card, **Then** displays change percentage (e.g., "+1.23%" or "-0.45%")
+2. **Given** Euronext API returns change data, **When** parsing response, **Then** extracts and stores change percentage
+3. **Given** change percentage is positive, **When** displaying, **Then** shows green color; if negative, shows red color
+
+---
+
+### User Story 9 - Foreign Currency Portfolio (No Exchange Rate) (Priority: P1)
+
+As an investor, I want a dedicated portfolio for foreign currency stocks that don't use currency ledger and don't require exchange rate input, so that my performance metrics (XIRR, unrealized P&L) are calculated purely in the stock's source currency without TWD conversion confusion.
+
+**Why this priority**: This resolves the fundamental issue where mixed exchange rate transactions cause confusing/meaningless metrics.
+
+**Independent Test**: Can be verified by creating a foreign currency portfolio, adding transactions without exchange rate, and verifying all metrics are in source currency.
+
+**Acceptance Scenarios**:
+
+1. **Given** user creates a new portfolio, **When** setting portfolio type, **Then** can choose "Foreign Currency Portfolio" option
+2. **Given** user is in a Foreign Currency Portfolio, **When** adding transactions, **Then** exchange rate field is hidden/disabled
+3. **Given** Foreign Currency Portfolio with USD stocks, **When** viewing metrics, **Then** all costs, values, and P&L display in USD (not TWD)
+4. **Given** Foreign Currency Portfolio, **When** calculating XIRR, **Then** XIRR is calculated in source currency cash flows
+5. **Given** user has multiple portfolios, **When** on portfolio page, **Then** can switch between portfolios via dropdown/selector
+6. **Given** user switches portfolio, **When** selection changes, **Then** all displayed data updates to reflect selected portfolio
+
+---
+
 ### Edge Cases
 
-- When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Track separately, do not merge
+- When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Use separate portfolios - primary portfolio for TWD-tracked investments, foreign currency portfolio for source-currency-only investments
 - When Euronext API cannot connect, how to handle quote fetch failure? → **Resolved**: Display cached price marked as "stale"
 - When historical year is missing some stocks' year-end closing prices, how to calculate performance? → **Resolved**: Prompt user to manually input
 - When ETF type cannot be determined, what is the default behavior? → **Resolved**: Default to accumulating type, mark as "unconfirmed type"
+- When user wants to track foreign stocks without TWD conversion, how to handle? → **Resolved**: Create a Foreign Currency Portfolio where all metrics are in source currency
 
 ## Requirements *(mandatory)*
 
@@ -138,6 +203,7 @@ As an investor, I want performance comparison to use bar charts or other more in
 - **FR-010**: Dashboard MUST display asset allocation using a pie chart
 - **FR-011**: Pie chart MUST show percentage for each asset category
 - **FR-012**: Pie chart MUST support hover to display detailed information
+- **FR-013**: Pie chart MUST classify assets by market/exchange (Taiwan, US, UK, Euronext)
 
 #### Story 3: Euronext Support
 - **FR-020**: System MUST support Euronext Amsterdam exchange stocks
@@ -151,6 +217,7 @@ As an investor, I want performance comparison to use bar charts or other more in
 - **FR-030a**: System MUST prompt user to manually input when year-end closing price is missing
 - **FR-031**: System MUST calculate XIRR and total return rate for specified year
 - **FR-032**: System MUST provide year selector for user to switch years
+- **FR-033**: Year selector MUST only display years where user has transaction records (dynamic range)
 
 #### Story 5: Extended YTD Support
 - **FR-040**: System MUST extend YTD support to all accumulating ETFs
@@ -163,12 +230,33 @@ As an investor, I want performance comparison to use bar charts or other more in
 - **FR-051**: Bar chart MUST support comparison display of multiple performance metrics
 - **FR-052**: Bar chart MUST support hover interaction to display detailed information
 
+#### Story 7: Auto-Fetch Price for New Positions
+- **FR-060**: System MUST automatically fetch real-time price when a new position is created (first transaction for a ticker)
+- **FR-061**: System SHOULD NOT re-fetch price for existing positions on transaction add (use cached price)
+- **FR-062**: System MUST display current price and unrealized P&L immediately after auto-fetch completes
+
+#### Story 8: Euronext Change Percentage
+- **FR-070**: System MUST extract and display "Since Previous Close" percentage change from Euronext API
+- **FR-071**: System MUST display change percentage with appropriate color coding (green for positive, red for negative)
+- **FR-072**: EuronextQuoteResult MUST include ChangePercent field
+
+#### Story 9: Foreign Currency Portfolio
+- **FR-080**: System MUST support creating a "Foreign Currency Portfolio" type
+- **FR-081**: Foreign Currency Portfolio MUST NOT require exchange rate input for transactions
+- **FR-082**: Foreign Currency Portfolio MUST calculate and display all metrics (cost, value, P&L, XIRR) in source currency
+- **FR-083**: System MUST provide portfolio switcher UI to switch between multiple portfolios
+- **FR-084**: System MUST update all displayed data when user switches portfolio
+- **FR-085**: Each Foreign Currency Portfolio MUST have a single designated Base Currency (e.g., USD)
+- **FR-086**: System MUST only allow adding stocks denominated in the portfolio's Base Currency
+
 ### Key Entities
 
 - **StockTransaction.ExchangeRate**: Modified to nullable decimal to support omitting exchange rate
 - **EuronextQuoteCache**: New Euronext quote cache entity using ISIN-MIC format query
 - **YearPerformance**: Extended performance calculation to support historical years
 - **EtfClassification**: New ETF type marking (accumulating/distributing/unknown)
+- **EuronextQuoteResult.ChangePercent**: New field for storing price change percentage
+- **Portfolio.PortfolioType**: New field to distinguish Primary (TWD-tracked) vs Foreign Currency portfolios
 
 ## Success Criteria *(mandatory)*
 
@@ -180,6 +268,9 @@ As an investor, I want performance comparison to use bar charts or other more in
 - **SC-004**: Historical year performance calculation results have less than 0.1% error compared to manual verification
 - **SC-005**: All held stocks are included in YTD performance calculation (Taiwan stocks with dividend adjustment)
 - **SC-006**: Performance comparison bar chart correctly displays all comparison items without visual misalignment
+- **SC-007**: New position displays current price within 3 seconds after transaction is saved
+- **SC-008**: Euronext stocks display change percentage with correct color coding
+- **SC-009**: Foreign Currency Portfolio displays all metrics in source currency without TWD conversion
 
 ## Assumptions
 

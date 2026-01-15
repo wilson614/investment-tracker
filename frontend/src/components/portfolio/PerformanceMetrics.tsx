@@ -6,6 +6,7 @@ interface PerformanceMetricsProps {
   xirrResult?: XirrResult | null;
   homeCurrency?: string;
   isLoading?: boolean;
+  portfolioId?: string;
 }
 
 export function PerformanceMetrics({
@@ -13,9 +14,12 @@ export function PerformanceMetrics({
   xirrResult,
   homeCurrency = 'TWD',
   isLoading = false,
+  portfolioId,
 }: PerformanceMetricsProps) {
   // Track if we've ever loaded data - only show skeleton on initial load
   const hasLoadedRef = React.useRef(false);
+  // Track current portfolio to reset cache on switch
+  const currentPortfolioIdRef = React.useRef<string | undefined>(portfolioId);
 
   // Cache the last valid values to prevent flashing
   const lastValuesRef = React.useRef<{
@@ -36,16 +40,33 @@ export function PerformanceMetrics({
     positionCount: 0,
   });
 
+  // Reset cache when portfolio changes
+  if (portfolioId !== currentPortfolioIdRef.current) {
+    currentPortfolioIdRef.current = portfolioId;
+    hasLoadedRef.current = false;
+    lastValuesRef.current = {
+      totalCostHome: null,
+      totalValueHome: null,
+      totalUnrealizedPnlHome: null,
+      totalUnrealizedPnlPercentage: null,
+      xirrPercentage: null,
+      cashFlowCount: null,
+      positionCount: 0,
+    };
+  }
+
   if (summary) {
     hasLoadedRef.current = true;
     // Update cached values when we have new data
+    // IMPORTANT: Only use cached values for the SAME portfolio to prevent cross-portfolio data leakage
+    // When summary has no value (null/undefined), show null instead of stale cached value
     lastValuesRef.current = {
       totalCostHome: summary.totalCostHome,
-      totalValueHome: summary.totalValueHome ?? lastValuesRef.current.totalValueHome,
-      totalUnrealizedPnlHome: summary.totalUnrealizedPnlHome ?? lastValuesRef.current.totalUnrealizedPnlHome,
-      totalUnrealizedPnlPercentage: summary.totalUnrealizedPnlPercentage ?? lastValuesRef.current.totalUnrealizedPnlPercentage,
-      xirrPercentage: xirrResult?.xirrPercentage ?? lastValuesRef.current.xirrPercentage,
-      cashFlowCount: xirrResult?.cashFlowCount ?? lastValuesRef.current.cashFlowCount,
+      totalValueHome: summary.totalValueHome ?? null,
+      totalUnrealizedPnlHome: summary.totalUnrealizedPnlHome ?? null,
+      totalUnrealizedPnlPercentage: summary.totalUnrealizedPnlPercentage ?? null,
+      xirrPercentage: xirrResult?.xirrPercentage ?? null,
+      cashFlowCount: xirrResult?.cashFlowCount ?? null,
       positionCount: summary.positions.length,
     };
   }

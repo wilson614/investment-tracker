@@ -61,7 +61,11 @@ public class GetPortfolioSummaryUseCase
                 performanceRequest.CurrentPrices, StringComparer.OrdinalIgnoreCase)
             : null;
 
+        // For ForeignCurrency portfolios, all metrics are calculated in source currency (no exchange rate conversion)
+        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
+
         var positionDtos = new List<StockPositionDto>();
+        // totalCostHome: only includes positions that have quotes (for accurate PnL percentage)
         decimal totalCostHome = 0m;
         decimal? totalValueHome = null;
         decimal? totalUnrealizedPnl = null;
@@ -70,26 +74,71 @@ public class GetPortfolioSummaryUseCase
         {
             var hasHomeCost = position.TotalCostHome > 0;
             // Only treat home-currency metrics as available when there is at least one transaction with ExchangeRate
-            var hasAnyExchangeRate = transactions.Any(t =>
+            // For ForeignCurrency portfolios, we always use source currency, so treat as having "exchange rate" for consistency
+            var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
                 t.HasExchangeRate &&
                 (t.TransactionType == TransactionType.Buy || t.TransactionType == TransactionType.Adjustment));
 
-            var dto = new StockPositionDto
+            StockPositionDto dto;
+
+            if (isForeignCurrencyPortfolio)
             {
-                Ticker = position.Ticker,
-                TotalShares = position.TotalShares,
-                TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
-                TotalCostSource = position.TotalCostSource,
-                AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
-                AverageCostPerShareSource = position.AverageCostPerShareSource
-            };
+                // ForeignCurrency portfolio: use source currency for all metrics
+                dto = new StockPositionDto
+                {
+                    Ticker = position.Ticker,
+                    TotalShares = position.TotalShares,
+                    // For FC portfolios, display source values in the "Home" fields since they're the primary display
+                    TotalCostHome = position.TotalCostSource,
+                    TotalCostSource = position.TotalCostSource,
+                    AverageCostPerShareHome = position.AverageCostPerShareSource,
+                    AverageCostPerShareSource = position.AverageCostPerShareSource
+                };
+            }
+            else
+            {
+                dto = new StockPositionDto
+                {
+                    Ticker = position.Ticker,
+                    TotalShares = position.TotalShares,
+                    TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
+                    TotalCostSource = position.TotalCostSource,
+                    AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
+                    AverageCostPerShareSource = position.AverageCostPerShareSource
+                };
+            }
+
+            // Track whether this position contributes to PnL totals
+            var contributesToPnl = false;
 
             // If current prices provided, calculate unrealized PnL
             if (currentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
             {
-                if (hasAnyExchangeRate)
+                if (isForeignCurrencyPortfolio)
+                {
+                    // ForeignCurrency portfolio: calculate PnL in source currency (exchange rate = 1)
+                    var currentValueSource = position.TotalShares * priceInfo.Price;
+                    var unrealizedPnlSource = currentValueSource - position.TotalCostSource;
+                    var unrealizedPnlPercentage = position.TotalCostSource > 0
+                        ? (unrealizedPnlSource / position.TotalCostSource) * 100
+                        : null as decimal?;
+
+                    dto = dto with
+                    {
+                        CurrentPrice = priceInfo.Price,
+                        CurrentExchangeRate = 1m, // FC portfolios don't use exchange rates
+                        CurrentValueHome = currentValueSource,
+                        UnrealizedPnlHome = unrealizedPnlSource,
+                        UnrealizedPnlPercentage = unrealizedPnlPercentage
+                    };
+
+                    totalValueHome = (totalValueHome ?? 0) + currentValueSource;
+                    totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + unrealizedPnlSource;
+                    contributesToPnl = true;
+                }
+                else if (hasAnyExchangeRate)
                 {
                     var pnl = _portfolioCalculator.CalculateUnrealizedPnl(
                         position, priceInfo.Price, priceInfo.ExchangeRate);
@@ -105,6 +154,7 @@ public class GetPortfolioSummaryUseCase
 
                     totalValueHome = (totalValueHome ?? 0) + pnl.CurrentValueHome;
                     totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + pnl.UnrealizedPnlHome;
+                    contributesToPnl = true;
                 }
                 else
                 {
@@ -119,9 +169,18 @@ public class GetPortfolioSummaryUseCase
                 }
             }
 
-            if (hasAnyExchangeRate)
+            // Only add to totalCostHome if this position contributes to PnL calculations
+            // This ensures TotalCost and TotalValue are comparable for percentage calculation
+            if (contributesToPnl)
             {
-                totalCostHome += position.TotalCostHome;
+                if (isForeignCurrencyPortfolio)
+                {
+                    totalCostHome += position.TotalCostSource;
+                }
+                else if (hasAnyExchangeRate)
+                {
+                    totalCostHome += position.TotalCostHome;
+                }
             }
 
             positionDtos.Add(dto);
@@ -134,6 +193,8 @@ public class GetPortfolioSummaryUseCase
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
+            PortfolioType = portfolio.PortfolioType,
+            DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt
         };

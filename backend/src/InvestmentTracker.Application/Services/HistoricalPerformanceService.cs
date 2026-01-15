@@ -145,7 +145,12 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             ? new Dictionary<string, YearEndPriceInfo>(request.YearEndPrices, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, YearEndPriceInfo>(StringComparer.OrdinalIgnoreCase);
 
-        // Check year-end prices for positions (use previous year Dec 31 for price reference)
+        // Year-start prices: use provided YearStartPrices, or fall back to YearEndPrices
+        var yearStartPrices = request.YearStartPrices != null
+            ? new Dictionary<string, YearEndPriceInfo>(request.YearStartPrices, StringComparer.OrdinalIgnoreCase)
+            : yearEndPrices;
+
+        // Check year-end prices for positions
         foreach (var position in yearEndPositions)
         {
             if (!yearEndPrices.ContainsKey(position.Ticker))
@@ -153,8 +158,8 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
                 missingPrices.Add(new MissingPriceDto
                 {
                     Ticker = position.Ticker,
-                    Date = priceReferenceDate,
-                    PriceType = "YearStart"
+                    Date = yearEnd,
+                    PriceType = "YearEnd"
                 });
             }
         }
@@ -162,7 +167,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // Check year-start prices for positions that existed at year start
         foreach (var position in yearStartPositions)
         {
-            if (!yearEndPrices.ContainsKey(position.Ticker))
+            if (!yearStartPrices.ContainsKey(position.Ticker))
             {
                 missingPrices.Add(new MissingPriceDto
                 {
@@ -181,101 +186,181 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             return new YearPerformanceDto
             {
                 Year = year,
-                MissingPrices = missingPrices.DistinctBy(p => p.Ticker).ToList(),
+                SourceCurrency = portfolio.BaseCurrency,
+                MissingPrices = missingPrices.DistinctBy(p => (p.Ticker, p.PriceType)).ToList(),
                 CashFlowCount = 0
             };
         }
 
-        // Build cash flows for XIRR calculation
-        var cashFlows = new List<CashFlow>();
+        // ===== Calculate Source Currency (e.g., USD) Performance =====
+        var cashFlowsSource = new List<CashFlow>();
 
-        // Add year-start portfolio value as initial inflow (if we had positions)
-        decimal startValue = 0m;
+        // Year-start portfolio value in source currency
+        decimal startValueSource = 0m;
         foreach (var position in yearStartPositions)
         {
-            if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
+            if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
             {
-                // Use year-start prices (same prices dict for simplicity - user should provide both)
-                startValue += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                startValueSource += position.TotalShares * priceInfo.Price; // No exchange rate
             }
         }
 
-        if (startValue > 0)
+        if (startValueSource > 0)
         {
-            // Starting value is treated as an inflow at year start
-            cashFlows.Add(new CashFlow(-startValue, yearStart));
+            cashFlowsSource.Add(new CashFlow(-startValueSource, yearStart));
         }
 
-        // Add transactions during the year
+        // Transactions in source currency
         foreach (var tx in yearTransactions)
         {
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Outflow (investment)
-                cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+                cashFlowsSource.Add(new CashFlow(-tx.TotalCostSource, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Inflow (return)
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
-                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
+                cashFlowsSource.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
 
-        // Add year-end portfolio value as final outflow
-        decimal endValue = 0m;
+        // Year-end portfolio value in source currency
+        decimal endValueSource = 0m;
         foreach (var position in yearEndPositions)
         {
             if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
             {
-                endValue += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                endValueSource += position.TotalShares * priceInfo.Price; // No exchange rate
             }
         }
 
-        if (endValue > 0)
+        if (endValueSource > 0)
         {
-            cashFlows.Add(new CashFlow(endValue, yearEnd));
+            cashFlowsSource.Add(new CashFlow(endValueSource, yearEnd));
         }
 
-        // Calculate net contributions
-        decimal netContributions = yearTransactions
+        // Net contributions in source currency
+        decimal netContributionsSource = yearTransactions
+            .Where(t => t.TransactionType == TransactionType.Buy)
+            .Sum(t => t.TotalCostSource)
+            - yearTransactions
+            .Where(t => t.TransactionType == TransactionType.Sell)
+            .Sum(t => (t.Shares * t.PricePerShare) - t.Fees);
+
+        // Calculate source currency XIRR
+        double? xirrSource = null;
+        if (cashFlowsSource.Count >= 2)
+        {
+            xirrSource = _portfolioCalculator.CalculateXirr(cashFlowsSource);
+        }
+
+        // Calculate source currency total return
+        double? totalReturnSource = null;
+        if (startValueSource > 0)
+        {
+            totalReturnSource = (double)((endValueSource - startValueSource - netContributionsSource) / startValueSource) * 100;
+        }
+        else if (netContributionsSource > 0)
+        {
+            totalReturnSource = (double)((endValueSource - netContributionsSource) / netContributionsSource) * 100;
+        }
+
+        // ===== Calculate Home Currency (e.g., TWD) Performance =====
+        var cashFlowsHome = new List<CashFlow>();
+
+        // Year-start portfolio value in home currency
+        decimal startValueHome = 0m;
+        foreach (var position in yearStartPositions)
+        {
+            if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
+            {
+                startValueHome += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+            }
+        }
+
+        if (startValueHome > 0)
+        {
+            cashFlowsHome.Add(new CashFlow(-startValueHome, yearStart));
+        }
+
+        // Transactions in home currency
+        foreach (var tx in yearTransactions)
+        {
+            if (tx.TransactionType == TransactionType.Buy)
+            {
+                cashFlowsHome.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
+            }
+            else if (tx.TransactionType == TransactionType.Sell)
+            {
+                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
+                cashFlowsHome.Add(new CashFlow(proceeds, tx.TransactionDate));
+            }
+        }
+
+        // Year-end portfolio value in home currency
+        decimal endValueHome = 0m;
+        foreach (var position in yearEndPositions)
+        {
+            if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
+            {
+                endValueHome += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+            }
+        }
+
+        if (endValueHome > 0)
+        {
+            cashFlowsHome.Add(new CashFlow(endValueHome, yearEnd));
+        }
+
+        // Net contributions in home currency
+        decimal netContributionsHome = yearTransactions
             .Where(t => t.TransactionType == TransactionType.Buy)
             .Sum(t => t.TotalCostHome ?? 0)
             - yearTransactions
             .Where(t => t.TransactionType == TransactionType.Sell)
             .Sum(t => (t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1)) - (t.Fees * (t.ExchangeRate ?? 1)));
 
-        // Calculate XIRR
-        double? xirr = null;
-        if (cashFlows.Count >= 2)
+        // Calculate home currency XIRR
+        double? xirrHome = null;
+        if (cashFlowsHome.Count >= 2)
         {
-            xirr = _portfolioCalculator.CalculateXirr(cashFlows);
+            xirrHome = _portfolioCalculator.CalculateXirr(cashFlowsHome);
         }
 
-        // Calculate simple total return
-        double? totalReturn = null;
-        if (startValue > 0)
+        // Calculate home currency total return
+        double? totalReturnHome = null;
+        if (startValueHome > 0)
         {
-            totalReturn = (double)((endValue - startValue - netContributions) / startValue) * 100;
+            totalReturnHome = (double)((endValueHome - startValueHome - netContributionsHome) / startValueHome) * 100;
         }
-        else if (netContributions > 0)
+        else if (netContributionsHome > 0)
         {
-            totalReturn = (double)((endValue - netContributions) / netContributions) * 100;
+            totalReturnHome = (double)((endValueHome - netContributionsHome) / netContributionsHome) * 100;
         }
 
-        _logger.LogInformation("Year {Year} performance: XIRR={Xirr}, TotalReturn={Return}%",
-            year, xirr.HasValue ? xirr.Value * 100 : null, totalReturn);
+        _logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
+            year, xirrSource.HasValue ? xirrSource.Value * 100 : null, xirrHome.HasValue ? xirrHome.Value * 100 : null);
 
         return new YearPerformanceDto
         {
             Year = year,
-            Xirr = xirr,
-            XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
-            TotalReturnPercentage = totalReturn,
-            StartValueHome = startValue > 0 ? startValue : null,
-            EndValueHome = endValue > 0 ? endValue : null,
-            NetContributionsHome = netContributions,
-            CashFlowCount = cashFlows.Count,
+            // Home currency
+            Xirr = xirrHome,
+            XirrPercentage = xirrHome.HasValue ? xirrHome.Value * 100 : null,
+            TotalReturnPercentage = totalReturnHome,
+            StartValueHome = startValueHome > 0 ? startValueHome : null,
+            EndValueHome = endValueHome > 0 ? endValueHome : null,
+            NetContributionsHome = netContributionsHome,
+            // Source currency
+            SourceCurrency = portfolio.BaseCurrency,
+            XirrSource = xirrSource,
+            XirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : null,
+            TotalReturnPercentageSource = totalReturnSource,
+            StartValueSource = startValueSource > 0 ? startValueSource : null,
+            EndValueSource = endValueSource > 0 ? endValueSource : null,
+            NetContributionsSource = netContributionsSource,
+            // Common
+            CashFlowCount = cashFlowsSource.Count,
             MissingPrices = []
         };
     }

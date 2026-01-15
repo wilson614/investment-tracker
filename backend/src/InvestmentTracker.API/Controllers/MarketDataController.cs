@@ -18,17 +18,20 @@ public class MarketDataController : ControllerBase
     private readonly ICapeDataService _capeDataService;
     private readonly IMarketYtdService _marketYtdService;
     private readonly EuronextQuoteService _euronextQuoteService;
+    private readonly IStooqHistoricalPriceService _stooqService;
     private readonly AppDbContext _dbContext;
 
     public MarketDataController(
         ICapeDataService capeDataService,
         IMarketYtdService marketYtdService,
         EuronextQuoteService euronextQuoteService,
+        IStooqHistoricalPriceService stooqService,
         AppDbContext dbContext)
     {
         _capeDataService = capeDataService;
         _marketYtdService = marketYtdService;
         _euronextQuoteService = euronextQuoteService;
+        _stooqService = stooqService;
         _dbContext = dbContext;
     }
 
@@ -220,11 +223,156 @@ public class MarketDataController : ControllerBase
             quote.MarketTime,
             quote.Name,
             quote.ExchangeRate,
-            quote.FromCache));
+            quote.FromCache,
+            quote.ChangePercent,
+            quote.Change));
+    }
+
+    /// <summary>
+    /// Get historical closing price for a stock on a specific date.
+    /// Uses Stooq API for US/UK stocks.
+    /// </summary>
+    /// <param name="ticker">Stock ticker (e.g., AAPL, VWRA)</param>
+    /// <param name="date">Target date (format: yyyy-MM-dd)</param>
+    [HttpGet("historical-price")]
+    [ProducesResponseType(typeof(HistoricalPriceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoricalPriceResponse>> GetHistoricalPrice(
+        [FromQuery] string ticker,
+        [FromQuery] string date,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+        {
+            return BadRequest("Ticker is required");
+        }
+
+        if (!DateOnly.TryParse(date, out var targetDate))
+        {
+            return BadRequest("Date must be in yyyy-MM-dd format");
+        }
+
+        var result = await _stooqService.GetStockPriceAsync(
+            ticker.Trim().ToUpperInvariant(),
+            targetDate,
+            cancellationToken);
+
+        if (result == null)
+        {
+            return NotFound($"No historical price found for {ticker} on {date}");
+        }
+
+        return Ok(new HistoricalPriceResponse(
+            result.Price,
+            result.Currency,
+            result.ActualDate.ToString("yyyy-MM-dd")));
+    }
+
+    /// <summary>
+    /// Get historical closing prices for multiple stocks on a specific date.
+    /// Uses Stooq API for US/UK stocks.
+    /// </summary>
+    [HttpPost("historical-prices")]
+    [ProducesResponseType(typeof(Dictionary<string, HistoricalPriceResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<Dictionary<string, HistoricalPriceResponse>>> GetHistoricalPrices(
+        [FromBody] HistoricalPricesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.Tickers == null || request.Tickers.Length == 0)
+        {
+            return BadRequest("At least one ticker is required");
+        }
+
+        if (!DateOnly.TryParse(request.Date, out var targetDate))
+        {
+            return BadRequest("Date must be in yyyy-MM-dd format");
+        }
+
+        var results = new Dictionary<string, HistoricalPriceResponse>();
+
+        // Fetch prices in parallel
+        var tasks = request.Tickers.Select(async ticker =>
+        {
+            var result = await _stooqService.GetStockPriceAsync(
+                ticker.Trim().ToUpperInvariant(),
+                targetDate,
+                cancellationToken);
+
+            return (ticker, result);
+        });
+
+        var priceResults = await Task.WhenAll(tasks);
+
+        foreach (var (ticker, result) in priceResults)
+        {
+            if (result != null)
+            {
+                results[ticker] = new HistoricalPriceResponse(
+                    result.Price,
+                    result.Currency,
+                    result.ActualDate.ToString("yyyy-MM-dd"));
+            }
+        }
+
+        return Ok(results);
+    }
+
+    /// <summary>
+    /// Get historical exchange rate for a currency pair on a specific date.
+    /// Uses Stooq forex data.
+    /// </summary>
+    /// <param name="from">Source currency (e.g., USD)</param>
+    /// <param name="to">Target currency (e.g., TWD)</param>
+    /// <param name="date">Target date (format: yyyy-MM-dd)</param>
+    [HttpGet("historical-exchange-rate")]
+    [ProducesResponseType(typeof(HistoricalExchangeRateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoricalExchangeRateResponse>> GetHistoricalExchangeRate(
+        [FromQuery] string from,
+        [FromQuery] string to,
+        [FromQuery] string date,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
+        {
+            return BadRequest("From and To currencies are required");
+        }
+
+        if (!DateOnly.TryParse(date, out var targetDate))
+        {
+            return BadRequest("Date must be in yyyy-MM-dd format");
+        }
+
+        var result = await _stooqService.GetExchangeRateAsync(
+            from.Trim().ToUpperInvariant(),
+            to.Trim().ToUpperInvariant(),
+            targetDate,
+            cancellationToken);
+
+        if (result == null)
+        {
+            return NotFound($"No exchange rate found for {from}/{to} on {date}");
+        }
+
+        return Ok(new HistoricalExchangeRateResponse(
+            result.Rate,
+            result.FromCurrency,
+            result.ToCurrency,
+            result.ActualDate.ToString("yyyy-MM-dd")));
     }
 }
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
+
+/// <summary>
+/// Request for fetching historical prices for multiple stocks.
+/// </summary>
+public record HistoricalPricesRequest(string[] Tickers, string Date);
+
+/// <summary>
+/// Response for historical price lookup.
+/// </summary>
+public record HistoricalPriceResponse(decimal Price, string Currency, string ActualDate);
 
 /// <summary>
 /// Request for fetching Euronext quote.
@@ -240,4 +388,11 @@ public record EuronextQuoteResponse(
     DateTime? MarketTime,
     string? Name,
     decimal? ExchangeRate,
-    bool FromCache);
+    bool FromCache,
+    string? ChangePercent = null,
+    decimal? Change = null);
+
+/// <summary>
+/// Response for historical exchange rate lookup.
+/// </summary>
+public record HistoricalExchangeRateResponse(decimal Rate, string FromCurrency, string ToCurrency, string ActualDate);

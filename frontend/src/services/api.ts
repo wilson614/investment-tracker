@@ -396,6 +396,25 @@ export const marketDataApi = {
     fetchApi<EuronextQuoteResponse>(
       `/market-data/euronext/quote?isin=${encodeURIComponent(isin)}&mic=${encodeURIComponent(mic)}&homeCurrency=${encodeURIComponent(homeCurrency)}&refresh=${refresh}`
     ),
+
+  getHistoricalPrice: (ticker: string, date: string) =>
+    fetchApi<{ price: number; currency: string; actualDate: string }>(
+      `/market-data/historical-price?ticker=${encodeURIComponent(ticker)}&date=${encodeURIComponent(date)}`
+    ),
+
+  getHistoricalPrices: (tickers: string[], date: string) =>
+    fetchApi<Record<string, { price: number; currency: string; actualDate: string }>>(
+      '/market-data/historical-prices',
+      {
+        method: 'POST',
+        body: JSON.stringify({ tickers, date }),
+      }
+    ),
+
+  getHistoricalExchangeRate: (from: string, to: string, date: string) =>
+    fetchApi<{ rate: number; fromCurrency: string; toCurrency: string; actualDate: string }>(
+      `/market-data/historical-exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`
+    ),
 };
 
 // ETF Classification API

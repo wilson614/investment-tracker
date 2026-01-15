@@ -6,10 +6,12 @@ import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
+import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
+import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
-import { StockMarket } from '../types';
+import { StockMarket, TransactionType, PortfolioType } from '../types';
 import { isEuronextSymbol, getEuronextSymbol } from '../constants';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
@@ -24,8 +26,8 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
-// Cache keys for localStorage
-const PERF_CACHE_KEY = 'perf_cache_portfolio';
+// Cache keys for localStorage - include portfolio ID to prevent cross-account data leakage
+const getPerfCacheKey = (portfolioId: string) => `perf_cache_${portfolioId}`;
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
 interface CachedPerformance {
@@ -66,34 +68,63 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 export function PortfolioPage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
-  // Load cached performance data on init (no time limit - always show cached, then refresh)
-  const loadCachedPerformance = (): { summary: PortfolioSummary | null; xirrResult: XirrResult | null } => {
-    try {
-      const cached = localStorage.getItem(PERF_CACHE_KEY);
-      if (cached) {
-        const data: CachedPerformance = JSON.parse(cached);
-        return { summary: data.summary, xirrResult: data.xirrResult };
-      }
-    } catch {
-      // Ignore cache errors
-    }
-    return { summary: null, xirrResult: null };
-  };
-
-  const cachedPerf = loadCachedPerformance();
-  const [summary, setSummary] = useState<PortfolioSummary | null>(cachedPerf.summary);
-  const [xirrResult, setXirrResult] = useState<XirrResult | null>(cachedPerf.xirrResult);
-  const [isLoading, setIsLoading] = useState(cachedPerf.summary === null);
+  // Don't load cache on init - wait until we know the portfolio ID
+  // Note: We use loadCachedPrices (individual quote cache) instead of loadCachedPerformance
+  // because it's more accurate - we recalculate summary/XIRR with the cached prices
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
+  const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFetchingAll, setIsFetchingAll] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
+  // Store current portfolio ID for switching
+  const [currentPortfolioId, setCurrentPortfolioId] = useState<string | null>(null);
+
+  const loadDataForPortfolio = useCallback(async (portfolioId: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const currentPortfolio = await portfolioApi.getById(portfolioId);
+      setPortfolio(currentPortfolio);
+      setCurrentPortfolioId(portfolioId);
+
+      const [basicSummary, txData] = await Promise.all([
+        portfolioApi.getSummary(portfolioId),
+        transactionApi.getByPortfolio(portfolioId),
+      ]);
+      setTransactions(txData);
+
+      // Load cached prices for all positions
+      const tickers = basicSummary.positions.map(pos => pos.ticker);
+      const cachedPrices = loadCachedPrices(tickers);
+      currentPricesRef.current = cachedPrices;
+
+      // If we have cached prices, calculate with them immediately
+      if (Object.keys(cachedPrices).length > 0) {
+        const [summaryWithPrices, xirr] = await Promise.all([
+          portfolioApi.getSummary(portfolioId, cachedPrices),
+          portfolioApi.calculateXirr(portfolioId, { currentPrices: cachedPrices }),
+        ]);
+        setSummary(summaryWithPrices);
+        setXirrResult(xirr);
+      } else {
+        setSummary(basicSummary);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load portfolio');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -113,6 +144,8 @@ export function PortfolioPage() {
       } else {
         currentPortfolio = portfolios[0];
       }
+
+      setCurrentPortfolioId(currentPortfolio.id);
 
       setPortfolio(currentPortfolio);
       const portfolioId = currentPortfolio.id;
@@ -160,7 +193,76 @@ export function PortfolioPage() {
     }
   }, [summary, isLoading]);
 
+  // T066: Helper function to fetch price for a single ticker (used for auto-fetch on new position)
+  const fetchPriceForTicker = async (ticker: string): Promise<void> => {
+    if (!summary) return;
+    const homeCurrency = summary.portfolio.homeCurrency;
+
+    try {
+      // Check if this is a Euronext symbol first
+      const euronextInfo = getEuronextSymbol(ticker);
+      if (euronextInfo) {
+        const euronextQuote = await marketDataApi.getEuronextQuote(
+          euronextInfo.isin,
+          euronextInfo.mic,
+          homeCurrency
+        );
+        if (euronextQuote?.exchangeRate) {
+          const syntheticQuote: StockQuoteResponse = {
+            symbol: ticker,
+            name: euronextQuote.name || ticker,
+            price: euronextQuote.price,
+            market: 4 as StockMarketType,
+            source: 'Euronext',
+            fetchedAt: new Date().toISOString(),
+            exchangeRate: euronextQuote.exchangeRate,
+            exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+            changePercent: euronextQuote.changePercent ?? undefined,
+            change: euronextQuote.change ?? undefined,
+          };
+          const cacheData: CachedQuote = {
+            quote: syntheticQuote,
+            updatedAt: new Date().toISOString(),
+            market: 4 as StockMarketType,
+          };
+          localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+          currentPricesRef.current[ticker] = { price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
+          await updateSummaryWithPrices({ ...currentPricesRef.current });
+          setRefreshTrigger(Date.now());
+        }
+        return;
+      }
+
+      // Standard market handling
+      const market = guessMarket(ticker);
+      let quote = await stockPriceApi.getQuoteWithRate(market, ticker, homeCurrency);
+      let finalMarket = market;
+
+      if (!quote && market === StockMarket.US) {
+        quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, ticker, homeCurrency);
+        if (quote) finalMarket = StockMarket.UK;
+      }
+
+      if (quote?.exchangeRate) {
+        const cacheData: CachedQuote = {
+          quote,
+          updatedAt: new Date().toISOString(),
+          market: finalMarket,
+        };
+        localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+        currentPricesRef.current[ticker] = { price: quote.price, exchangeRate: quote.exchangeRate };
+        await updateSummaryWithPrices({ ...currentPricesRef.current });
+        setRefreshTrigger(Date.now());
+      }
+    } catch (err) {
+      console.error(`Failed to auto-fetch price for new position ${ticker}:`, err);
+    }
+  };
+
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
+    // T065: Capture existing tickers before save to detect new positions
+    const existingTickers = new Set(summary?.positions.map(p => p.ticker) ?? []);
+
     if (editingTransaction) {
       await transactionApi.update(editingTransaction.id, {
         transactionDate: data.transactionDate,
@@ -177,9 +279,21 @@ export function PortfolioPage() {
     } else {
       await transactionApi.create(data);
     }
-    await loadData();
+    // Reload current portfolio data (not reset to first portfolio)
+    if (currentPortfolioId) {
+      await loadDataForPortfolio(currentPortfolioId);
+    } else {
+      await loadData();
+    }
     setShowForm(false);
     setEditingTransaction(null);
+
+    // T066: Auto-fetch price for new position (Buy transactions only)
+    const isNewPosition = !existingTickers.has(data.ticker);
+    if (isNewPosition && data.transactionType === TransactionType.Buy) {
+      // Fetch price in background - don't block UI
+      fetchPriceForTicker(data.ticker);
+    }
   };
 
   const handleEditTransaction = (transaction: StockTransaction) => {
@@ -190,7 +304,12 @@ export function PortfolioPage() {
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
-    await loadData();
+    // Reload current portfolio data (not reset to first portfolio)
+    if (currentPortfolioId) {
+      await loadDataForPortfolio(currentPortfolioId);
+    } else {
+      await loadData();
+    }
   };
 
   const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
@@ -206,14 +325,16 @@ export function PortfolioPage() {
       setSummary(summaryData);
       setXirrResult(xirrData);
 
-      // Cache the performance data
+      // Cache the performance data with portfolio-specific key
       try {
-        const cacheData: CachedPerformance = {
-          summary: summaryData,
-          xirrResult: xirrData,
-          cachedAt: new Date().toISOString(),
-        };
-        localStorage.setItem(PERF_CACHE_KEY, JSON.stringify(cacheData));
+        if (portfolio?.id) {
+          const cacheData: CachedPerformance = {
+            summary: summaryData,
+            xirrResult: xirrData,
+            cachedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(getPerfCacheKey(portfolio.id), JSON.stringify(cacheData));
+        }
       } catch {
         // Ignore cache errors
       }
@@ -257,6 +378,8 @@ export function PortfolioPage() {
                 fetchedAt: new Date().toISOString(),
                 exchangeRate: euronextQuote.exchangeRate,
                 exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+                changePercent: euronextQuote.changePercent ?? undefined,
+                change: euronextQuote.change ?? undefined,
               };
               const cacheData: CachedQuote = {
                 quote: syntheticQuote,
@@ -388,11 +511,16 @@ export function PortfolioPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex justify-between items-start mb-6">
-          <div>
+          <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
-            {summary.portfolio.description && (
-              <p className="text-[var(--text-secondary)] text-base mt-1">{summary.portfolio.description}</p>
-            )}
+            <PortfolioSelector
+              currentPortfolioId={currentPortfolioId}
+              onPortfolioChange={(portfolioId) => {
+                hasFetchedOnLoad.current = false;
+                loadDataForPortfolio(portfolioId);
+              }}
+              onCreateNew={() => setShowCreatePortfolio(true)}
+            />
           </div>
           <div className="flex items-center gap-2">
             <FileDropdown
@@ -416,6 +544,23 @@ export function PortfolioPage() {
           </div>
         </div>
 
+        {/* Portfolio Description (if Primary type with description) */}
+        {summary.portfolio.description && (
+          <p className="text-[var(--text-secondary)] text-base mb-4">{summary.portfolio.description}</p>
+        )}
+
+        {/* Create Portfolio Modal */}
+        {showCreatePortfolio && (
+          <CreatePortfolioForm
+            onClose={() => setShowCreatePortfolio(false)}
+            onSuccess={(portfolioId) => {
+              setShowCreatePortfolio(false);
+              hasFetchedOnLoad.current = false;
+              loadDataForPortfolio(portfolioId);
+            }}
+          />
+        )}
+
         {/* Performance Metrics - horizontal layout */}
         <div className="mb-6">
           <PerformanceMetrics
@@ -423,6 +568,7 @@ export function PortfolioPage() {
             xirrResult={xirrResult}
             homeCurrency={summary.portfolio.homeCurrency}
             isLoading={isCalculating}
+            portfolioId={currentPortfolioId ?? undefined}
           />
         </div>
 
@@ -510,6 +656,7 @@ export function PortfolioPage() {
                   setShowForm(false);
                   setEditingTransaction(null);
                 }}
+                isForeignCurrencyPortfolio={portfolio?.portfolioType === PortfolioType.ForeignCurrency}
               />
             </div>
           </div>

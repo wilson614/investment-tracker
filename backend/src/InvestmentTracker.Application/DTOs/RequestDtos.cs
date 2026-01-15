@@ -16,6 +16,17 @@ public record CreatePortfolioRequest
 
     [StringLength(3, MinimumLength = 3)]
     public string HomeCurrency { get; init; } = "TWD";
+
+    /// <summary>
+    /// Type of portfolio (Primary or ForeignCurrency).
+    /// </summary>
+    public PortfolioType PortfolioType { get; init; } = PortfolioType.Primary;
+
+    /// <summary>
+    /// Display name for the portfolio (e.g., "美股投資組合").
+    /// </summary>
+    [StringLength(100)]
+    public string? DisplayName { get; init; }
 }
 
 /// <summary>

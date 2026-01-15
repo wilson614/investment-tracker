@@ -26,6 +26,12 @@ public class EuronextQuoteCache
     /// <summary>True if the last fetch failed and data is stale</summary>
     public bool IsStale { get; private set; }
 
+    /// <summary>Change percentage from previous close (e.g., "+1.25%")</summary>
+    public string? ChangePercent { get; private set; }
+
+    /// <summary>Absolute price change from previous close</summary>
+    public decimal? Change { get; private set; }
+
     // Required by EF Core
     private EuronextQuoteCache() { }
 
@@ -34,7 +40,9 @@ public class EuronextQuoteCache
         string mic,
         decimal price,
         string currency,
-        DateTime? marketTime = null)
+        DateTime? marketTime = null,
+        string? changePercent = null,
+        decimal? change = null)
     {
         if (string.IsNullOrWhiteSpace(isin))
             throw new ArgumentException("ISIN is required", nameof(isin));
@@ -52,9 +60,11 @@ public class EuronextQuoteCache
         FetchedAt = DateTime.UtcNow;
         MarketTime = marketTime;
         IsStale = false;
+        ChangePercent = changePercent;
+        Change = change;
     }
 
-    public void UpdateQuote(decimal price, string currency, DateTime? marketTime = null)
+    public void UpdateQuote(decimal price, string currency, DateTime? marketTime = null, string? changePercent = null, decimal? change = null)
     {
         if (price < 0)
             throw new ArgumentException("Price cannot be negative", nameof(price));
@@ -64,6 +74,8 @@ public class EuronextQuoteCache
         FetchedAt = DateTime.UtcNow;
         MarketTime = marketTime;
         IsStale = false;
+        ChangePercent = changePercent;
+        Change = change;
     }
 
     public void MarkAsStale()

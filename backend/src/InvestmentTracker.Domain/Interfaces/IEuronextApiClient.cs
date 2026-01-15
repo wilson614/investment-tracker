@@ -39,4 +39,14 @@ public record EuronextQuoteResult
     /// The name of the security.
     /// </summary>
     public string? Name { get; init; }
+
+    /// <summary>
+    /// The change percentage from previous close (e.g., "+1.25%", "-0.50%").
+    /// </summary>
+    public string? ChangePercent { get; init; }
+
+    /// <summary>
+    /// The absolute price change from previous close.
+    /// </summary>
+    public decimal? Change { get; init; }
 }

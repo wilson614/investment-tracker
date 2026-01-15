@@ -395,9 +395,9 @@ export function DashboardPage() {
               ) : (
                 <p className="text-xl font-bold text-[var(--text-muted)]">-</p>
               )}
-              {xirrResult && (
+              {xirrResult && xirrResult.cashFlowCount > 1 && (
                 <p className="text-sm text-[var(--text-muted)]">
-                  {xirrResult.cashFlowCount} 筆交易
+                  {xirrResult.cashFlowCount - 1} 筆交易
                 </p>
               )}
             </div>

@@ -190,6 +190,8 @@ export function PositionCard({
             symbol: position.ticker,
             name: euronextQuote.name || position.ticker,
             price: euronextQuote.price,
+            change: euronextQuote.change ?? undefined,
+            changePercent: euronextQuote.changePercent ?? undefined,
             market: EURONEXT_MARKET,
             source: 'Euronext',
             fetchedAt: euronextQuote.marketTime || new Date().toISOString(),

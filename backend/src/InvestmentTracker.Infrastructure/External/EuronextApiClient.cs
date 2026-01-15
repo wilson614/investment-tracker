@@ -30,6 +30,17 @@ public class EuronextApiClient : IEuronextApiClient
         @"last-price-date-time[^>]*>([0-9]{2}/[0-9]{2}/[0-9]{4})\s*-\s*([0-9]{2}:[0-9]{2})",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // T068: Regex patterns for change percentage and absolute change
+    // Format in HTML: <span class="text-ui-grey-1 mr-2">(-0.15%)</span>
+    private static readonly Regex ChangePercentRegex = new(
+        @"Since Previous Close.*?<span[^>]*>\s*\(([+-]?[0-9.,]+)%\)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    // Format in HTML: <span class="text-danger data-24 font-weight-bold mr-2">-0.016</span>
+    private static readonly Regex ChangeAbsoluteRegex = new(
+        @"Since Previous Close.*?data-24[^>]*>\s*([+-]?[0-9.,]+)\s*</span>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
     public EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient> logger)
     {
         _httpClient = httpClient;
@@ -121,14 +132,44 @@ public class EuronextApiClient : IEuronextApiClient
                 }
             }
 
-            _logger.LogDebug("Parsed Euronext quote: {Name} {Price} {Currency}", name, price, currency);
+            // T068: Extract change percentage
+            string? changePercent = null;
+            var changePercentMatch = ChangePercentRegex.Match(html);
+            if (changePercentMatch.Success)
+            {
+                var rawValue = changePercentMatch.Groups[1].Value.Replace(",", ".").Trim();
+                // Format as "+X.XX%" or "-X.XX%"
+                if (decimal.TryParse(rawValue, System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture, out var percentValue))
+                {
+                    var sign = percentValue >= 0 ? "+" : "";
+                    changePercent = $"{sign}{percentValue:0.00}%";
+                }
+            }
+
+            // T068: Extract absolute change
+            decimal? change = null;
+            var changeAbsoluteMatch = ChangeAbsoluteRegex.Match(html);
+            if (changeAbsoluteMatch.Success)
+            {
+                var rawValue = changeAbsoluteMatch.Groups[1].Value.Replace(",", ".").Trim();
+                if (decimal.TryParse(rawValue, System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture, out var changeValue))
+                {
+                    change = changeValue;
+                }
+            }
+
+            _logger.LogDebug("Parsed Euronext quote: {Name} {Price} {Currency} Change: {ChangePercent}", name, price, currency, changePercent);
 
             return new EuronextQuoteResult
             {
                 Price = price,
                 Currency = currency,
                 MarketTime = marketTime,
-                Name = name
+                Name = name,
+                ChangePercent = changePercent,
+                Change = change
             };
         }
         catch (HttpRequestException ex)
