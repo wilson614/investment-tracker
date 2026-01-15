@@ -21,6 +21,8 @@ public class AppDbContext : DbContext
     public DbSet<CapeDataSnapshot> CapeDataSnapshots => Set<CapeDataSnapshot>();
     public DbSet<IndexPriceSnapshot> IndexPriceSnapshots => Set<IndexPriceSnapshot>();
     public DbSet<StockSplit> StockSplits => Set<StockSplit>();
+    public DbSet<EuronextQuoteCache> EuronextQuoteCaches => Set<EuronextQuoteCache>();
+    public DbSet<EtfClassification> EtfClassifications => Set<EtfClassification>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

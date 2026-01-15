@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { authApi, portfolioApi } from '../../services/api';
-import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp, User, ChevronDown, Lock, Mail, Save } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp, User, ChevronDown, Lock, Mail, Save, BarChart3 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface NavLinkProps {
@@ -261,6 +261,7 @@ export function Navigation() {
                 投資組合
               </a>
               <NavLink to="/currency" icon={Wallet}>外幣帳本</NavLink>
+              <NavLink to="/performance" icon={BarChart3}>績效分析</NavLink>
             </nav>
           </div>
 
@@ -351,6 +352,9 @@ export function Navigation() {
             </a>
             <MobileNavLink to="/currency" icon={Wallet} onClick={closeMobileMenu}>
               外幣帳本
+            </MobileNavLink>
+            <MobileNavLink to="/performance" icon={BarChart3} onClick={closeMobileMenu}>
+              績效分析
             </MobileNavLink>
           </nav>
 

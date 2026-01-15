@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
 import { MarketContext, MarketYtdSection } from '../components/dashboard';
+import { AssetAllocationPieChart } from '../components/charts';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 import { refreshCapeData } from '../services/capeApi';
@@ -54,7 +55,7 @@ const guessMarket = (ticker: string): StockMarketType => {
 interface PositionWithPnl {
   ticker: string;
   totalShares: number;
-  avgCostPerShareHome: number;
+  avgCostPerShareHome?: number;
   currentPrice?: number;
   pnlPercentage?: number;
   valueHome?: number;
@@ -413,28 +414,10 @@ export function DashboardPage() {
           {/* Asset Allocation */}
           <div className="card-dark p-6">
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">資產配置</h2>
-            {assetAllocation.length > 0 ? (
-              <div className="space-y-3">
-                {assetAllocation.map((item) => (
-                  <div key={item.ticker} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-[var(--text-primary)] font-medium">{item.ticker}</span>
-                      <span className="text-[var(--text-secondary)]">{item.percentage.toFixed(1)}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[var(--accent-peach)] transition-all"
-                        style={{ width: `${Math.min(item.percentage, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[var(--text-muted)] text-center py-4">
-                獲取報價後顯示資產配置
-              </p>
-            )}
+            <AssetAllocationPieChart
+              data={assetAllocation}
+              homeCurrency={portfolio.homeCurrency}
+            />
           </div>
 
           {/* Position Performance */}

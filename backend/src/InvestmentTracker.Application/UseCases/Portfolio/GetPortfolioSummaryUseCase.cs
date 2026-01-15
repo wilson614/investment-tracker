@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 
@@ -67,36 +68,62 @@ public class GetPortfolioSummaryUseCase
 
         foreach (var position in positions.Where(p => p.TotalShares > 0))
         {
+            var hasHomeCost = position.TotalCostHome > 0;
+            // Only treat home-currency metrics as available when there is at least one transaction with ExchangeRate
+            var hasAnyExchangeRate = transactions.Any(t =>
+                !t.IsDeleted &&
+                t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
+                t.HasExchangeRate &&
+                (t.TransactionType == TransactionType.Buy || t.TransactionType == TransactionType.Adjustment));
+
             var dto = new StockPositionDto
             {
                 Ticker = position.Ticker,
                 TotalShares = position.TotalShares,
-                TotalCostHome = position.TotalCostHome,
+                TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
                 TotalCostSource = position.TotalCostSource,
-                AverageCostPerShareHome = position.AverageCostPerShareHome,
+                AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
                 AverageCostPerShareSource = position.AverageCostPerShareSource
             };
 
             // If current prices provided, calculate unrealized PnL
             if (currentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
             {
-                var pnl = _portfolioCalculator.CalculateUnrealizedPnl(
-                    position, priceInfo.Price, priceInfo.ExchangeRate);
-
-                dto = dto with
+                if (hasAnyExchangeRate)
                 {
-                    CurrentPrice = priceInfo.Price,
-                    CurrentExchangeRate = priceInfo.ExchangeRate,
-                    CurrentValueHome = pnl.CurrentValueHome,
-                    UnrealizedPnlHome = pnl.UnrealizedPnlHome,
-                    UnrealizedPnlPercentage = pnl.UnrealizedPnlPercentage
-                };
+                    var pnl = _portfolioCalculator.CalculateUnrealizedPnl(
+                        position, priceInfo.Price, priceInfo.ExchangeRate);
 
-                totalValueHome = (totalValueHome ?? 0) + pnl.CurrentValueHome;
-                totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + pnl.UnrealizedPnlHome;
+                    dto = dto with
+                    {
+                        CurrentPrice = priceInfo.Price,
+                        CurrentExchangeRate = priceInfo.ExchangeRate,
+                        CurrentValueHome = pnl.CurrentValueHome,
+                        UnrealizedPnlHome = pnl.UnrealizedPnlHome,
+                        UnrealizedPnlPercentage = pnl.UnrealizedPnlPercentage
+                    };
+
+                    totalValueHome = (totalValueHome ?? 0) + pnl.CurrentValueHome;
+                    totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + pnl.UnrealizedPnlHome;
+                }
+                else
+                {
+                    dto = dto with
+                    {
+                        CurrentPrice = priceInfo.Price,
+                        CurrentExchangeRate = priceInfo.ExchangeRate,
+                        CurrentValueHome = null,
+                        UnrealizedPnlHome = null,
+                        UnrealizedPnlPercentage = null
+                    };
+                }
             }
 
-            totalCostHome += position.TotalCostHome;
+            if (hasAnyExchangeRate)
+            {
+                totalCostHome += position.TotalCostHome;
+            }
+
             positionDtos.Add(dto);
         }
 

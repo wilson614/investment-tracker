@@ -14,7 +14,7 @@ public class StockTransaction : BaseEntity
     public TransactionType TransactionType { get; private set; }
     public decimal Shares { get; private set; }
     public decimal PricePerShare { get; private set; }
-    public decimal ExchangeRate { get; private set; }
+    public decimal? ExchangeRate { get; private set; }
     public decimal Fees { get; private set; }
     public FundSource FundSource { get; private set; } = FundSource.None;
     public Guid? CurrencyLedgerId { get; private set; }
@@ -49,8 +49,16 @@ public class StockTransaction : BaseEntity
         }
     }
 
-    /// <summary>Total cost in home currency: TotalCostSource × ExchangeRate</summary>
-    public decimal TotalCostHome => TotalCostSource * ExchangeRate;
+    /// <summary>
+    /// Total cost in home currency: TotalCostSource × ExchangeRate.
+    /// Returns null if ExchangeRate is not set (no TWD conversion).
+    /// </summary>
+    public decimal? TotalCostHome => ExchangeRate.HasValue ? TotalCostSource * ExchangeRate.Value : null;
+
+    /// <summary>
+    /// Indicates whether this transaction has an exchange rate for home currency conversion.
+    /// </summary>
+    public bool HasExchangeRate => ExchangeRate.HasValue;
 
     // Required by EF Core
     private StockTransaction() { }
@@ -62,7 +70,7 @@ public class StockTransaction : BaseEntity
         TransactionType transactionType,
         decimal shares,
         decimal pricePerShare,
-        decimal exchangeRate,
+        decimal? exchangeRate,
         decimal fees = 0m,
         FundSource fundSource = FundSource.None,
         Guid? currencyLedgerId = null,
@@ -120,12 +128,12 @@ public class StockTransaction : BaseEntity
         PricePerShare = Math.Round(price, 4);
     }
 
-    public void SetExchangeRate(decimal rate)
+    public void SetExchangeRate(decimal? rate)
     {
-        if (rate <= 0)
+        if (rate.HasValue && rate.Value <= 0)
             throw new ArgumentException("Exchange rate must be positive", nameof(rate));
 
-        ExchangeRate = Math.Round(rate, 6);
+        ExchangeRate = rate.HasValue ? Math.Round(rate.Value, 6) : null;
     }
 
     public void SetFees(decimal fees)

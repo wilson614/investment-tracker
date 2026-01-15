@@ -160,6 +160,67 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     b.ToTable("currency_transactions", (string)null);
                 });
 
+            modelBuilder.Entity("InvestmentTracker.Domain.Entities.EtfClassification", b =>
+                {
+                    b.Property<string>("Symbol")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Market")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("Type")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Symbol", "Market");
+
+                    b.ToTable("etf_classifications", (string)null);
+                });
+
+            modelBuilder.Entity("InvestmentTracker.Domain.Entities.EuronextQuoteCache", b =>
+                {
+                    b.Property<string>("Isin")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("Mic")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime>("FetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsStale")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("MarketTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Isin", "Mic");
+
+                    b.ToTable("euronext_quote_cache", (string)null);
+                });
+
             modelBuilder.Entity("InvestmentTracker.Domain.Entities.IndexPriceSnapshot", b =>
                 {
                     b.Property<int>("Id")
@@ -334,7 +395,7 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CurrencyLedgerId")
                         .HasColumnType("uuid");
 
-                    b.Property<decimal>("ExchangeRate")
+                    b.Property<decimal?>("ExchangeRate")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)");
 

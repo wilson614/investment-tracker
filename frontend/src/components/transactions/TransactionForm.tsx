@@ -114,7 +114,16 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
       const shouldOmitExchangeRate = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
 
       // Taiwan stocks always use exchange rate 1
-      const exchangeRateValue = isTW ? 1 : parseFloat(formData.exchangeRate);
+      // For other stocks, parse the value or use undefined if empty/invalid
+      let exchangeRateValue: number | undefined;
+      if (isTW) {
+        exchangeRateValue = 1;
+      } else if (shouldOmitExchangeRate) {
+        exchangeRateValue = undefined;
+      } else {
+        const parsed = parseFloat(formData.exchangeRate);
+        exchangeRateValue = !formData.exchangeRate || isNaN(parsed) ? undefined : parsed;
+      }
 
       const request: CreateStockTransactionRequest = {
         portfolioId,
@@ -123,7 +132,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
         transactionDate: formData.transactionDate,
         shares: parseFloat(formData.shares),
         pricePerShare: parseFloat(formData.pricePerShare),
-        exchangeRate: shouldOmitExchangeRate ? undefined : exchangeRateValue,
+        exchangeRate: exchangeRateValue,
         fees: parseFloat(formData.fees) || 0,
         fundSource: formData.fundSource,
         currencyLedgerId: formData.currencyLedgerId || undefined,
@@ -257,18 +266,18 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
         {!useCurrencyLedger && !isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              匯率
+              匯率（選填）
+              <span className="ml-2 text-xs text-[var(--text-muted)]">不填則僅追蹤原幣成本</span>
             </label>
             <input
               type="number"
               name="exchangeRate"
               value={formData.exchangeRate}
               onChange={handleChange}
-              required
               min="0.000001"
               step="0.000001"
               className="input-dark w-full"
-              placeholder="31.5"
+              placeholder="留空以原幣追蹤"
             />
           </div>
         )}

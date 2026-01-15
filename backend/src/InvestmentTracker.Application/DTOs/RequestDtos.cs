@@ -94,9 +94,12 @@ public record UpdateStockTransactionRequest
     [Range(0, double.MaxValue)]
     public decimal PricePerShare { get; init; }
 
-    [Required]
+    /// <summary>
+    /// Exchange rate for conversion to home currency.
+    /// Optional - if not provided, transaction cost will be tracked in source currency only.
+    /// </summary>
     [Range(0.000001, double.MaxValue)]
-    public decimal ExchangeRate { get; init; }
+    public decimal? ExchangeRate { get; init; }
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }

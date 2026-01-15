@@ -24,6 +24,11 @@ import type {
   MarketInfo,
   CapeData,
   MarketYtdComparison,
+  EuronextQuoteResponse,
+  AvailableYears,
+  YearPerformance,
+  CalculateYearPerformanceRequest,
+  EtfClassificationResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -130,6 +135,16 @@ export const portfolioApi = {
 
   delete: (id: string) =>
     fetchApi<void>(`/portfolios/${id}`, { method: 'DELETE' }),
+
+  // Historical Performance
+  getAvailableYears: (portfolioId: string) =>
+    fetchApi<AvailableYears>(`/portfolios/${portfolioId}/performance/years`),
+
+  calculateYearPerformance: (portfolioId: string, request: CalculateYearPerformanceRequest) =>
+    fetchApi<YearPerformance>(`/portfolios/${portfolioId}/performance/year`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
 };
 
 // Stock Transaction API
@@ -376,6 +391,23 @@ export const marketDataApi = {
 
   refreshYtdComparison: () =>
     fetchApi<MarketYtdComparison>('/market-data/ytd-comparison/refresh', { method: 'POST' }),
+
+  getEuronextQuote: (isin: string, mic: string, homeCurrency: string = 'TWD', refresh: boolean = false) =>
+    fetchApi<EuronextQuoteResponse>(
+      `/market-data/euronext/quote?isin=${encodeURIComponent(isin)}&mic=${encodeURIComponent(mic)}&homeCurrency=${encodeURIComponent(homeCurrency)}&refresh=${refresh}`
+    ),
+};
+
+// ETF Classification API
+export const etfClassificationApi = {
+  getClassification: (ticker: string) =>
+    fetchApi<EtfClassificationResult>(`/etf-classification/${encodeURIComponent(ticker)}`),
+
+  getAllClassifications: () =>
+    fetchApi<EtfClassificationResult[]>('/etf-classification'),
+
+  needsDividendAdjustment: (ticker: string) =>
+    fetchApi<boolean>(`/etf-classification/${encodeURIComponent(ticker)}/needs-dividend-adjustment`),
 };
 
 export type { ApiErrorType };

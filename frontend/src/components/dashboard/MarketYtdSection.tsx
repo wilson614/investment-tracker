@@ -149,7 +149,8 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
             <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
               <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                報酬率 = (現價 - 年初價格) / 年初價格 × 100
+                報酬率 = (現價 - 年初基準價) / 年初基準價 × 100
+                （年初基準價採前一年 12 月收盤價）
               </div>
             </div>
           </div>

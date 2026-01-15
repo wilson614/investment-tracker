@@ -93,7 +93,7 @@ public class UpdateStockTransactionUseCase
                 TransactionType.Sell,
                 request.Shares,
                 request.PricePerShare,
-                request.ExchangeRate,
+                request.ExchangeRate ?? 1.0m,
                 request.Fees);
 
             var realizedPnl = _portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
@@ -123,6 +123,7 @@ public class UpdateStockTransactionUseCase
             Notes = transaction.Notes,
             TotalCostSource = transaction.TotalCostSource,
             TotalCostHome = transaction.TotalCostHome,
+            HasExchangeRate = transaction.HasExchangeRate,
             RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt

@@ -31,7 +31,7 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
             .HasPrecision(18, 4);
 
         builder.Property(t => t.ExchangeRate)
-            .IsRequired()
+            .IsRequired(false)
             .HasPrecision(18, 6);
 
         builder.Property(t => t.Fees)

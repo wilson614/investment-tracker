@@ -67,13 +67,14 @@ export interface StockTransaction {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate: number;
+  exchangeRate?: number; // Nullable - when null, cost is tracked in source currency only
   fees: number;
   fundSource: FundSource;
   currencyLedgerId?: string;
   notes?: string;
   totalCostSource: number;
-  totalCostHome: number;
+  totalCostHome?: number; // Nullable - null when no exchange rate
+  hasExchangeRate: boolean; // Indicates if transaction has exchange rate for home currency conversion
   realizedPnlHome?: number;
   createdAt: string;
   updatedAt: string;
@@ -104,7 +105,7 @@ export interface UpdateStockTransactionRequest {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate: number;
+  exchangeRate?: number; // Optional - if not provided, transaction cost tracked in source currency only
   fees: number;
   fundSource?: FundSource;
   currencyLedgerId?: string;
@@ -114,9 +115,9 @@ export interface UpdateStockTransactionRequest {
 export interface StockPosition {
   ticker: string;
   totalShares: number;
-  totalCostHome: number;
+  totalCostHome?: number; // Nullable - null/undefined when no exchange rate data in position
   totalCostSource: number;
-  averageCostPerShareHome: number;
+  averageCostPerShareHome?: number; // Nullable - null/undefined when no exchange rate data in position
   averageCostPerShareSource: number;
   currentPrice?: number;
   currentExchangeRate?: number;
@@ -315,4 +316,60 @@ export interface MarketYtdComparison {
   year: number;
   benchmarks: MarketYtdReturn[];
   generatedAt: string;
+}
+
+// Euronext Quote Types
+export interface EuronextQuoteResponse {
+  price: number;
+  currency: string;
+  marketTime: string | null;
+  name: string | null;
+  exchangeRate: number | null;
+  fromCache: boolean;
+}
+
+// Historical Performance Types
+export interface YearPerformance {
+  year: number;
+  xirr: number | null;
+  xirrPercentage: number | null;
+  totalReturnPercentage: number | null;
+  startValueHome: number | null;
+  endValueHome: number | null;
+  netContributionsHome: number;
+  cashFlowCount: number;
+  missingPrices: MissingPrice[];
+  isComplete: boolean;
+}
+
+export interface MissingPrice {
+  ticker: string;
+  date: string;
+  priceType: 'YearStart' | 'YearEnd';
+}
+
+export interface AvailableYears {
+  years: number[];
+  earliestYear: number | null;
+  currentYear: number;
+}
+
+export interface CalculateYearPerformanceRequest {
+  year: number;
+  yearEndPrices?: Record<string, YearEndPriceInfo>;
+}
+
+export interface YearEndPriceInfo {
+  price: number;
+  exchangeRate: number;
+}
+
+// ETF Classification Types
+export type EtfTypeValue = 'Unknown' | 'Accumulating' | 'Distributing';
+
+export interface EtfClassificationResult {
+  ticker: string;
+  type: EtfTypeValue;
+  isConfirmed: boolean;
+  source: string | null;
 }

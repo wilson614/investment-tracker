@@ -40,7 +40,9 @@ public class PortfolioCalculator
             {
                 case TransactionType.Buy:
                     totalShares += transaction.Shares;
-                    totalCostHome += transaction.TotalCostHome;
+                    // Only add to home currency totals if exchange rate exists
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
                     break;
 
@@ -66,7 +68,9 @@ public class PortfolioCalculator
                 case TransactionType.Adjustment:
                     // Direct adjustment to shares and/or cost
                     totalShares += transaction.Shares;
-                    totalCostHome += transaction.TotalCostHome;
+                    // Only add to home currency totals if exchange rate exists
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
                     break;
             }
@@ -126,7 +130,9 @@ public class PortfolioCalculator
             subtotal = Math.Floor(subtotal);
 
         // Sale proceeds in home currency, minus fees
-        var saleProceeds = (subtotal - sellTransaction.Fees) * sellTransaction.ExchangeRate;
+        // If no exchange rate, use 1.0 (source currency = home currency assumption for sell PnL)
+        var exchangeRate = sellTransaction.ExchangeRate ?? 1.0m;
+        var saleProceeds = (subtotal - sellTransaction.Fees) * exchangeRate;
 
         return saleProceeds - costBasis;
     }
@@ -194,7 +200,9 @@ public class PortfolioCalculator
                 case TransactionType.Buy:
                     totalShares += adjustedShares;
                     // Total cost remains unchanged after split adjustment
-                    totalCostHome += transaction.TotalCostHome;
+                    // Only add to home currency totals if exchange rate exists
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
                     break;
 
@@ -216,7 +224,9 @@ public class PortfolioCalculator
 
                 case TransactionType.Adjustment:
                     totalShares += adjustedShares;
-                    totalCostHome += transaction.TotalCostHome;
+                    // Only add to home currency totals if exchange rate exists
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
                     break;
             }

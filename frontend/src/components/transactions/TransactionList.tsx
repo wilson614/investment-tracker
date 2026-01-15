@@ -98,7 +98,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
             <th className="text-right">價格</th>
             <th className="text-right">匯率</th>
             <th className="text-right">手續費</th>
-            <th className="text-right">總成本 (TWD)</th>
+            <th className="text-right">總成本</th>
             <th className="text-right">已實現損益</th>
             {(onEdit || onDelete) && (
               <th className="w-24 text-center">操作</th>
@@ -124,13 +124,15 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 {renderPrice(tx)}
               </td>
               <td className="text-right number-display whitespace-nowrap">
-                {formatNumber(tx.exchangeRate, 4)}
+                {tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : '-'}
               </td>
               <td className="text-right number-display whitespace-nowrap">
                 {formatNumber(tx.fees)}
               </td>
               <td className="text-right font-medium number-display whitespace-nowrap">
-                {formatTWD(tx.totalCostHome)}
+                {tx.totalCostHome != null
+                  ? `${formatTWD(tx.totalCostHome)} TWD`
+                  : formatNumber(tx.totalCostSource, 2)}
               </td>
               <td className="text-right">
                 {tx.realizedPnlHome != null ? (

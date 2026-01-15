@@ -28,13 +28,15 @@ public record StockTransactionDto
     public TransactionType TransactionType { get; init; }
     public decimal Shares { get; init; }
     public decimal PricePerShare { get; init; }
-    public decimal ExchangeRate { get; init; }
+    public decimal? ExchangeRate { get; init; }
     public decimal Fees { get; init; }
     public FundSource FundSource { get; init; }
     public Guid? CurrencyLedgerId { get; init; }
     public string? Notes { get; init; }
     public decimal TotalCostSource { get; init; }
-    public decimal TotalCostHome { get; init; }
+    public decimal? TotalCostHome { get; init; }
+    /// <summary>Indicates whether this transaction has an exchange rate for home currency conversion.</summary>
+    public bool HasExchangeRate { get; init; }
     public decimal? RealizedPnlHome { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
@@ -57,9 +59,9 @@ public record StockPositionDto
 {
     public string Ticker { get; init; } = string.Empty;
     public decimal TotalShares { get; init; }
-    public decimal TotalCostHome { get; init; }
+    public decimal? TotalCostHome { get; init; }
     public decimal TotalCostSource { get; init; }
-    public decimal AverageCostPerShareHome { get; init; }
+    public decimal? AverageCostPerShareHome { get; init; }
     public decimal AverageCostPerShareSource { get; init; }
     public decimal? CurrentPrice { get; init; }
     public decimal? CurrentExchangeRate { get; init; }

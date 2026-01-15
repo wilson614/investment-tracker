@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Domain.Enums;
@@ -99,14 +100,30 @@ public class TwseStockPriceProvider : IStockPriceProvider
             var name = stock.TryGetProperty("n", out var nProp) ? nProp.GetString() : symbol;
             var yesterdayStr = stock.TryGetProperty("y", out var yProp) ? yProp.GetString() : null;
 
-            // z might be "-" if no trade yet
-            if (string.IsNullOrEmpty(priceStr) || priceStr == "-")
+            decimal? yesterdayClose = null;
+            if (!string.IsNullOrEmpty(yesterdayStr) &&
+                decimal.TryParse(yesterdayStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var yClose))
             {
-                _logger.LogDebug("No trade price available for {Symbol}", symbol);
-                return null;
+                yesterdayClose = yClose;
             }
 
-            if (!decimal.TryParse(priceStr, out var price))
+            decimal price;
+            // z might be "-" if no trade yet; fallback to yesterday's close
+            if (string.IsNullOrEmpty(priceStr) || priceStr == "-")
+            {
+                if (yesterdayClose is null || yesterdayClose <= 0)
+                {
+                    _logger.LogDebug("No trade price available for {Symbol}", symbol);
+                    return null;
+                }
+
+                price = yesterdayClose.Value;
+                _logger.LogDebug(
+                    "No trade price available for {Symbol}, using previous close {Price} as fallback",
+                    symbol,
+                    price);
+            }
+            else if (!decimal.TryParse(priceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out price))
             {
                 _logger.LogWarning("Invalid price format for {Symbol}: {Price}", symbol, priceStr);
                 return null;
@@ -115,10 +132,10 @@ public class TwseStockPriceProvider : IStockPriceProvider
             decimal? change = null;
             string? changePercent = null;
 
-            if (!string.IsNullOrEmpty(yesterdayStr) && decimal.TryParse(yesterdayStr, out var yesterday) && yesterday > 0)
+            if (yesterdayClose is not null && yesterdayClose > 0)
             {
-                change = price - yesterday;
-                var pctValue = (change.Value / yesterday) * 100;
+                change = price - yesterdayClose;
+                var pctValue = (change.Value / yesterdayClose.Value) * 100;
                 var sign = pctValue >= 0 ? "+" : "";
                 changePercent = $"{sign}{pctValue:F2}%";
             }

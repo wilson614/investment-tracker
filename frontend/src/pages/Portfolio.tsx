@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
-import { portfolioApi, stockPriceApi } from '../services/api';
+import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
@@ -10,6 +10,7 @@ import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
 import { StockMarket } from '../types';
+import { isEuronextSymbol, getEuronextSymbol } from '../constants';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
@@ -237,6 +238,38 @@ export function PortfolioPage() {
       const homeCurrency = summary.portfolio.homeCurrency;
       const fetchPromises = summary.positions.map(async (position) => {
         try {
+          // Check if this is a Euronext symbol first
+          const euronextInfo = getEuronextSymbol(position.ticker);
+          if (euronextInfo) {
+            const euronextQuote = await marketDataApi.getEuronextQuote(
+              euronextInfo.isin,
+              euronextInfo.mic,
+              homeCurrency
+            );
+            if (euronextQuote?.exchangeRate) {
+              // Create a compatible quote object for caching
+              const syntheticQuote: StockQuoteResponse = {
+                symbol: position.ticker,
+                name: euronextQuote.name || position.ticker,
+                price: euronextQuote.price,
+                market: 4 as StockMarketType, // Euronext market type
+                source: 'Euronext',
+                fetchedAt: new Date().toISOString(),
+                exchangeRate: euronextQuote.exchangeRate,
+                exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+              };
+              const cacheData: CachedQuote = {
+                quote: syntheticQuote,
+                updatedAt: new Date().toISOString(),
+                market: 4 as StockMarketType,
+              };
+              localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+              return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
+            }
+            return null;
+          }
+
+          // Standard market handling
           const market = guessMarket(position.ticker);
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
           let finalMarket = market;
@@ -258,6 +291,12 @@ export function PortfolioPage() {
           }
           return null;
         } catch {
+          // Check for Euronext first in fallback
+          if (isEuronextSymbol(position.ticker)) {
+            console.error(`Failed to fetch Euronext price for ${position.ticker}`);
+            return null;
+          }
+
           if (guessMarket(position.ticker) === StockMarket.US) {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);

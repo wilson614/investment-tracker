@@ -145,8 +145,9 @@ export function PositionDetailPage() {
       // If we have cached quote, apply it immediately to position
       if (pos && cachedData.quote && cachedData.quote.exchangeRate) {
         const currentValue = pos.totalShares * cachedData.quote.price * cachedData.quote.exchangeRate;
-        const pnl = currentValue - pos.totalCostHome;
-        const pnlPct = pos.totalCostHome > 0 ? (pnl / pos.totalCostHome) * 100 : 0;
+        const totalCostHome = pos.totalCostHome ?? 0;
+        const pnl = currentValue - totalCostHome;
+        const pnlPct = totalCostHome > 0 ? (pnl / totalCostHome) * 100 : 0;
         setPosition({
           ...pos,
           currentPrice: cachedData.quote.price,
@@ -253,8 +254,9 @@ export function PositionDetailPage() {
         // Recalculate position with current price
         if (position && quote.exchangeRate) {
           const currentValue = position.totalShares * quote.price * quote.exchangeRate;
-          const pnl = currentValue - position.totalCostHome;
-          const pnlPct = position.totalCostHome > 0 ? (pnl / position.totalCostHome) * 100 : 0;
+          const totalCostHome = position.totalCostHome ?? 0;
+          const pnl = currentValue - totalCostHome;
+          const pnlPct = totalCostHome > 0 ? (pnl / totalCostHome) * 100 : 0;
 
           setPosition({
             ...position,

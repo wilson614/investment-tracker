@@ -17,15 +17,18 @@ public class MarketDataController : ControllerBase
 {
     private readonly ICapeDataService _capeDataService;
     private readonly IMarketYtdService _marketYtdService;
+    private readonly EuronextQuoteService _euronextQuoteService;
     private readonly AppDbContext _dbContext;
 
     public MarketDataController(
         ICapeDataService capeDataService,
         IMarketYtdService marketYtdService,
+        EuronextQuoteService euronextQuoteService,
         AppDbContext dbContext)
     {
         _capeDataService = capeDataService;
         _marketYtdService = marketYtdService;
+        _euronextQuoteService = euronextQuoteService;
         _dbContext = dbContext;
     }
 
@@ -176,6 +179,65 @@ public class MarketDataController : ControllerBase
         });
         return Ok(benchmarks);
     }
+
+    /// <summary>
+    /// Get quote for a Euronext-listed stock (e.g., AGAC on Amsterdam)
+    /// </summary>
+    /// <param name="isin">ISIN code (e.g., IE000FHBZDZ8)</param>
+    /// <param name="mic">Market Identifier Code (e.g., XAMS for Amsterdam)</param>
+    /// <param name="homeCurrency">Target currency for exchange rate (default: TWD)</param>
+    /// <param name="refresh">Force refresh (bypass cache)</param>
+    [HttpGet("euronext/quote")]
+    [ProducesResponseType(typeof(EuronextQuoteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EuronextQuoteResponse>> GetEuronextQuote(
+        [FromQuery] string isin,
+        [FromQuery] string mic,
+        [FromQuery] string? homeCurrency = "TWD",
+        [FromQuery] bool refresh = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(isin) || string.IsNullOrWhiteSpace(mic))
+        {
+            return BadRequest("ISIN and MIC are required");
+        }
+
+        var quote = await _euronextQuoteService.GetQuoteAsync(
+            isin.Trim().ToUpperInvariant(),
+            mic.Trim().ToUpperInvariant(),
+            homeCurrency ?? "TWD",
+            refresh,
+            cancellationToken);
+
+        if (quote == null)
+        {
+            return NotFound($"No quote found for {isin}-{mic}");
+        }
+
+        return Ok(new EuronextQuoteResponse(
+            quote.Price,
+            quote.Currency,
+            quote.MarketTime,
+            quote.Name,
+            quote.ExchangeRate,
+            quote.FromCache));
+    }
 }
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
+
+/// <summary>
+/// Request for fetching Euronext quote.
+/// </summary>
+public record EuronextQuoteRequest(string Isin, string Mic, string? HomeCurrency);
+
+/// <summary>
+/// Response for Euronext quote.
+/// </summary>
+public record EuronextQuoteResponse(
+    decimal Price,
+    string Currency,
+    DateTime? MarketTime,
+    string? Name,
+    decimal? ExchangeRate,
+    bool FromCache);

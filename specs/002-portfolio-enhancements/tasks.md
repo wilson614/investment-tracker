@@ -109,10 +109,10 @@
 
 ### Frontend Implementation
 
-- [ ] T033 [US3] Add Euronext market option to stock transaction form in `frontend/src/components/forms/StockTransactionForm.tsx`
-- [ ] T034 [US3] Update quote fetching service to support Euronext in `frontend/src/services/marketDataService.ts`
-- [ ] T035 [US3] Add stale quote indicator component in `frontend/src/components/StaleQuoteIndicator.tsx`
-- [ ] T036 [US3] Integrate stale indicator into Holdings component in `frontend/src/components/Holdings.tsx`
+- [X] T033 [US3] Add Euronext symbol mapping constants in `frontend/src/constants/euronextSymbols.ts`
+- [X] T034 [US3] Update quote fetching service to support Euronext in `frontend/src/services/api.ts`
+- [X] T035 [US3] Add stale quote indicator component in `frontend/src/components/common/StaleQuoteIndicator.tsx`
+- [X] T036 [US3] Integrate stale indicator into PositionCard component in `frontend/src/components/portfolio/PositionCard.tsx`
 
 **Checkpoint**: US3 complete - Euronext stocks display with real-time quotes
 
@@ -126,18 +126,18 @@
 
 ### Backend Implementation
 
-- [ ] T037 [US4] Create HistoricalPerformanceService in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T038 [US4] Add year performance endpoint to PerformanceController in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
-- [ ] T039 [US4] Add available years endpoint to PerformanceController in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
-- [ ] T040 [US4] Create YearPerformanceResponse DTO in `backend/src/InvestmentTracker.API/DTOs/PerformanceDtos.cs`
-- [ ] T041 [US4] Add missing price detection and prompt logic in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [X] T037 [US4] Create HistoricalPerformanceService in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [X] T038 [US4] Add year performance endpoint to PerformanceController in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
+- [X] T039 [US4] Add available years endpoint to PerformanceController in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
+- [X] T040 [US4] Create YearPerformanceResponse DTO in `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`
+- [X] T041 [US4] Add missing price detection and prompt logic in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
 
 ### Frontend Implementation
 
-- [ ] T042 [P] [US4] Create YearSelector component in `frontend/src/components/YearSelector.tsx`
-- [ ] T043 [US4] Add useHistoricalPerformance hook in `frontend/src/hooks/useHistoricalPerformance.ts`
-- [ ] T044 [US4] Integrate year selector into Performance page in `frontend/src/pages/Performance.tsx`
-- [ ] T045 [US4] Add missing price input modal in `frontend/src/components/modals/MissingPriceModal.tsx`
+- [X] T042 [P] [US4] Create YearSelector component in `frontend/src/components/performance/YearSelector.tsx`
+- [X] T043 [US4] Add useHistoricalPerformance hook in `frontend/src/hooks/useHistoricalPerformance.ts`
+- [X] T044 [US4] Integrate year selector into Performance page in `frontend/src/pages/Performance.tsx`
+- [X] T045 [US4] Add missing price input modal in `frontend/src/components/modals/MissingPriceModal.tsx`
 
 **Checkpoint**: US4 complete - historical year performance displays correctly
 
@@ -151,20 +151,20 @@
 
 ### Backend Implementation
 
-- [ ] T046 [US5] Create EtfClassificationService in `backend/src/InvestmentTracker.Application/Services/EtfClassificationService.cs`
-- [ ] T047 [US5] Add ETF classification endpoints to controller in `backend/src/InvestmentTracker.API/Controllers/EtfClassificationController.cs`
-- [ ] T048 [US5] Update YTD calculation to apply dividend adjustment for Taiwan stocks in `backend/src/InvestmentTracker.Application/Services/PerformanceService.cs`
-- [ ] T049 [US5] Extend YTD support to all accumulating ETFs in `backend/src/InvestmentTracker.Application/Services/PerformanceService.cs`
-- [ ] T050 [US5] Add ETF type detection with "Unknown" default in `backend/src/InvestmentTracker.Application/Services/EtfClassificationService.cs`
+- [X] T046 [US5] Create EtfClassificationService in `backend/src/InvestmentTracker.Application/Services/EtfClassificationService.cs`
+- [X] T047 [US5] Add ETF classification endpoints to controller in `backend/src/InvestmentTracker.API/Controllers/EtfClassificationController.cs`
+- [X] T048 [US5] Update YTD calculation to apply dividend adjustment for Taiwan stocks in `backend/src/InvestmentTracker.Infrastructure/Services/MarketYtdService.cs`
+- [X] T049 [US5] Extend YTD support to all accumulating ETFs (via EtfClassificationService.NeedsDividendAdjustment) in `backend/src/InvestmentTracker.Infrastructure/Services/MarketYtdService.cs`
+- [X] T050 [US5] Add ETF type detection with "Unknown" default in `backend/src/InvestmentTracker.Application/Services/EtfClassificationService.cs`
 
 ### Frontend Implementation
 
-- [ ] T051 [P] [US5] Create EtfTypeBadge component for "Unconfirmed type" indicator in `frontend/src/components/EtfTypeBadge.tsx`
-- [ ] T052 [US5] Add ETF classification management UI in `frontend/src/components/EtfClassificationManager.tsx`
-- [ ] T053 [US5] Integrate ETF type badge into Holdings component in `frontend/src/components/Holdings.tsx`
-- [ ] T054 [US5] Update YTD display to show dividend-adjusted returns in `frontend/src/pages/Performance.tsx`
+- [X] T051 [P] [US5] Create EtfTypeBadge component for "Unconfirmed type" indicator in `frontend/src/components/common/EtfTypeBadge.tsx`
+- [X] T052 [US5] Add ETF classification management UI in `frontend/src/services/api.ts`
+- [X] T053 [US5] Integrate ETF type badge into PositionCard component in `frontend/src/components/portfolio/PositionCard.tsx`
+- [X] T054 [US5] Update YTD display to show dividend-adjusted returns in `frontend/src/pages/Performance.tsx`
 
-**Checkpoint**: US5 complete - YTD shows dividend-adjusted returns for Taiwan stocks
+**Checkpoint**: US5 complete - ETF classification service and badges integrated
 
 ---
 
@@ -176,10 +176,10 @@
 
 ### Frontend Implementation
 
-- [ ] T055 [P] [US6] Create PerformanceBarChart component in `frontend/src/components/charts/PerformanceBarChart.tsx`
-- [ ] T056 [US6] Update Performance page to use bar chart for comparison in `frontend/src/pages/Performance.tsx`
-- [ ] T057 [US6] Add color coding for positive/negative returns in `frontend/src/components/charts/PerformanceBarChart.tsx`
-- [ ] T058 [US6] Add hover tooltip with detailed performance data in `frontend/src/components/charts/PerformanceBarChart.tsx`
+- [X] T055 [P] [US6] Create PerformanceBarChart component in `frontend/src/components/charts/PerformanceBarChart.tsx`
+- [X] T056 [US6] Update Performance page to use bar chart for comparison in `frontend/src/pages/Performance.tsx`
+- [X] T057 [US6] Add color coding for positive/negative returns in `frontend/src/components/charts/PerformanceBarChart.tsx`
+- [X] T058 [US6] Add hover tooltip with detailed performance data in `frontend/src/components/charts/PerformanceBarChart.tsx`
 
 **Checkpoint**: US6 complete - performance comparison displays as bar chart
 
@@ -189,12 +189,12 @@
 
 **Purpose**: Final improvements across all features
 
-- [ ] T059 [P] Update API documentation in Swagger for new endpoints
-- [ ] T060 [P] Add error handling for Euronext API failures with user-friendly messages
-- [ ] T061 Run quickstart.md validation scenarios
-- [ ] T062 Verify all user stories work independently
-- [ ] T063 Performance testing for chart rendering (<2 seconds target)
-- [ ] T064 Code cleanup and remove any unused imports
+- [X] T059 [P] Update API documentation in Swagger for new endpoints
+- [X] T060 [P] Add error handling for Euronext API failures with user-friendly messages
+- [X] T061 Run quickstart.md validation scenarios
+- [X] T062 Verify all user stories work independently
+- [X] T063 Performance testing for chart rendering (<2 seconds target)
+- [X] T064 Code cleanup and remove any unused imports
 
 ---
 

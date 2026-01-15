@@ -56,7 +56,7 @@ public record MarketYtdReturnDto
     /// <summary>Human-readable name</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>Jan 1 reference price (previous year-end closing price)</summary>
+    /// <summary>YTD baseline reference price (typically prior-year December closing price)</summary>
     public decimal? Jan1Price { get; init; }
 
     /// <summary>Current price</summary>

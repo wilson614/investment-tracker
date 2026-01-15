@@ -1,1 +1,2 @@
-export { PortfolioDistributionChart } from './PortfolioDistributionChart';
+export { PerformanceBarChart } from './PerformanceBarChart';
+export { AssetAllocationPieChart } from './AssetAllocationPieChart';

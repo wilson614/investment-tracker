@@ -32,7 +32,7 @@ export function PortfolioDistributionChart({
 
   const data = positions.map((pos, index) => ({
     name: pos.ticker,
-    value: pos.totalCostHome,
+    value: pos.totalCostHome ?? 0,
     color: COLORS[index % COLORS.length],
   }));
 

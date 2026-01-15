@@ -2,6 +2,7 @@ using System.Text;
 using FluentValidation;
 using InvestmentTracker.API.Middleware;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.Services;
 using InvestmentTracker.Application.UseCases.CurrencyLedger;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.Portfolio;
@@ -15,6 +16,7 @@ using InvestmentTracker.Infrastructure.Repositories;
 using InvestmentTracker.Infrastructure.Services;
 using InvestmentTracker.Infrastructure.StockPrices;
 using InvestmentTracker.Infrastructure.MarketData;
+using InvestmentTracker.Infrastructure.External;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -138,6 +140,11 @@ builder.Services.AddScoped<IStockTransactionRepository, StockTransactionReposito
 builder.Services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>();
 builder.Services.AddScoped<ICurrencyTransactionRepository, CurrencyTransactionRepository>();
 builder.Services.AddScoped<IStockSplitRepository, StockSplitRepository>();
+builder.Services.AddScoped<IEuronextQuoteCacheRepository, EuronextQuoteCacheRepository>();
+builder.Services.AddScoped<IEtfClassificationRepository, EtfClassificationRepository>();
+
+// Register External API Clients
+builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
 
 // Register Domain Services
 builder.Services.AddScoped<PortfolioCalculator>();
@@ -186,6 +193,15 @@ builder.Services.AddHttpClient<ITwseDividendService, TwseDividendService>();
 
 // Market YTD Service (needs HttpClient for TWSE 0050 historical data)
 builder.Services.AddHttpClient<IMarketYtdService, MarketYtdService>();
+
+// Euronext Quote Service
+builder.Services.AddScoped<InvestmentTracker.Infrastructure.Services.EuronextQuoteService>();
+
+// Historical Performance Service
+builder.Services.AddScoped<IHistoricalPerformanceService, HistoricalPerformanceService>();
+
+// ETF Classification Service
+builder.Services.AddSingleton<EtfClassificationService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();

@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.Services;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Infrastructure.MarketData;
@@ -12,8 +13,9 @@ namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
 /// Service for calculating Market YTD benchmark returns
-/// Uses IndexPriceSnapshot table with YearMonth format YYYY01 for Jan 1 prices
-/// Auto-fetches previous year's year-end prices from Stooq/TWSE when missing
+/// Uses IndexPriceSnapshot table with YearMonth format YYYYMM (month-end snapshots)
+/// Uses previous year's December month-end price as the YTD baseline
+/// Auto-fetches missing baseline prices from Stooq/TWSE when needed
 /// </summary>
 public class MarketYtdService : IMarketYtdService
 {
@@ -21,6 +23,7 @@ public class MarketYtdService : IMarketYtdService
     private readonly IStockPriceService _stockPriceService;
     private readonly IStooqHistoricalPriceService _stooqService;
     private readonly ITwseDividendService _dividendService;
+    private readonly EtfClassificationService _etfClassificationService;
     private readonly ITwseRateLimiter _twseRateLimiter;
     private readonly HttpClient _httpClient;
     private readonly ILogger<MarketYtdService> _logger;
@@ -47,6 +50,7 @@ public class MarketYtdService : IMarketYtdService
         IStockPriceService stockPriceService,
         IStooqHistoricalPriceService stooqService,
         ITwseDividendService dividendService,
+        EtfClassificationService etfClassificationService,
         ITwseRateLimiter twseRateLimiter,
         HttpClient httpClient,
         ILogger<MarketYtdService> logger)
@@ -55,6 +59,7 @@ public class MarketYtdService : IMarketYtdService
         _stockPriceService = stockPriceService;
         _stooqService = stooqService;
         _dividendService = dividendService;
+        _etfClassificationService = etfClassificationService;
         _twseRateLimiter = twseRateLimiter;
         _httpClient = httpClient;
         _logger = logger;
@@ -134,9 +139,11 @@ public class MarketYtdService : IMarketYtdService
                 };
             }
 
-            // Fetch dividends for Taiwan stocks (0050)
+            // Fetch dividends for distributing ETFs (currently only Taiwan stocks supported)
             decimal dividendsPaid = 0;
-            if (benchmark.Market == StockMarket.TW)
+            var needsDividendAdjustment = benchmark.Market == StockMarket.TW &&
+                _etfClassificationService.NeedsDividendAdjustment(benchmark.Symbol);
+            if (needsDividendAdjustment)
             {
                 var dividends = await _dividendService.GetDividendsAsync(benchmark.Symbol, year, cancellationToken);
                 // Only count dividends that have already been paid (ex-date <= today)
@@ -175,7 +182,7 @@ public class MarketYtdService : IMarketYtdService
                 YtdReturnPercent = ytdPriceReturn,
                 YtdTotalReturnPercent = ytdTotalReturn,
                 FetchedAt = quote.FetchedAt,
-                Error = hasYearEndPrice ? null : "Missing year-end reference price"
+                Error = hasYearEndPrice ? null : "Missing prior-year December reference price"
             };
         }
         catch (Exception ex)

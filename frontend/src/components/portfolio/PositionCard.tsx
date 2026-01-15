@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Settings2 } from 'lucide-react';
-import { stockPriceApi } from '../../services/api';
-import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse } from '../../types';
+import { stockPriceApi, marketDataApi, etfClassificationApi } from '../../services/api';
+import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse, EtfClassificationResult } from '../../types';
 import { StockMarket } from '../../types';
+import { StaleQuoteIndicator, EtfTypeBadge } from '../common';
+import type { EtfType } from '../common';
+import { isEuronextSymbol, getEuronextSymbol } from '../../constants';
 
 interface PositionCardProps {
   position: StockPosition;
@@ -26,10 +29,22 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
-const MARKET_LABELS: Record<StockMarketType, string> = {
+const MARKET_LABELS: Record<number, string> = {
   [StockMarket.TW]: '台股',
   [StockMarket.US]: '美股',
   [StockMarket.UK]: '英股',
+  4: 'Euronext',
+};
+
+// Get base currency for a market (TW -> TWD, US/UK -> USD, Euronext -> mapping currency)
+const EURONEXT_MARKET: StockMarketType = 4 as StockMarketType;
+
+const getMarketCurrency = (ticker: string, market: StockMarketType): string => {
+  if (market === EURONEXT_MARKET) {
+    const euronextInfo = getEuronextSymbol(ticker);
+    return euronextInfo?.currency ?? 'EUR';
+  }
+  return market === StockMarket.TW ? 'TWD' : 'USD';
 };
 
 // Cache key for localStorage
@@ -39,11 +54,12 @@ interface CachedQuote {
   quote: StockQuoteResponse;
   updatedAt: string;
   market: StockMarketType;
+  fromCache?: boolean;
+  isStale?: boolean;
 }
 
 export function PositionCard({
   position,
-  baseCurrency = 'USD',
   homeCurrency = 'TWD',
   onPriceUpdate,
   autoFetch = true,
@@ -76,6 +92,9 @@ export function PositionCard({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(cachedData.updatedAt);
   const [error, setError] = useState<string | null>(null);
   const [showMarketSelector, setShowMarketSelector] = useState(false);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [isStaleQuote, setIsStaleQuote] = useState(false);
+  const [etfClassification, setEtfClassification] = useState<EtfClassificationResult | null>(null);
   const hasFetched = useRef(false);
 
   // Re-read from cache when refreshTrigger changes (parent finished fetching)
@@ -97,6 +116,10 @@ export function PositionCard({
       hasFetched.current = true;
       // Always fetch fresh quote on mount
       handleFetchQuote();
+      // Fetch ETF classification
+      etfClassificationApi.getClassification(position.ticker)
+        .then(setEtfClassification)
+        .catch(() => { /* ignore classification errors */ });
       // Also notify parent with cached data immediately if available
       if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
         onPriceUpdate(position.ticker, lastQuote.price, lastQuote.exchangeRate);
@@ -105,12 +128,13 @@ export function PositionCard({
   }, []);
 
   // Save to cache when quote updates
-  const saveToCache = (quote: StockQuoteResponse, market: StockMarketType) => {
+  const saveToCache = (quote: StockQuoteResponse, market: StockMarketType, fromCache?: boolean) => {
     try {
       const data: CachedQuote = {
         quote,
         updatedAt: new Date().toISOString(),
         market,
+        fromCache,
       };
       localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(data));
     } catch {
@@ -149,8 +173,43 @@ export function PositionCard({
     const targetMarket = market ?? selectedMarket;
     setFetchStatus('loading');
     setError(null);
+    setIsFromCache(false);
+    setIsStaleQuote(false);
 
     try {
+      // Check if this is a Euronext symbol first
+      const euronextInfo = getEuronextSymbol(position.ticker);
+      if (euronextInfo) {
+        const euronextQuote = await marketDataApi.getEuronextQuote(
+          euronextInfo.isin,
+          euronextInfo.mic,
+          homeCurrency
+        );
+        if (euronextQuote) {
+          const syntheticQuote: StockQuoteResponse = {
+            symbol: position.ticker,
+            name: euronextQuote.name || position.ticker,
+            price: euronextQuote.price,
+            market: EURONEXT_MARKET,
+            source: 'Euronext',
+            fetchedAt: euronextQuote.marketTime || new Date().toISOString(),
+            exchangeRate: euronextQuote.exchangeRate ?? undefined,
+            exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+          };
+          setLastQuote(syntheticQuote);
+          setLastUpdated(new Date());
+          setFetchStatus('success');
+          setSelectedMarket(EURONEXT_MARKET);
+          setIsFromCache(euronextQuote.fromCache);
+          saveToCache(syntheticQuote, EURONEXT_MARKET, euronextQuote.fromCache);
+
+          if (onPriceUpdate && euronextQuote.exchangeRate) {
+            onPriceUpdate(position.ticker, euronextQuote.price, euronextQuote.exchangeRate);
+          }
+          return;
+        }
+      }
+
       let quote = await stockPriceApi.getQuoteWithRate(targetMarket, position.ticker, homeCurrency);
       let finalMarket = targetMarket;
 
@@ -178,6 +237,13 @@ export function PositionCard({
         setError('找不到報價');
       }
     } catch (err) {
+      // Check for Euronext first
+      if (isEuronextSymbol(position.ticker)) {
+        setFetchStatus('error');
+        setError('Euronext 報價獲取失敗');
+        return;
+      }
+
       // If US fails with exception, try UK as fallback
       if (targetMarket === StockMarket.US) {
         try {
@@ -212,6 +278,7 @@ export function PositionCard({
     ? 'number-positive'
     : 'number-negative';
 
+  const marketCurrency = getMarketCurrency(position.ticker, selectedMarket);
   const hasCurrentValue = position.currentValueHome !== undefined && position.currentValueHome !== null;
 
   return (
@@ -236,6 +303,13 @@ export function PositionCard({
           <span className="text-sm text-[var(--text-muted)] number-display">
             {formatNumber(position.totalShares, 4)} 股
           </span>
+          {etfClassification && etfClassification.type !== 'Unknown' && (
+            <EtfTypeBadge
+              type={etfClassification.type as EtfType}
+              isConfirmed={etfClassification.isConfirmed}
+              className="mt-1"
+            />
+          )}
         </div>
 
         {/* Quote display */}
@@ -243,7 +317,7 @@ export function PositionCard({
           {lastQuote ? (
             <>
               <div className="text-xl font-bold text-[var(--text-primary)] number-display">
-                {formatNumber(lastQuote.price)} <span className="text-sm font-normal text-[var(--text-muted)]">{baseCurrency}</span>
+                {formatNumber(lastQuote.price)} <span className="text-sm font-normal text-[var(--text-muted)]">{marketCurrency}</span>
               </div>
               <div className="flex items-center justify-end gap-2">
                 {lastQuote.changePercent && (
@@ -257,6 +331,13 @@ export function PositionCard({
                   </span>
                 )}
               </div>
+              {isFromCache && (
+                <StaleQuoteIndicator
+                  isStale={isStaleQuote}
+                  fromCache={isFromCache}
+                  fetchedAt={lastUpdated?.toISOString()}
+                />
+              )}
             </>
           ) : (
             <div className="text-xl text-[var(--text-muted)]">-</div>
@@ -294,14 +375,16 @@ export function PositionCard({
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">單位成本:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(position.averageCostPerShareSource)} {baseCurrency}
+            {formatNumber(position.averageCostPerShareSource)} {marketCurrency}
           </span>
         </div>
 
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">總成本:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatHomeCurrency(position.totalCostHome)} {homeCurrency}
+            {position.totalCostHome != null
+              ? `${formatHomeCurrency(position.totalCostHome)} ${homeCurrency}`
+              : `${formatNumber(position.totalCostSource)} ${marketCurrency}`}
           </span>
         </div>
 

@@ -56,19 +56,20 @@ public class CalculateXirrUseCase
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
         // Build cash flows list
+        // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
         var cashFlows = new List<CashFlow>();
 
-        foreach (var tx in transactions.Where(t => !t.IsDeleted).OrderBy(t => t.TransactionDate))
+        foreach (var tx in transactions.Where(t => !t.IsDeleted && t.HasExchangeRate).OrderBy(t => t.TransactionDate))
         {
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Outflow (investment)
-                cashFlows.Add(new CashFlow(-tx.TotalCostHome, tx.TransactionDate));
+                // Outflow (investment) - TotalCostHome is guaranteed non-null when HasExchangeRate is true
+                cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Inflow (return)
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate) - (tx.Fees * tx.ExchangeRate);
+                // Inflow (return) - ExchangeRate is guaranteed non-null when HasExchangeRate is true
+                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
                 cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
@@ -170,19 +171,20 @@ public class CalculateXirrUseCase
         }
 
         // Build cash flows list for this position
+        // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
         var cashFlows = new List<CashFlow>();
 
-        foreach (var tx in tickerTransactions)
+        foreach (var tx in tickerTransactions.Where(t => t.HasExchangeRate))
         {
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Outflow (investment)
-                cashFlows.Add(new CashFlow(-tx.TotalCostHome, tx.TransactionDate));
+                // Outflow (investment) - TotalCostHome is guaranteed non-null when HasExchangeRate is true
+                cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Inflow (return)
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate) - (tx.Fees * tx.ExchangeRate);
+                // Inflow (return) - ExchangeRate is guaranteed non-null when HasExchangeRate is true
+                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
                 cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }

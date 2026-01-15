@@ -52,7 +52,7 @@ public class CreateStockTransactionUseCase
         }
 
         // Determine exchange rate - auto-calculate from currency ledger if not provided
-        decimal exchangeRate = request.ExchangeRate ?? 0m;
+        decimal? exchangeRate = request.ExchangeRate;
         Domain.Entities.CurrencyLedger? currencyLedger = null;
         decimal? requiredAmount = null;
 
@@ -83,22 +83,23 @@ public class CreateStockTransactionUseCase
 
             // If exchange rate not provided, calculate from recent exchanges (LIFO)
             // Only considers actual exchange transactions, not interest/bonuses
-            if (exchangeRate <= 0)
+            if (!exchangeRate.HasValue || exchangeRate.Value <= 0)
             {
-                exchangeRate = _currencyLedgerService.CalculateExchangeRateForPurchase(
+                var calculatedRate = _currencyLedgerService.CalculateExchangeRateForPurchase(
                     currencyTransactions, request.TransactionDate, requiredAmount.Value);
 
-                if (exchangeRate <= 0)
+                if (calculatedRate <= 0)
                 {
                     throw new InvalidOperationException(
                         $"Cannot calculate exchange rate from currency ledger. No transactions found on or before {request.TransactionDate:yyyy-MM-dd}");
                 }
+
+                exchangeRate = calculatedRate;
             }
         }
-        else if (exchangeRate <= 0)
+        else if (exchangeRate.HasValue && exchangeRate.Value <= 0)
         {
-            throw new InvalidOperationException(
-                "Exchange rate is required when not using a currency ledger as fund source");
+            throw new InvalidOperationException("Exchange rate must be greater than zero");
         }
 
         // For sell transactions, validate share balance and calculate realized PnL
@@ -194,6 +195,7 @@ public class CreateStockTransactionUseCase
             Notes = transaction.Notes,
             TotalCostSource = transaction.TotalCostSource,
             TotalCostHome = transaction.TotalCostHome,
+            HasExchangeRate = transaction.HasExchangeRate,
             RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt
