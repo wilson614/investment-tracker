@@ -255,7 +255,81 @@
 
 ---
 
-## Phase 12: Polish & Cross-Cutting Concerns
+## Phase 12: User Story 10 - Performance Page UX Improvements (Priority: P2) *(NEW)*
+
+**Goal**: Improve performance page labels, benchmarks, and loading states
+
+**Independent Test**: View performance page → verify transaction count display, 11 benchmarks, no flicker on switch
+
+### Frontend Implementation
+
+- [ ] T090 [US10] Update XIRR TWD card to show transaction count instead of cash flow count in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T091 [US10] Replace explanatory text with info icon (ℹ️) tooltip for XIRR USD card in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T092 [US10] Add dynamic label "目前價值"/"年底價值" based on year (YTD vs historical) in `frontend/src/components/performance/YearlySummary.tsx`
+- [ ] T093 [US10] Update benchmark dropdown to display all 11 benchmarks in `frontend/src/components/dashboard/MarketYtdSection.tsx`
+- [ ] T094 [P] [US10] Create BenchmarkSettings component with settings gear (⚙️) popup in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [ ] T095 [US10] Implement multi-select for benchmark comparison in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [ ] T096 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/hooks/useBenchmarkPreferences.ts`
+- [ ] T097 [US10] Prevent benchmark bar flicker by maintaining previous value during loading in `frontend/src/components/charts/PerformanceBarChart.tsx`
+- [ ] T098 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx`
+- [ ] T099 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/components/performance/XirrCard.tsx`
+
+**Checkpoint**: US10 complete - performance page UX improved with better labels and loading states
+
+---
+
+## Phase 13: User Story 11 - Portfolio Switching State Management (Priority: P1) *(NEW)*
+
+**Goal**: Clear stale data when switching portfolios to prevent misleading displays
+
+**Independent Test**: Switch from portfolio A to B → XIRR should show loading (not A's value)
+
+### Frontend Implementation
+
+- [ ] T100 [P] [US11] Create PortfolioContext with clearPerformanceState action in `frontend/src/contexts/PortfolioContext.tsx`
+- [ ] T101 [US11] Update usePerformance hook to clear XIRR state on portfolio change in `frontend/src/hooks/usePerformance.ts`
+- [ ] T102 [US11] Add loading state UI during portfolio switch in `frontend/src/pages/Portfolio.tsx`
+- [ ] T103 [US11] Ensure new empty portfolio shows "-" for XIRR (not stale data) in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T104 [US11] Propagate portfolio selection to Performance page via context in `frontend/src/pages/Performance.tsx`
+- [ ] T105 [US11] Clear performance cache keys on portfolio switch in `frontend/src/services/api.ts`
+
+**Checkpoint**: US11 complete - portfolio switching clears stale XIRR data within 100ms
+
+---
+
+## Phase 14: User Story 12 - Historical Year-End Price Cache (Priority: P1) *(NEW)*
+
+**Goal**: Cache year-end stock prices and exchange rates to prevent API rate limit failures
+
+**Independent Test**: Calculate 2024 performance for VT twice → second calculation should use cache (no API call)
+
+### Backend Implementation
+
+- [ ] T106 [P] [US12] Create HistoricalYearEndData entity in `backend/src/InvestmentTracker.Domain/Entities/HistoricalYearEndData.cs`
+- [ ] T107 [P] [US12] Create HistoricalDataType enum in `backend/src/InvestmentTracker.Domain/Enums/HistoricalDataType.cs`
+- [ ] T108 [US12] Create EF migration for HistoricalYearEndData table in `backend/src/InvestmentTracker.Infrastructure/Migrations/`
+- [ ] T109 [US12] Add DbSet for HistoricalYearEndData in `backend/src/InvestmentTracker.Infrastructure/Data/ApplicationDbContext.cs`
+- [ ] T110 [P] [US12] Create IHistoricalYearEndDataRepository interface in `backend/src/InvestmentTracker.Application/Interfaces/IHistoricalYearEndDataRepository.cs`
+- [ ] T111 [US12] Implement HistoricalYearEndDataRepository in `backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalYearEndDataRepository.cs`
+- [ ] T112 [US12] Create HistoricalYearEndDataService with cache lookup and lazy loading in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
+- [ ] T113 [US12] Implement GetOrFetchYearEndPrice method (check cache → fetch from Stooq/TWSE → save to cache) in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
+- [ ] T114 [US12] Implement GetOrFetchYearEndExchangeRate method in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
+- [ ] T115 [US12] Add current year check to prevent YTD data caching in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
+- [ ] T116 [US12] Integrate cache service into HistoricalPerformanceService in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [ ] T117 [US12] Add manual price entry endpoint (only for empty cache entries) in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [ ] T118 [US12] Register HistoricalYearEndDataService in DI container in `backend/src/InvestmentTracker.API/Program.cs`
+
+### Frontend Implementation
+
+- [ ] T119 [P] [US12] Create ManualPriceEntryModal component in `frontend/src/components/modals/ManualPriceEntryModal.tsx`
+- [ ] T120 [US12] Integrate manual entry prompt in Performance page when API fetch fails in `frontend/src/pages/Performance.tsx`
+- [ ] T121 [US12] Add API call for manual price entry in `frontend/src/services/api.ts`
+
+**Checkpoint**: US12 complete - historical year-end prices are cached and reused
+
+---
+
+## Phase 15: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final improvements across all features
 
@@ -292,8 +366,11 @@
 | US7 (P1) *(NEW)* | Phase 2 only | Phase 2 complete |
 | US8 (P2) *(NEW)* | US3 (Euronext infra) | US3 complete |
 | US9 (P1) *(NEW)* | Phase 2 only | Phase 2 complete |
+| US10 (P2) *(NEW)* | Phase 2 only | Phase 2 complete |
+| US11 (P1) *(NEW)* | US9 (Portfolio infra) | US9 complete |
+| US12 (P1) *(NEW)* | Phase 2 only | Phase 2 complete |
 
-All user stories are independent and can be implemented in parallel (except US8 depends on US3 Euronext infrastructure).
+All user stories are independent and can be implemented in parallel (except US8 depends on US3, US11 depends on US9).
 
 ### Parallel Opportunities
 
@@ -304,7 +381,10 @@ US2: T025 can run in parallel with backend tasks
 US4: T042 can run in parallel with backend tasks
 US5: T051 can run in parallel with backend tasks
 US6: T055 can run in parallel
-US9: T083, T084 can run in parallel with backend tasks (NEW)
+US9: T083, T084 can run in parallel with backend tasks
+US10: T094 can run in parallel with other frontend tasks
+US11: T100 can run in parallel
+US12: T106, T107, T110, T119 can run in parallel
 ```
 
 ---
@@ -332,6 +412,9 @@ US9: T083, T084 can run in parallel with backend tasks (NEW)
 | +6 | US7 | Auto-fetch price for new positions *(NEW)* |
 | +7 | US8 | Euronext change percentage display *(NEW)* |
 | +8 | US9 | Foreign Currency Portfolio *(NEW)* |
+| +9 | US10 | Performance Page UX Improvements *(NEW)* |
+| +10 | US11 | Portfolio Switching State Management *(NEW)* |
+| +11 | US12 | Historical Year-End Price Cache *(NEW)* |
 
 ---
 
@@ -339,7 +422,7 @@ US9: T083, T084 can run in parallel with backend tasks (NEW)
 
 | Metric | Count |
 |--------|-------|
-| Total Tasks | 89 |
+| Total Tasks | 121 |
 | Setup Tasks | 7 |
 | Foundational Tasks | 5 |
 | US1 Tasks | 9 |
@@ -351,5 +434,19 @@ US9: T083, T084 can run in parallel with backend tasks (NEW)
 | US7 Tasks *(NEW)* | 3 |
 | US8 Tasks *(NEW)* | 7 |
 | US9 Tasks *(NEW)* | 15 |
+| US10 Tasks *(NEW)* | 10 |
+| US11 Tasks *(NEW)* | 6 |
+| US12 Tasks *(NEW)* | 16 |
 | Polish Tasks | 6 |
-| Parallel Opportunities | 14 tasks marked [P] |
+| Parallel Opportunities | 18 tasks marked [P] |
+
+### MVP Scope (P1 Stories: US1, US7, US9, US11, US12)
+
+| Story | Tasks | Value |
+|-------|-------|-------|
+| US1 | 9 | Optional exchange rate transactions |
+| US7 | 3 | Auto-fetch price for new positions |
+| US9 | 15 | Foreign Currency Portfolio |
+| US11 | 6 | Portfolio switching state management |
+| US12 | 16 | Historical year-end price cache |
+| **Total MVP** | **49** | Core functionality complete |

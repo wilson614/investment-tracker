@@ -1,6 +1,6 @@
 # Data Model: Portfolio Enhancements V2
 
-**Date**: 2026-01-14
+**Date**: 2026-01-16
 **Feature**: 002-portfolio-enhancements
 
 ## Entity Changes Overview
@@ -149,7 +149,58 @@ public class HistoricalPrice
 
 ---
 
-## §5 Relationships Diagram
+## §5 HistoricalYearEndData (New)
+
+**Purpose**: Global cache for historical year-end stock prices and exchange rates to avoid repeated API calls and rate limit issues with Stooq/TWSE.
+
+### Schema
+```csharp
+public class HistoricalYearEndData
+{
+    public int Id { get; set; }                    // Auto-increment primary key
+    public HistoricalDataType DataType { get; set; } // StockPrice or ExchangeRate
+    public string Ticker { get; set; }             // Stock ticker or currency pair (e.g., "VT", "0050", "USDTWD")
+    public int Year { get; set; }                  // The year (e.g., 2024)
+    public decimal Value { get; set; }             // Price or exchange rate
+    public string Currency { get; set; }           // Original currency (e.g., "USD", "TWD")
+    public DateTime ActualDate { get; set; }       // Actual trading date the price was recorded
+    public string Source { get; set; }             // "Stooq", "TWSE", "Manual"
+    public DateTime FetchedAt { get; set; }        // Timestamp when data was fetched/entered
+}
+
+public enum HistoricalDataType
+{
+    StockPrice = 0,
+    ExchangeRate = 1
+}
+```
+
+### Indexes
+- Primary Key: Id (auto-increment)
+- Unique Index: (DataType, Ticker, Year) - prevents duplicate entries
+
+### Business Rules
+- **Global scope**: Not per-user; historical prices are the same for all users
+- **Lazy loading**: Check cache first → fetch from API if missing → save to cache
+- **No current year**: Never cache current year (YTD) data; prices still changing
+- **Immutable**: Once cached, data cannot be overwritten; errors require DB-level correction
+- **Manual entry**: Only allowed when cache entry doesn't exist (API fetch failed)
+- **Source tracking**: Distinguish between Stooq (international), TWSE (Taiwan), and Manual entries
+- **ActualDate**: For year 2024, stores actual trading date (e.g., 2024-12-31 or 2024-12-30 if 31st was holiday)
+
+### Data Examples
+```
+| DataType     | Ticker  | Year | Value    | Currency | ActualDate  | Source |
+|--------------|---------|------|----------|----------|-------------|--------|
+| StockPrice   | VT      | 2024 | 115.23   | USD      | 2024-12-31  | Stooq  |
+| StockPrice   | 0050    | 2024 | 182.50   | TWD      | 2024-12-31  | TWSE   |
+| ExchangeRate | USDTWD  | 2024 | 32.7897  | TWD      | 2024-12-31  | Stooq  |
+| StockPrice   | AGAC    | 2024 | 10.45    | USD      | 2024-12-30  | Manual |
+```
+
+---
+
+## §6 Relationships Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -185,17 +236,24 @@ public class HistoricalPrice
 │                   EuronextQuoteCache                             │
 │  [NEW] Standalone cache table for Euronext API responses        │
 └─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  HistoricalYearEndData                           │
+│  [NEW] Global cache for year-end prices and exchange rates       │
+│  DataType, Ticker, Year, Value, Currency, ActualDate, Source     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## §6 Migration Strategy
+## §7 Migration Strategy
 
 ### Order of Migrations
 1. Alter `stock_transactions.exchange_rate` to nullable
 2. Create `euronext_quote_cache` table
 3. Create `etf_classification` table
-4. (No changes needed for `historical_price` - market values are flexible)
+4. Create `historical_year_end_data` table
+5. (No changes needed for `historical_price` - market values are flexible)
 
 ### Backward Compatibility
 - Existing transactions with exchange rate: unchanged behavior
@@ -204,4 +262,4 @@ public class HistoricalPrice
 
 ### Rollback Plan
 - Migration 1: Set default value for null exchange rates (e.g., 1.0) - data loss risk
-- Migrations 2-3: Drop new tables (safe)
+- Migrations 2-4: Drop new tables (safe)

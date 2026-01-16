@@ -4,11 +4,11 @@
 **Created**: 2026-01-14
 **Updated**: 2026-01-16
 **Status**: Draft
-**Input**: 9 portfolio enhancement features
+**Input**: 12 portfolio enhancement features
 
 ## Overview
 
-This module contains 9 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, and multi-portfolio support for foreign currency investments.
+This module contains 12 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, multi-portfolio support for foreign currency investments, and historical price caching for improved reliability.
 
 ## Clarifications
 
@@ -43,6 +43,12 @@ This module contains 9 enhancements to the existing investment portfolio trackin
 - Q: Price fetch loading state visibility? → A: Show skeleton loader or "計算中..." on XIRR cards when fetching prices, instead of displaying "-" which is ambiguous.
 - Q: Benchmark chart flickering on page load? → A: Delay rendering performance comparison chart until all selected benchmark data is ready. Show loading state instead of 0 values.
 - Q: Which portfolio is used for performance analysis? → A: Currently uses first portfolio only (`portfolios[0]`). Not all portfolios combined. Not synced with portfolio page selection.
+- Q: Why cache historical year-end prices? → A: External APIs (Stooq, TWSE) have rate limits; caching prevents repeated API calls for unchanging historical data and improves performance calculation reliability.
+- Q: Which data types to cache? → A: Year-end stock prices and year-end exchange rates. Both needed for annual performance calculation.
+- Q: Cache scope? → A: Global cache (not per-user). Historical year-end prices are the same for all users.
+- Q: When to populate cache? → A: On-demand with lazy loading - when performance calculation needs a price, check cache first, fetch from API if missing, then save to cache.
+- Q: How to handle current year (YTD)? → A: Do NOT cache current year data since prices are still changing. Only cache completed years.
+- Q: Can users overwrite cached historical prices? → A: No. Cache is global (shared by all users), so cached prices are immutable once saved. Manual entry only fills empty cache entries. Errors require database-level correction.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -231,6 +237,25 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 
 ---
 
+### User Story 12 - Historical Year-End Price Cache (Priority: P1)
+
+As an investor, I want the system to cache historical year-end stock prices and exchange rates, so that performance calculations don't fail due to external API rate limits and load faster on subsequent views.
+
+**Why this priority**: This is a reliability and performance issue - API rate limits cause calculation failures, and repeated API calls for unchanging historical data waste resources.
+
+**Independent Test**: Can be verified by calculating performance for a historical year, then recalculating - second calculation should use cached data without API calls.
+
+**Acceptance Scenarios**:
+
+1. **Given** user calculates 2024 performance for VT, **When** year-end price is not cached, **Then** system fetches from Stooq API and saves to cache
+2. **Given** user recalculates 2024 performance for VT, **When** year-end price is already cached, **Then** system uses cached data without API call
+3. **Given** user calculates 2024 performance for 0050.TW, **When** year-end price is not cached, **Then** system fetches from TWSE API and saves to cache
+4. **Given** user calculates 2024 performance, **When** USD/TWD year-end exchange rate is needed, **Then** system caches the exchange rate for reuse
+5. **Given** user calculates current year (YTD) performance, **When** year-end price is requested, **Then** system does NOT cache (prices still changing)
+6. **Given** Stooq/TWSE API fails, **When** cache is empty, **Then** system prompts user for manual price entry
+
+---
+
 ### Edge Cases
 
 - When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Use separate portfolios - primary portfolio for TWD-tracked investments, foreign currency portfolio for source-currency-only investments
@@ -238,6 +263,8 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 - When historical year is missing some stocks' year-end closing prices, how to calculate performance? → **Resolved**: Prompt user to manually input
 - When ETF type cannot be determined, what is the default behavior? → **Resolved**: Default to accumulating type, mark as "unconfirmed type"
 - When user wants to track foreign stocks without TWD conversion, how to handle? → **Resolved**: Create a Foreign Currency Portfolio where all metrics are in source currency
+- When external APIs (Stooq/TWSE) hit rate limits during performance calculation, how to handle? → **Resolved**: Use cached year-end prices; cache is populated on first successful fetch
+- When the same ticker exists in different markets (e.g., 0050 in TW vs hypothetical 0050 in another market)? → **Resolved**: Cache key includes ticker AND source/market identifier
 
 ## Requirements *(mandatory)*
 
@@ -313,6 +340,17 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 - **FR-101**: New empty portfolio MUST display "-" or loading state for XIRR, not stale data
 - **FR-102**: Portfolio switch MUST propagate to Performance page correctly
 
+#### Story 12: Historical Year-End Price Cache
+- **FR-110**: System MUST cache year-end stock prices to avoid repeated API calls to Stooq/TWSE
+- **FR-111**: System MUST cache year-end exchange rates (e.g., USD/TWD on 2024-12-31)
+- **FR-112**: Cache MUST use on-demand lazy loading: check cache first, fetch from API if missing, save to cache
+- **FR-113**: System MUST NOT cache current year (YTD) data - only completed years
+- **FR-114**: Cache MUST be global (not per-user) since historical prices are the same for all users
+- **FR-115**: Cache MUST store: ticker/currency pair, year, price/rate, actual trading date, source, fetched timestamp
+- **FR-116**: Cache lookup MUST support both stock prices (by ticker + year) and exchange rates (by currency pair + year)
+- **FR-117**: System MUST support Taiwan stocks (TWSE source) and international stocks (Stooq source) in the same cache table
+- **FR-118**: System SHOULD allow manual price entry when API fetch fails (only for empty cache entries; cannot overwrite existing cached data)
+
 ### Key Entities
 
 - **StockTransaction.ExchangeRate**: Modified to nullable decimal to support omitting exchange rate
@@ -321,6 +359,15 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 - **EtfClassification**: New ETF type marking (accumulating/distributing/unknown)
 - **EuronextQuoteResult.ChangePercent**: New field for storing price change percentage
 - **Portfolio.PortfolioType**: New field to distinguish Primary (TWD-tracked) vs Foreign Currency portfolios
+- **HistoricalYearEndData**: New cache entity for year-end stock prices and exchange rates
+  - DataType: StockPrice | ExchangeRate
+  - Ticker: Stock ticker or currency pair (e.g., "VT", "0050", "USDTWD")
+  - Year: The year (e.g., 2024)
+  - Value: Price or exchange rate
+  - Currency: Original currency of the price (e.g., "USD", "TWD")
+  - ActualDate: The actual trading date the price was recorded
+  - Source: "Stooq" | "TWSE" | "Manual"
+  - FetchedAt: Timestamp when data was fetched/entered
 
 ## Success Criteria *(mandatory)*
 
@@ -339,6 +386,9 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 - **SC-011**: All 11 benchmarks are available in performance comparison dropdown
 - **SC-012**: Benchmark switching shows no visual flicker (maintains previous value during loading)
 - **SC-013**: Portfolio switching clears stale XIRR data within 100ms
+- **SC-014**: Cached year-end prices are reused on subsequent performance calculations (no duplicate API calls for same ticker/year)
+- **SC-015**: Performance page loads within 2 seconds when all required prices are cached
+- **SC-016**: Cache correctly distinguishes between different data sources (Stooq vs TWSE) for the same ticker pattern
 
 ## Assumptions
 
@@ -347,3 +397,5 @@ As an investor, I want the UI to clear stale data when I switch portfolios or cr
 - Frontend uses Recharts as charting library (consistent with existing tech stack)
 - Taiwan stock dividend data can be obtained from existing data sources
 - Currently only Taiwan stocks support dividend adjustment; other stocks should use accumulating ETFs for accurate data
+- Historical year-end prices are immutable once the year is complete - no need for cache invalidation
+- Stooq and TWSE APIs have similar rate limit constraints that necessitate caching

@@ -1,21 +1,24 @@
 # Implementation Plan: Portfolio Enhancements V2
 
-**Branch**: `002-portfolio-enhancements` | **Date**: 2026-01-15 | **Spec**: [spec.md](./spec.md)
+**Branch**: `002-portfolio-enhancements` | **Date**: 2026-01-16 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/002-portfolio-enhancements/spec.md`
 **Base Module**: Extends `001-portfolio-tracker`
 
 ## Summary
 
-Enhance the existing investment portfolio tracker with 9 features:
+Enhance the existing investment portfolio tracker with 12 features:
 1. **Story 1 (P1)**: Optional exchange rate for transactions (enabling native currency cost tracking)
 2. **Story 2 (P2)**: Dashboard pie chart visualization
 3. **Story 3 (P3)**: Euronext exchange support
 4. **Story 4 (P4)**: Historical year performance
 5. **Story 5 (P5)**: Extended YTD support for all stock types
 6. **Story 6 (P6)**: Bar chart performance visualization
-7. **Story 7 (P1)**: Auto-fetch price for new positions *(NEW)*
-8. **Story 8 (P2)**: Euronext change percentage display *(NEW)*
-9. **Story 9 (P1)**: Foreign Currency Portfolio with single-currency mode *(NEW)*
+7. **Story 7 (P1)**: Auto-fetch price for new positions
+8. **Story 8 (P2)**: Euronext change percentage display
+9. **Story 9 (P1)**: Foreign Currency Portfolio with single-currency mode
+10. **Story 10 (P2)**: Performance Page UX Improvements *(NEW)*
+11. **Story 11 (P1)**: Portfolio Switching State Management *(NEW)*
+12. **Story 12 (P1)**: Historical Year-End Price Cache *(NEW)*
 
 All enhancements build upon the existing 001-portfolio-tracker infrastructure.
 
@@ -105,6 +108,11 @@ frontend/
 | Auto-Fetch New Position | Frontend trigger after transaction save detects new ticker *(NEW)* | spec.md US7 |
 | Euronext Change % | Parse HTML response using regex pattern for change percentage *(NEW)* | spec.md US8 |
 | Foreign Currency Portfolio | PortfolioType enum (Primary/ForeignCurrency); single BaseCurrency mode *(NEW)* | spec.md US9 |
+| Performance UX: Dynamic Labels | Use "目前價值" for YTD, "年底價值" for historical; show transaction count not cash flows *(NEW)* | spec.md US10 |
+| Performance UX: Multi-Benchmark | Settings popup for benchmark selection; sync with dashboard localStorage *(NEW)* | spec.md US10 |
+| Portfolio Switching State | Clear XIRR/summary state immediately on portfolio switch to prevent stale data *(NEW)* | spec.md US11 |
+| Historical Year-End Cache | Global cache (HistoricalYearEndData) for year-end prices/rates; lazy loading on-demand *(NEW)* | spec.md US12 |
+| Cache Immutability | Cached historical data cannot be overwritten; manual entry only for empty entries *(NEW)* | spec.md US12 |
 
 ## Entity Changes
 
@@ -117,6 +125,7 @@ frontend/
 | Portfolio | Modified *(NEW)* | Add PortfolioType (Primary/ForeignCurrency), DisplayName |
 | PortfolioType | New *(NEW)* | Enum: Primary (0), ForeignCurrency (1) |
 | EuronextQuoteCache | Extended *(NEW)* | Add ChangePercent (string?), Change (decimal?) |
+| HistoricalYearEndData | New *(NEW)* | DataType, Ticker, Year, Value, Currency, ActualDate, Source, FetchedAt |
 
 ## New API Endpoints
 
@@ -139,4 +148,6 @@ frontend/
 1. ~~Generate research.md with detailed technical decisions~~ *(exists)*
 2. ~~Generate data-model.md with entity definitions~~ *(exists)*
 3. ~~Generate quickstart.md with testing scenarios~~ *(exists)*
-4. Proceed to `/speckit.tasks` for implementation task breakdown (update for US7-US9)
+4. Update data-model.md with HistoricalYearEndData entity definition
+5. Update research.md with §7 Historical Year-End Cache design decisions
+6. Proceed to `/speckit.tasks` for implementation task breakdown (update for US10-US12)

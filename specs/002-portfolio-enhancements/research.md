@@ -1,6 +1,6 @@
 # Research: Portfolio Enhancements V2
 
-**Date**: 2026-01-14
+**Date**: 2026-01-16
 **Feature**: 002-portfolio-enhancements
 
 ## §1 Nullable Exchange Rate & Mixed Currency Cost Tracking
@@ -170,3 +170,65 @@ For portfolios with mixed exchange rate presence, calculate XIRR in source curre
 - USD XIRR: Include all USD transactions (with or without rate)
 - Display both when applicable
 - Clear labeling: "XIRR (TWD)", "XIRR (USD)"
+
+---
+
+## §7 Historical Year-End Price Cache
+
+### Decision
+Create a global `HistoricalYearEndData` table to cache year-end stock prices and exchange rates, using on-demand lazy loading. Cache is immutable once populated.
+
+### Rationale
+- **API Rate Limits**: Stooq and TWSE APIs have rate limits; caching prevents failures during performance calculations
+- **Immutable Historical Data**: Year-end prices for completed years never change; safe to cache permanently
+- **Global Scope**: Historical prices are the same for all users; no need for per-user caching
+- **Performance**: Cached data enables faster performance page loads (target: <2 seconds with cached prices)
+
+### Implementation
+
+#### Cache Strategy
+- **Lazy Loading**: On performance calculation, check cache first → fetch from API if missing → save to cache
+- **No Current Year**: Never cache YTD data; current year prices are still changing
+- **Immutable**: Once cached, data cannot be overwritten through application; errors require DB-level correction
+- **Manual Entry**: Only allowed when API fetch fails AND cache entry doesn't exist
+
+#### Data Structure
+```csharp
+public class HistoricalYearEndData
+{
+    public int Id { get; set; }
+    public HistoricalDataType DataType { get; set; }  // StockPrice | ExchangeRate
+    public string Ticker { get; set; }                // "VT", "0050", "USDTWD"
+    public int Year { get; set; }                     // 2024
+    public decimal Value { get; set; }                // Price or rate
+    public string Currency { get; set; }              // "USD", "TWD"
+    public DateTime ActualDate { get; set; }          // Actual trading date
+    public string Source { get; set; }                // "Stooq", "TWSE", "Manual"
+    public DateTime FetchedAt { get; set; }           // Cache timestamp
+}
+```
+
+#### Cache Lookup Flow
+```
+1. Performance calculation needs VT year-end price for 2024
+2. Check HistoricalYearEndData for (StockPrice, "VT", 2024)
+3. If found → return cached value
+4. If not found → fetch from Stooq API
+   - On success → save to cache, return value
+   - On failure → prompt user for manual entry
+5. Manual entry → save to cache with Source="Manual"
+```
+
+#### Source Mapping
+| Stock Type | API Source | Ticker Format |
+|------------|------------|---------------|
+| US/International | Stooq | Symbol (e.g., "VT", "VWRA.UK") |
+| Taiwan | TWSE | Symbol (e.g., "0050") |
+| Exchange Rate | Stooq | Currency pair (e.g., "USDTWD") |
+| Euronext | Manual (initially) | ISIN (e.g., "IE000FHBZDZ8") |
+
+### Alternatives Considered
+1. **Per-user cache**: Rejected - same prices for everyone, wastes storage
+2. **Allow cache overwrites**: Rejected - historical prices are immutable; overwrites suggest data integrity issues
+3. **Cache all prices upfront**: Rejected - only cache on-demand to avoid unnecessary API calls
+4. **Use existing HistoricalPrice table**: Considered but rejected - different purpose (HistoricalPrice is for benchmark data, HistoricalYearEndData is for user portfolio positions)
