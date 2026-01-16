@@ -360,7 +360,75 @@ public class MarketDataController : ControllerBase
             result.ToCurrency,
             result.ActualDate.ToString("yyyy-MM-dd")));
     }
+
+    /// <summary>
+    /// Get annual benchmark returns for a specific year.
+    /// Uses cached IndexPriceSnapshot data instead of hitting external APIs.
+    /// </summary>
+    /// <param name="year">Year to calculate returns for (e.g., 2025)</param>
+    [HttpGet("benchmark-returns")]
+    [ProducesResponseType(typeof(BenchmarkReturnsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BenchmarkReturnsResponse>> GetBenchmarkReturns(
+        [FromQuery] int year,
+        CancellationToken cancellationToken = default)
+    {
+        if (year < 2000 || year > DateTime.UtcNow.Year)
+        {
+            return BadRequest("Invalid year");
+        }
+
+        var startYearMonth = $"{year - 1}12";  // Prior year December
+        var endYearMonth = $"{year}12";        // Current year December
+
+        // Get all cached index prices for both year-months
+        var snapshots = await _dbContext.IndexPriceSnapshots
+            .Where(s => s.YearMonth == startYearMonth || s.YearMonth == endYearMonth)
+            .ToListAsync(cancellationToken);
+
+        var startPrices = snapshots
+            .Where(s => s.YearMonth == startYearMonth)
+            .GroupBy(s => s.MarketKey)
+            .ToDictionary(g => g.Key, g => g.First().Price);
+
+        var endPrices = snapshots
+            .Where(s => s.YearMonth == endYearMonth)
+            .GroupBy(s => s.MarketKey)
+            .ToDictionary(g => g.Key, g => g.First().Price);
+
+        var returns = new Dictionary<string, decimal?>();
+        var benchmarks = MarketYtdService.SupportedBenchmarks;
+
+        foreach (var (marketKey, _) in benchmarks)
+        {
+            if (startPrices.TryGetValue(marketKey, out var startPrice) &&
+                endPrices.TryGetValue(marketKey, out var endPrice) &&
+                startPrice > 0)
+            {
+                var returnPercent = ((endPrice - startPrice) / startPrice) * 100;
+                returns[marketKey] = Math.Round(returnPercent, 2);
+            }
+            else
+            {
+                returns[marketKey] = null;
+            }
+        }
+
+        return Ok(new BenchmarkReturnsResponse(
+            year,
+            returns,
+            startPrices.Count > 0,
+            endPrices.Count > 0));
+    }
 }
+
+/// <summary>
+/// Response for annual benchmark returns.
+/// </summary>
+public record BenchmarkReturnsResponse(
+    int Year,
+    Dictionary<string, decimal?> Returns,
+    bool HasStartPrices,
+    bool HasEndPrices);
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
 

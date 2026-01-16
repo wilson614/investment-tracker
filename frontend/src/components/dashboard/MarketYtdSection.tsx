@@ -18,9 +18,26 @@ const YTD_SORT_OPTIONS: { value: YtdSortKey; label: string }[] = [
 ];
 
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
+
+// English key to Chinese label mapping (matches backend MarketYtdService.Benchmarks)
+const BENCHMARK_LABELS: Record<string, string> = {
+  'All Country': '全球',
+  'US Large': '美國大型',
+  'US Small': '美國小型',
+  'Developed Markets Large': '已開發大型',
+  'Developed Markets Small': '已開發小型',
+  'Dev ex US Large': '已開發非美',
+  'Emerging Markets': '新興市場',
+  'Europe': '歐洲',
+  'Japan': '日本',
+  'China': '中國',
+  'Taiwan 0050': '台灣 0050',
+};
+
+// Default selected benchmarks (using English keys to match API)
 const DEFAULT_BENCHMARKS = [
-  '全球', '美國大型', '已開發大型', '已開發小型',
-  '已開發非美', '新興市場', '歐洲', '日本', '中國', '台灣 0050'
+  'All Country', 'US Large', 'Developed Markets Large', 'Developed Markets Small',
+  'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
 ];
 
 function getSelectedBenchmarks(): string[] {
@@ -53,11 +70,12 @@ interface YtdCardProps {
 function YtdCard({ item }: YtdCardProps) {
   const hasYtd = item.ytdReturnPercent != null;
   const isPositive = hasYtd && item.ytdReturnPercent! >= 0;
+  const displayLabel = BENCHMARK_LABELS[item.marketKey] || item.marketKey;
 
   return (
     <div className="bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center">
-      <div className="text-sm text-[var(--text-primary)] truncate mb-1" title={item.marketKey}>
-        {item.marketKey}
+      <div className="text-sm text-[var(--text-primary)] truncate mb-1" title={displayLabel}>
+        {displayLabel}
       </div>
       {item.error ? (
         <div className="text-base text-[var(--color-warning)] my-1">N/A</div>
@@ -200,7 +218,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
                     }`}>
                       {tempSelected.includes(key) && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
                     </div>
-                    <span className="text-sm truncate">{key}</span>
+                    <span className="text-sm truncate">{BENCHMARK_LABELS[key] || key}</span>
                   </button>
                 ))}
               </div>

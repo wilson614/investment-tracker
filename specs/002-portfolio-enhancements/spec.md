@@ -30,6 +30,19 @@ This module contains 9 enhancements to the existing investment portfolio trackin
 - Q: What metrics to display on performance page? → A: Only XIRR is meaningful; total return percentage cards removed. Yearly summary (value sections) retained for reference.
 - Q: Performance comparison format? → A: Compare portfolio XIRR (USD) against selected benchmark's annual return. Benchmarks: 全球 (VWRA), 美國大型 (VUAA), 已開發大型 (VHVE), 新興市場 (VFEM), 台灣 0050.
 - Q: TWD performance exchange rate source? → A: Use real historical exchange rates from Stooq API for year-start/year-end valuations (e.g., 2024-12-31 USD/TWD = 32.7897), not hardcoded approximate values.
+- Q: Cash flow count display in XIRR card? → A: Show actual transaction count instead of total cash flows (which includes year-start/end valuations). E.g., "1 筆交易" instead of "3 筆現金流".
+- Q: "原幣報酬率（不含匯率變動）" text under USD XIRR card? → A: Replace with info icon (ℹ️) tooltip to save space.
+- Q: "年底價值" label in yearly summary for YTD? → A: Use dynamic label - "目前價值" for current year (YTD), "年底價值" for historical years.
+- Q: Available benchmarks for performance comparison? → A: Display all 11 benchmarks supported by backend: 全球 (VWRA), 美國大型 (VUAA), 美國小型 (XRSU), 已開發大型 (VHVE), 已開發小型 (WSML), 已開發除美 (EXUS), 新興市場 (VFEM), 歐洲 (VEUA), 日本 (VJPA), 中國 (HCHA), 台灣 0050.
+- Q: Multiple benchmark selection? → A: Support multi-select for comparing portfolio against multiple benchmarks simultaneously.
+- Q: Benchmark loading flicker issue? → A: Maintain previous benchmark value during loading instead of showing 0, to prevent visual flicker.
+- Q: Missing price warning timing? → A: Only show "手動輸入" button after auto-fetch actually fails, not immediately when prices are missing.
+- Q: Portfolio switching XIRR stale data? → A: Clear XIRR/summary state immediately when switching portfolios to prevent stale data display.
+- Q: TWD XIRR card transaction count text "N 筆交易（含匯率變動）"? → A: Replace with Info icon (ℹ️) tooltip to match USD XIRR card style.
+- Q: Benchmark selection UI in performance comparison? → A: Use settings gear icon (⚙️) popup instead of inline checkboxes. Read from dashboard's `ytd_benchmark_preferences` localStorage to sync with dashboard YTD section.
+- Q: Price fetch loading state visibility? → A: Show skeleton loader or "計算中..." on XIRR cards when fetching prices, instead of displaying "-" which is ambiguous.
+- Q: Benchmark chart flickering on page load? → A: Delay rendering performance comparison chart until all selected benchmark data is ready. Show loading state instead of 0 values.
+- Q: Which portfolio is used for performance analysis? → A: Currently uses first portfolio only (`portfolios[0]`). Not all portfolios combined. Not synced with portfolio page selection.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -181,6 +194,43 @@ As an investor, I want a dedicated portfolio for foreign currency stocks that do
 
 ---
 
+### User Story 10 - Performance Page UX Improvements (Priority: P2)
+
+As an investor, I want the performance page to have clearer labeling and better interaction patterns, so I can understand the data without confusion and compare my portfolio against multiple benchmarks.
+
+**Why this priority**: These are UX polish items that improve comprehension without affecting core functionality.
+
+**Independent Test**: Can be verified by viewing performance page and checking label clarity, benchmark options, and loading states.
+
+**Acceptance Scenarios**:
+
+1. **Given** user views XIRR TWD card, **When** looking at cash flow info, **Then** shows actual transaction count (e.g., "1 筆交易") instead of total cash flows
+2. **Given** user views XIRR USD card, **When** looking at explanation, **Then** shows info icon with tooltip instead of inline text
+3. **Given** user views YTD performance (current year), **When** looking at summary, **Then** shows "目前價值" instead of "年底價值"
+4. **Given** user views historical year performance, **When** looking at summary, **Then** shows "年底價值"
+5. **Given** user opens benchmark dropdown, **When** viewing options, **Then** sees all 11 available benchmarks
+6. **Given** user wants to compare multiple benchmarks, **When** selecting benchmarks, **Then** can select multiple benchmarks for simultaneous comparison
+7. **Given** user switches benchmark, **When** new data is loading, **Then** previous benchmark bar remains visible (no flicker to 0)
+8. **Given** user switches year with missing prices, **When** auto-fetch is in progress, **Then** "手動輸入" button only appears after fetch fails
+
+---
+
+### User Story 11 - Portfolio Switching State Management (Priority: P1)
+
+As an investor, I want the UI to clear stale data when I switch portfolios or create a new portfolio, so I don't see misleading XIRR values from the previous portfolio.
+
+**Why this priority**: This is a data correctness issue that could mislead users.
+
+**Independent Test**: Can be verified by switching portfolios and checking that XIRR clears immediately before new data loads.
+
+**Acceptance Scenarios**:
+
+1. **Given** user is viewing portfolio A with XIRR data, **When** switching to portfolio B, **Then** XIRR displays loading state (not portfolio A's value)
+2. **Given** user creates a new empty portfolio, **When** viewing the new portfolio, **Then** XIRR shows "-" or empty state (not previous portfolio's value)
+3. **Given** user switches portfolio on Portfolio page, **When** navigating to Performance page, **Then** Performance page shows correct portfolio's data
+
+---
+
 ### Edge Cases
 
 - When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Use separate portfolios - primary portfolio for TWD-tracked investments, foreign currency portfolio for source-currency-only investments
@@ -249,6 +299,20 @@ As an investor, I want a dedicated portfolio for foreign currency stocks that do
 - **FR-085**: Each Foreign Currency Portfolio MUST have a single designated Base Currency (e.g., USD)
 - **FR-086**: System MUST only allow adding stocks denominated in the portfolio's Base Currency
 
+#### Story 10: Performance Page UX Improvements
+- **FR-090**: XIRR TWD card MUST display actual transaction count instead of total cash flow count
+- **FR-091**: XIRR USD card MUST use info icon with tooltip instead of inline explanatory text
+- **FR-092**: Yearly summary MUST use dynamic label: "目前價值" for current year (YTD), "年底價值" for historical years
+- **FR-093**: Benchmark dropdown MUST display all 11 supported benchmarks (VWRA, VUAA, XRSU, VHVE, WSML, EXUS, VFEM, VEUA, VJPA, HCHA, 0050)
+- **FR-094**: Benchmark comparison MUST support multi-select for comparing against multiple benchmarks
+- **FR-095**: Benchmark bar chart MUST maintain previous value during loading to prevent flicker
+- **FR-096**: Missing price "手動輸入" button MUST only appear after auto-fetch fails, not immediately
+
+#### Story 11: Portfolio Switching State Management
+- **FR-100**: System MUST clear XIRR and summary state when switching portfolios
+- **FR-101**: New empty portfolio MUST display "-" or loading state for XIRR, not stale data
+- **FR-102**: Portfolio switch MUST propagate to Performance page correctly
+
 ### Key Entities
 
 - **StockTransaction.ExchangeRate**: Modified to nullable decimal to support omitting exchange rate
@@ -271,6 +335,10 @@ As an investor, I want a dedicated portfolio for foreign currency stocks that do
 - **SC-007**: New position displays current price within 3 seconds after transaction is saved
 - **SC-008**: Euronext stocks display change percentage with correct color coding
 - **SC-009**: Foreign Currency Portfolio displays all metrics in source currency without TWD conversion
+- **SC-010**: XIRR card shows transaction count (not cash flow count) for clarity
+- **SC-011**: All 11 benchmarks are available in performance comparison dropdown
+- **SC-012**: Benchmark switching shows no visual flicker (maintains previous value during loading)
+- **SC-013**: Portfolio switching clears stale XIRR data within 100ms
 
 ## Assumptions
 

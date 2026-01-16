@@ -92,6 +92,10 @@ export function PortfolioPage() {
     try {
       setIsLoading(true);
       setError(null);
+      // Clear stale data immediately to prevent showing previous portfolio's data (FR-100)
+      setSummary(null);
+      setXirrResult(null);
+      setTransactions([]);
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);

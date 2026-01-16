@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
 import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { YearSelector } from '../components/performance/YearSelector';
@@ -9,14 +9,51 @@ import { StockMarket } from '../types';
 import { getEuronextSymbol } from '../constants';
 import type { Portfolio, YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison } from '../types';
 
-// Available benchmark options for comparison
+// Available benchmark options for comparison (matches backend MarketYtdService.Benchmarks)
 const BENCHMARK_OPTIONS = [
   { key: 'All Country', label: '全球 (VWRA)', symbol: 'VWRA' },
   { key: 'US Large', label: '美國大型 (VUAA)', symbol: 'VUAA' },
+  { key: 'US Small', label: '美國小型 (XRSU)', symbol: 'XRSU' },
   { key: 'Developed Markets Large', label: '已開發大型 (VHVE)', symbol: 'VHVE' },
+  { key: 'Developed Markets Small', label: '已開發小型 (WSML)', symbol: 'WSML' },
+  { key: 'Dev ex US Large', label: '已開發除美 (EXUS)', symbol: 'EXUS' },
   { key: 'Emerging Markets', label: '新興市場 (VFEM)', symbol: 'VFEM' },
+  { key: 'Europe', label: '歐洲 (VEUA)', symbol: 'VEUA' },
+  { key: 'Japan', label: '日本 (VJPA)', symbol: 'VJPA' },
+  { key: 'China', label: '中國 (HCHA)', symbol: 'HCHA' },
   { key: 'Taiwan 0050', label: '台灣 0050', symbol: '0050' },
 ] as const;
+
+// Shared localStorage key with dashboard MarketYtdSection
+const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
+
+// Load selected benchmarks from localStorage (synced with dashboard)
+// Dashboard stores English keys (e.g., "All Country")
+function loadSelectedBenchmarks(): string[] {
+  try {
+    const stored = localStorage.getItem(YTD_PREFS_KEY);
+    if (stored) {
+      const keys = JSON.parse(stored) as string[];
+      if (Array.isArray(keys) && keys.length > 0) {
+        // Validate keys exist in BENCHMARK_OPTIONS
+        const validKeys = keys.filter(k => BENCHMARK_OPTIONS.some(o => o.key === k));
+        if (validKeys.length > 0) return validKeys;
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  return ['All Country']; // Default
+}
+
+// Save selected benchmarks to localStorage (synced with dashboard)
+function saveSelectedBenchmarks(keys: string[]): void {
+  try {
+    localStorage.setItem(YTD_PREFS_KEY, JSON.stringify(keys));
+  } catch {
+    // Ignore
+  }
+}
 
 // Cache key for localStorage quote cache (shared with Portfolio page)
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
@@ -41,11 +78,14 @@ export function PerformancePage() {
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(true);
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  const [priceFetchFailed, setPriceFetchFailed] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
 
-  // Benchmark comparison state
-  const [selectedBenchmark, setSelectedBenchmark] = useState<string>('All Country');
-  const [benchmarkReturn, setBenchmarkReturn] = useState<number | null>(null);
+  // Benchmark comparison state - multi-select support, synced with dashboard
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarks);
+  const [tempSelectedBenchmarks, setTempSelectedBenchmarks] = useState<string[]>([]);
+  const [showBenchmarkSettings, setShowBenchmarkSettings] = useState(false);
+  const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
   const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(false);
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
 
@@ -94,51 +134,54 @@ export function PerformancePage() {
     loadYtdData();
   }, []);
 
-  // Calculate benchmark return when year or benchmark changes
+  // Calculate benchmark returns when year or benchmarks change
   useEffect(() => {
-    const fetchBenchmarkReturn = async () => {
-      if (!selectedYear || !availableYears) return;
+    const fetchBenchmarkReturns = async () => {
+      if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) return;
 
       setIsLoadingBenchmark(true);
-      setBenchmarkReturn(null);
+      // Don't clear previous values to prevent flicker (FR-095)
 
       try {
         const isCurrentYear = selectedYear === availableYears.currentYear;
+        const newReturns: Record<string, number | null> = {};
 
         if (isCurrentYear && ytdData) {
-          // Use YTD data for current year
-          const benchmark = ytdData.benchmarks.find(b => b.marketKey === selectedBenchmark);
-          if (benchmark?.ytdReturnPercent != null) {
-            setBenchmarkReturn(benchmark.ytdReturnPercent);
+          // Use YTD data for current year - lookup by English key (matches backend)
+          for (const benchmarkKey of selectedBenchmarks) {
+            const benchmark = ytdData.benchmarks.find(b => b.marketKey === benchmarkKey);
+            if (benchmark?.ytdReturnPercent != null) {
+              newReturns[benchmarkKey] = benchmark.ytdReturnPercent;
+            } else {
+              newReturns[benchmarkKey] = null;
+            }
           }
         } else {
-          // For historical years, fetch from Stooq via index prices
-          const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === selectedBenchmark);
-          if (!benchmarkInfo) return;
-
-          // Get year-start (prior year Dec) and year-end prices
-          const yearStartDate = `${selectedYear - 1}-12-31`;
-          const yearEndDate = `${selectedYear}-12-31`;
-
-          const [startResult, endResult] = await Promise.all([
-            marketDataApi.getHistoricalPrice(benchmarkInfo.symbol, yearStartDate).catch(() => null),
-            marketDataApi.getHistoricalPrice(benchmarkInfo.symbol, yearEndDate).catch(() => null),
-          ]);
-
-          if (startResult && endResult && startResult.price > 0) {
-            const returnPercent = ((endResult.price - startResult.price) / startResult.price) * 100;
-            setBenchmarkReturn(returnPercent);
+          // For historical years, use cached benchmark returns from IndexPriceSnapshot
+          try {
+            const benchmarkData = await marketDataApi.getBenchmarkReturns(selectedYear);
+            for (const benchmarkKey of selectedBenchmarks) {
+              const returnValue = benchmarkData.returns[benchmarkKey];
+              newReturns[benchmarkKey] = returnValue ?? null;
+            }
+          } catch {
+            // If the new API fails, all benchmarks get null
+            for (const benchmarkKey of selectedBenchmarks) {
+              newReturns[benchmarkKey] = null;
+            }
           }
         }
+
+        setBenchmarkReturns(prev => ({ ...prev, ...newReturns }));
       } catch (err) {
-        console.error('Failed to fetch benchmark return:', err);
+        console.error('Failed to fetch benchmark returns:', err);
       } finally {
         setIsLoadingBenchmark(false);
       }
     };
 
-    fetchBenchmarkReturn();
-  }, [selectedYear, selectedBenchmark, availableYears, ytdData]);
+    fetchBenchmarkReturns();
+  }, [selectedYear, selectedBenchmarks, availableYears, ytdData]);
 
   // Load cached prices from localStorage
   const loadCachedPrices = useCallback((tickers: string[]): Record<string, YearEndPriceInfo> => {
@@ -404,9 +447,11 @@ export function PerformancePage() {
 
       hasFetchedForYearRef.current = selectedYear;
       setIsFetchingPrices(true);
+      setPriceFetchFailed(false);
 
       try {
         const isCurrentYear = selectedYear === availableYears.currentYear;
+        let fetchedCount = 0;
 
         if (isCurrentYear) {
           // YTD: Use cached prices first, then fetch remaining from Sina/Euronext
@@ -423,8 +468,14 @@ export function PerformancePage() {
           }
 
           const allPrices = { ...cachedPrices, ...fetchedPrices };
-          if (Object.keys(allPrices).length > 0) {
+          fetchedCount = Object.keys(allPrices).length;
+          if (fetchedCount > 0) {
             calculatePerformance(selectedYear, allPrices);
+          }
+          
+          // Check if still missing after fetch
+          if (fetchedCount < performance.missingPrices.length) {
+            setPriceFetchFailed(true);
           }
         } else {
           // Historical year: Use Stooq for international stocks
@@ -438,9 +489,16 @@ export function PerformancePage() {
           if (hasPrices) {
             calculatePerformance(selectedYear, yearEndPrices, yearStartPrices);
           }
+          
+          // Check if still missing after fetch
+          const totalFetched = Object.keys(yearEndPrices).length + Object.keys(yearStartPrices).length;
+          if (totalFetched < performance.missingPrices.length) {
+            setPriceFetchFailed(true);
+          }
         }
       } catch (err) {
         console.error('Failed to auto-fetch prices:', err);
+        setPriceFetchFailed(true);
       } finally {
         setIsFetchingPrices(false);
       }
@@ -490,6 +548,8 @@ export function PerformancePage() {
 
   const handleYearChange = (year: number) => {
     setSelectedYear(year);
+    setPriceFetchFailed(false);
+    hasFetchedForYearRef.current = null; // Reset to allow fresh fetch for new year
   };
 
   const handleMissingPricesSubmit = (prices: Record<string, YearEndPriceInfo>) => {
@@ -563,47 +623,80 @@ export function PerformancePage() {
           </div>
         ) : performance ? (
           <>
-            {/* Missing Prices Warning */}
+            {/* Missing Prices Overlay - Full screen modal when fetching or missing prices */}
             {performance.missingPrices.length > 0 && (
-              <div className="card-dark p-4 mb-6 border-l-4 border-[var(--color-warning)]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[var(--color-warning)] font-medium">
-                      缺少 {performance.missingPrices.length} 支股票的價格
-                    </p>
-                    <p className="text-[var(--text-muted)] text-sm mt-1">
-                      {isFetchingPrices
-                        ? (selectedYear === availableYears?.currentYear
-                          ? '正在抓取即時報價...'
-                          : `正在抓取 ${selectedYear} 年底收盤價...`)
-                        : (selectedYear === availableYears?.currentYear
-                          ? '可自動抓取即時報價'
-                          : `可自動抓取 ${selectedYear} 年底收盤價 (國際股票)`
-                        )
-                      }
-                    </p>
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="card-dark w-full max-w-md mx-4">
+                  <div className="px-5 py-4 border-b border-[var(--border-color)]">
+                    <h3 className="text-lg font-bold text-[var(--text-primary)]">
+                      {isFetchingPrices ? '正在抓取價格...' : '缺少股票價格'}
+                    </h3>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRefreshPrices}
-                      disabled={isFetchingPrices}
-                      className="btn-dark px-3 py-2 flex items-center gap-2"
-                    >
-                      {isFetchingPrices ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4" />
-                      )}
-                      抓取價格
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowMissingPriceModal(true)}
-                      className="btn-accent px-4 py-2"
-                    >
-                      手動輸入
-                    </button>
+                  <div className="p-5">
+                    {(() => {
+                      // Dedupe tickers for display
+                      const uniqueTickers = [...new Set(performance.missingPrices.map(mp => mp.ticker))];
+                      return (
+                        <>
+                          <p className="text-[var(--text-secondary)] mb-4">
+                            缺少 {uniqueTickers.length} 支股票的
+                            {selectedYear === availableYears?.currentYear ? '即時報價' : `${selectedYear} 年度價格`}
+                          </p>
+                          <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 max-h-[200px] overflow-y-auto mb-4">
+                            <ul className="space-y-1 text-sm">
+                              {uniqueTickers.slice(0, 10).map((ticker) => (
+                                <li key={ticker} className="text-[var(--text-muted)]">
+                                  • {ticker}
+                                </li>
+                              ))}
+                              {uniqueTickers.length > 10 && (
+                                <li className="text-[var(--text-muted)]">
+                                  ... 還有 {uniqueTickers.length - 10} 支
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    {isFetchingPrices && (
+                      <div className="flex items-center justify-center gap-2 py-4">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                        <span className="text-[var(--text-muted)]">
+                          {selectedYear === availableYears?.currentYear
+                            ? '正在抓取即時報價...'
+                            : `正在抓取 ${selectedYear} 年度價格...`}
+                        </span>
+                      </div>
+                    )}
+                    {!isFetchingPrices && priceFetchFailed && (
+                      <div className="bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 rounded-lg p-3 mb-4">
+                        <p className="text-sm text-[var(--color-warning)]">
+                          無法自動取得歷史價格。外部資料來源可能暫時無法使用，請稍後再試或手動輸入價格。
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">
+                    {!isFetchingPrices && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleRefreshPrices}
+                          className="btn-dark px-4 py-2 flex items-center gap-2"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          重新抓取
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowMissingPriceModal(true)}
+                          className="btn-accent px-4 py-2"
+                        >
+                          手動輸入
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -619,6 +712,14 @@ export function PerformancePage() {
                     <h3 className="text-[var(--text-muted)]">
                       {selectedYear} 年度 XIRR ({performance.sourceCurrency})
                     </h3>
+                    <div className="relative group">
+                      <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                          原幣報酬率（不含匯率變動）
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex items-baseline gap-2">
                     {performance.xirrPercentageSource >= 0 ? (
@@ -632,9 +733,6 @@ export function PerformancePage() {
                       {formatPercent(performance.xirrPercentageSource)}
                     </span>
                   </div>
-                  <p className="text-xs text-[var(--text-muted)] mt-2">
-                    原幣報酬率（不含匯率變動）
-                  </p>
                 </div>
               )}
 
@@ -645,6 +743,14 @@ export function PerformancePage() {
                   <h3 className="text-[var(--text-muted)]">
                     {selectedYear} 年度 XIRR ({portfolio.homeCurrency})
                   </h3>
+                  <div className="relative group">
+                    <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                      <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                        {performance.transactionCount} 筆交易（含匯率變動）
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {performance.xirrPercentage != null ? (
                   <div className="flex items-baseline gap-2">
@@ -659,12 +765,14 @@ export function PerformancePage() {
                       {formatPercent(performance.xirrPercentage)}
                     </span>
                   </div>
+                ) : isFetchingPrices ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                    <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
+                  </div>
                 ) : (
-                  <span className="text-2xl text-[var(--text-muted)]">-</span>
+                  <span className="text-2xl text-[var(--text-muted)]">需要價格資料</span>
                 )}
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  {performance.cashFlowCount} 筆現金流（含匯率變動）
-                </p>
               </div>
             </div>
 
@@ -682,7 +790,9 @@ export function PerformancePage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-[var(--text-muted)]">年底價值</p>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
+                    </p>
                     <p className="text-lg font-medium text-[var(--text-primary)] number-display">
                       {formatCurrency(performance.endValueSource)} {performance.sourceCurrency}
                     </p>
@@ -724,7 +834,9 @@ export function PerformancePage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-[var(--text-muted)]">年底價值</p>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
+                  </p>
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
                     {formatCurrency(performance.endValueHome)} {portfolio.homeCurrency}
                   </p>
@@ -752,54 +864,134 @@ export function PerformancePage() {
               </div>
             </div>
 
-            {/* Performance Bar Chart - Portfolio vs Benchmark */}
+            {/* Performance Bar Chart - Portfolio vs Benchmarks (Multi-select) */}
             {performance.xirrPercentageSource != null && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
                     績效比較
                   </h3>
-                  <select
-                    value={selectedBenchmark}
-                    onChange={(e) => setSelectedBenchmark(e.target.value)}
-                    className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)]"
-                  >
-                    {BENCHMARK_OPTIONS.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempSelectedBenchmarks(selectedBenchmarks);
+                        setShowBenchmarkSettings(true);
+                      }}
+                      className="btn-dark p-2 h-8 flex items-center justify-center"
+                      title="選擇比較基準"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <PerformanceBarChart
-                  data={[
-                    {
-                      label: `我的 XIRR (${performance.sourceCurrency})`,
-                      value: performance.xirrPercentageSource,
-                      tooltip: `${selectedYear} 年化報酬率 (${performance.cashFlowCount} 筆現金流)`,
-                    },
-                    {
-                      label: BENCHMARK_OPTIONS.find(b => b.key === selectedBenchmark)?.label ?? selectedBenchmark,
-                      value: benchmarkReturn ?? 0,
-                      tooltip: isLoadingBenchmark
-                        ? '載入中...'
-                        : benchmarkReturn != null
-                          ? `${selectedYear} 年度報酬率`
-                          : '無法取得報酬率',
-                    },
-                  ]}
-                  height={120}
-                />
-                {isLoadingBenchmark && (
-                  <p className="text-xs text-[var(--text-muted)] mt-2 flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    載入基準報酬...
-                  </p>
+
+                {/* Benchmark Settings Modal - Dashboard style */}
+                {showBenchmarkSettings && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="card-dark w-full max-w-md mx-4">
+                      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-[var(--text-primary)]">選擇比較基準</h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowBenchmarkSettings(false)}
+                          className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="p-5 max-h-[50vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-2">
+                          {BENCHMARK_OPTIONS.map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => {
+                                if (tempSelectedBenchmarks.includes(option.key)) {
+                                  if (tempSelectedBenchmarks.length > 1) {
+                                    setTempSelectedBenchmarks(tempSelectedBenchmarks.filter(k => k !== option.key));
+                                  }
+                                } else {
+                                  setTempSelectedBenchmarks([...tempSelectedBenchmarks, option.key]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                                tempSelectedBenchmarks.includes(option.key)
+                                  ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
+                                  : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                                tempSelectedBenchmarks.includes(option.key)
+                                  ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
+                                  : 'border-[var(--text-muted)]'
+                              }`}>
+                                {tempSelectedBenchmarks.includes(option.key) && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                              </div>
+                              <span className="text-sm truncate">{option.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowBenchmarkSettings(false)}
+                          className="btn-dark px-4 py-2"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tempSelectedBenchmarks.length > 0) {
+                              setSelectedBenchmarks(tempSelectedBenchmarks);
+                              saveSelectedBenchmarks(tempSelectedBenchmarks);
+                            }
+                            setShowBenchmarkSettings(false);
+                          }}
+                          className="btn-accent px-4 py-2"
+                        >
+                          儲存
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                {!isLoadingBenchmark && benchmarkReturn == null && (
-                  <p className="text-xs text-[var(--color-warning)] mt-2">
-                    無法取得 {selectedYear} 年 {BENCHMARK_OPTIONS.find(b => b.key === selectedBenchmark)?.label} 的報酬率
-                  </p>
+                {isLoadingBenchmark ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                    <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
+                  </div>
+                ) : (
+                  <>
+                    <PerformanceBarChart
+                      data={[
+                        {
+                          label: `我的 XIRR (${performance.sourceCurrency})`,
+                          value: performance.xirrPercentageSource,
+                          tooltip: `${selectedYear} 年化報酬率 (${performance.transactionCount} 筆交易)`,
+                        },
+                        ...selectedBenchmarks.map(benchmarkKey => {
+                          const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
+                          const returnValue = benchmarkReturns[benchmarkKey];
+                          return {
+                            label: benchmarkInfo?.label ?? benchmarkKey,
+                            value: returnValue ?? 0,
+                            tooltip: returnValue != null
+                              ? `${selectedYear} 年度報酬率`
+                              : '無法取得報酬率',
+                          };
+                        }),
+                      ]}
+                      height={80 + selectedBenchmarks.length * 40}
+                    />
+                    {selectedBenchmarks.some(k => benchmarkReturns[k] == null) && (
+                      <p className="text-xs text-[var(--color-warning)] mt-2">
+                        部分基準報酬率無法取得
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}

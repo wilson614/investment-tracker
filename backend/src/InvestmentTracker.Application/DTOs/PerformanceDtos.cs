@@ -56,6 +56,9 @@ public record YearPerformanceDto
     /// <summary>Number of cash flows used in XIRR calculation.</summary>
     public int CashFlowCount { get; init; }
 
+    /// <summary>Number of actual transactions during the year (buy/sell only, excludes year-start/end valuations).</summary>
+    public int TransactionCount { get; init; }
+
     /// <summary>Positions with missing reference prices needed for calculation.</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 

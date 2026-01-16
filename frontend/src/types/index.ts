@@ -361,6 +361,7 @@ export interface YearPerformance {
   netContributionsSource: number | null;
   // Common
   cashFlowCount: number;
+  transactionCount: number;
   missingPrices: MissingPrice[];
   isComplete: boolean;
 }

@@ -361,6 +361,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             NetContributionsSource = netContributionsSource,
             // Common
             CashFlowCount = cashFlowsSource.Count,
+            TransactionCount = yearTransactions.Count,
             MissingPrices = []
         };
     }

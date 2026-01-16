@@ -415,6 +415,11 @@ export const marketDataApi = {
     fetchApi<{ rate: number; fromCurrency: string; toCurrency: string; actualDate: string }>(
       `/market-data/historical-exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`
     ),
+
+  getBenchmarkReturns: (year: number) =>
+    fetchApi<{ year: number; returns: Record<string, number | null>; hasStartPrices: boolean; hasEndPrices: boolean }>(
+      `/market-data/benchmark-returns?year=${year}`
+    ),
 };
 
 // ETF Classification API
