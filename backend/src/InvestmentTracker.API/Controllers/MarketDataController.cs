@@ -19,20 +19,26 @@ public class MarketDataController : ControllerBase
     private readonly IMarketYtdService _marketYtdService;
     private readonly EuronextQuoteService _euronextQuoteService;
     private readonly IStooqHistoricalPriceService _stooqService;
+    private readonly IHistoricalYearEndDataService _historicalYearEndDataService;
     private readonly AppDbContext _dbContext;
+    private readonly ILogger<MarketDataController> _logger;
 
     public MarketDataController(
         ICapeDataService capeDataService,
         IMarketYtdService marketYtdService,
         EuronextQuoteService euronextQuoteService,
         IStooqHistoricalPriceService stooqService,
-        AppDbContext dbContext)
+        IHistoricalYearEndDataService historicalYearEndDataService,
+        AppDbContext dbContext,
+        ILogger<MarketDataController> logger)
     {
         _capeDataService = capeDataService;
         _marketYtdService = marketYtdService;
         _euronextQuoteService = euronextQuoteService;
         _stooqService = stooqService;
+        _historicalYearEndDataService = historicalYearEndDataService;
         _dbContext = dbContext;
+        _logger = logger;
     }
 
     /// <summary>
@@ -252,8 +258,30 @@ public class MarketDataController : ControllerBase
             return BadRequest("Date must be in yyyy-MM-dd format");
         }
 
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+
+        // For completed years, Dec 31 lookups are used as year-end prices.
+        // Cache them globally (shared across all users) to reduce repeated Stooq calls.
+        if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
+        {
+            var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                normalizedTicker,
+                targetDate.Year,
+                cancellationToken);
+
+            if (cachedResult == null)
+            {
+                return NotFound($"No historical price found for {ticker} on {date}");
+            }
+
+            return Ok(new HistoricalPriceResponse(
+                cachedResult.Price,
+                cachedResult.Currency,
+                cachedResult.ActualDate.ToString("yyyy-MM-dd")));
+        }
+
         var result = await _stooqService.GetStockPriceAsync(
-            ticker.Trim().ToUpperInvariant(),
+            normalizedTicker,
             targetDate,
             cancellationToken);
 
@@ -290,27 +318,55 @@ public class MarketDataController : ControllerBase
 
         var results = new Dictionary<string, HistoricalPriceResponse>();
 
+        var isCompletedYearEndLookup =
+            targetDate.Month == 12 &&
+            targetDate.Day == 31 &&
+            targetDate.Year < DateTime.UtcNow.Year;
+
         // Fetch prices in parallel
-        var tasks = request.Tickers.Select(async ticker =>
+        var tasks = request.Tickers.Select(async (string ticker) =>
         {
+            var normalizedTicker = ticker.Trim().ToUpperInvariant();
+
+            if (isCompletedYearEndLookup)
+            {
+                var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                    normalizedTicker,
+                    targetDate.Year,
+                    cancellationToken);
+
+                if (cachedResult == null)
+                {
+                    return (ValueTuple<string, decimal, string, DateOnly>?)null;
+                }
+
+                return (ticker, cachedResult.Price, cachedResult.Currency, DateOnly.FromDateTime(cachedResult.ActualDate));
+            }
+
             var result = await _stooqService.GetStockPriceAsync(
-                ticker.Trim().ToUpperInvariant(),
+                normalizedTicker,
                 targetDate,
                 cancellationToken);
 
-            return (ticker, result);
+            if (result == null)
+            {
+                return (ValueTuple<string, decimal, string, DateOnly>?)null;
+            }
+
+            return (ticker, result.Price, result.Currency, result.ActualDate);
         });
 
         var priceResults = await Task.WhenAll(tasks);
 
-        foreach (var (ticker, result) in priceResults)
+        foreach (var item in priceResults)
         {
-            if (result != null)
+            if (item is { } value)
             {
+                var (ticker, price, currency, actualDate) = value;
                 results[ticker] = new HistoricalPriceResponse(
-                    result.Price,
-                    result.Currency,
-                    result.ActualDate.ToString("yyyy-MM-dd"));
+                    price,
+                    currency,
+                    actualDate.ToString("yyyy-MM-dd"));
             }
         }
 
@@ -343,9 +399,34 @@ public class MarketDataController : ControllerBase
             return BadRequest("Date must be in yyyy-MM-dd format");
         }
 
+        var normalizedFrom = from.Trim().ToUpperInvariant();
+        var normalizedTo = to.Trim().ToUpperInvariant();
+
+        // For completed years, Dec 31 lookups are used as year-end rates.
+        // Cache them globally (shared across all users) to reduce repeated Stooq calls.
+        if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
+        {
+            var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
+                normalizedFrom,
+                normalizedTo,
+                targetDate.Year,
+                cancellationToken);
+
+            if (cachedResult == null)
+            {
+                return NotFound($"No exchange rate found for {from}/{to} on {date}");
+            }
+
+            return Ok(new HistoricalExchangeRateResponse(
+                cachedResult.Rate,
+                normalizedFrom,
+                normalizedTo,
+                cachedResult.ActualDate.ToString("yyyy-MM-dd")));
+        }
+
         var result = await _stooqService.GetExchangeRateAsync(
-            from.Trim().ToUpperInvariant(),
-            to.Trim().ToUpperInvariant(),
+            normalizedFrom,
+            normalizedTo,
             targetDate,
             cancellationToken);
 
@@ -363,7 +444,7 @@ public class MarketDataController : ControllerBase
 
     /// <summary>
     /// Get annual benchmark returns for a specific year.
-    /// Uses cached IndexPriceSnapshot data instead of hitting external APIs.
+    /// Uses cached IndexPriceSnapshot data. Auto-fetches from Stooq if missing.
     /// </summary>
     /// <param name="year">Year to calculate returns for (e.g., 2025)</param>
     [HttpGet("benchmark-returns")]
@@ -379,6 +460,7 @@ public class MarketDataController : ControllerBase
 
         var startYearMonth = $"{year - 1}12";  // Prior year December
         var endYearMonth = $"{year}12";        // Current year December
+        var benchmarks = MarketYtdService.SupportedBenchmarks;
 
         // Get all cached index prices for both year-months
         var snapshots = await _dbContext.IndexPriceSnapshots
@@ -395,8 +477,31 @@ public class MarketDataController : ControllerBase
             .GroupBy(s => s.MarketKey)
             .ToDictionary(g => g.Key, g => g.First().Price);
 
+        // Lazy-load missing prices from Stooq (except Taiwan 0050 which needs manual entry)
+        var missingStartMarkets = benchmarks.Keys
+            .Where(k => !startPrices.ContainsKey(k) && k != "Taiwan 0050")
+            .ToList();
+        var missingEndMarkets = benchmarks.Keys
+            .Where(k => !endPrices.ContainsKey(k) && k != "Taiwan 0050")
+            .ToList();
+
+        // Fetch missing start year prices (prior year December)
+        if (missingStartMarkets.Count > 0)
+        {
+            _logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
+                missingStartMarkets.Count, startYearMonth);
+            await FetchAndCacheBenchmarkPricesAsync(missingStartMarkets, year - 1, startPrices, cancellationToken);
+        }
+
+        // Fetch missing end year prices (current year December) - only for completed years
+        if (missingEndMarkets.Count > 0 && year < DateTime.UtcNow.Year)
+        {
+            _logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
+                missingEndMarkets.Count, endYearMonth);
+            await FetchAndCacheBenchmarkPricesAsync(missingEndMarkets, year, endPrices, cancellationToken);
+        }
+
         var returns = new Dictionary<string, decimal?>();
-        var benchmarks = MarketYtdService.SupportedBenchmarks;
 
         foreach (var (marketKey, _) in benchmarks)
         {
@@ -419,7 +524,260 @@ public class MarketDataController : ControllerBase
             startPrices.Count > 0,
             endPrices.Count > 0));
     }
+
+    /// <summary>
+    /// Helper method to fetch and cache missing benchmark prices from Stooq.
+    /// </summary>
+    private async Task FetchAndCacheBenchmarkPricesAsync(
+        List<string> marketKeys,
+        int year,
+        Dictionary<string, decimal> pricesDict,
+        CancellationToken cancellationToken)
+    {
+        var yearMonth = $"{year}12";
+
+        foreach (var marketKey in marketKeys)
+        {
+            try
+            {
+                var price = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
+
+                if (price != null)
+                {
+                    // Check if record already exists (race condition protection)
+                    var exists = await _dbContext.IndexPriceSnapshots
+                        .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
+
+                    if (!exists)
+                    {
+                        _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                        {
+                            MarketKey = marketKey,
+                            YearMonth = yearMonth,
+                            Price = price.Value,
+                            RecordedAt = DateTime.UtcNow
+                        });
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+                        _logger.LogInformation("Cached benchmark price for {MarketKey} {YearMonth}: {Price}",
+                            marketKey, yearMonth, price.Value);
+                    }
+
+                    pricesDict[marketKey] = price.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch benchmark price for {MarketKey} {YearMonth}",
+                    marketKey, yearMonth);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Manually save a year-end stock price when automatic fetching fails.
+    /// This is for cases where Stooq API doesn't have the data (e.g., Taiwan stocks).
+    /// </summary>
+    [HttpPost("year-end-price")]
+    [ProducesResponseType(typeof(YearEndPriceResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<YearEndPriceResult>> SaveManualYearEndPrice(
+        [FromBody] ManualYearEndPriceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Ticker))
+        {
+            return BadRequest("Ticker is required");
+        }
+
+        if (request.Year < 2000 || request.Year > DateTime.UtcNow.Year)
+        {
+            return BadRequest("Invalid year");
+        }
+
+        if (request.Price <= 0)
+        {
+            return BadRequest("Price must be positive");
+        }
+
+        try
+        {
+            var result = await _historicalYearEndDataService.SaveManualPriceAsync(
+                request.Ticker,
+                request.Year,
+                request.Price,
+                request.Currency ?? "TWD",
+                request.ActualDate ?? new DateTime(request.Year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                cancellationToken);
+
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Manually save a year-end exchange rate when automatic fetching fails.
+    /// </summary>
+    [HttpPost("year-end-exchange-rate")]
+    [ProducesResponseType(typeof(YearEndExchangeRateResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<YearEndExchangeRateResult>> SaveManualYearEndExchangeRate(
+        [FromBody] ManualYearEndExchangeRateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.FromCurrency) || string.IsNullOrWhiteSpace(request.ToCurrency))
+        {
+            return BadRequest("FromCurrency and ToCurrency are required");
+        }
+
+        if (request.Year < 2000 || request.Year > DateTime.UtcNow.Year)
+        {
+            return BadRequest("Invalid year");
+        }
+
+        if (request.Rate <= 0)
+        {
+            return BadRequest("Rate must be positive");
+        }
+
+        try
+        {
+            var result = await _historicalYearEndDataService.SaveManualExchangeRateAsync(
+                request.FromCurrency,
+                request.ToCurrency,
+                request.Year,
+                request.Rate,
+                request.ActualDate ?? new DateTime(request.Year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                cancellationToken);
+
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Populate historical benchmark prices for a given year by fetching from Stooq/TWSE.
+    /// This is used to seed IndexPriceSnapshot data for historical year returns calculation.
+    /// </summary>
+    /// <param name="year">Year to populate (e.g., 2024 will populate 202412 data)</param>
+    [HttpPost("populate-benchmark-prices")]
+    [ProducesResponseType(typeof(PopulateBenchmarkPricesResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PopulateBenchmarkPricesResponse>> PopulateBenchmarkPrices(
+        [FromQuery] int year,
+        CancellationToken cancellationToken = default)
+    {
+        if (year < 2000 || year > DateTime.UtcNow.Year)
+        {
+            return BadRequest("Invalid year");
+        }
+
+        var yearMonth = $"{year}12"; // December of the requested year
+        var results = new Dictionary<string, PopulateBenchmarkResult>();
+        var benchmarks = MarketYtdService.SupportedBenchmarks;
+
+        foreach (var (marketKey, benchmarkInfo) in benchmarks)
+        {
+            try
+            {
+                // Check if already exists in database
+                var existing = await _dbContext.IndexPriceSnapshots
+                    .FirstOrDefaultAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
+
+                if (existing != null)
+                {
+                    results[marketKey] = new PopulateBenchmarkResult(
+                        existing.Price,
+                        "Already exists in database",
+                        true);
+                    continue;
+                }
+
+                decimal? price = null;
+
+                // Fetch from appropriate source based on market
+                if (marketKey == "Taiwan 0050")
+                {
+                    // For Taiwan stocks, we'd need TWSE historical API which is complex
+                    // Skip for now - can be manually entered
+                    results[marketKey] = new PopulateBenchmarkResult(
+                        null,
+                        "Taiwan stocks require manual entry",
+                        false);
+                    continue;
+                }
+                else
+                {
+                    // Use Stooq for UK-listed ETFs
+                    price = await _stooqService.GetMonthEndPriceAsync(
+                        marketKey, year, 12, cancellationToken);
+                }
+
+                if (price != null)
+                {
+                    // Save to database
+                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    {
+                        MarketKey = marketKey,
+                        YearMonth = yearMonth,
+                        Price = price.Value,
+                        RecordedAt = DateTime.UtcNow
+                    });
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+
+                    results[marketKey] = new PopulateBenchmarkResult(
+                        price.Value,
+                        "Fetched from Stooq and saved",
+                        true);
+                }
+                else
+                {
+                    results[marketKey] = new PopulateBenchmarkResult(
+                        null,
+                        "Failed to fetch from external API",
+                        false);
+                }
+            }
+            catch (Exception ex)
+            {
+                results[marketKey] = new PopulateBenchmarkResult(
+                    null,
+                    $"Error: {ex.Message}",
+                    false);
+            }
+        }
+
+        var successCount = results.Count(r => r.Value.Success);
+        return Ok(new PopulateBenchmarkPricesResponse(
+            year,
+            yearMonth,
+            results,
+            successCount,
+            results.Count - successCount));
+    }
 }
+
+/// <summary>
+/// Response for populate benchmark prices operation.
+/// </summary>
+public record PopulateBenchmarkPricesResponse(
+    int Year,
+    string YearMonth,
+    Dictionary<string, PopulateBenchmarkResult> Results,
+    int SuccessCount,
+    int FailCount);
+
+/// <summary>
+/// Result for individual benchmark price population.
+/// </summary>
+public record PopulateBenchmarkResult(decimal? Price, string Message, bool Success);
 
 /// <summary>
 /// Response for annual benchmark returns.
@@ -464,3 +822,23 @@ public record EuronextQuoteResponse(
 /// Response for historical exchange rate lookup.
 /// </summary>
 public record HistoricalExchangeRateResponse(decimal Rate, string FromCurrency, string ToCurrency, string ActualDate);
+
+/// <summary>
+/// Request for manually saving a year-end stock price.
+/// </summary>
+public record ManualYearEndPriceRequest(
+    string Ticker,
+    int Year,
+    decimal Price,
+    string? Currency = "TWD",
+    DateTime? ActualDate = null);
+
+/// <summary>
+/// Request for manually saving a year-end exchange rate.
+/// </summary>
+public record ManualYearEndExchangeRateRequest(
+    string FromCurrency,
+    string ToCurrency,
+    int Year,
+    decimal Rate,
+    DateTime? ActualDate = null);

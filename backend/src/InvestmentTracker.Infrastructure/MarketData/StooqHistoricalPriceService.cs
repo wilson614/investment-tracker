@@ -72,7 +72,18 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new StooqDailyHitsLimitExceededException(symbol);
+            }
+
             return ParseLastClose(content, marketKey);
+        }
+        catch (StooqDailyHitsLimitExceededException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -212,7 +223,18 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new StooqDailyHitsLimitExceededException(symbol);
+            }
+
             return ParseStockPrice(content, symbol, date);
+        }
+        catch (StooqDailyHitsLimitExceededException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -367,7 +389,18 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new StooqDailyHitsLimitExceededException(symbol);
+            }
+
             return ParseExchangeRate(content, fromCurrency.ToUpperInvariant(), toCurrency.ToUpperInvariant(), date);
+        }
+        catch (StooqDailyHitsLimitExceededException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -429,6 +462,17 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
 
         return bestMatch;
     }
+}
+
+public sealed class StooqDailyHitsLimitExceededException : Exception
+{
+    public StooqDailyHitsLimitExceededException(string symbol)
+        : base($"Stooq daily hits limit exceeded (symbol={symbol})")
+    {
+        Symbol = symbol;
+    }
+
+    public string Symbol { get; }
 }
 
 public interface IStooqHistoricalPriceService
