@@ -8,10 +8,6 @@ using Moq;
 
 namespace InvestmentTracker.API.Tests.Integration;
 
-/// <summary>
-/// Integration tests for multi-tenancy and data isolation.
-/// Verifies that users can only access their own data through global query filters.
-/// </summary>
 public class MultiTenancyTests : IDisposable
 {
     private readonly DbContextOptions<AppDbContext> _dbOptions;
