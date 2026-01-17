@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
-import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
+import { stockPriceApi, marketDataApi } from '../services/api';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { YearSelector } from '../components/performance/YearSelector';
 import { MissingPriceModal } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
 import { StockMarket } from '../types';
 import { getEuronextSymbol } from '../constants';
-import type { Portfolio, YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison } from '../types';
+import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison } from '../types';
 
 // Available benchmark options for comparison (matches backend MarketYtdService.Benchmarks)
 const BENCHMARK_OPTIONS = [
@@ -74,8 +75,8 @@ const isTaiwanTicker = (ticker: string): boolean => {
 };
 
 export function PerformancePage() {
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(true);
+  // Use shared portfolio context (synced with Portfolio page)
+  const { currentPortfolio: portfolio, isLoading: isLoadingPortfolio, performanceVersion } = usePortfolio();
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
@@ -86,8 +87,9 @@ export function PerformancePage() {
   const [tempSelectedBenchmarks, setTempSelectedBenchmarks] = useState<string[]>([]);
   const [showBenchmarkSettings, setShowBenchmarkSettings] = useState(false);
   const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
-  const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(false);
+  const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(true); // Start as true to prevent flash
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
+  const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
 
   const {
     availableYears,
@@ -101,25 +103,20 @@ export function PerformancePage() {
   } = useHistoricalPerformance({
     portfolioId: portfolio?.id,
     autoFetch: true,
+    version: performanceVersion, // Clear state on portfolio switch
   });
 
+  // Reset price fetch state when portfolio changes
   useEffect(() => {
-    const loadPortfolio = async () => {
-      try {
-        setIsLoadingPortfolio(true);
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length > 0) {
-          setPortfolio(portfolios[0]);
-        }
-      } catch (err) {
-        console.error('Failed to load portfolio:', err);
-      } finally {
-        setIsLoadingPortfolio(false);
-      }
-    };
-
-    loadPortfolio();
-  }, []);
+    hasFetchedForYearRef.current = null;
+    setPriceFetchFailed(false);
+    setIsFetchingPrices(false);
+    // Reset benchmark state to prevent stale data showing
+    setBenchmarkReturns({});
+    setIsLoadingBenchmark(true);
+    // Update version ref to mark state as current
+    lastResetVersionRef.current = performanceVersion;
+  }, [performanceVersion]);
 
   // Load YTD benchmark data for current year comparison
   useEffect(() => {
@@ -137,7 +134,10 @@ export function PerformancePage() {
   // Calculate benchmark returns when year or benchmarks change
   useEffect(() => {
     const fetchBenchmarkReturns = async () => {
-      if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) return;
+      if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) {
+        // Keep loading state true until we have the necessary data
+        return;
+      }
 
       setIsLoadingBenchmark(true);
       // Don't clear previous values to prevent flicker (FR-095)
@@ -958,7 +958,8 @@ export function PerformancePage() {
                     </div>
                   </div>
                 )}
-                {isLoadingBenchmark ? (
+                {/* Show loading if: loading state, OR version mismatch (stale data), OR no benchmark data yet */}
+                {(isLoadingBenchmark || lastResetVersionRef.current !== performanceVersion || Object.keys(benchmarkReturns).length === 0) ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
                     <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>

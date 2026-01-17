@@ -66,16 +66,16 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
   useEffect(() => {
     // Fetch on mount if:
     // 1. We haven't fetched yet, AND
-    // 2. Either no cached data OR cached data is stale
+    // 2. Either no cached data OR cached data is stale OR cached data required migration
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
-      // Always revalidate in background if we have stale data
+      // Always revalidate in background if we have stale data or just migrated cached keys
       // This ensures fresh data without blocking UI
-      if (!cached.data || cached.isStale) {
+      if (!cached.data || cached.isStale || cached.needsMigration) {
         fetchData();
       }
     }
-  }, [fetchData, cached.data, cached.isStale]);
+  }, [fetchData, cached.data, cached.isStale, cached.needsMigration]);
 
   return {
     data,

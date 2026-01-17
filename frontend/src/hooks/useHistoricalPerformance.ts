@@ -5,6 +5,8 @@ import type { AvailableYears, YearPerformance, CalculateYearPerformanceRequest, 
 interface UseHistoricalPerformanceOptions {
   portfolioId: string | undefined;
   autoFetch?: boolean;
+  /** Version number - increment to force clear state */
+  version?: number;
 }
 
 interface UseHistoricalPerformanceResult {
@@ -22,6 +24,7 @@ interface UseHistoricalPerformanceResult {
 export function useHistoricalPerformance({
   portfolioId,
   autoFetch = true,
+  version = 0,
 }: UseHistoricalPerformanceOptions): UseHistoricalPerformanceResult {
   const [availableYears, setAvailableYears] = useState<AvailableYears | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -29,6 +32,16 @@ export function useHistoricalPerformance({
   const [isLoadingYears, setIsLoadingYears] = useState(false);
   const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Clear state when version changes (portfolio switch)
+  useEffect(() => {
+    if (version > 0) {
+      setAvailableYears(null);
+      setSelectedYear(null);
+      setPerformance(null);
+      setError(null);
+    }
+  }, [version]);
 
   const fetchAvailableYears = useCallback(async () => {
     if (!portfolioId) return;

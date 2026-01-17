@@ -11,6 +11,7 @@ import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType, PortfolioType } from '../types';
 import { isEuronextSymbol, getEuronextSymbol } from '../constants';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
@@ -66,6 +67,8 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 };
 
 export function PortfolioPage() {
+  // Use shared portfolio context for cross-page synchronization
+  const { currentPortfolioId, selectPortfolio, clearPerformanceState, refreshPortfolios } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
@@ -85,8 +88,6 @@ export function PortfolioPage() {
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
-  // Store current portfolio ID for switching
-  const [currentPortfolioId, setCurrentPortfolioId] = useState<string | null>(null);
 
   const loadDataForPortfolio = useCallback(async (portfolioId: string) => {
     try {
@@ -96,10 +97,11 @@ export function PortfolioPage() {
       setSummary(null);
       setXirrResult(null);
       setTransactions([]);
+      // Also clear performance state in context (for Performance page)
+      clearPerformanceState();
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);
-      setCurrentPortfolioId(portfolioId);
 
       const [basicSummary, txData] = await Promise.all([
         portfolioApi.getSummary(portfolioId),
@@ -128,7 +130,7 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearPerformanceState]);
 
   const loadData = useCallback(async () => {
     try {
@@ -149,7 +151,7 @@ export function PortfolioPage() {
         currentPortfolio = portfolios[0];
       }
 
-      setCurrentPortfolioId(currentPortfolio.id);
+      selectPortfolio(currentPortfolio.id);
 
       setPortfolio(currentPortfolio);
       const portfolioId = currentPortfolio.id;
@@ -181,7 +183,7 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectPortfolio]);
 
   const hasFetchedOnLoad = useRef(false);
 
@@ -521,6 +523,7 @@ export function PortfolioPage() {
               currentPortfolioId={currentPortfolioId}
               onPortfolioChange={(portfolioId) => {
                 hasFetchedOnLoad.current = false;
+                selectPortfolio(portfolioId); // Update context first
                 loadDataForPortfolio(portfolioId);
               }}
               onCreateNew={() => setShowCreatePortfolio(true)}
@@ -557,9 +560,11 @@ export function PortfolioPage() {
         {showCreatePortfolio && (
           <CreatePortfolioForm
             onClose={() => setShowCreatePortfolio(false)}
-            onSuccess={(portfolioId) => {
+            onSuccess={async (portfolioId) => {
               setShowCreatePortfolio(false);
               hasFetchedOnLoad.current = false;
+              await refreshPortfolios(); // Refresh portfolio list in context
+              selectPortfolio(portfolioId); // Update context
               loadDataForPortfolio(portfolioId);
             }}
           />

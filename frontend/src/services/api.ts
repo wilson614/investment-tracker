@@ -420,6 +420,36 @@ export const marketDataApi = {
     fetchApi<{ year: number; returns: Record<string, number | null>; hasStartPrices: boolean; hasEndPrices: boolean }>(
       `/market-data/benchmark-returns?year=${year}`
     ),
+
+  saveManualYearEndPrice: (data: {
+    ticker: string;
+    year: number;
+    price: number;
+    currency?: string;
+    actualDate?: string;
+  }) =>
+    fetchApi<{ price: number; currency: string; actualDate: string; source: string; fromCache: boolean }>(
+      '/market-data/year-end-price',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
+
+  saveManualYearEndExchangeRate: (data: {
+    fromCurrency: string;
+    toCurrency: string;
+    year: number;
+    rate: number;
+    actualDate?: string;
+  }) =>
+    fetchApi<{ rate: number; currencyPair: string; actualDate: string; source: string; fromCache: boolean }>(
+      '/market-data/year-end-exchange-rate',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
 };
 
 // ETF Classification API

@@ -3,7 +3,7 @@
  * Fetches market YTD comparison data via backend with localStorage caching
  */
 
-import type { MarketYtdComparison } from '../types';
+import type { MarketYtdComparison, MarketYtdReturn } from '../types';
 import { marketDataApi } from './api';
 
 const YTD_CACHE_KEY = 'ytd_data_cache';
@@ -24,12 +24,38 @@ const MARKET_DISPLAY_NAMES: Record<string, string> = {
   'Taiwan 0050': '台灣 0050',
 };
 
+const DISPLAY_NAME_TO_MARKET_KEY: Record<string, string> = Object.fromEntries(
+  Object.entries(MARKET_DISPLAY_NAMES).map(([marketKey, displayName]) => [displayName, marketKey])
+);
+
+function normalizeMarketKey(marketKey: string): { marketKey: string; changed: boolean } {
+  const mapped = DISPLAY_NAME_TO_MARKET_KEY[marketKey];
+  if (mapped) return { marketKey: mapped, changed: true };
+  return { marketKey, changed: false };
+}
+
+function normalizeYtdComparison(data: MarketYtdComparison): { data: MarketYtdComparison; changed: boolean } {
+  let changed = false;
+
+  const normalizedBenchmarks: MarketYtdReturn[] = data.benchmarks.map((item) => {
+    const normalized = normalizeMarketKey(item.marketKey);
+    if (normalized.changed) changed = true;
+    return normalized.changed ? { ...item, marketKey: normalized.marketKey } : item;
+  });
+
+  return {
+    data: changed ? { ...data, benchmarks: normalizedBenchmarks } : data,
+    changed,
+  };
+}
+
 // Cache the last fetched data in memory for quick access
 let cachedData: MarketYtdComparison | null = null;
 
 export interface CachedYtdResult {
   data: MarketYtdComparison | null;
   isStale: boolean;
+  needsMigration: boolean;
 }
 
 /**
@@ -40,18 +66,30 @@ export function loadCachedYtdData(): CachedYtdResult {
   try {
     const cached = localStorage.getItem(YTD_CACHE_KEY);
     if (cached) {
-      const { data, timestamp } = JSON.parse(cached);
+      const { data, timestamp } = JSON.parse(cached) as {
+        data: MarketYtdComparison;
+        timestamp: number;
+      };
+
+      const normalized = normalizeYtdComparison(data);
+      if (normalized.changed) {
+        // Migration: persist normalized keys so subsequent loads are consistent.
+        saveYtdDataToCache(normalized.data);
+      } else {
+        cachedData = data;
+      }
+
       const age = Date.now() - timestamp;
-      cachedData = data;
       return {
-        data,
+        data: normalized.data,
         isStale: age > YTD_CACHE_MAX_AGE,
+        needsMigration: normalized.changed,
       };
     }
   } catch {
     // Ignore cache errors
   }
-  return { data: null, isStale: true };
+  return { data: null, isStale: true, needsMigration: false };
 }
 
 /**
@@ -73,13 +111,8 @@ function saveYtdDataToCache(data: MarketYtdComparison): void {
  * Transform raw YTD data to display-friendly format (Chinese names)
  */
 export function transformYtdData(data: MarketYtdComparison): MarketYtdComparison {
-  return {
-    ...data,
-    benchmarks: data.benchmarks.map((item) => ({
-      ...item,
-      marketKey: MARKET_DISPLAY_NAMES[item.marketKey] || item.marketKey,
-    })),
-  };
+  // Ensure marketKey stays stable (English) for filtering/preferences.
+  return normalizeYtdComparison(data).data;
 }
 
 /**

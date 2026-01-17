@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
+import { PortfolioProvider } from './contexts/PortfolioContext';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { PositionDetailPage } from './pages/PositionDetail';
@@ -119,9 +120,11 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ToastProvider>
-          <AppRoutes />
-        </ToastProvider>
+        <PortfolioProvider>
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
+        </PortfolioProvider>
       </AuthProvider>
     </BrowserRouter>
   );
