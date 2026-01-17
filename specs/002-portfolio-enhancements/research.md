@@ -3,29 +3,27 @@
 **Date**: 2026-01-16
 **Feature**: 002-portfolio-enhancements
 
-## §1 Nullable Exchange Rate & Mixed Currency Cost Tracking
+## §1 Nullable Exchange Rate & Auto-Filled Historical FX
 
 ### Decision
-Make `StockTransaction.ExchangeRate` nullable. When null, display and calculate costs in the stock's native currency without TWD conversion.
+Keep `StockTransaction.ExchangeRate` nullable for input, but **auto-fill missing exchange rates using historical FX rates on the transaction date** when computing TWD-based metrics/reports. Preserve original currency amounts.
 
 ### Rationale
-- Users may not use the currency ledger feature
-- Forcing exchange rate input creates inaccurate data when users don't know the actual rate
-- Separating costs by currency prevents mixing incompatible values
-- XIRR calculation for mixed-currency portfolios should either:
-  - Calculate per-currency XIRR separately, OR
-  - Exclude transactions without exchange rate from TWD-based XIRR
+- Reduces data entry friction while maintaining accurate TWD-based reporting
+- Avoids multi-portfolio complexity for currency modes
+- Keeps a single portfolio model while still enabling XIRR and cost basis in home currency
+- Historical FX rates are immutable and suitable for caching
 
 ### Implementation
-- Backend: Change `ExchangeRate` from `decimal` to `decimal?`
-- Frontend: Make exchange rate field optional in transaction form
-- Display: Show "USD 1,234.56" instead of "TWD 38,876.24" when no rate
-- Grouping: Holdings grouped by (Symbol, Currency, HasExchangeRate)
+- Backend: Keep `ExchangeRate` as `decimal?` on `StockTransaction`
+- Metrics: When ExchangeRate is null and home-currency conversion is required, lookup historical FX rate for `TransactionDate`
+- Caching: Persist fetched historical FX rates (reuse existing Stooq exchange-rate path and cache table)
+- UX: If historical FX lookup fails, prompt for manual exchange rate input for that transaction
 
 ### Alternatives Considered
-1. **Force exchange rate input**: Rejected - creates bad data
-2. **Use live rate automatically**: Rejected - user may have specific rate from broker
-3. **Separate transaction types**: Rejected - overcomplicates data model
+1. **Force exchange rate input**: Rejected - creates bad data and friction
+2. **Multiple portfolios for currency modes**: Rejected - user preference to avoid multi-portfolio support
+3. **Separate per-currency metrics only**: Rejected - TWD-based reporting becomes incomplete
 
 ---
 

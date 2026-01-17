@@ -4,14 +4,14 @@
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, quickstart.md
 **Base Module**: Extends 001-portfolio-tracker
 
-**Tests**: Not explicitly requested - test tasks omitted. Add manually if TDD approach needed.
+**Tests**: Required for financial-calculation correctness (see constitution). Include targeted tests for XIRR + FX + benchmark caching.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing.
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (US1-US6)
+- **[Story]**: Which user story this task belongs to (US1-US12)
 - Paths use web app structure: `backend/src/`, `frontend/src/`
 
 ---
@@ -224,61 +224,66 @@
 
 ---
 
-## Phase 11: User Story 9 - Foreign Currency Portfolio (Priority: P1) *(NEW)*
+## Phase 11: User Story 9 - Single Portfolio with Auto-Filled Historical Exchange Rates (Priority: P1) *(UPDATED)*
 
-**Goal**: Create dedicated portfolio type for foreign currency stocks without exchange rate requirements
+**Goal**: Keep a single portfolio model and allow transactions to omit ExchangeRate; TWD-based metrics MUST auto-fill missing FX using historical FX on the transaction date.
 
-**Independent Test**: Create Foreign Currency Portfolio with USD base currency → add USD stock → all metrics display in USD
+**Independent Test**: Create 1 USD transaction with ExchangeRate and 1 USD transaction without ExchangeRate → TWD XIRR still computes using transaction-date historical FX; if FX lookup fails, user is prompted for manual FX input.
 
 ### Backend Implementation
 
-- [X] T075 [US9] Create PortfolioType enum in `backend/src/InvestmentTracker.Domain/Enums/PortfolioType.cs`
-- [X] T076 [US9] Add PortfolioType and DisplayName properties to Portfolio entity in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
-- [X] T077 [US9] Create EF migration for Portfolio new columns in `backend/src/InvestmentTracker.Infrastructure/`
-- [X] T078 [US9] Update PortfolioController to handle portfolioType in create/list endpoints in `backend/src/InvestmentTracker.API/Controllers/PortfolioController.cs`
-- [X] T079 [US9] ~~Update CreatePortfolioUseCase~~ Skipped - validation handled by Portfolio entity constructor
-- [X] T080 [US9] Update GetPortfolioSummaryUseCase to calculate metrics in source currency for FC portfolios in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
-- [X] T081 [US9] Modify XIRR calculation to use source currency cash flows for FC portfolios in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
-- [X] T082 [US9] ~~Add stock currency validation~~ Skipped - FC portfolios don't require currency validation
+- [ ] T075 [US9] Remove/disable multi-portfolio currency mode (PortfolioType) usage paths and align to single-portfolio behavior in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+- [ ] T076 [US9] Update TWD XIRR cashflow building to use FX auto-fill when ExchangeRate is null in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
+- [ ] T077 [US9] Add transaction-date FX cache entity and persistence (if not already present) in `backend/src/InvestmentTracker.Domain/Entities/`
+- [ ] T078 [US9] Implement transaction-date FX cache repository/service (cache → Stooq → persist) in `backend/src/InvestmentTracker.Infrastructure/Services/`
+- [ ] T079 [US9] Add API endpoint to submit manual FX rate for a specific transaction date when lookup fails in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
 
 ### Frontend Implementation
 
-- [X] T083 [P] [US9] Add PortfolioType type to frontend types in `frontend/src/types/index.ts`
-- [X] T084 [P] [US9] Create PortfolioSelector component for portfolio switching in `frontend/src/components/portfolio/PortfolioSelector.tsx`
-- [X] T085 [US9] Add portfolio creation form with portfolioType selection in `frontend/src/components/portfolio/CreatePortfolioForm.tsx`
-- [X] T086 [US9] Integrate PortfolioSelector into Portfolio page in `frontend/src/pages/Portfolio.tsx`
-- [X] T087 [US9] Update TransactionForm to hide exchange rate for FC portfolios in `frontend/src/components/transactions/TransactionForm.tsx`
-- [X] T088 [US9] ~~Update PositionCard~~ Skipped - already works correctly (backend returns source currency in "Home" fields)
-- [X] T089 [US9] ~~Update api.ts~~ Already implemented in previous session
+- [ ] T080 [US9] Ensure transaction form keeps ExchangeRate optional (nullable) in `frontend/src/pages/Portfolio.tsx`
+- [ ] T081 [US9] Add UI prompt/modal for missing FX (transaction-date) and submit manual FX rate in `frontend/src/pages/Portfolio.tsx`
+- [ ] T082 [US9] Add API client for manual FX submission in `frontend/src/services/api.ts`
 
-**Checkpoint**: US9 complete - Foreign Currency Portfolio displays all metrics in source currency
+### Tests (Required)
+
+- [ ] T083 [US9] Add unit tests for TWD XIRR FX auto-fill (known edge cases) in `backend/tests/InvestmentTracker.API.Tests/`
+
+**Checkpoint**: US9 complete - single portfolio works; missing ExchangeRate does not break TWD metrics
 
 ---
 
-## Phase 12: User Story 10 - Performance Page UX Improvements (Priority: P2) *(NEW)*
+## Phase 12: User Story 10 - Performance Page UX Improvements + Benchmark Robustness (Priority: P2) *(UPDATED)*
 
 **Goal**: Improve performance page labels, benchmarks, and loading states
 
 **Independent Test**: View performance page → verify transaction count display, 11 benchmarks, no flicker on switch
 
-### Frontend Implementation
+### Backend Implementation (Benchmark negative caching)
 
-- [ ] T090 [US10] Update XIRR TWD card to show transaction count instead of cash flow count in `frontend/src/components/performance/XirrCard.tsx`
-- [ ] T091 [US10] Replace explanatory text with info icon (ℹ️) tooltip for XIRR USD card in `frontend/src/components/performance/XirrCard.tsx`
-- [ ] T092 [US10] Add dynamic label "目前價值"/"年底價值" based on year (YTD vs historical) in `frontend/src/components/performance/YearlySummary.tsx`
-- [ ] T093 [US10] Update benchmark dropdown to display all 11 benchmarks in `frontend/src/components/dashboard/MarketYtdSection.tsx`
-- [ ] T094 [P] [US10] Create BenchmarkSettings component with settings gear (⚙️) popup in `frontend/src/components/performance/BenchmarkSettings.tsx`
-- [ ] T095 [US10] Implement multi-select for benchmark comparison in `frontend/src/components/performance/BenchmarkSettings.tsx`
-- [ ] T096 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/hooks/useBenchmarkPreferences.ts`
-- [ ] T097 [US10] Prevent benchmark bar flicker by maintaining previous value during loading in `frontend/src/components/charts/PerformanceBarChart.tsx`
-- [ ] T098 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx`
-- [ ] T099 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T090 [US10] Add NotAvailable marker support for `(MarketKey, YearMonth)` benchmark month-end fetches in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [ ] T091 [US10] Persist NotAvailable permanently when Stooq returns null in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [ ] T092 [US10] Skip Stooq calls when NotAvailable exists (must return null immediately) in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+
+### Frontend Implementation (UX)
+
+- [ ] T093 [US10] Update XIRR TWD card to show transaction count instead of cash flow count in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T094 [US10] Replace explanatory text with info icon (ℹ️) tooltip for XIRR USD card in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T095 [US10] Add dynamic label "目前價值"/"年底價值" based on year (YTD vs historical) in `frontend/src/components/performance/YearlySummary.tsx`
+- [ ] T096 [US10] Update benchmark dropdown to display all 11 benchmarks in `frontend/src/components/dashboard/MarketYtdSection.tsx`
+- [ ] T097 [P] [US10] Create BenchmarkSettings component with settings gear (⚙️) popup in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [ ] T098 [US10] Implement multi-select for benchmark comparison in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [ ] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/hooks/useBenchmarkPreferences.ts`
+- [ ] T100 [US10] Enforce max 10 selected benchmarks in BenchmarkSettings (block >10) in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [ ] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx`
+- [ ] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/components/charts/PerformanceBarChart.tsx`
+- [ ] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx`
+- [ ] T104 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/components/performance/XirrCard.tsx`
 
 **Checkpoint**: US10 complete - performance page UX improved with better labels and loading states
 
 ---
 
-## Phase 13: User Story 11 - Portfolio Switching State Management (Priority: P1) *(NEW)*
+## Phase 13: User Story 11 - Performance State Reset on Portfolio Data Changes (Priority: P1) *(UPDATED)*
 
 **Goal**: Clear stale data when switching portfolios to prevent misleading displays
 
@@ -286,18 +291,16 @@
 
 ### Frontend Implementation
 
-- [ ] T100 [P] [US11] Create PortfolioContext with clearPerformanceState action in `frontend/src/contexts/PortfolioContext.tsx`
-- [ ] T101 [US11] Update usePerformance hook to clear XIRR state on portfolio change in `frontend/src/hooks/usePerformance.ts`
-- [ ] T102 [US11] Add loading state UI during portfolio switch in `frontend/src/pages/Portfolio.tsx`
-- [ ] T103 [US11] Ensure new empty portfolio shows "-" for XIRR (not stale data) in `frontend/src/components/performance/XirrCard.tsx`
-- [ ] T104 [US11] Propagate portfolio selection to Performance page via context in `frontend/src/pages/Performance.tsx`
-- [ ] T105 [US11] Clear performance cache keys on portfolio switch in `frontend/src/services/api.ts`
+- [ ] T105 [US11] Ensure query keys include `portfolioId` so performance state resets on portfolio changes in `frontend/src/hooks/useHistoricalPerformance.ts`
+- [ ] T106 [US11] Clear derived UI state on portfolio changes (show loading/empty, not stale value) in `frontend/src/pages/Performance.tsx`
+- [ ] T107 [US11] Ensure new empty portfolio shows "-" or loading for XIRR (not previous portfolio values) in `frontend/src/pages/Performance.tsx`
+- [ ] T108 [US11] Add frontend test for performance state reset on portfolio change in `frontend/` (Jest/RTL)
 
 **Checkpoint**: US11 complete - portfolio switching clears stale XIRR data within 100ms
 
 ---
 
-## Phase 14: User Story 12 - Historical Year-End Price Cache (Priority: P1) *(NEW)*
+## Phase 14: User Story 12 - Historical Year-End Price Cache (Priority: P1) *(UPDATED)*
 
 **Goal**: Cache year-end stock prices and exchange rates to prevent API rate limit failures
 
@@ -305,25 +308,23 @@
 
 ### Backend Implementation
 
-- [ ] T106 [P] [US12] Create HistoricalYearEndData entity in `backend/src/InvestmentTracker.Domain/Entities/HistoricalYearEndData.cs`
-- [ ] T107 [P] [US12] Create HistoricalDataType enum in `backend/src/InvestmentTracker.Domain/Enums/HistoricalDataType.cs`
-- [ ] T108 [US12] Create EF migration for HistoricalYearEndData table in `backend/src/InvestmentTracker.Infrastructure/Migrations/`
-- [ ] T109 [US12] Add DbSet for HistoricalYearEndData in `backend/src/InvestmentTracker.Infrastructure/Data/ApplicationDbContext.cs`
-- [ ] T110 [P] [US12] Create IHistoricalYearEndDataRepository interface in `backend/src/InvestmentTracker.Application/Interfaces/IHistoricalYearEndDataRepository.cs`
-- [ ] T111 [US12] Implement HistoricalYearEndDataRepository in `backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalYearEndDataRepository.cs`
-- [ ] T112 [US12] Create HistoricalYearEndDataService with cache lookup and lazy loading in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
-- [ ] T113 [US12] Implement GetOrFetchYearEndPrice method (check cache → fetch from Stooq/TWSE → save to cache) in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
-- [ ] T114 [US12] Implement GetOrFetchYearEndExchangeRate method in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
-- [ ] T115 [US12] Add current year check to prevent YTD data caching in `backend/src/InvestmentTracker.Application/Services/HistoricalYearEndDataService.cs`
-- [ ] T116 [US12] Integrate cache service into HistoricalPerformanceService in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T117 [US12] Add manual price entry endpoint (only for empty cache entries) in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
-- [ ] T118 [US12] Register HistoricalYearEndDataService in DI container in `backend/src/InvestmentTracker.API/Program.cs`
+- [ ] T109 [P] [US12] Ensure HistoricalYearEndData entity exists in `backend/src/InvestmentTracker.Domain/Entities/HistoricalYearEndData.cs`
+- [ ] T110 [P] [US12] Ensure HistoricalDataType enum exists in `backend/src/InvestmentTracker.Domain/Enums/HistoricalDataType.cs`
+- [ ] T111 [US12] Ensure EF migration exists in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [ ] T112 [US12] Ensure DbSet/config exists in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
+- [ ] T113 [P] [US12] Ensure repository interface exists in `backend/src/InvestmentTracker.Domain/Interfaces/IHistoricalYearEndDataRepository.cs`
+- [ ] T114 [US12] Ensure repository implementation exists in `backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalYearEndDataRepository.cs`
+- [ ] T115 [US12] Ensure service exists (cache lookup + lazy loading) in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs`
+- [ ] T116 [US12] Ensure year-end price caching is used by performance calculations in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [ ] T117 [US12] Ensure year-end FX caching is used by performance calculations and skips current year in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs`
+- [ ] T118 [US12] Ensure manual price entry endpoint exists in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [ ] T119 [US12] Ensure DI registration exists in `backend/src/InvestmentTracker.API/Program.cs`
 
 ### Frontend Implementation
 
-- [ ] T119 [P] [US12] Create ManualPriceEntryModal component in `frontend/src/components/modals/ManualPriceEntryModal.tsx`
-- [ ] T120 [US12] Integrate manual entry prompt in Performance page when API fetch fails in `frontend/src/pages/Performance.tsx`
-- [ ] T121 [US12] Add API call for manual price entry in `frontend/src/services/api.ts`
+- [ ] T120 [P] [US12] Create ManualPriceEntryModal component in `frontend/src/components/modals/ManualPriceEntryModal.tsx`
+- [ ] T121 [US12] Integrate manual entry prompt in Performance page when API fetch fails in `frontend/src/pages/Performance.tsx`
+- [ ] T122 [US12] Add API call for manual price entry in `frontend/src/services/api.ts`
 
 **Checkpoint**: US12 complete - historical year-end prices are cached and reused
 
@@ -333,12 +334,11 @@
 
 **Purpose**: Final improvements across all features
 
-- [X] T059 [P] Update API documentation in Swagger for new endpoints
-- [X] T060 [P] Add error handling for Euronext API failures with user-friendly messages
-- [X] T061 Run quickstart.md validation scenarios
-- [X] T062 Verify all user stories work independently
-- [X] T063 Performance testing for chart rendering (<2 seconds target)
-- [X] T064 Code cleanup and remove any unused imports
+- [ ] T123 [P] Add backend tests for benchmark negative caching (NotAvailable persisted, no repeated Stooq calls) in `backend/tests/InvestmentTracker.API.Tests/`
+- [ ] T124 [P] Add backend tests for transaction-date FX auto-fill in XIRR cashflows in `backend/tests/InvestmentTracker.API.Tests/`
+- [ ] T125 [P] Add backend tests for year-end cache reuse (no duplicate API calls) in `backend/tests/InvestmentTracker.API.Tests/`
+- [ ] T126 [P] Add frontend tests for benchmark selection cap (max 10) and render gate (no initial 0) in `frontend/` (Jest/RTL)
+- [ ] T127 Run `specs/002-portfolio-enhancements/quickstart.md` scenarios and update if needed in `specs/002-portfolio-enhancements/quickstart.md`
 
 ---
 
@@ -381,10 +381,9 @@ US2: T025 can run in parallel with backend tasks
 US4: T042 can run in parallel with backend tasks
 US5: T051 can run in parallel with backend tasks
 US6: T055 can run in parallel
-US9: T083, T084 can run in parallel with backend tasks
-US10: T094 can run in parallel with other frontend tasks
-US11: T100 can run in parallel
-US12: T106, T107, T110, T119 can run in parallel
+US9: T080, T081, T082 can run in parallel after backend FX wiring
+US10: T097 can run in parallel with other frontend tasks
+US12: T109, T110, T113, T120 can run in parallel
 ```
 
 ---

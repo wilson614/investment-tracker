@@ -31,7 +31,6 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 ## Recent Changes
 - 002-portfolio-enhancements: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts
 - 002-portfolio-enhancements: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query, Recharts
-- 001-portfolio-tracker: Added C# .NET 8 (Backend), TypeScript 5.x (Frontend) + ASP.NET Core 8, Entity Framework Core, React 18, Vite, TanStack Query
 
 
 <!-- MANUAL ADDITIONS START -->
@@ -78,12 +77,13 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
    - 將答案編碼回 spec.md
 
 4. **制定計畫** → 執行 `/speckit.plan`
-   - **全新模組** → 產生新的 plan.md
-   - **現有模組增量更新** → 說明「檢查並更新現有 plan.md」
+   - **全新模組** → 產生新的 `specs/<module-name>/plan.md`
+   - **現有模組增量更新** → 在提示詞中**明確要求「檢查並更新」**（不可重建/覆蓋既有 plan），並聚焦於本次變更相關的章節（例如：新增的 story / cache 策略 / UX 規則）
+   - **⚠️ 注意（覆蓋風險）**：`.specify/scripts/powershell/setup-plan.ps1` 目前會用 `Copy-Item ... -Force` 覆蓋 `plan.md`；除非你就是要重建，否則不要用它來處理既有模組
 
 5. **產生任務** → 執行 `/speckit.tasks`
-   - **全新模組** → 產生新的 tasks.md
-   - **現有模組增量更新** → 說明「檢查並更新現有 tasks.md」
+   - **全新模組** → 產生新的 `specs/<module-name>/tasks.md`
+   - **現有模組增量更新** → 在提示詞中**明確要求「檢查並更新」**（不可重建/覆蓋既有 tasks），並確保任務以 user story 分 phase、遵守 tasks-template 的 checklist 格式
 
 6. **品質分析** → 執行 `/speckit.analyze`
    - 跨文件一致性與品質檢查（spec.md、plan.md、tasks.md）

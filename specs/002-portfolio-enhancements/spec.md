@@ -8,7 +8,9 @@
 
 ## Overview
 
-This module contains 12 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, multi-portfolio support for foreign currency investments, and historical price caching for improved reliability.
+This module contains 12 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, and historical price caching for improved reliability.
+
+**Note (Updated direction)**: Multi-portfolio support for foreign currency investments is no longer a goal; this module uses a single portfolio model with optional ExchangeRate input and transaction-date historical FX auto-fill for TWD-based metrics.
 
 ## Clarifications
 
@@ -21,7 +23,7 @@ This module contains 12 enhancements to the existing investment portfolio tracki
 
 ### Session 2026-01-15
 
-- Q: Foreign Currency Portfolio base currency handling? → A: Single currency mode - each Foreign Currency Portfolio has one designated Base Currency (e.g., USD), only stocks denominated in that currency can be added
+- Q: Portfolio base currency handling when using a single portfolio model? → A: Single-portfolio mode: portfolio has BaseCurrency (e.g., USD) and HomeCurrency (e.g., TWD); transactions may omit exchange rate, and TWD metrics use historical FX auto-fill per transaction date.
 - Q: Pie chart asset classification basis? → A: By market/exchange - Taiwan stocks, US stocks, UK stocks, Euronext each as separate segments
 - Q: Historical year selector range? → A: Dynamic range - only show years where user has transaction records
 
@@ -49,6 +51,17 @@ This module contains 12 enhancements to the existing investment portfolio tracki
 - Q: When to populate cache? → A: On-demand with lazy loading - when performance calculation needs a price, check cache first, fetch from API if missing, then save to cache.
 - Q: How to handle current year (YTD)? → A: Do NOT cache current year data since prices are still changing. Only cache completed years.
 - Q: Can users overwrite cached historical prices? → A: No. Cache is global (shared by all users), so cached prices are immutable once saved. Manual entry only fills empty cache entries. Errors require database-level correction.
+
+### Session 2026-01-17
+
+- Q: When should historical year-end stock prices and exchange rates be persisted for reuse? → A: On-demand during performance view/calculation: any time a completed year’s Dec-31 price/rate is needed (including current year baseline using prior-year Dec 31), backend MUST fetch-if-missing and save into global cache `historical_year_end_data` keyed by (DataType, Ticker/CurrencyPair, Year) so subsequent users reuse without extra Stooq/TWSE calls.
+
+### Session 2026-01-18
+
+- Q: How to avoid repeated external fetch for unavailable benchmark prices (e.g., HCHA/EXUS not listed in 2021)? → A: DB negative caching - persist a NotAvailable marker for (MarketKey, YearMonth) and return null without re-calling Stooq on subsequent requests.
+- Q: How many benchmarks can be selected concurrently for current-year performance comparison (to limit external realtime price fetches)? → A: Max 10 total selected benchmarks at once (built-in + custom combined).
+- Q: How should negative caching behave for unavailable benchmark month-end prices (e.g., not listed)? → A: Persist NotAvailable in DB permanently (no TTL); subsequent requests must not re-call Stooq unless the record is manually cleared.
+- Q: Portfolio strategy if user prefers not to support multiple portfolios? → A: Use a single portfolio model; allow transactions to omit exchange rate, but system auto-fills missing exchange rates using historical FX rates on the transaction date for TWD-based metrics and reports (while preserving original currency amounts).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -181,22 +194,20 @@ As an investor, I want to see the "Since Previous Close" percentage change for E
 
 ---
 
-### User Story 9 - Foreign Currency Portfolio (No Exchange Rate) (Priority: P1)
+### User Story 9 - Single Portfolio with Auto-Filled Historical Exchange Rates (Priority: P1)
 
-As an investor, I want a dedicated portfolio for foreign currency stocks that don't use currency ledger and don't require exchange rate input, so that my performance metrics (XIRR, unrealized P&L) are calculated purely in the stock's source currency without TWD conversion confusion.
+As an investor, I want to keep a single portfolio model while allowing transactions to omit exchange rate input, so that the system can still compute TWD-based metrics reliably by auto-filling missing exchange rates using historical FX rates on the transaction date (while preserving original currency amounts).
 
-**Why this priority**: This resolves the fundamental issue where mixed exchange rate transactions cause confusing/meaningless metrics.
+**Why this priority**: Reduces UI and data model complexity by avoiding multi-portfolio support while still enabling accurate TWD-based reporting.
 
-**Independent Test**: Can be verified by creating a foreign currency portfolio, adding transactions without exchange rate, and verifying all metrics are in source currency.
+**Independent Test**: Can be verified by creating a USD stock transaction without exchange rate and confirming TWD-based metrics can be calculated via auto-filled historical FX rate.
 
 **Acceptance Scenarios**:
 
-1. **Given** user creates a new portfolio, **When** setting portfolio type, **Then** can choose "Foreign Currency Portfolio" option
-2. **Given** user is in a Foreign Currency Portfolio, **When** adding transactions, **Then** exchange rate field is hidden/disabled
-3. **Given** Foreign Currency Portfolio with USD stocks, **When** viewing metrics, **Then** all costs, values, and P&L display in USD (not TWD)
-4. **Given** Foreign Currency Portfolio, **When** calculating XIRR, **Then** XIRR is calculated in source currency cash flows
-5. **Given** user has multiple portfolios, **When** on portfolio page, **Then** can switch between portfolios via dropdown/selector
-6. **Given** user switches portfolio, **When** selection changes, **Then** all displayed data updates to reflect selected portfolio
+1. **Given** user creates a stock transaction without exchange rate, **When** saving, **Then** the transaction is accepted and retains null exchange rate input
+2. **Given** a transaction has no exchange rate, **When** calculating TWD-based metrics (e.g., TWD XIRR), **Then** system uses historical FX rate for the transaction date to fill missing conversion
+3. **Given** a transaction has no exchange rate, **When** viewing transaction details, **Then** system shows original currency amount and indicates exchange rate was auto-filled for reporting
+4. **Given** the system cannot fetch historical FX rate for a transaction date, **When** calculating TWD-based metrics, **Then** system requests manual exchange rate input for that transaction
 
 ---
 
@@ -217,23 +228,24 @@ As an investor, I want the performance page to have clearer labeling and better 
 5. **Given** user opens benchmark dropdown, **When** viewing options, **Then** sees all 11 available benchmarks
 6. **Given** user wants to compare multiple benchmarks, **When** selecting benchmarks, **Then** can select multiple benchmarks for simultaneous comparison
 7. **Given** user switches benchmark, **When** new data is loading, **Then** previous benchmark bar remains visible (no flicker to 0)
-8. **Given** user switches year with missing prices, **When** auto-fetch is in progress, **Then** "手動輸入" button only appears after fetch fails
+8. **Given** user selects benchmarks for current-year comparison, **When** selecting more than 10, **Then** UI prevents selecting beyond 10
+9. **Given** current-year comparison needs holdings prices and benchmark prices, **When** loading starts, **Then** UI shows loading state until all required data is ready and renders once (no initial 0)
+10. **Given** user switches year with missing prices, **When** auto-fetch is in progress, **Then** "手動輸入" button only appears after fetch fails
 
 ---
 
-### User Story 11 - Portfolio Switching State Management (Priority: P1)
+### User Story 11 - Performance State Reset on Portfolio Data Changes (Priority: P1)
 
-As an investor, I want the UI to clear stale data when I switch portfolios or create a new portfolio, so I don't see misleading XIRR values from the previous portfolio.
+As an investor, I want the UI to clear stale performance data when my portfolio data changes (e.g., switching the active portfolio during the transition period, or creating a new portfolio), so I don't see misleading XIRR values.
 
-**Why this priority**: This is a data correctness issue that could mislead users.
+**Why this priority**: Data correctness and trust in displayed performance metrics.
 
-**Independent Test**: Can be verified by switching portfolios and checking that XIRR clears immediately before new data loads.
+**Independent Test**: Trigger a portfolio context change or portfolio creation and confirm performance cards show a loading/empty state until recalculated.
 
 **Acceptance Scenarios**:
 
-1. **Given** user is viewing portfolio A with XIRR data, **When** switching to portfolio B, **Then** XIRR displays loading state (not portfolio A's value)
-2. **Given** user creates a new empty portfolio, **When** viewing the new portfolio, **Then** XIRR shows "-" or empty state (not previous portfolio's value)
-3. **Given** user switches portfolio on Portfolio page, **When** navigating to Performance page, **Then** Performance page shows correct portfolio's data
+1. **Given** user is viewing portfolio performance, **When** the active portfolio context changes, **Then** XIRR displays loading state (not stale value)
+2. **Given** user creates a new empty portfolio, **When** viewing the new portfolio, **Then** XIRR shows "-" or loading state (not previous portfolio's value)
 
 ---
 
@@ -258,11 +270,10 @@ As an investor, I want the system to cache historical year-end stock prices and 
 
 ### Edge Cases
 
-- When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Use separate portfolios - primary portfolio for TWD-tracked investments, foreign currency portfolio for source-currency-only investments
+- When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Keep a single portfolio model; compute TWD-based metrics using historical FX rates for missing exchange rates (transaction-date), while preserving original currency amounts.
 - When Euronext API cannot connect, how to handle quote fetch failure? → **Resolved**: Display cached price marked as "stale"
 - When historical year is missing some stocks' year-end closing prices, how to calculate performance? → **Resolved**: Prompt user to manually input
 - When ETF type cannot be determined, what is the default behavior? → **Resolved**: Default to accumulating type, mark as "unconfirmed type"
-- When user wants to track foreign stocks without TWD conversion, how to handle? → **Resolved**: Create a Foreign Currency Portfolio where all metrics are in source currency
 - When external APIs (Stooq/TWSE) hit rate limits during performance calculation, how to handle? → **Resolved**: Use cached year-end prices; cache is populated on first successful fetch
 - When the same ticker exists in different markets (e.g., 0050 in TW vs hypothetical 0050 in another market)? → **Resolved**: Cache key includes ticker AND source/market identifier
 
@@ -317,14 +328,12 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **FR-071**: System MUST display change percentage with appropriate color coding (green for positive, red for negative)
 - **FR-072**: EuronextQuoteResult MUST include ChangePercent field
 
-#### Story 9: Foreign Currency Portfolio
-- **FR-080**: System MUST support creating a "Foreign Currency Portfolio" type
-- **FR-081**: Foreign Currency Portfolio MUST NOT require exchange rate input for transactions
-- **FR-082**: Foreign Currency Portfolio MUST calculate and display all metrics (cost, value, P&L, XIRR) in source currency
-- **FR-083**: System MUST provide portfolio switcher UI to switch between multiple portfolios
-- **FR-084**: System MUST update all displayed data when user switches portfolio
-- **FR-085**: Each Foreign Currency Portfolio MUST have a single designated Base Currency (e.g., USD)
-- **FR-086**: System MUST only allow adding stocks denominated in the portfolio's Base Currency
+#### Story 9: Single Portfolio with Auto-Filled Historical Exchange Rates
+- **FR-080**: System MUST use a single portfolio model (no multi-portfolio support for currency modes)
+- **FR-081**: Stock transaction exchange rate input MUST remain optional (nullable)
+- **FR-082**: For TWD-based metrics and reports, if a transaction has no exchange rate, system MUST auto-fill conversion using historical FX rate on the transaction date (while preserving original currency amounts)
+- **FR-083**: If historical FX rate lookup fails for a required transaction date, system MUST prompt user to manually input the missing exchange rate
+- **FR-084**: System SHOULD persist fetched historical FX rates to avoid repeated external calls
 
 #### Story 10: Performance Page UX Improvements
 - **FR-090**: XIRR TWD card MUST display actual transaction count instead of total cash flow count
@@ -334,11 +343,13 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **FR-094**: Benchmark comparison MUST support multi-select for comparing against multiple benchmarks
 - **FR-095**: Benchmark bar chart MUST maintain previous value during loading to prevent flicker
 - **FR-096**: Missing price "手動輸入" button MUST only appear after auto-fetch fails, not immediately
+- **FR-097**: Benchmark comparison MUST enforce max 10 selected benchmarks at once (built-in + custom combined)
+- **FR-098**: Current-year comparison MUST render only after holdings realtime prices AND selected benchmarks realtime prices are ready (render-once gate; avoid initial 0)
+- **FR-099**: Benchmark returns endpoint MUST implement permanent DB negative caching for unavailable `(MarketKey, YearMonth)` (NotAvailable marker; no re-calling Stooq unless manually cleared)
 
-#### Story 11: Portfolio Switching State Management
-- **FR-100**: System MUST clear XIRR and summary state when switching portfolios
+#### Story 11: Performance State Reset on Portfolio Data Changes
+- **FR-100**: System MUST clear XIRR and summary state when portfolio context changes (during transition period) to prevent stale display
 - **FR-101**: New empty portfolio MUST display "-" or loading state for XIRR, not stale data
-- **FR-102**: Portfolio switch MUST propagate to Performance page correctly
 
 #### Story 12: Historical Year-End Price Cache
 - **FR-110**: System MUST cache year-end stock prices to avoid repeated API calls to Stooq/TWSE
@@ -350,6 +361,7 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **FR-116**: Cache lookup MUST support both stock prices (by ticker + year) and exchange rates (by currency pair + year)
 - **FR-117**: System MUST support Taiwan stocks (TWSE source) and international stocks (Stooq source) in the same cache table
 - **FR-118**: System SHOULD allow manual price entry when API fetch fails (only for empty cache entries; cannot overwrite existing cached data)
+- **FR-119**: For performance view/calculation, when Dec-31 prices/rates are needed for any completed year (including current-year baseline using prior-year Dec 31), backend MUST persist successful fetch results into global cache for reuse
 
 ### Key Entities
 
@@ -358,7 +370,6 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **YearPerformance**: Extended performance calculation to support historical years
 - **EtfClassification**: New ETF type marking (accumulating/distributing/unknown)
 - **EuronextQuoteResult.ChangePercent**: New field for storing price change percentage
-- **Portfolio.PortfolioType**: New field to distinguish Primary (TWD-tracked) vs Foreign Currency portfolios
 - **HistoricalYearEndData**: New cache entity for year-end stock prices and exchange rates
   - DataType: StockPrice | ExchangeRate
   - Ticker: Stock ticker or currency pair (e.g., "VT", "0050", "USDTWD")
@@ -381,11 +392,11 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **SC-006**: Performance comparison bar chart correctly displays all comparison items without visual misalignment
 - **SC-007**: New position displays current price within 3 seconds after transaction is saved
 - **SC-008**: Euronext stocks display change percentage with correct color coding
-- **SC-009**: Foreign Currency Portfolio displays all metrics in source currency without TWD conversion
+- **SC-009**: Single portfolio supports missing exchange rate input while still producing accurate TWD-based metrics via historical FX auto-fill
 - **SC-010**: XIRR card shows transaction count (not cash flow count) for clarity
 - **SC-011**: All 11 benchmarks are available in performance comparison dropdown
 - **SC-012**: Benchmark switching shows no visual flicker (maintains previous value during loading)
-- **SC-013**: Portfolio switching clears stale XIRR data within 100ms
+- **SC-013**: Performance state clears stale XIRR data within 100ms on portfolio data changes
 - **SC-014**: Cached year-end prices are reused on subsequent performance calculations (no duplicate API calls for same ticker/year)
 - **SC-015**: Performance page loads within 2 seconds when all required prices are cached
 - **SC-016**: Cache correctly distinguishes between different data sources (Stooq vs TWSE) for the same ticker pattern

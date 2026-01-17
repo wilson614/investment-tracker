@@ -22,16 +22,16 @@
 5. **Verify**: Transaction saved, cost displays as "USD 2,000.00"
 6. **Verify**: Holdings page shows USD cost, not TWD
 
-### Scenario 2: Mixed Currency Cost Display
+### Scenario 2: Missing Exchange Rate Auto-Fill
 
-**Goal**: Verify separate cost tracking for mixed transactions
+**Goal**: Verify TWD-based metrics can still be computed when exchange rate is omitted
 
 1. Create Transaction A: VTI, 10 shares, $200, Exchange Rate = 31.5
 2. Create Transaction B: VTI, 5 shares, $210, Exchange Rate = empty
-3. Navigate to Holdings page
-4. **Verify**: Two separate line items for VTI:
-   - "VTI (TWD)": 10 shares, avg cost TWD 630/share
-   - "VTI (USD)": 5 shares, avg cost USD 210/share
+3. Navigate to Portfolio/Performance metrics
+4. **Verify**: Source-currency costs display normally for Transaction B
+5. **Verify**: TWD-based metrics (e.g., TWD XIRR) are computed using historical FX rate on the transaction date for Transaction B
+6. **Verify**: If historical FX lookup fails, system requests manual exchange rate input
 
 ### Scenario 3: Dashboard Pie Chart
 

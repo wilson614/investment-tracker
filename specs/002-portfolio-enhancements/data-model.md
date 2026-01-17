@@ -45,11 +45,12 @@ ALTER COLUMN exchange_rate DROP NOT NULL;
 
 ### Business Rules
 - When `ExchangeRate` is null:
-  - Cost displays in `Currency` (e.g., "USD 1,234.56")
-  - Transaction excluded from TWD-based XIRR
-  - Average cost calculated separately from transactions with exchange rate
+  - Input stays null (user did not provide broker rate)
+  - For display: cost displays in source currency (e.g., "USD 1,234.56")
+  - For TWD-based metrics/reports: system uses historical FX rate for `TransactionDate` to compute home-currency cash flows
+  - If historical FX lookup fails for a required date: system prompts user to manually input the missing exchange rate
 - When `ExchangeRate` is set:
-  - Behavior unchanged from 001-portfolio-tracker
+  - Use provided rate for TWD-based metrics (do not override with historical FX)
 
 ---
 
