@@ -4,11 +4,11 @@
 **Created**: 2026-01-14
 **Updated**: 2026-01-16
 **Status**: Draft
-**Input**: 12 portfolio enhancement features
+**Input**: 13 portfolio enhancement features
 
 ## Overview
 
-This module contains 12 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, and historical price caching for improved reliability.
+This module contains 13 enhancements to the existing investment portfolio tracking system, covering transaction flexibility, visualization improvements, exchange support expansion, performance tracking capabilities, historical price caching for improved reliability, and UI/UX refinements.
 
 **Note (Updated direction)**: Multi-portfolio support for foreign currency investments is no longer a goal; this module uses a single portfolio model with optional ExchangeRate input and transaction-date historical FX auto-fill for TWD-based metrics.
 
@@ -62,6 +62,12 @@ This module contains 12 enhancements to the existing investment portfolio tracki
 - Q: How many benchmarks can be selected concurrently for current-year performance comparison (to limit external realtime price fetches)? → A: Max 10 total selected benchmarks at once (built-in + custom combined).
 - Q: How should negative caching behave for unavailable benchmark month-end prices (e.g., not listed)? → A: Persist NotAvailable in DB permanently (no TTL); subsequent requests must not re-call Stooq unless the record is manually cleared.
 - Q: Portfolio strategy if user prefers not to support multiple portfolios? → A: Use a single portfolio model; allow transactions to omit exchange rate, but system auto-fills missing exchange rates using historical FX rates on the transaction date for TWD-based metrics and reports (while preserving original currency amounts).
+- Q: Should the "Export Positions" feature be removed from Portfolio page? → A: Yes, remove the export positions button from the Portfolio page header; the export transactions feature remains.
+- Q: What should the Dashboard "Position Performance" section display instead of total return %? → A: Display each position's **unrealized PnL amount (TWD)** and **position weight (%)** instead of return percentage, which is more actionable for portfolio rebalancing decisions.
+- Q: How to handle year-start value display when investor starts mid-year (e.g., first transaction on 2021/1/4)? → A: If no positions exist at year start, display "N/A" or "首年" instead of "- TWD" or 0; this is the investor's first year with no prior holdings.
+- Q: How to handle benchmarks with no data (not listed yet) in performance comparison? → A: Hide benchmarks with null/unavailable data from the bar chart entirely instead of showing 0; show a note if any selected benchmarks were hidden.
+- Q: What is the correct Chinese label for EXUS benchmark? → A: Use "已開發非美" instead of "已開發除美" for consistency with common financial terminology.
+- Q: Why are Taiwan stock historical prices not fetching? → A: The current TWSE API only fetches the TWII index, not individual stock historical prices. Need to implement TwseStockHistoricalPriceService using the TWSE stock historical API endpoint.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -268,6 +274,24 @@ As an investor, I want the system to cache historical year-end stock prices and 
 
 ---
 
+### User Story 13 - UI/UX Refinements and Bug Fixes (Priority: P1) *(NEW)*
+
+As an investor, I want the UI to be cleaner and show more meaningful data, so I can make better investment decisions without confusion.
+
+**Why this priority**: These are usability issues that directly impact daily usage experience and data interpretation accuracy.
+
+**Independent Test**: Can be verified by checking each UI element mentioned below for correct behavior.
+
+**Acceptance Scenarios**:
+
+1. **Given** user is on Portfolio page, **When** looking at header actions, **Then** the "Export Positions" button should NOT be visible (only Export Transactions remains)
+2. **Given** user is on Dashboard, **When** viewing the Position Performance section, **Then** each position displays unrealized PnL amount (TWD) and position weight (%) instead of total return percentage
+3. **Given** user views current year performance (YTD), **When** prices are still loading, **Then** the bar chart shows loading spinner until ALL required prices (holdings + benchmarks) are ready (no initial 0 display)
+4. **Given** user's first transaction is on 2021/1/4, **When** viewing 2021 historical performance, **Then** year-start value shows "首年" or "N/A" instead of "- TWD" or 0
+5. **Given** a benchmark (e.g., HCHA in 2021) has no data, **When** viewing performance comparison, **Then** that benchmark is hidden from the bar chart (not displayed as 0)
+6. **Given** user views benchmark dropdown, **When** looking at EXUS option, **Then** the label reads "已開發非美 (EXUS)" instead of "已開發除美"
+7. **Given** user views historical performance for Taiwan stocks (e.g., 0050), **When** year-end price is needed, **Then** system fetches from TWSE historical stock API (not just index API)
+
 ### Edge Cases
 
 - When user has both with-exchange-rate and without-exchange-rate transactions for the same stock, how to calculate average cost? → **Resolved**: Keep a single portfolio model; compute TWD-based metrics using historical FX rates for missing exchange rates (transaction-date), while preserving original currency amounts.
@@ -339,7 +363,7 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **FR-090**: XIRR TWD card MUST display actual transaction count instead of total cash flow count
 - **FR-091**: XIRR USD card MUST use info icon with tooltip instead of inline explanatory text
 - **FR-092**: Yearly summary MUST use dynamic label: "目前價值" for current year (YTD), "年底價值" for historical years
-- **FR-093**: Benchmark dropdown MUST display all 11 supported benchmarks (VWRA, VUAA, XRSU, VHVE, WSML, EXUS, VFEM, VEUA, VJPA, HCHA, 0050)
+- **FR-093**: Benchmark dropdown MUST display all 11 supported benchmarks (VWRA, VUAA, XRSU, VHVE, WSML, 已開發非美 EXUS, VFEM, VEUA, VJPA, HCHA, 0050)
 - **FR-094**: Benchmark comparison MUST support multi-select for comparing against multiple benchmarks
 - **FR-095**: Benchmark bar chart MUST maintain previous value during loading to prevent flicker
 - **FR-096**: Missing price "手動輸入" button MUST only appear after auto-fetch fails, not immediately
@@ -362,6 +386,15 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **FR-117**: System MUST support Taiwan stocks (TWSE source) and international stocks (Stooq source) in the same cache table
 - **FR-118**: System SHOULD allow manual price entry when API fetch fails (only for empty cache entries; cannot overwrite existing cached data)
 - **FR-119**: For performance view/calculation, when Dec-31 prices/rates are needed for any completed year (including current-year baseline using prior-year Dec 31), backend MUST persist successful fetch results into global cache for reuse
+
+#### Story 13: UI/UX Refinements and Bug Fixes *(NEW)*
+- **FR-130**: Portfolio page MUST NOT display "Export Positions" button (remove the feature)
+- **FR-131**: Dashboard Position Performance section MUST display unrealized PnL amount (TWD) and position weight (%) instead of total return percentage
+- **FR-132**: Performance comparison bar chart MUST verify FR-098 implementation works correctly (render-once gate regression fix for current year)
+- **FR-133**: Historical performance year-start value MUST display "首年" or "N/A" when investor has no prior holdings (first year of investing)
+- **FR-134**: Benchmarks with null/unavailable data MUST be hidden from performance comparison bar chart (not displayed as 0)
+- **FR-135**: EXUS benchmark label MUST use "已開發非美" instead of "已開發除美"
+- **FR-136**: System MUST implement Taiwan stock historical price fetching via TWSE stock historical API (not just index API)
 
 ### Key Entities
 
@@ -400,6 +433,13 @@ As an investor, I want the system to cache historical year-end stock prices and 
 - **SC-014**: Cached year-end prices are reused on subsequent performance calculations (no duplicate API calls for same ticker/year)
 - **SC-015**: Performance page loads within 2 seconds when all required prices are cached
 - **SC-016**: Cache correctly distinguishes between different data sources (Stooq vs TWSE) for the same ticker pattern
+- **SC-017**: Portfolio page does not show "Export Positions" button
+- **SC-018**: Dashboard Position Performance displays PnL amount and weight instead of return percentage
+- **SC-019**: Current-year performance bar chart renders only after all prices are loaded (no 0 flash)
+- **SC-020**: First-year historical performance displays "首年" for year-start value when no prior holdings exist
+- **SC-021**: Benchmarks with no data are hidden from performance comparison (not shown as 0)
+- **SC-022**: EXUS benchmark displays as "已開發非美 (EXUS)" in all locations
+- **SC-023**: Taiwan stock historical prices are fetched successfully from TWSE stock API
 
 ## Assumptions
 

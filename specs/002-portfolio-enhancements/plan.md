@@ -72,6 +72,16 @@ specs/002-portfolio-enhancements/
 - Decision: 不走多投組貨幣模式；`StockTransaction.ExchangeRate` 可為 null。
 - Rule: 需要產出 TWD-based metrics 時，若交易沒有 ExchangeRate，使用交易日 historical FX auto-fill；查不到時提示手動補。
 
+### 5) UI/UX Refinements and Bug Fixes (US13) *(NEW)*
+
+- **移除匯出持倉按鈕**：Portfolio 頁面標題列不再顯示「匯出持倉」功能，簡化 UI。
+- **儀表板持倉績效改版**：顯示各持倉的「未實現損益 (TWD)」及「持倉權重 (%)」，取代意義不明的總報酬率百分比。
+- **首年年初價值顯示**：若投資人於該年度中途開始投資（無前年底持倉），年初價值顯示「首年」或「N/A」，而非「- TWD」或 0。
+- **隱藏無資料 benchmark**：績效比較長條圖中，benchmark 若為 null/NotAvailable 則不顯示（不要以 0 呈現）。
+- **EXUS 標籤修正**：「已開發除美」改為「已開發非美」，符合台灣金融術語慣例。
+- **台股歷史價格抓取**：實作 `TwseStockHistoricalPriceService`，支援個別台股歷史價格（非僅 TWII 指數）。
+
 ## Notes
 
 - 本文件只描述本次新增/修正方向；其餘既有 story（US1-US8）維持既有設計與已完成內容。
+- US13 為 P1 優先級，包含 UI 清理、bug 修正及台股歷史價格功能補齊。
