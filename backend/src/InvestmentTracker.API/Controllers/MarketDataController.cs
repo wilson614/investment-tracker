@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Services;
@@ -19,6 +20,7 @@ public class MarketDataController : ControllerBase
     private readonly IMarketYtdService _marketYtdService;
     private readonly EuronextQuoteService _euronextQuoteService;
     private readonly IStooqHistoricalPriceService _stooqService;
+    private readonly ITwseStockHistoricalPriceService _twseService;
     private readonly IHistoricalYearEndDataService _historicalYearEndDataService;
     private readonly ITransactionDateExchangeRateService _txDateFxService;
     private readonly AppDbContext _dbContext;
@@ -29,6 +31,7 @@ public class MarketDataController : ControllerBase
         IMarketYtdService marketYtdService,
         EuronextQuoteService euronextQuoteService,
         IStooqHistoricalPriceService stooqService,
+        ITwseStockHistoricalPriceService twseService,
         IHistoricalYearEndDataService historicalYearEndDataService,
         ITransactionDateExchangeRateService txDateFxService,
         AppDbContext dbContext,
@@ -38,6 +41,7 @@ public class MarketDataController : ControllerBase
         _marketYtdService = marketYtdService;
         _euronextQuoteService = euronextQuoteService;
         _stooqService = stooqService;
+        _twseService = twseService;
         _historicalYearEndDataService = historicalYearEndDataService;
         _txDateFxService = txDateFxService;
         _dbContext = dbContext;
@@ -490,13 +494,13 @@ public class MarketDataController : ControllerBase
         var notAvailableStart = notAvailableMarkers.Where(m => m.YearMonth == startYearMonth).Select(m => m.MarketKey).ToHashSet();
         var notAvailableEnd = notAvailableMarkers.Where(m => m.YearMonth == endYearMonth).Select(m => m.MarketKey).ToHashSet();
 
-        // Lazy-load missing prices from Stooq (except Taiwan 0050 which needs manual entry)
+        // Lazy-load missing prices from external APIs
         // Also skip markets that already have NotAvailable markers
         var missingStartMarkets = benchmarks.Keys
-            .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k) && k != "Taiwan 0050")
+            .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k))
             .ToList();
         var missingEndMarkets = benchmarks.Keys
-            .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k) && k != "Taiwan 0050")
+            .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k))
             .ToList();
 
         // Fetch missing start year prices (prior year December)
@@ -515,6 +519,12 @@ public class MarketDataController : ControllerBase
             await FetchAndCacheBenchmarkPricesAsync(missingEndMarkets, year, endPrices, cancellationToken);
         }
 
+        // Get stock splits for Taiwan 0050 to adjust historical prices
+        var taiwanSplits = await _dbContext.StockSplits
+            .Where(s => s.Symbol == "0050" && s.Market == StockMarket.TW)
+            .OrderBy(s => s.SplitDate)
+            .ToListAsync(cancellationToken);
+
         var returns = new Dictionary<string, decimal?>();
 
         foreach (var (marketKey, _) in benchmarks)
@@ -523,6 +533,28 @@ public class MarketDataController : ControllerBase
                 endPrices.TryGetValue(marketKey, out var endPrice) &&
                 startPrice > 0)
             {
+                // For Taiwan 0050, adjust start price for stock splits that occurred during the year
+                if (marketKey == "Taiwan 0050" && taiwanSplits.Any())
+                {
+                    // Calculate cumulative split ratio for splits that happened after year-1 Dec 31
+                    // and before or on year Dec 31
+                    var startDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+                    var endDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+                    var splitsDuringYear = taiwanSplits
+                        .Where(s => s.SplitDate > startDate && s.SplitDate <= endDate)
+                        .ToList();
+
+                    if (splitsDuringYear.Any())
+                    {
+                        var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
+                        // Adjust start price to post-split equivalent
+                        startPrice = startPrice / cumulativeRatio;
+                        _logger.LogDebug("Adjusted Taiwan 0050 start price by split ratio {Ratio}: {Original} -> {Adjusted}",
+                            cumulativeRatio, startPrices[marketKey], startPrice);
+                    }
+                }
+
                 var returnPercent = ((endPrice - startPrice) / startPrice) * 100;
                 returns[marketKey] = Math.Round(returnPercent, 2);
             }
@@ -564,7 +596,17 @@ public class MarketDataController : ControllerBase
                     continue;
                 }
 
-                var price = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
+                decimal? price;
+                if (marketKey == "Taiwan 0050")
+                {
+                    // Use TWSE API for Taiwan ETF
+                    var twseResult = await _twseService.GetYearEndPriceAsync("0050", year, cancellationToken);
+                    price = twseResult?.Price;
+                }
+                else
+                {
+                    price = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
+                }
 
                 if (price != null)
                 {
@@ -824,17 +866,15 @@ public class MarketDataController : ControllerBase
                 }
 
                 decimal? price = null;
+                string source = "Stooq";
 
                 // Fetch from appropriate source based on market
                 if (marketKey == "Taiwan 0050")
                 {
-                    // For Taiwan stocks, we'd need TWSE historical API which is complex
-                    // Skip for now - can be manually entered
-                    results[marketKey] = new PopulateBenchmarkResult(
-                        null,
-                        "Taiwan stocks require manual entry",
-                        false);
-                    continue;
+                    // Use TWSE API for Taiwan ETF
+                    var twseResult = await _twseService.GetYearEndPriceAsync("0050", year, cancellationToken);
+                    price = twseResult?.Price;
+                    source = "TWSE";
                 }
                 else
                 {
@@ -857,14 +897,14 @@ public class MarketDataController : ControllerBase
 
                     results[marketKey] = new PopulateBenchmarkResult(
                         price.Value,
-                        "Fetched from Stooq and saved",
+                        $"Fetched from {source} and saved",
                         true);
                 }
                 else
                 {
                     results[marketKey] = new PopulateBenchmarkResult(
                         null,
-                        "Failed to fetch from external API",
+                        $"Failed to fetch from {source}",
                         false);
                 }
             }

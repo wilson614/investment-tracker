@@ -427,7 +427,7 @@ export function DashboardPage() {
             />
           </div>
 
-          {/* Position Performance - FR-131: Show PnL (TWD) and weight (%) */}
+          {/* Position Performance - FR-131: Show PnL (TWD) and PnL % */}
           <div className="card-dark p-6">
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">持倉績效</h2>
             {topPerformers.length > 0 ? (
@@ -436,8 +436,8 @@ export function DashboardPage() {
                   <div key={pos.ticker} className="flex items-center justify-between py-2 border-b border-[var(--border-color)] last:border-b-0">
                     <div className="flex items-center gap-3">
                       <span className="text-[var(--text-primary)] font-medium">{pos.ticker}</span>
-                      <span className="text-xs text-[var(--text-muted)]">
-                        {pos.weight != null ? `${pos.weight.toFixed(1)}%` : '-'}
+                      <span className={`text-xs font-mono ${(pos.pnlPercentage ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {pos.pnlPercentage != null ? `${pos.pnlPercentage >= 0 ? '+' : ''}${pos.pnlPercentage.toFixed(1)}%` : '-'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

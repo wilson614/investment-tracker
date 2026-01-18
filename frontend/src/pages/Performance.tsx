@@ -139,11 +139,20 @@ export function PerformancePage() {
         return;
       }
 
+      const isCurrentYear = selectedYear === availableYears.currentYear;
+
+      // For current year, wait until ytdData is loaded before proceeding
+      // This ensures we show loading state while YTD API is fetching
+      if (isCurrentYear && !ytdData) {
+        // Keep loading state true - will re-run when ytdData arrives
+        setIsLoadingBenchmark(true);
+        return;
+      }
+
       setIsLoadingBenchmark(true);
       // Don't clear previous values to prevent flicker (FR-095)
 
       try {
-        const isCurrentYear = selectedYear === availableYears.currentYear;
         const newReturns: Record<string, number | null> = {};
 
         if (isCurrentYear && ytdData) {
@@ -777,7 +786,8 @@ export function PerformancePage() {
             </div>
 
             {/* Value Summary - Source Currency */}
-            {performance.sourceCurrency && performance.startValueSource != null && (
+            {/* FR-133: Always show source currency block, including first year */}
+            {performance.sourceCurrency && (
               <div className="card-dark p-6 mb-6 border-l-4 border-[var(--accent-peach)]">
                 <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
                   {selectedYear} 年度摘要 ({performance.sourceCurrency})
@@ -871,9 +881,16 @@ export function PerformancePage() {
             </div>
 
             {/* Performance Bar Chart - Portfolio vs Benchmarks (Multi-select) */}
-            {/* FR-132/T130: For current year, wait until prices are fully fetched before rendering */}
-            {performance.xirrPercentageSource != null && 
-             !(selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0)) && (
+            {/* FR-132/T130: For current year, show loading state until prices are ready */}
+            {selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0) ? (
+              <div className="card-dark p-6 mt-6">
+                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">績效比較</h3>
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                  <span className="ml-2 text-[var(--text-muted)]">正在取得即時股價以計算績效...</span>
+                </div>
+              </div>
+            ) : performance.xirrPercentageSource != null && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
@@ -1010,9 +1027,14 @@ export function PerformancePage() {
                       ]}
                       height={80 + selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length * 40}
                     />
+                    {/* FR-134: Show which benchmarks are hidden due to missing data */}
                     {selectedBenchmarks.some(k => benchmarkReturns[k] == null) && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">
-                        部分基準報酬率無法取得
+                        以下指數因資料不可用已隱藏：
+                        {selectedBenchmarks
+                          .filter(k => benchmarkReturns[k] == null)
+                          .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k)
+                          .join('、')}
                       </p>
                     )}
                   </>
