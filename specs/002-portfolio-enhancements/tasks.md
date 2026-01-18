@@ -233,6 +233,7 @@
 ### Backend Implementation
 
 - [X] T075 [US9] Remove/disable multi-portfolio currency mode (PortfolioType) usage paths and align to single-portfolio behavior in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+- [X] T075a [US9] Hide multi-portfolio UI (PortfolioSelector, CreatePortfolioForm) in `frontend/src/pages/Portfolio.tsx` *(FR-080)*
 - [X] T076 [US9] Update TWD XIRR cashflow building to use FX auto-fill when ExchangeRate is null in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
 - [X] T077 [US9] Add transaction-date FX cache entity and persistence (if not already present) in `backend/src/InvestmentTracker.Domain/Entities/`
 - [X] T078 [US9] Implement transaction-date FX cache repository/service (cache → Stooq → persist) in `backend/src/InvestmentTracker.Infrastructure/Services/`
@@ -266,18 +267,18 @@
 
 ### Frontend Implementation (UX)
 
-- [ ] T093 [US10] Update XIRR TWD card to show transaction count instead of cash flow count in `frontend/src/components/performance/XirrCard.tsx`
-- [ ] T094 [US10] Replace explanatory text with info icon (ℹ️) tooltip for XIRR USD card in `frontend/src/components/performance/XirrCard.tsx`
-- [ ] T095 [US10] Add dynamic label "目前價值"/"年底價值" based on year (YTD vs historical) in `frontend/src/components/performance/YearlySummary.tsx`
-- [ ] T096 [US10] Update benchmark dropdown to display all 11 benchmarks in `frontend/src/components/dashboard/MarketYtdSection.tsx`
-- [ ] T097 [P] [US10] Create BenchmarkSettings component with settings gear (⚙️) popup in `frontend/src/components/performance/BenchmarkSettings.tsx`
-- [ ] T098 [US10] Implement multi-select for benchmark comparison in `frontend/src/components/performance/BenchmarkSettings.tsx`
-- [ ] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/hooks/useBenchmarkPreferences.ts`
-- [X] T100 [US10] Enforce max 10 selected benchmarks in BenchmarkSettings (block >10) in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [X] T093 [US10] Update XIRR TWD card to show transaction count instead of cash flow count in `frontend/src/pages/Performance.tsx` *(implemented inline, not separate component)*
+- [X] T094 [US10] Replace explanatory text with info icon (ℹ️) tooltip for XIRR USD card in `frontend/src/pages/Performance.tsx` *(implemented inline)*
+- [X] T095 [US10] Add dynamic label "目前價值"/"年底價值" based on year (YTD vs historical) in `frontend/src/pages/Performance.tsx` *(lines 794, 838)*
+- [X] T096 [US10] Update benchmark dropdown to display all 11 benchmarks in `frontend/src/pages/Performance.tsx` *(BENCHMARK_OPTIONS array)*
+- [X] T097 [US10] Create BenchmarkSettings popup with settings gear (⚙️) in `frontend/src/pages/Performance.tsx` *(implemented inline, not separate component)*
+- [X] T098 [US10] Implement multi-select for benchmark comparison in `frontend/src/pages/Performance.tsx` *(selectedBenchmarks state)*
+- [X] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/pages/Performance.tsx` *(loadSelectedBenchmarks/saveSelectedBenchmarks)*
+- [X] T100 [US10] Enforce max 10 selected benchmarks (block >10) in `frontend/src/components/dashboard/MarketYtdSection.tsx`
 - [ ] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx`
-- [ ] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/components/charts/PerformanceBarChart.tsx`
-- [ ] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx`
-- [ ] T104 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/components/performance/XirrCard.tsx`
+- [ ] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/pages/Performance.tsx`
+- [X] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx` *(priceFetchFailed state)*
+- [ ] T104 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/pages/Performance.tsx`
 
 **Checkpoint**: US10 complete - performance page UX improved with better labels and loading states
 

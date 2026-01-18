@@ -6,8 +6,9 @@ import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
-import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
-import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
+// Single portfolio mode (FR-080): PortfolioSelector and CreatePortfolioForm are hidden
+// import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
+// import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
@@ -68,7 +69,8 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
 
 export function PortfolioPage() {
   // Use shared portfolio context for cross-page synchronization
-  const { currentPortfolioId, selectPortfolio, clearPerformanceState, refreshPortfolios } = usePortfolio();
+  // Single portfolio mode (FR-080): refreshPortfolios removed as multi-portfolio UI is hidden
+  const { currentPortfolioId, selectPortfolio, clearPerformanceState } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
@@ -82,7 +84,7 @@ export function PortfolioPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
+  // Single portfolio mode (FR-080): showCreatePortfolio removed
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
@@ -519,15 +521,7 @@ export function PortfolioPage() {
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
-            <PortfolioSelector
-              currentPortfolioId={currentPortfolioId}
-              onPortfolioChange={(portfolioId) => {
-                hasFetchedOnLoad.current = false;
-                selectPortfolio(portfolioId); // Update context first
-                loadDataForPortfolio(portfolioId);
-              }}
-              onCreateNew={() => setShowCreatePortfolio(true)}
-            />
+            {/* Single portfolio mode (FR-080): PortfolioSelector hidden */}
           </div>
           <div className="flex items-center gap-2">
             <FileDropdown
@@ -556,19 +550,7 @@ export function PortfolioPage() {
           <p className="text-[var(--text-secondary)] text-base mb-4">{summary.portfolio.description}</p>
         )}
 
-        {/* Create Portfolio Modal */}
-        {showCreatePortfolio && (
-          <CreatePortfolioForm
-            onClose={() => setShowCreatePortfolio(false)}
-            onSuccess={async (portfolioId) => {
-              setShowCreatePortfolio(false);
-              hasFetchedOnLoad.current = false;
-              await refreshPortfolios(); // Refresh portfolio list in context
-              selectPortfolio(portfolioId); // Update context
-              loadDataForPortfolio(portfolioId);
-            }}
-          />
-        )}
+        {/* Single portfolio mode (FR-080): CreatePortfolioForm hidden */}
 
         {/* Performance Metrics - horizontal layout */}
         <div className="mb-6">
