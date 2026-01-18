@@ -275,7 +275,7 @@
 - [X] T098 [US10] Implement multi-select for benchmark comparison in `frontend/src/pages/Performance.tsx` *(selectedBenchmarks state)*
 - [X] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/pages/Performance.tsx` *(loadSelectedBenchmarks/saveSelectedBenchmarks)*
 - [X] T100 [US10] Enforce max 10 selected benchmarks (block >10) in `frontend/src/components/dashboard/MarketYtdSection.tsx`
-- [!] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx` *(line 976: `lastResetVersionRef.current !== performanceVersion`) - NEEDS VERIFICATION: user reports initial 0 still showing*
+- [X] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx` *(fixed via T130: added check for isFetchingPrices and missingPrices)*
 - [~] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/pages/Performance.tsx` *(deferred: spinner UX is acceptable)*
 - [X] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx` *(priceFetchFailed state)*
 - [~] T104 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/pages/Performance.tsx` *(deferred: using spinner instead)*
@@ -351,21 +351,21 @@
 
 ### Frontend Implementation (UI Cleanup)
 
-- [ ] T128 [US13] Remove "Export Positions" button from Portfolio page header in `frontend/src/pages/Portfolio.tsx`
-- [ ] T129 [US13] Update Dashboard Position Performance section to show unrealized PnL (TWD) and weight (%) in `frontend/src/pages/Dashboard.tsx`
-- [ ] T130 [US13] Verify and fix current-year bar chart render-once gate (T101 regression) in `frontend/src/pages/Performance.tsx`
-- [ ] T131 [US13] Display "首年" for year-start value when no prior holdings exist in `frontend/src/pages/Performance.tsx`
-- [ ] T132 [US13] Hide benchmarks with null data from bar chart (filter out instead of showing 0) in `frontend/src/pages/Performance.tsx`
-- [ ] T133 [US13] Update EXUS label from "已開發除美" to "已開發非美" in `frontend/src/pages/Performance.tsx`
-- [ ] T134 [US13] Update EXUS label in Dashboard MarketYtdSection if applicable in `frontend/src/components/dashboard/MarketYtdSection.tsx`
+- [X] T128 [US13] Remove "Export Positions" button from Portfolio page header in `frontend/src/pages/Portfolio.tsx`
+- [X] T129 [US13] Update Dashboard Position Performance section to show unrealized PnL (TWD) and weight (%) in `frontend/src/pages/Dashboard.tsx`
+- [X] T130 [US13] Verify and fix current-year bar chart render-once gate (T101 regression) in `frontend/src/pages/Performance.tsx`
+- [X] T131 [US13] Display "首年" for year-start value when no prior holdings exist in `frontend/src/pages/Performance.tsx`
+- [X] T132 [US13] Hide benchmarks with null data from bar chart (filter out instead of showing 0) in `frontend/src/pages/Performance.tsx`
+- [X] T133 [US13] Update EXUS label from "已開發除美" to "已開發非美" in `frontend/src/pages/Performance.tsx`
+- [X] T134 [US13] Update EXUS label in Dashboard MarketYtdSection if applicable in `frontend/src/components/dashboard/MarketYtdSection.tsx` *(already correct: "已開發非美")*
 
 ### Backend Implementation (Taiwan Stock Historical Prices)
 
-- [ ] T135 [US13] Create ITwseStockHistoricalPriceService interface in `backend/src/InvestmentTracker.Domain/Interfaces/`
-- [ ] T136 [US13] Implement TwseStockHistoricalPriceService for individual Taiwan stock historical prices in `backend/src/InvestmentTracker.Infrastructure/MarketData/TwseStockHistoricalPriceService.cs`
-- [ ] T137 [US13] Register TwseStockHistoricalPriceService in DI container in `backend/src/InvestmentTracker.API/Program.cs`
-- [ ] T138 [US13] Update HistoricalPerformanceService to use TwseStockHistoricalPriceService for Taiwan stocks in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T139 [US13] Add API endpoint to fetch Taiwan stock historical price in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [X] T135 [US13] Create ITwseStockHistoricalPriceService interface in `backend/src/InvestmentTracker.Application/Interfaces/`
+- [X] T136 [US13] Implement TwseStockHistoricalPriceService for individual Taiwan stock historical prices in `backend/src/InvestmentTracker.Infrastructure/MarketData/TwseStockHistoricalPriceService.cs`
+- [X] T137 [US13] Register TwseStockHistoricalPriceService in DI container in `backend/src/InvestmentTracker.API/Program.cs`
+- [X] T138 [US13] Update HistoricalYearEndDataService to use TwseStockHistoricalPriceService for Taiwan stocks in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs`
+- [~] T139 [US13] Add API endpoint to fetch Taiwan stock historical price *(deferred: integrated via HistoricalYearEndDataService)*
 
 **Checkpoint**: US13 complete - UI cleaned up, meaningful data displayed, Taiwan stock historical prices working
 

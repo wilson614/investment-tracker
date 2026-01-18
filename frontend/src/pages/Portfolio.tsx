@@ -11,7 +11,7 @@ import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 // import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
-import { exportTransactionsToCsv, exportPositionsToCsv } from '../services/csvExport';
+import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType, PortfolioType } from '../types';
 import { isEuronextSymbol, getEuronextSymbol } from '../constants';
@@ -481,14 +481,7 @@ export function PortfolioPage() {
     );
   };
 
-  const handleExportPositions = () => {
-    if (!summary || summary.positions.length === 0) return;
-    exportPositionsToCsv(
-      summary.positions,
-      summary.portfolio.baseCurrency,
-      summary.portfolio.homeCurrency
-    );
-  };
+  // FR-130: handleExportPositions removed - Export Positions feature removed from UI
 
   if (isLoading) {
     return (
@@ -524,10 +517,7 @@ export function PortfolioPage() {
             {/* Single portfolio mode (FR-080): PortfolioSelector hidden */}
           </div>
           <div className="flex items-center gap-2">
-            <FileDropdown
-              onExport={handleExportPositions}
-              exportDisabled={summary.positions.length === 0}
-            />
+            {/* FR-130: Export Positions button removed - only Export Transactions remains in transaction history section */}
             <button
               type="button"
               onClick={handleFetchAllPrices}

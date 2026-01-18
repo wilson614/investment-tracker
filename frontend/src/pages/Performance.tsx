@@ -17,7 +17,7 @@ const BENCHMARK_OPTIONS = [
   { key: 'US Small', label: '美國小型 (XRSU)', symbol: 'XRSU' },
   { key: 'Developed Markets Large', label: '已開發大型 (VHVE)', symbol: 'VHVE' },
   { key: 'Developed Markets Small', label: '已開發小型 (WSML)', symbol: 'WSML' },
-  { key: 'Dev ex US Large', label: '已開發除美 (EXUS)', symbol: 'EXUS' },
+  { key: 'Dev ex US Large', label: '已開發非美 (EXUS)', symbol: 'EXUS' },
   { key: 'Emerging Markets', label: '新興市場 (VFEM)', symbol: 'VFEM' },
   { key: 'Europe', label: '歐洲 (VEUA)', symbol: 'VEUA' },
   { key: 'Japan', label: '日本 (VJPA)', symbol: 'VJPA' },
@@ -786,7 +786,10 @@ export function PerformancePage() {
                   <div>
                     <p className="text-sm text-[var(--text-muted)]">年初價值</p>
                     <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                      {formatCurrency(performance.startValueSource)} {performance.sourceCurrency}
+                      {/* FR-133: Show "首年" when no prior holdings exist */}
+                      {performance.startValueSource == null || performance.startValueSource === 0
+                        ? '首年'
+                        : `${formatCurrency(performance.startValueSource)} ${performance.sourceCurrency}`}
                     </p>
                   </div>
                   <div>
@@ -830,7 +833,10 @@ export function PerformancePage() {
                 <div>
                   <p className="text-sm text-[var(--text-muted)]">年初價值</p>
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {formatCurrency(performance.startValueHome)} {portfolio.homeCurrency}
+                    {/* FR-133: Show "首年" when no prior holdings exist */}
+                    {performance.startValueHome == null || performance.startValueHome === 0
+                      ? '首年'
+                      : `${formatCurrency(performance.startValueHome)} ${portfolio.homeCurrency}`}
                   </p>
                 </div>
                 <div>
@@ -865,7 +871,9 @@ export function PerformancePage() {
             </div>
 
             {/* Performance Bar Chart - Portfolio vs Benchmarks (Multi-select) */}
-            {performance.xirrPercentageSource != null && (
+            {/* FR-132/T130: For current year, wait until prices are fully fetched before rendering */}
+            {performance.xirrPercentageSource != null && 
+             !(selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0)) && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
@@ -987,19 +995,20 @@ export function PerformancePage() {
                           value: performance.xirrPercentageSource,
                           tooltip: `${selectedYear} 年化報酬率 (${performance.transactionCount} 筆交易)`,
                         },
-                        ...selectedBenchmarks.map(benchmarkKey => {
-                          const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
-                          const returnValue = benchmarkReturns[benchmarkKey];
-                          return {
-                            label: benchmarkInfo?.label ?? benchmarkKey,
-                            value: returnValue ?? 0,
-                            tooltip: returnValue != null
-                              ? `${selectedYear} 年度報酬率`
-                              : '無法取得報酬率',
-                          };
-                        }),
+                        /* FR-134: Filter out benchmarks with null data instead of showing 0 */
+                        ...selectedBenchmarks
+                          .filter(benchmarkKey => benchmarkReturns[benchmarkKey] != null)
+                          .map(benchmarkKey => {
+                            const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
+                            const returnValue = benchmarkReturns[benchmarkKey]!;
+                            return {
+                              label: benchmarkInfo?.label ?? benchmarkKey,
+                              value: returnValue,
+                              tooltip: `${selectedYear} 年度報酬率`,
+                            };
+                          }),
                       ]}
-                      height={80 + selectedBenchmarks.length * 40}
+                      height={80 + selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length * 40}
                     />
                     {selectedBenchmarks.some(k => benchmarkReturns[k] == null) && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">

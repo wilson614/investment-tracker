@@ -16,15 +16,18 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
 {
     private readonly IHistoricalYearEndDataRepository _repository;
     private readonly IStooqHistoricalPriceService _stooqService;
+    private readonly ITwseStockHistoricalPriceService _twseStockService;
     private readonly ILogger<HistoricalYearEndDataService> _logger;
 
     public HistoricalYearEndDataService(
         IHistoricalYearEndDataRepository repository,
         IStooqHistoricalPriceService stooqService,
+        ITwseStockHistoricalPriceService twseStockService,
         ILogger<HistoricalYearEndDataService> logger)
     {
         _repository = repository;
         _stooqService = stooqService;
+        _twseStockService = twseStockService;
         _logger = logger;
     }
 
@@ -244,6 +247,12 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
     {
         try
         {
+            // Check if this is a Taiwan stock (numeric ticker like 2330, 0050)
+            if (IsTaiwanStock(ticker))
+            {
+                return await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
+            }
+
             // Use Dec 31 as target date (Stooq will find nearest trading day)
             var targetDate = new DateOnly(year, 12, 31);
             var result = await _stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
@@ -272,6 +281,44 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             _logger.LogWarning(ex, "Error fetching year-end price for {Ticker}/{Year}", ticker, year);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Determines if a ticker is a Taiwan stock (numeric format like 2330, 0050).
+    /// </summary>
+    private static bool IsTaiwanStock(string ticker)
+    {
+        // Taiwan stocks are typically 4-digit numeric codes (e.g., 2330, 0050, 2454)
+        // Some may have suffixes like ".TW" which we strip
+        var baseTicker = ticker.Split('.')[0];
+        return baseTicker.Length >= 4 && baseTicker.Length <= 6 && baseTicker.All(char.IsDigit);
+    }
+
+    /// <summary>
+    /// Fetches historical price for Taiwan stocks from TWSE.
+    /// </summary>
+    private async Task<YearEndPriceResult?> FetchTaiwanStockPriceAsync(
+        string ticker,
+        int year,
+        CancellationToken cancellationToken)
+    {
+        var stockNo = ticker.Split('.')[0]; // Remove any suffix like ".TW"
+        var result = await _twseStockService.GetYearEndPriceAsync(stockNo, year, cancellationToken);
+
+        if (result == null)
+        {
+            _logger.LogWarning("Could not fetch year-end price for Taiwan stock {Ticker}/{Year} from TWSE", ticker, year);
+            return null;
+        }
+
+        return new YearEndPriceResult
+        {
+            Price = result.Price,
+            Currency = "TWD", // Taiwan stocks are always in TWD
+            ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            Source = "TWSE",
+            FromCache = false
+        };
     }
 
     private async Task<YearEndExchangeRateResult?> FetchExchangeRateFromApiAsync(

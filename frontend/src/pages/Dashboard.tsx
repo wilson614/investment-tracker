@@ -59,6 +59,8 @@ interface PositionWithPnl {
   currentPrice?: number;
   pnlPercentage?: number;
   valueHome?: number;
+  unrealizedPnlHome?: number;
+  weight?: number; // FR-131: position weight as % of total portfolio
 }
 
 export function DashboardPage() {
@@ -259,6 +261,7 @@ export function DashboardPage() {
   const getPositionsWithPnl = (): PositionWithPnl[] => {
     if (!summary) return [];
 
+    const totalValue = summary.totalValueHome ?? 0;
     return summary.positions.map(pos => ({
       ticker: pos.ticker,
       totalShares: pos.totalShares,
@@ -266,6 +269,10 @@ export function DashboardPage() {
       currentPrice: pos.currentPrice,
       pnlPercentage: pos.unrealizedPnlPercentage,
       valueHome: pos.currentValueHome,
+      unrealizedPnlHome: pos.unrealizedPnlHome,
+      weight: totalValue > 0 && pos.currentValueHome != null 
+        ? (pos.currentValueHome / totalValue) * 100 
+        : undefined,
     }));
   };
 
@@ -420,7 +427,7 @@ export function DashboardPage() {
             />
           </div>
 
-          {/* Position Performance */}
+          {/* Position Performance - FR-131: Show PnL (TWD) and weight (%) */}
           <div className="card-dark p-6">
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">持倉績效</h2>
             {topPerformers.length > 0 ? (
@@ -430,17 +437,17 @@ export function DashboardPage() {
                     <div className="flex items-center gap-3">
                       <span className="text-[var(--text-primary)] font-medium">{pos.ticker}</span>
                       <span className="text-xs text-[var(--text-muted)]">
-                        {pos.totalShares.toFixed(2)} 股
+                        {pos.weight != null ? `${pos.weight.toFixed(1)}%` : '-'}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {(pos.pnlPercentage ?? 0) >= 0 ? (
+                      {(pos.unrealizedPnlHome ?? 0) >= 0 ? (
                         <TrendingUp className="w-4 h-4 text-green-500" />
                       ) : (
                         <TrendingDown className="w-4 h-4 text-red-500" />
                       )}
-                      <span className={`font-mono font-medium ${(pos.pnlPercentage ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
-                        {formatPercent(pos.pnlPercentage)}
+                      <span className={`font-mono font-medium ${(pos.unrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {pos.unrealizedPnlHome != null ? formatTWD(pos.unrealizedPnlHome) : '-'}
                       </span>
                     </div>
                   </div>
