@@ -270,7 +270,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               匯率（選填）
-              <span className="ml-2 text-xs text-[var(--text-muted)]">不填則僅追蹤原幣成本</span>
+              <span className="ml-2 text-xs text-[var(--text-muted)]">不填則自動以交易日匯率計算</span>
             </label>
             <input
               type="number"
@@ -280,7 +280,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
               min="0.000001"
               step="0.000001"
               className="input-dark w-full"
-              placeholder="留空以原幣追蹤"
+              placeholder="留空自動填補"
             />
           </div>
         )}
