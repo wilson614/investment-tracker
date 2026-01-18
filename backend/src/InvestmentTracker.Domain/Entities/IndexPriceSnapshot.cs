@@ -19,12 +19,18 @@ public class IndexPriceSnapshot
     public string YearMonth { get; set; } = string.Empty;
 
     /// <summary>
-    /// End of month closing price
+    /// End of month closing price. Null when IsNotAvailable is true.
     /// </summary>
-    public decimal Price { get; set; }
+    public decimal? Price { get; set; }
 
     /// <summary>
     /// When this price was recorded
     /// </summary>
     public DateTime RecordedAt { get; set; }
+
+    /// <summary>
+    /// Indicates the price is permanently unavailable (e.g., ETF not listed in that year).
+    /// When true, Price should be null and no further API calls should be made.
+    /// </summary>
+    public bool IsNotAvailable { get; set; }
 }

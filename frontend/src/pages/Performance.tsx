@@ -901,36 +901,50 @@ export function PerformancePage() {
                         </button>
                       </div>
                       <div className="p-5 max-h-[50vh] overflow-y-auto">
+                        {tempSelectedBenchmarks.length >= 10 && (
+                          <div className="mb-3 px-3 py-2 bg-[var(--accent-peach)]/10 border border-[var(--accent-peach)]/30 rounded-lg text-sm text-[var(--text-muted)]">
+                            已達上限（最多 10 個）
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
-                          {BENCHMARK_OPTIONS.map((option) => (
+                          {BENCHMARK_OPTIONS.map((option) => {
+                            const isSelected = tempSelectedBenchmarks.includes(option.key);
+                            const isAtLimit = tempSelectedBenchmarks.length >= 10;
+                            const isDisabled = !isSelected && isAtLimit;
+
+                            return (
                             <button
                               key={option.key}
                               type="button"
                               onClick={() => {
-                                if (tempSelectedBenchmarks.includes(option.key)) {
+                                if (isSelected) {
                                   if (tempSelectedBenchmarks.length > 1) {
                                     setTempSelectedBenchmarks(tempSelectedBenchmarks.filter(k => k !== option.key));
                                   }
-                                } else {
+                                } else if (!isAtLimit) {
                                   setTempSelectedBenchmarks([...tempSelectedBenchmarks, option.key]);
                                 }
                               }}
+                              disabled={isDisabled}
                               className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
-                                tempSelectedBenchmarks.includes(option.key)
+                                isSelected
                                   ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
-                                  : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                                  : isDisabled
+                                    ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                                    : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
                               }`}
                             >
                               <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                                tempSelectedBenchmarks.includes(option.key)
+                                isSelected
                                   ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
                                   : 'border-[var(--text-muted)]'
                               }`}>
-                                {tempSelectedBenchmarks.includes(option.key) && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                                {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
                               </div>
                               <span className="text-sm truncate">{option.label}</span>
                             </button>
-                          ))}
+                          );
+                          })}
                         </div>
                       </div>
                       <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">

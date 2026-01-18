@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
     public DbSet<EuronextQuoteCache> EuronextQuoteCaches => Set<EuronextQuoteCache>();
     public DbSet<EtfClassification> EtfClassifications => Set<EtfClassification>();
     public DbSet<HistoricalYearEndData> HistoricalYearEndData => Set<HistoricalYearEndData>();
+    public DbSet<HistoricalExchangeRateCache> HistoricalExchangeRateCaches => Set<HistoricalExchangeRateCache>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

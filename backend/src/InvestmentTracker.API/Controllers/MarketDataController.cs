@@ -20,6 +20,7 @@ public class MarketDataController : ControllerBase
     private readonly EuronextQuoteService _euronextQuoteService;
     private readonly IStooqHistoricalPriceService _stooqService;
     private readonly IHistoricalYearEndDataService _historicalYearEndDataService;
+    private readonly ITransactionDateExchangeRateService _txDateFxService;
     private readonly AppDbContext _dbContext;
     private readonly ILogger<MarketDataController> _logger;
 
@@ -29,6 +30,7 @@ public class MarketDataController : ControllerBase
         EuronextQuoteService euronextQuoteService,
         IStooqHistoricalPriceService stooqService,
         IHistoricalYearEndDataService historicalYearEndDataService,
+        ITransactionDateExchangeRateService txDateFxService,
         AppDbContext dbContext,
         ILogger<MarketDataController> logger)
     {
@@ -37,6 +39,7 @@ public class MarketDataController : ControllerBase
         _euronextQuoteService = euronextQuoteService;
         _stooqService = stooqService;
         _historicalYearEndDataService = historicalYearEndDataService;
+        _txDateFxService = txDateFxService;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -463,26 +466,37 @@ public class MarketDataController : ControllerBase
         var benchmarks = MarketYtdService.SupportedBenchmarks;
 
         // Get all cached index prices for both year-months
+        // Filter out NotAvailable entries
         var snapshots = await _dbContext.IndexPriceSnapshots
-            .Where(s => s.YearMonth == startYearMonth || s.YearMonth == endYearMonth)
+            .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && !s.IsNotAvailable && s.Price.HasValue)
             .ToListAsync(cancellationToken);
 
         var startPrices = snapshots
             .Where(s => s.YearMonth == startYearMonth)
             .GroupBy(s => s.MarketKey)
-            .ToDictionary(g => g.Key, g => g.First().Price);
+            .ToDictionary(g => g.Key, g => g.First().Price!.Value);
 
         var endPrices = snapshots
             .Where(s => s.YearMonth == endYearMonth)
             .GroupBy(s => s.MarketKey)
-            .ToDictionary(g => g.Key, g => g.First().Price);
+            .ToDictionary(g => g.Key, g => g.First().Price!.Value);
+
+        // Check for NotAvailable markers to skip fetching
+        var notAvailableMarkers = await _dbContext.IndexPriceSnapshots
+            .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && s.IsNotAvailable)
+            .Select(s => new { s.MarketKey, s.YearMonth })
+            .ToListAsync(cancellationToken);
+        
+        var notAvailableStart = notAvailableMarkers.Where(m => m.YearMonth == startYearMonth).Select(m => m.MarketKey).ToHashSet();
+        var notAvailableEnd = notAvailableMarkers.Where(m => m.YearMonth == endYearMonth).Select(m => m.MarketKey).ToHashSet();
 
         // Lazy-load missing prices from Stooq (except Taiwan 0050 which needs manual entry)
+        // Also skip markets that already have NotAvailable markers
         var missingStartMarkets = benchmarks.Keys
-            .Where(k => !startPrices.ContainsKey(k) && k != "Taiwan 0050")
+            .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k) && k != "Taiwan 0050")
             .ToList();
         var missingEndMarkets = benchmarks.Keys
-            .Where(k => !endPrices.ContainsKey(k) && k != "Taiwan 0050")
+            .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k) && k != "Taiwan 0050")
             .ToList();
 
         // Fetch missing start year prices (prior year December)
@@ -540,29 +554,49 @@ public class MarketDataController : ControllerBase
         {
             try
             {
+                // Check if record already exists (race condition protection)
+                var exists = await _dbContext.IndexPriceSnapshots
+                    .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
+
+                if (exists)
+                {
+                    // Already cached (valid or NotAvailable), skip API call
+                    continue;
+                }
+
                 var price = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
 
                 if (price != null)
                 {
-                    // Check if record already exists (race condition protection)
-                    var exists = await _dbContext.IndexPriceSnapshots
-                        .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
-
-                    if (!exists)
+                    // Cache valid price
+                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                     {
-                        _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
-                        {
-                            MarketKey = marketKey,
-                            YearMonth = yearMonth,
-                            Price = price.Value,
-                            RecordedAt = DateTime.UtcNow
-                        });
-                        await _dbContext.SaveChangesAsync(cancellationToken);
-                        _logger.LogInformation("Cached benchmark price for {MarketKey} {YearMonth}: {Price}",
-                            marketKey, yearMonth, price.Value);
-                    }
+                        MarketKey = marketKey,
+                        YearMonth = yearMonth,
+                        Price = price.Value,
+                        IsNotAvailable = false,
+                        RecordedAt = DateTime.UtcNow
+                    });
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Cached benchmark price for {MarketKey} {YearMonth}: {Price}",
+                        marketKey, yearMonth, price.Value);
 
                     pricesDict[marketKey] = price.Value;
+                }
+                else
+                {
+                    // Save NotAvailable marker (negative caching)
+                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    {
+                        MarketKey = marketKey,
+                        YearMonth = yearMonth,
+                        Price = null,
+                        IsNotAvailable = true,
+                        RecordedAt = DateTime.UtcNow
+                    });
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Cached NotAvailable marker for {MarketKey} {YearMonth}",
+                        marketKey, yearMonth);
                 }
             }
             catch (Exception ex)
@@ -655,6 +689,95 @@ public class MarketDataController : ControllerBase
                 cancellationToken);
 
             return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Get exchange rate for a specific transaction date.
+    /// Uses cache → Stooq → persist pattern for automatic fetching.
+    /// </summary>
+    [HttpGet("transaction-date-exchange-rate")]
+    [ProducesResponseType(typeof(TransactionDateExchangeRateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TransactionDateExchangeRateResponse>> GetTransactionDateExchangeRate(
+        [FromQuery] string from,
+        [FromQuery] string to,
+        [FromQuery] DateTime date,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
+        {
+            return BadRequest("from and to currency codes are required");
+        }
+
+        if (date > DateTime.UtcNow.Date)
+        {
+            return BadRequest("Date cannot be in the future");
+        }
+
+        var result = await _txDateFxService.GetOrFetchAsync(from, to, date, cancellationToken);
+
+        if (result == null)
+        {
+            return NotFound($"Exchange rate not available for {from}/{to} on {date:yyyy-MM-dd}. Please submit manually.");
+        }
+
+        return Ok(new TransactionDateExchangeRateResponse(
+            result.Rate,
+            result.CurrencyPair,
+            result.RequestedDate,
+            result.ActualDate,
+            result.Source,
+            result.FromCache));
+    }
+
+    /// <summary>
+    /// Manually save an exchange rate for a specific transaction date when automatic fetching fails.
+    /// </summary>
+    [HttpPost("transaction-date-exchange-rate")]
+    [ProducesResponseType(typeof(TransactionDateExchangeRateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<TransactionDateExchangeRateResponse>> SaveManualTransactionDateExchangeRate(
+        [FromBody] ManualTransactionDateExchangeRateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.FromCurrency) || string.IsNullOrWhiteSpace(request.ToCurrency))
+        {
+            return BadRequest("FromCurrency and ToCurrency are required");
+        }
+
+        if (request.TransactionDate > DateTime.UtcNow.Date)
+        {
+            return BadRequest("TransactionDate cannot be in the future");
+        }
+
+        if (request.Rate <= 0)
+        {
+            return BadRequest("Rate must be positive");
+        }
+
+        try
+        {
+            var result = await _txDateFxService.SaveManualAsync(
+                request.FromCurrency,
+                request.ToCurrency,
+                request.TransactionDate,
+                request.Rate,
+                cancellationToken);
+
+            return Ok(new TransactionDateExchangeRateResponse(
+                result.Rate,
+                result.CurrencyPair,
+                result.RequestedDate,
+                result.ActualDate,
+                result.Source,
+                result.FromCache));
         }
         catch (InvalidOperationException ex)
         {
@@ -842,3 +965,23 @@ public record ManualYearEndExchangeRateRequest(
     int Year,
     decimal Rate,
     DateTime? ActualDate = null);
+
+/// <summary>
+/// Request for manually saving a transaction-date exchange rate.
+/// </summary>
+public record ManualTransactionDateExchangeRateRequest(
+    string FromCurrency,
+    string ToCurrency,
+    DateTime TransactionDate,
+    decimal Rate);
+
+/// <summary>
+/// Response for transaction-date exchange rate.
+/// </summary>
+public record TransactionDateExchangeRateResponse(
+    decimal Rate,
+    string CurrencyPair,
+    DateTime RequestedDate,
+    DateTime ActualDate,
+    string Source,
+    bool FromCache);

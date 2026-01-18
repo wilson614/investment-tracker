@@ -149,6 +149,8 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
         if (prev.length === 1) return prev;
         return prev.filter(k => k !== key);
       }
+      // Enforce max 10 benchmarks
+      if (prev.length >= 10) return prev;
       return [...prev, key];
     });
   };
@@ -200,27 +202,41 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
               </button>
             </div>
             <div className="p-5 max-h-[50vh] overflow-y-auto">
+              {tempSelected.length >= 10 && (
+                <div className="mb-3 px-3 py-2 bg-[var(--accent-peach)]/10 border border-[var(--accent-peach)]/30 rounded-lg text-sm text-[var(--text-muted)]">
+                  已達上限（最多 10 個）
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
-                {availableBenchmarks.map((key) => (
+                {availableBenchmarks.map((key) => {
+                  const isSelected = tempSelected.includes(key);
+                  const isAtLimit = tempSelected.length >= 10;
+                  const isDisabled = !isSelected && isAtLimit;
+
+                  return (
                   <button
                     key={key}
                     onClick={() => toggleBenchmark(key)}
+                    disabled={isDisabled}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
-                      tempSelected.includes(key)
+                      isSelected
                         ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
-                        : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                        : isDisabled
+                          ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                          : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
                     }`}
                   >
                     <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                      tempSelected.includes(key)
+                      isSelected
                         ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
                         : 'border-[var(--text-muted)]'
                     }`}>
-                      {tempSelected.includes(key) && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                      {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
                     </div>
                     <span className="text-sm truncate">{BENCHMARK_LABELS[key] || key}</span>
                   </button>
-                ))}
+                );
+                })}
               </div>
             </div>
             <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">

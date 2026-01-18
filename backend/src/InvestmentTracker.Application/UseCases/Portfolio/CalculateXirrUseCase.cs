@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -10,6 +11,7 @@ namespace InvestmentTracker.Application.UseCases.Portfolio;
 /// <summary>
 /// Use case for calculating XIRR (Extended Internal Rate of Return) for a portfolio.
 /// Applies stock split adjustments when calculating current positions for accurate comparison with current prices.
+/// US9: Uses transaction-date FX cache for auto-filling missing exchange rates.
 /// </summary>
 public class CalculateXirrUseCase
 {
@@ -18,6 +20,7 @@ public class CalculateXirrUseCase
     private readonly IStockSplitRepository _stockSplitRepository;
     private readonly PortfolioCalculator _portfolioCalculator;
     private readonly StockSplitAdjustmentService _splitAdjustmentService;
+    private readonly ITransactionDateExchangeRateService _txDateFxService;
     private readonly ICurrentUserService _currentUserService;
     private readonly ILogger<CalculateXirrUseCase> _logger;
 
@@ -27,6 +30,7 @@ public class CalculateXirrUseCase
         IStockSplitRepository stockSplitRepository,
         PortfolioCalculator portfolioCalculator,
         StockSplitAdjustmentService splitAdjustmentService,
+        ITransactionDateExchangeRateService txDateFxService,
         ICurrentUserService currentUserService,
         ILogger<CalculateXirrUseCase> logger)
     {
@@ -35,6 +39,7 @@ public class CalculateXirrUseCase
         _stockSplitRepository = stockSplitRepository;
         _portfolioCalculator = portfolioCalculator;
         _splitAdjustmentService = splitAdjustmentService;
+        _txDateFxService = txDateFxService;
         _currentUserService = currentUserService;
         _logger = logger;
     }
@@ -55,47 +60,45 @@ public class CalculateXirrUseCase
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
-        // Check if this is a ForeignCurrency portfolio (all metrics in source currency)
-        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
-
-        // Build cash flows list
-        // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
-        // For ForeignCurrency portfolios: include ALL transactions, use TotalCostSource
+        // Build cash flows list - include ALL non-deleted transactions
+        // US9: Auto-fill exchange rates for transactions missing them
         var cashFlows = new List<CashFlow>();
+        var missingFxDates = new List<MissingExchangeRateDto>();
 
-        var relevantTransactions = isForeignCurrencyPortfolio
-            ? transactions.Where(t => !t.IsDeleted).OrderBy(t => t.TransactionDate)
-            : transactions.Where(t => !t.IsDeleted && t.HasExchangeRate).OrderBy(t => t.TransactionDate);
+        var orderedTransactions = transactions
+            .Where(t => !t.IsDeleted)
+            .OrderBy(t => t.TransactionDate)
+            .ToList();
 
-        foreach (var tx in relevantTransactions)
+        foreach (var tx in orderedTransactions)
         {
+            var fxRate = await GetExchangeRateForTransactionAsync(tx, cancellationToken);
+            
+            if (!fxRate.HasValue)
+            {
+                // Track missing FX rate for reporting
+                var currency = tx.IsTaiwanStock ? "TWD" : "USD"; // Default assumption
+                missingFxDates.Add(new MissingExchangeRateDto
+                {
+                    TransactionDate = tx.TransactionDate,
+                    Currency = currency
+                });
+                _logger.LogWarning("Missing exchange rate for transaction {TxId} on {Date}",
+                    tx.Id, tx.TransactionDate.ToString("yyyy-MM-dd"));
+                continue; // Skip this transaction in XIRR calculation
+            }
+
             if (tx.TransactionType == TransactionType.Buy)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    // ForeignCurrency portfolio: use source currency cost
-                    cashFlows.Add(new CashFlow(-tx.TotalCostSource, tx.TransactionDate));
-                }
-                else
-                {
-                    // Primary portfolio: use home currency cost
-                    cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
-                }
+                // Use home currency cost (TotalCostSource * ExchangeRate)
+                var homeCost = tx.TotalCostSource * fxRate.Value;
+                cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    // ForeignCurrency portfolio: use source currency proceeds
-                    var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
-                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
-                }
-                else
-                {
-                    // Primary portfolio: use home currency proceeds
-                    var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
-                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
-                }
+                // Use home currency proceeds
+                var proceeds = ((tx.Shares * tx.PricePerShare) - tx.Fees) * fxRate.Value;
+                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
 
@@ -120,13 +123,10 @@ public class CalculateXirrUseCase
             {
                 if (currentPrices.TryGetValue(position.Ticker, out var priceInfo))
                 {
-                    // For ForeignCurrency portfolios: use source currency (no exchange rate conversion)
-                    var positionValue = isForeignCurrencyPortfolio
-                        ? position.TotalShares * priceInfo.Price
-                        : position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
+                    // Use home currency value (price * shares * current exchange rate)
+                    var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
                     _logger.LogDebug("XIRR: Position {Ticker}: {Shares} shares * {Price} * {Rate} = {Value}",
-                        position.Ticker, position.TotalShares, priceInfo.Price,
-                        isForeignCurrencyPortfolio ? 1m : priceInfo.ExchangeRate, positionValue);
+                        position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
                     currentValue += positionValue;
                 }
                 else
@@ -158,7 +158,8 @@ public class CalculateXirrUseCase
             Xirr = xirr,
             XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
             CashFlowCount = cashFlows.Count,
-            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
+            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+            MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
         };
     }
 
@@ -182,9 +183,6 @@ public class CalculateXirrUseCase
         var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
-        // Check if this is a ForeignCurrency portfolio (all metrics in source currency)
-        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
-
         // Filter to only this ticker's transactions
         var tickerTransactions = allTransactions
             .Where(t => !t.IsDeleted && t.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase))
@@ -202,44 +200,34 @@ public class CalculateXirrUseCase
             };
         }
 
-        // Build cash flows list for this position
-        // FR-004: Only include transactions WITH exchange rate in TWD-based XIRR calculation
-        // For ForeignCurrency portfolios: include ALL transactions, use TotalCostSource
+        // Build cash flows list - include ALL transactions, auto-fill FX
         var cashFlows = new List<CashFlow>();
+        var missingFxDates = new List<MissingExchangeRateDto>();
 
-        var relevantTransactions = isForeignCurrencyPortfolio
-            ? tickerTransactions
-            : tickerTransactions.Where(t => t.HasExchangeRate);
-
-        foreach (var tx in relevantTransactions)
+        foreach (var tx in tickerTransactions)
         {
+            var fxRate = await GetExchangeRateForTransactionAsync(tx, cancellationToken);
+            
+            if (!fxRate.HasValue)
+            {
+                var currency = tx.IsTaiwanStock ? "TWD" : "USD";
+                missingFxDates.Add(new MissingExchangeRateDto
+                {
+                    TransactionDate = tx.TransactionDate,
+                    Currency = currency
+                });
+                continue;
+            }
+
             if (tx.TransactionType == TransactionType.Buy)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    // ForeignCurrency portfolio: use source currency cost
-                    cashFlows.Add(new CashFlow(-tx.TotalCostSource, tx.TransactionDate));
-                }
-                else
-                {
-                    // Primary portfolio: use home currency cost
-                    cashFlows.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
-                }
+                var homeCost = tx.TotalCostSource * fxRate.Value;
+                cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    // ForeignCurrency portfolio: use source currency proceeds
-                    var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
-                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
-                }
-                else
-                {
-                    // Primary portfolio: use home currency proceeds
-                    var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
-                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
-                }
+                var proceeds = ((tx.Shares * tx.PricePerShare) - tx.Fees) * fxRate.Value;
+                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
 
@@ -252,10 +240,8 @@ public class CalculateXirrUseCase
 
             if (position.TotalShares > 0)
             {
-                // For ForeignCurrency portfolios: use source currency (no exchange rate conversion)
-                var currentValue = isForeignCurrencyPortfolio
-                    ? position.TotalShares * request.CurrentPrice.Value
-                    : position.TotalShares * request.CurrentPrice.Value * (request.CurrentExchangeRate ?? 1m);
+                // Use home currency value
+                var currentValue = position.TotalShares * request.CurrentPrice.Value * (request.CurrentExchangeRate ?? 1m);
                 cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
             }
         }
@@ -267,7 +253,38 @@ public class CalculateXirrUseCase
             Xirr = xirr,
             XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
             CashFlowCount = cashFlows.Count,
-            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
+            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+            MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
         };
+    }
+
+    /// <summary>
+    /// Gets exchange rate for a transaction:
+    /// 1. Use transaction's stored ExchangeRate if available
+    /// 2. For TWD (IsTaiwanStock), return 1.0
+    /// 3. Otherwise, try to fetch from transaction-date FX cache
+    /// </summary>
+    private async Task<decimal?> GetExchangeRateForTransactionAsync(
+        StockTransaction tx,
+        CancellationToken cancellationToken)
+    {
+        // If transaction already has exchange rate, use it
+        if (tx.HasExchangeRate)
+        {
+            return tx.ExchangeRate!.Value;
+        }
+
+        // Taiwan stocks are in TWD, no conversion needed
+        if (tx.IsTaiwanStock)
+        {
+            return 1.0m;
+        }
+
+        // Try to get from transaction-date FX cache
+        // Default to USD for non-Taiwan stocks (most common foreign currency)
+        var fxResult = await _txDateFxService.GetOrFetchAsync(
+            "USD", "TWD", tx.TransactionDate, cancellationToken);
+
+        return fxResult?.Rate;
     }
 }

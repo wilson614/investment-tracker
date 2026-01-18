@@ -143,6 +143,7 @@ builder.Services.AddScoped<IStockSplitRepository, StockSplitRepository>();
 builder.Services.AddScoped<IEuronextQuoteCacheRepository, EuronextQuoteCacheRepository>();
 builder.Services.AddScoped<IEtfClassificationRepository, EtfClassificationRepository>();
 builder.Services.AddScoped<IHistoricalYearEndDataRepository, HistoricalYearEndDataRepository>();
+builder.Services.AddScoped<IHistoricalExchangeRateCacheRepository, HistoricalExchangeRateCacheRepository>();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
@@ -206,6 +207,9 @@ builder.Services.AddSingleton<EtfClassificationService>();
 
 // Historical Year-End Data Service (cache for year-end prices/rates)
 builder.Services.AddScoped<IHistoricalYearEndDataService, HistoricalYearEndDataService>();
+
+// Transaction-Date Exchange Rate Service (cache for transaction-date FX rates)
+builder.Services.AddScoped<ITransactionDateExchangeRateService, TransactionDateExchangeRateService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();

@@ -159,6 +159,21 @@ public record XirrResultDto
     public double? XirrPercentage { get; init; }
     public int CashFlowCount { get; init; }
     public DateTime AsOfDate { get; init; }
+    
+    /// <summary>
+    /// List of transaction dates with missing exchange rates that need manual input.
+    /// Null if all exchange rates are available.
+    /// </summary>
+    public IReadOnlyList<MissingExchangeRateDto>? MissingExchangeRates { get; init; }
+}
+
+/// <summary>
+/// Information about a missing exchange rate for a transaction date.
+/// </summary>
+public record MissingExchangeRateDto
+{
+    public DateTime TransactionDate { get; init; }
+    public string Currency { get; init; } = string.Empty;
 }
 
 /// <summary>

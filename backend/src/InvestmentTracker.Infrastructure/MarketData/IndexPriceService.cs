@@ -153,6 +153,7 @@ public class IndexPriceService : IIndexPriceService
 
     /// <summary>
     /// Get reference price for US/Global markets - try Stooq first, then fallback to database
+    /// Implements negative caching: if price is confirmed unavailable, saves NotAvailable marker
     /// </summary>
     private async Task<decimal?> GetReferencePriceAsync(
         string marketKey,
@@ -160,11 +161,21 @@ public class IndexPriceService : IIndexPriceService
         string yearMonth,
         CancellationToken cancellationToken)
     {
-        // First check database for cached/manual entry
-        var dbPrice = await GetDatabasePriceAsync(marketKey, yearMonth, cancellationToken);
-        if (dbPrice != null)
+        // First check database for cached entry (including NotAvailable markers)
+        var snapshot = await _dbContext.IndexPriceSnapshots
+            .FirstOrDefaultAsync(
+                s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
+                cancellationToken);
+
+        if (snapshot != null)
         {
-            return dbPrice;
+            // If marked as NotAvailable, return null immediately (skip API call)
+            if (snapshot.IsNotAvailable)
+            {
+                _logger.LogDebug("Negative cache hit for {Market}/{YearMonth} - marked NotAvailable", marketKey, yearMonth);
+                return null;
+            }
+            return snapshot.Price;
         }
 
         // Try to fetch from Stooq
@@ -179,6 +190,15 @@ public class IndexPriceService : IIndexPriceService
             // Cache in database for future use
             await SavePriceToDatabase(marketKey, yearMonth, stooqPrice.Value, cancellationToken);
             return stooqPrice;
+        }
+
+        // API returned null - save NotAvailable marker (negative caching)
+        // Only for historical months (not current month which may still be loading)
+        var now = DateTime.UtcNow;
+        var currentYearMonth = $"{now.Year}{now.Month:D2}";
+        if (yearMonth != currentYearMonth)
+        {
+            await SaveNotAvailableMarker(marketKey, yearMonth, cancellationToken);
         }
 
         return null;
@@ -246,5 +266,49 @@ public class IndexPriceService : IIndexPriceService
         // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
         return ex.InnerException?.Message?.Contains("23505") == true ||
                ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
+    }
+
+    /// <summary>
+    /// Save a NotAvailable marker for a (MarketKey, YearMonth) combination.
+    /// This prevents repeated API calls for prices that are known to be unavailable.
+    /// </summary>
+    private async Task SaveNotAvailableMarker(
+        string marketKey,
+        string yearMonth,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var existing = await _dbContext.IndexPriceSnapshots
+                .FirstOrDefaultAsync(
+                    s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
+                    cancellationToken);
+
+            if (existing != null)
+            {
+                // Already exists - don't overwrite a valid price with NotAvailable
+                return;
+            }
+
+            _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+            {
+                MarketKey = marketKey,
+                YearMonth = yearMonth,
+                Price = null,
+                IsNotAvailable = true,
+                RecordedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Saved NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+        {
+            _logger.LogDebug("Duplicate key ignored for NotAvailable marker {Market}/{YearMonth}", marketKey, yearMonth);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
+        }
     }
 }

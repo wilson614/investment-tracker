@@ -232,11 +232,11 @@
 
 ### Backend Implementation
 
-- [ ] T075 [US9] Remove/disable multi-portfolio currency mode (PortfolioType) usage paths and align to single-portfolio behavior in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
-- [ ] T076 [US9] Update TWD XIRR cashflow building to use FX auto-fill when ExchangeRate is null in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
-- [ ] T077 [US9] Add transaction-date FX cache entity and persistence (if not already present) in `backend/src/InvestmentTracker.Domain/Entities/`
-- [ ] T078 [US9] Implement transaction-date FX cache repository/service (cache → Stooq → persist) in `backend/src/InvestmentTracker.Infrastructure/Services/`
-- [ ] T079 [US9] Add API endpoint to submit manual FX rate for a specific transaction date when lookup fails in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [X] T075 [US9] Remove/disable multi-portfolio currency mode (PortfolioType) usage paths and align to single-portfolio behavior in `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+- [X] T076 [US9] Update TWD XIRR cashflow building to use FX auto-fill when ExchangeRate is null in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateXirrUseCase.cs`
+- [X] T077 [US9] Add transaction-date FX cache entity and persistence (if not already present) in `backend/src/InvestmentTracker.Domain/Entities/`
+- [X] T078 [US9] Implement transaction-date FX cache repository/service (cache → Stooq → persist) in `backend/src/InvestmentTracker.Infrastructure/Services/`
+- [X] T079 [US9] Add API endpoint to submit manual FX rate for a specific transaction date when lookup fails in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
 
 ### Frontend Implementation
 
@@ -260,9 +260,9 @@
 
 ### Backend Implementation (Benchmark negative caching)
 
-- [ ] T090 [US10] Add NotAvailable marker support for `(MarketKey, YearMonth)` benchmark month-end fetches in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
-- [ ] T091 [US10] Persist NotAvailable permanently when Stooq returns null in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
-- [ ] T092 [US10] Skip Stooq calls when NotAvailable exists (must return null immediately) in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [X] T090 [US10] Add NotAvailable marker support for `(MarketKey, YearMonth)` benchmark month-end fetches in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [X] T091 [US10] Persist NotAvailable permanently when Stooq returns null in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [X] T092 [US10] Skip Stooq calls when NotAvailable exists (must return null immediately) in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
 
 ### Frontend Implementation (UX)
 
@@ -273,7 +273,7 @@
 - [ ] T097 [P] [US10] Create BenchmarkSettings component with settings gear (⚙️) popup in `frontend/src/components/performance/BenchmarkSettings.tsx`
 - [ ] T098 [US10] Implement multi-select for benchmark comparison in `frontend/src/components/performance/BenchmarkSettings.tsx`
 - [ ] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/hooks/useBenchmarkPreferences.ts`
-- [ ] T100 [US10] Enforce max 10 selected benchmarks in BenchmarkSettings (block >10) in `frontend/src/components/performance/BenchmarkSettings.tsx`
+- [X] T100 [US10] Enforce max 10 selected benchmarks in BenchmarkSettings (block >10) in `frontend/src/components/performance/BenchmarkSettings.tsx`
 - [ ] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx`
 - [ ] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/components/charts/PerformanceBarChart.tsx`
 - [ ] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx`
@@ -291,9 +291,9 @@
 
 ### Frontend Implementation
 
-- [ ] T105 [US11] Ensure query keys include `portfolioId` so performance state resets on portfolio changes in `frontend/src/hooks/useHistoricalPerformance.ts`
-- [ ] T106 [US11] Clear derived UI state on portfolio changes (show loading/empty, not stale value) in `frontend/src/pages/Performance.tsx`
-- [ ] T107 [US11] Ensure new empty portfolio shows "-" or loading for XIRR (not previous portfolio values) in `frontend/src/pages/Performance.tsx`
+- [X] T105 [US11] Ensure query keys include `portfolioId` so performance state resets on portfolio changes in `frontend/src/hooks/useHistoricalPerformance.ts`
+- [X] T106 [US11] Clear derived UI state on portfolio changes (show loading/empty, not stale value) in `frontend/src/pages/Performance.tsx`
+- [X] T107 [US11] Ensure new empty portfolio shows "-" or loading for XIRR (not previous portfolio values) in `frontend/src/pages/Performance.tsx`
 - [ ] T108 [US11] Add frontend test for performance state reset on portfolio change in `frontend/` (Jest/RTL)
 
 **Checkpoint**: US11 complete - portfolio switching clears stale XIRR data within 100ms
