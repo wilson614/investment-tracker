@@ -5,6 +5,9 @@ import { authApi, portfolioApi } from '../../services/api';
 import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp, User, ChevronDown, Lock, Mail, Save, BarChart3 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+// App version - update this when releasing new versions
+const APP_VERSION = 'v1.0.0';
+
 interface NavLinkProps {
   to: string;
   children: React.ReactNode;
@@ -302,6 +305,10 @@ export function Navigation() {
                     <LogOut className="w-4 h-4" />
                     登出
                   </button>
+                  <div className="border-t border-[var(--border-color)] my-1" />
+                  <div className="px-4 py-2 text-xs text-[var(--text-muted)] text-center">
+                    {APP_VERSION}
+                  </div>
                 </div>
               )}
             </div>
@@ -386,6 +393,9 @@ export function Navigation() {
                 <LogOut className="w-5 h-5" />
                 登出
               </button>
+              <div className="mt-3 pt-3 border-t border-[var(--border-color)] text-xs text-[var(--text-muted)] text-center">
+                {APP_VERSION}
+              </div>
             </div>
           </div>
         </div>
