@@ -5,7 +5,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
 
 /// <summary>
-/// Use case for updating an existing currency ledger.
+/// 更新外幣帳本（Currency Ledger）的 Use Case。
 /// </summary>
 public class UpdateCurrencyLedgerUseCase
 {

@@ -1,38 +1,38 @@
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Cache for Euronext real-time quotes with stale indicator for API failure handling.
+/// Euronext 報價快取實體，包含過期指示器以處理 API 失敗情況
 /// </summary>
 public class EuronextQuoteCache
 {
-    /// <summary>ISIN identifier (e.g., "IE000FHBZDZ8")</summary>
+    /// <summary>ISIN 識別碼（如 IE000FHBZDZ8）</summary>
     public string Isin { get; private set; } = string.Empty;
 
-    /// <summary>Market Identifier Code (e.g., "XAMS" for Amsterdam)</summary>
+    /// <summary>市場識別碼（如 XAMS 代表阿姆斯特丹）</summary>
     public string Mic { get; private set; } = string.Empty;
 
-    /// <summary>Last fetched price</summary>
+    /// <summary>最新取得的價格</summary>
     public decimal Price { get; private set; }
 
-    /// <summary>Currency of the quote (e.g., "USD", "EUR")</summary>
+    /// <summary>報價幣別（如 USD、EUR）</summary>
     public string Currency { get; private set; } = string.Empty;
 
-    /// <summary>When the quote was fetched from API</summary>
+    /// <summary>從 API 取得報價的時間</summary>
     public DateTime FetchedAt { get; private set; }
 
-    /// <summary>Quote timestamp from the API (market time)</summary>
+    /// <summary>API 回傳的報價時間戳（市場時間）</summary>
     public DateTime? MarketTime { get; private set; }
 
-    /// <summary>True if the last fetch failed and data is stale</summary>
+    /// <summary>若最後一次取得失敗且資料已過期則為 true</summary>
     public bool IsStale { get; private set; }
 
-    /// <summary>Change percentage from previous close (e.g., "+1.25%")</summary>
+    /// <summary>相較前一收盤的變動百分比（如 +1.25%）</summary>
     public string? ChangePercent { get; private set; }
 
-    /// <summary>Absolute price change from previous close</summary>
+    /// <summary>相較前一收盤的價格變動</summary>
     public decimal? Change { get; private set; }
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private EuronextQuoteCache() { }
 
     public EuronextQuoteCache(

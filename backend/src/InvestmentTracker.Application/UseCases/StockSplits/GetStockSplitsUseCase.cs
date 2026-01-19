@@ -5,7 +5,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.StockSplits;
 
 /// <summary>
-/// Use case for retrieving stock split records.
+/// 查詢拆股（Stock Split）資料的 Use Case。
 /// </summary>
 public class GetStockSplitsUseCase
 {

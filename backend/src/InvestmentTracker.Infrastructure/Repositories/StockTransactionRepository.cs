@@ -5,16 +5,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for StockTransaction entity.
+/// StockTransaction entity 的 Repository 實作。
 /// </summary>
-public class StockTransactionRepository : IStockTransactionRepository
+public class StockTransactionRepository(Persistence.AppDbContext context) : IStockTransactionRepository
 {
-    private readonly Persistence.AppDbContext _context;
-
-    public StockTransactionRepository(Persistence.AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly Persistence.AppDbContext _context = context;
 
     public async Task<StockTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

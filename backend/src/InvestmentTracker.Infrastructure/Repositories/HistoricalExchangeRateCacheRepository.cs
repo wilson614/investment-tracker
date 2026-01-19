@@ -6,17 +6,12 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for HistoricalExchangeRateCache.
-/// This is a global cache shared across all users.
+/// HistoricalExchangeRateCache 的 Repository 實作。
+/// 這是一個跨使用者共用的全域快取。
 /// </summary>
-public class HistoricalExchangeRateCacheRepository : IHistoricalExchangeRateCacheRepository
+public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHistoricalExchangeRateCacheRepository
 {
-    private readonly AppDbContext _context;
-
-    public HistoricalExchangeRateCacheRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<HistoricalExchangeRateCache?> GetAsync(
         string currencyPair,
@@ -25,7 +20,7 @@ public class HistoricalExchangeRateCacheRepository : IHistoricalExchangeRateCach
     {
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
         var dateOnly = requestedDate.Date;
-        
+
         return await _context.HistoricalExchangeRateCaches
             .FirstOrDefaultAsync(
                 d => d.CurrencyPair == normalizedPair && d.RequestedDate == dateOnly,
@@ -47,7 +42,7 @@ public class HistoricalExchangeRateCacheRepository : IHistoricalExchangeRateCach
         CancellationToken cancellationToken = default)
     {
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
-        
+
         return await _context.HistoricalExchangeRateCaches
             .Where(d => d.CurrencyPair == normalizedPair)
             .OrderByDescending(d => d.RequestedDate)
@@ -58,7 +53,7 @@ public class HistoricalExchangeRateCacheRepository : IHistoricalExchangeRateCach
         HistoricalExchangeRateCache data,
         CancellationToken cancellationToken = default)
     {
-        // Check if entry already exists (cache is immutable)
+        // 確認是否已存在（快取為 immutable，不允許覆寫）
         var exists = await ExistsAsync(data.CurrencyPair, data.RequestedDate, cancellationToken);
         if (exists)
         {
@@ -79,7 +74,7 @@ public class HistoricalExchangeRateCacheRepository : IHistoricalExchangeRateCach
     {
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
         var dateOnly = requestedDate.Date;
-        
+
         return await _context.HistoricalExchangeRateCaches
             .AnyAsync(
                 d => d.CurrencyPair == normalizedPair && d.RequestedDate == dateOnly,

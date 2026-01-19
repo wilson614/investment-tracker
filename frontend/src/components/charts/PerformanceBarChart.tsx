@@ -1,3 +1,12 @@
+/**
+ * PerformanceBarChart
+ *
+ * 簡易橫條圖（雙向）：用來呈現正/負報酬的比較（例如年度績效、benchmark 報酬）。
+ *
+ * 特色：
+ * - 會以資料中絕對值最大者做 normalization，避免除以 0。
+ * - 正值向右、負值向左，並在中間畫基準線。
+ */
 import { useMemo } from 'react';
 
 interface PerformanceData {
@@ -7,10 +16,15 @@ interface PerformanceData {
 }
 
 interface PerformanceBarChartProps {
+  /** 圖表資料（value 可為負值） */
   data: PerformanceData[];
+  /** 可選標題 */
   title?: string;
+  /** 最小高度（px） */
   height?: number;
+  /** 是否顯示右側數值 */
   showValues?: boolean;
+  /** 額外 className */
   className?: string;
 }
 
@@ -23,8 +37,9 @@ export function PerformanceBarChart({
 }: PerformanceBarChartProps) {
   const { normalizedData } = useMemo(() => {
     const values = data.map(d => d.value);
+    // 以絕對值最大者作為基準，避免除以 0（至少 0.01）。
     const max = Math.max(...values.map(Math.abs), 0.01); // Avoid division by zero
-    
+
     return {
       normalizedData: data.map(d => ({
         ...d,

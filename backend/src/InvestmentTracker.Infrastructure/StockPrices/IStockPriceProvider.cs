@@ -4,17 +4,17 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
-/// Interface for stock price providers
+/// 股價提供者（Stock Price Provider）介面。
 /// </summary>
 public interface IStockPriceProvider
 {
     /// <summary>
-    /// Get real-time stock quote
+    /// 取得即時報價。
     /// </summary>
     Task<StockQuoteResponse?> GetQuoteAsync(StockMarket market, string symbol, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Check if this provider supports the given market
+    /// 判斷是否支援指定市場。
     /// </summary>
     bool SupportsMarket(StockMarket market);
 }

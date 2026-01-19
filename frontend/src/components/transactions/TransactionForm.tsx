@@ -1,19 +1,35 @@
+/**
+ * TransactionForm
+ *
+ * 股票交易新增/編輯表單：支援買入/賣出/分割/調整，並可選擇資金來源（例如外幣帳本）。
+ *
+ * 重要行為：
+ * - 台股會自動將匯率補為 1（若使用者未填）。
+ * - 若資金來源為 CurrencyLedger 且不是台股，則匯率欄位可省略，交由 backend 依帳本推導。
+ * - ForeignCurrency portfolio 也不使用匯率欄位。
+ */
 import { useState, useEffect } from 'react';
 import { currencyLedgerApi } from '../../services/api';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary } from '../../types';
 import { FundSource as FundSourceEnum } from '../../types';
 
-// Detect if ticker is Taiwan stock (pure digits or digits ending with letters)
+/**
+ * 判斷是否為台股 ticker（純數字或數字+英文字尾）。
+ */
 const isTaiwanStock = (ticker: string): boolean => {
   return /^\d+[A-Za-z]*$/.test(ticker.trim());
 };
 
 interface TransactionFormProps {
+  /** 目標 portfolio ID */
   portfolioId: string;
+  /** 編輯模式的初始資料 */
   initialData?: StockTransaction;
+  /** 送出表單 callback */
   onSubmit: (data: CreateStockTransactionRequest) => Promise<void>;
+  /** 取消 callback */
   onCancel?: () => void;
-  /** When true, hides exchange rate field (ForeignCurrency portfolios use source currency only) */
+  /** 當為 true 時，隱藏匯率欄位（ForeignCurrency portfolios 使用 source currency） */
   isForeignCurrencyPortfolio?: boolean;
 }
 
@@ -36,7 +52,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     notes: initialData?.notes ?? '',
   });
 
-  // Load currency ledgers for fund source selection
+  // 載入外幣帳本清單，供資金來源選擇（CurrencyLedger）。
   useEffect(() => {
     const loadLedgers = async () => {
       try {
@@ -65,6 +81,11 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   // Derived state: is using currency ledger for non-TW stock?
   const useCurrencyLedger = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
 
+  /**
+   * 表單欄位更新。
+   *
+   * 特殊規則：當使用者輸入台股 ticker 且匯率尚未填寫時，會自動補上 `1`。
+   */
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -86,6 +107,9 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     }
   };
 
+  /**
+   * 資金來源變更：若切換到 CurrencyLedger，預設選第一個 ledger；切換離開則清空 ledgerId。
+   */
   const handleFundSourceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = Number(e.target.value) as FundSource;
     setFormData((prev) => ({
@@ -98,7 +122,9 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     }));
   };
 
-  // Calculate required amount for display
+  /**
+   * 計算顯示用的「預估交易金額」：shares * price + fees。
+   */
   const calculateRequiredAmount = () => {
     const shares = parseFloat(formData.shares) || 0;
     const price = parseFloat(formData.pricePerShare) || 0;
@@ -106,6 +132,10 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     return (shares * price) + fees;
   };
 
+  /**
+   * 表單送出：整理欄位、決定是否省略 exchangeRate，然後呼叫外部 `onSubmit`。
+   * @param e React 表單事件
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);

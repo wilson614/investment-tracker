@@ -11,46 +11,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供市場資料（CAPE、YTD 指標、歷史價格/匯率、基準報酬等）相關 API。
+/// </summary>
 [ApiController]
 [Route("api/market-data")]
 [Authorize]
-public class MarketDataController : ControllerBase
+public class MarketDataController(
+    ICapeDataService capeDataService,
+    IMarketYtdService marketYtdService,
+    EuronextQuoteService euronextQuoteService,
+    IStooqHistoricalPriceService stooqService,
+    ITwseStockHistoricalPriceService twseService,
+    IHistoricalYearEndDataService historicalYearEndDataService,
+    ITransactionDateExchangeRateService txDateFxService,
+    AppDbContext dbContext,
+    ILogger<MarketDataController> logger) : ControllerBase
 {
-    private readonly ICapeDataService _capeDataService;
-    private readonly IMarketYtdService _marketYtdService;
-    private readonly EuronextQuoteService _euronextQuoteService;
-    private readonly IStooqHistoricalPriceService _stooqService;
-    private readonly ITwseStockHistoricalPriceService _twseService;
-    private readonly IHistoricalYearEndDataService _historicalYearEndDataService;
-    private readonly ITransactionDateExchangeRateService _txDateFxService;
-    private readonly AppDbContext _dbContext;
-    private readonly ILogger<MarketDataController> _logger;
-
-    public MarketDataController(
-        ICapeDataService capeDataService,
-        IMarketYtdService marketYtdService,
-        EuronextQuoteService euronextQuoteService,
-        IStooqHistoricalPriceService stooqService,
-        ITwseStockHistoricalPriceService twseService,
-        IHistoricalYearEndDataService historicalYearEndDataService,
-        ITransactionDateExchangeRateService txDateFxService,
-        AppDbContext dbContext,
-        ILogger<MarketDataController> logger)
-    {
-        _capeDataService = capeDataService;
-        _marketYtdService = marketYtdService;
-        _euronextQuoteService = euronextQuoteService;
-        _stooqService = stooqService;
-        _twseService = twseService;
-        _historicalYearEndDataService = historicalYearEndDataService;
-        _txDateFxService = txDateFxService;
-        _dbContext = dbContext;
-        _logger = logger;
-    }
+    private readonly ICapeDataService _capeDataService = capeDataService;
+    private readonly IMarketYtdService _marketYtdService = marketYtdService;
+    private readonly EuronextQuoteService _euronextQuoteService = euronextQuoteService;
+    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
+    private readonly ITwseStockHistoricalPriceService _twseService = twseService;
+    private readonly IHistoricalYearEndDataService _historicalYearEndDataService = historicalYearEndDataService;
+    private readonly ITransactionDateExchangeRateService _txDateFxService = txDateFxService;
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ILogger<MarketDataController> _logger = logger;
 
     /// <summary>
-    /// Get CAPE (Cyclically Adjusted P/E) data from Research Affiliates
-    /// Data is cached for 24 hours
+    /// 取得 Research Affiliates 提供的 CAPE（Cyclically Adjusted P/E）資料。
+    /// 資料會快取 24 小時。
     /// </summary>
     [HttpGet("cape")]
     [ProducesResponseType(typeof(CapeDataResponse), StatusCodes.Status200OK)]
@@ -68,7 +58,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Force refresh CAPE data (clears cache)
+    /// 強制更新 CAPE 資料（清除快取並重新抓取）。
     /// </summary>
     [HttpPost("cape/refresh")]
     [ProducesResponseType(typeof(CapeDataResponse), StatusCodes.Status200OK)]
@@ -86,7 +76,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get all stored index price snapshots for CAPE adjustment
+    /// 取得用於 CAPE 調整的所有指數價格快照（IndexPriceSnapshot）。
     /// </summary>
     [HttpGet("index-prices")]
     [ProducesResponseType(typeof(List<IndexPriceSnapshot>), StatusCodes.Status200OK)]
@@ -101,7 +91,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Add or update an index price snapshot for CAPE adjustment
+    /// 新增或更新用於 CAPE 調整的指數價格快照。
     /// </summary>
     [HttpPost("index-prices")]
     [ProducesResponseType(typeof(IndexPriceSnapshot), StatusCodes.Status200OK)]
@@ -109,13 +99,13 @@ public class MarketDataController : ControllerBase
         [FromBody] IndexPriceRequest request,
         CancellationToken cancellationToken)
     {
-        // Validate market key
+        // 驗證 market key
         if (!IndexPriceService.SupportedMarkets.Contains(request.MarketKey))
         {
             return BadRequest($"Unsupported market: {request.MarketKey}. Supported markets: {string.Join(", ", IndexPriceService.SupportedMarkets)}");
         }
 
-        // Validate year-month format
+        // 驗證 year-month 格式
         if (request.YearMonth.Length != 6 || !int.TryParse(request.YearMonth, out _))
         {
             return BadRequest("YearMonth must be in YYYYMM format (e.g., 202512)");
@@ -133,7 +123,7 @@ public class MarketDataController : ControllerBase
         }
         else
         {
-            existing = new IndexPriceSnapshot
+            existing = new()
             {
                 MarketKey = request.MarketKey,
                 YearMonth = request.YearMonth,
@@ -148,7 +138,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get supported markets for CAPE adjustment
+    /// 取得 CAPE 調整支援的市場清單。
     /// </summary>
     [HttpGet("supported-markets")]
     [ProducesResponseType(typeof(IEnumerable<string>), StatusCodes.Status200OK)]
@@ -158,8 +148,8 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get YTD (Year-to-Date) returns for benchmark ETFs
-    /// Benchmarks: VWRA (All Country), VUAA (US Large), 0050 (Taiwan), VFEM (Emerging Markets)
+    /// 取得基準 ETF 的 YTD（Year-to-Date）報酬比較。
+    /// 基準包含：VWRA（All Country）、VUAA（US Large）、0050（Taiwan）、VFEM（Emerging Markets）。
     /// </summary>
     [HttpGet("ytd-comparison")]
     [ProducesResponseType(typeof(MarketYtdComparisonDto), StatusCodes.Status200OK)]
@@ -170,7 +160,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Force refresh YTD comparison data
+    /// 強制更新 YTD 比較資料。
     /// </summary>
     [HttpPost("ytd-comparison/refresh")]
     [ProducesResponseType(typeof(MarketYtdComparisonDto), StatusCodes.Status200OK)]
@@ -181,7 +171,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get supported benchmarks for YTD comparison
+    /// 取得 YTD 比較支援的基準清單。
     /// </summary>
     [HttpGet("ytd-benchmarks")]
     [ProducesResponseType(typeof(IEnumerable<object>), StatusCodes.Status200OK)]
@@ -197,12 +187,12 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get quote for a Euronext-listed stock (e.g., AGAC on Amsterdam)
+    /// 取得 Euronext 上市股票的報價（例如：阿姆斯特丹市場的 AGAC）。
     /// </summary>
-    /// <param name="isin">ISIN code (e.g., IE000FHBZDZ8)</param>
-    /// <param name="mic">Market Identifier Code (e.g., XAMS for Amsterdam)</param>
-    /// <param name="homeCurrency">Target currency for exchange rate (default: TWD)</param>
-    /// <param name="refresh">Force refresh (bypass cache)</param>
+    /// <param name="isin">ISIN code（例如：IE000FHBZDZ8）</param>
+    /// <param name="mic">Market Identifier Code（例如：阿姆斯特丹為 XAMS）</param>
+    /// <param name="homeCurrency">匯率換算目標幣別（預設：TWD）</param>
+    /// <param name="refresh">是否強制更新（略過快取）</param>
     [HttpGet("euronext/quote")]
     [ProducesResponseType(typeof(EuronextQuoteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -242,11 +232,11 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get historical closing price for a stock on a specific date.
-    /// Uses Stooq API for US/UK stocks.
+    /// 取得指定日期的單一股票歷史收盤價。
+    /// US/UK 股票使用 Stooq API。
     /// </summary>
-    /// <param name="ticker">Stock ticker (e.g., AAPL, VWRA)</param>
-    /// <param name="date">Target date (format: yyyy-MM-dd)</param>
+    /// <param name="ticker">股票代號（例如：AAPL、VWRA）</param>
+    /// <param name="date">目標日期（格式：yyyy-MM-dd）</param>
     [HttpGet("historical-price")]
     [ProducesResponseType(typeof(HistoricalPriceResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -267,8 +257,8 @@ public class MarketDataController : ControllerBase
 
         var normalizedTicker = ticker.Trim().ToUpperInvariant();
 
-        // For completed years, Dec 31 lookups are used as year-end prices.
-        // Cache them globally (shared across all users) to reduce repeated Stooq calls.
+        // 對於已結束的年度，使用 12/31 作為年終價格查詢日期。
+        // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫 Stooq。
         if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
         {
             var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
@@ -304,8 +294,8 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get historical closing prices for multiple stocks on a specific date.
-    /// Uses Stooq API for US/UK stocks.
+    /// 取得指定日期的多檔股票歷史收盤價。
+    /// US/UK 股票使用 Stooq API。
     /// </summary>
     [HttpPost("historical-prices")]
     [ProducesResponseType(typeof(Dictionary<string, HistoricalPriceResponse>), StatusCodes.Status200OK)]
@@ -323,14 +313,14 @@ public class MarketDataController : ControllerBase
             return BadRequest("Date must be in yyyy-MM-dd format");
         }
 
-        var results = new Dictionary<string, HistoricalPriceResponse>();
+        Dictionary<string, HistoricalPriceResponse> results = [];
 
         var isCompletedYearEndLookup =
             targetDate.Month == 12 &&
             targetDate.Day == 31 &&
             targetDate.Year < DateTime.UtcNow.Year;
 
-        // Fetch prices in parallel
+        // 平行抓取價格
         var tasks = request.Tickers.Select(async (string ticker) =>
         {
             var normalizedTicker = ticker.Trim().ToUpperInvariant();
@@ -381,12 +371,12 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get historical exchange rate for a currency pair on a specific date.
-    /// Uses Stooq forex data.
+    /// 取得指定日期的歷史匯率（幣別對）。
+    /// 使用 Stooq 的 forex 資料。
     /// </summary>
-    /// <param name="from">Source currency (e.g., USD)</param>
-    /// <param name="to">Target currency (e.g., TWD)</param>
-    /// <param name="date">Target date (format: yyyy-MM-dd)</param>
+    /// <param name="from">來源幣別（例如：USD）</param>
+    /// <param name="to">目標幣別（例如：TWD）</param>
+    /// <param name="date">目標日期（格式：yyyy-MM-dd）</param>
     [HttpGet("historical-exchange-rate")]
     [ProducesResponseType(typeof(HistoricalExchangeRateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -409,8 +399,8 @@ public class MarketDataController : ControllerBase
         var normalizedFrom = from.Trim().ToUpperInvariant();
         var normalizedTo = to.Trim().ToUpperInvariant();
 
-        // For completed years, Dec 31 lookups are used as year-end rates.
-        // Cache them globally (shared across all users) to reduce repeated Stooq calls.
+        // 對於已結束的年度，使用 12/31 作為年終匯率查詢日期。
+        // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫 Stooq。
         if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
         {
             var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
@@ -450,10 +440,10 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get annual benchmark returns for a specific year.
-    /// Uses cached IndexPriceSnapshot data. Auto-fetches from Stooq if missing.
+    /// 取得指定年度的基準報酬（Benchmark Returns）。
+    /// 會使用已快取的 IndexPriceSnapshot 資料；若缺少則會嘗試自動抓取（Stooq/TWSE）。
     /// </summary>
-    /// <param name="year">Year to calculate returns for (e.g., 2025)</param>
+    /// <param name="year">要計算報酬的年份（例如：2025）</param>
     [HttpGet("benchmark-returns")]
     [ProducesResponseType(typeof(BenchmarkReturnsResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<BenchmarkReturnsResponse>> GetBenchmarkReturns(
@@ -465,12 +455,12 @@ public class MarketDataController : ControllerBase
             return BadRequest("Invalid year");
         }
 
-        var startYearMonth = $"{year - 1}12";  // Prior year December
-        var endYearMonth = $"{year}12";        // Current year December
+        var startYearMonth = $"{year - 1}12";  // 前一年 12 月
+        var endYearMonth = $"{year}12";        // 當年 12 月
         var benchmarks = MarketYtdService.SupportedBenchmarks;
 
-        // Get all cached index prices for both year-months
-        // Filter out NotAvailable entries
+        // 取得兩個 year-month 的所有快取指數價格
+        // 排除 NotAvailable 的項目
         var snapshots = await _dbContext.IndexPriceSnapshots
             .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && !s.IsNotAvailable && s.Price.HasValue)
             .ToListAsync(cancellationToken);
@@ -485,17 +475,17 @@ public class MarketDataController : ControllerBase
             .GroupBy(s => s.MarketKey)
             .ToDictionary(g => g.Key, g => g.First().Price!.Value);
 
-        // Check for NotAvailable markers to skip fetching
+        // 取得 NotAvailable 標記，用於略過抓取
         var notAvailableMarkers = await _dbContext.IndexPriceSnapshots
             .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && s.IsNotAvailable)
             .Select(s => new { s.MarketKey, s.YearMonth })
             .ToListAsync(cancellationToken);
-        
+
         var notAvailableStart = notAvailableMarkers.Where(m => m.YearMonth == startYearMonth).Select(m => m.MarketKey).ToHashSet();
         var notAvailableEnd = notAvailableMarkers.Where(m => m.YearMonth == endYearMonth).Select(m => m.MarketKey).ToHashSet();
 
-        // Lazy-load missing prices from external APIs
-        // Also skip markets that already have NotAvailable markers
+        // 延遲載入缺少的價格（外部 API）
+        // 同時略過已存在 NotAvailable 標記的市場
         var missingStartMarkets = benchmarks.Keys
             .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k))
             .ToList();
@@ -503,7 +493,7 @@ public class MarketDataController : ControllerBase
             .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k))
             .ToList();
 
-        // Fetch missing start year prices (prior year December)
+        // 抓取缺少的起始年價格（前一年 12 月）
         if (missingStartMarkets.Count > 0)
         {
             _logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
@@ -511,7 +501,7 @@ public class MarketDataController : ControllerBase
             await FetchAndCacheBenchmarkPricesAsync(missingStartMarkets, year - 1, startPrices, cancellationToken);
         }
 
-        // Fetch missing end year prices (current year December) - only for completed years
+        // 抓取缺少的結束年價格（當年 12 月）——僅針對已結束的年度
         if (missingEndMarkets.Count > 0 && year < DateTime.UtcNow.Year)
         {
             _logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
@@ -519,13 +509,13 @@ public class MarketDataController : ControllerBase
             await FetchAndCacheBenchmarkPricesAsync(missingEndMarkets, year, endPrices, cancellationToken);
         }
 
-        // Get stock splits for Taiwan 0050 to adjust historical prices
+        // 取得台灣 0050 的股票分割資料，用於調整歷史價格
         var taiwanSplits = await _dbContext.StockSplits
             .Where(s => s.Symbol == "0050" && s.Market == StockMarket.TW)
             .OrderBy(s => s.SplitDate)
             .ToListAsync(cancellationToken);
 
-        var returns = new Dictionary<string, decimal?>();
+        Dictionary<string, decimal?> returns = [];
 
         foreach (var (marketKey, _) in benchmarks)
         {
@@ -533,11 +523,10 @@ public class MarketDataController : ControllerBase
                 endPrices.TryGetValue(marketKey, out var endPrice) &&
                 startPrice > 0)
             {
-                // For Taiwan 0050, adjust start price for stock splits that occurred during the year
+                // 台灣 0050：若年度中發生股票分割，需以分割比例調整起始價格
                 if (marketKey == "Taiwan 0050" && taiwanSplits.Any())
                 {
-                    // Calculate cumulative split ratio for splits that happened after year-1 Dec 31
-                    // and before or on year Dec 31
+                    // 計算 year-1/12/31 之後、year/12/31（含）之前的累積分割比例
                     var startDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
                     var endDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
 
@@ -548,7 +537,7 @@ public class MarketDataController : ControllerBase
                     if (splitsDuringYear.Any())
                     {
                         var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
-                        // Adjust start price to post-split equivalent
+                        // 將起始價格調整到分割後的等值
                         startPrice = startPrice / cumulativeRatio;
                         _logger.LogDebug("Adjusted Taiwan 0050 start price by split ratio {Ratio}: {Original} -> {Adjusted}",
                             cumulativeRatio, startPrices[marketKey], startPrice);
@@ -572,7 +561,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Helper method to fetch and cache missing benchmark prices from Stooq.
+    /// 輔助方法：向 Stooq/TWSE 抓取缺少的基準價格並寫入快取。
     /// </summary>
     private async Task FetchAndCacheBenchmarkPricesAsync(
         List<string> marketKeys,
@@ -586,20 +575,20 @@ public class MarketDataController : ControllerBase
         {
             try
             {
-                // Check if record already exists (race condition protection)
+                // 檢查資料是否已存在（避免競態條件）
                 var exists = await _dbContext.IndexPriceSnapshots
                     .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
 
                 if (exists)
                 {
-                    // Already cached (valid or NotAvailable), skip API call
+                    // 已快取（有效或 NotAvailable），略過 API 呼叫
                     continue;
                 }
 
                 decimal? price;
                 if (marketKey == "Taiwan 0050")
                 {
-                    // Use TWSE API for Taiwan ETF
+                    // 台灣 ETF 使用 TWSE API
                     var twseResult = await _twseService.GetYearEndPriceAsync("0050", year, cancellationToken);
                     price = twseResult?.Price;
                 }
@@ -610,8 +599,8 @@ public class MarketDataController : ControllerBase
 
                 if (price != null)
                 {
-                    // Cache valid price
-                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    // 快取有效價格
+                    _dbContext.IndexPriceSnapshots.Add(new()
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,
@@ -627,8 +616,8 @@ public class MarketDataController : ControllerBase
                 }
                 else
                 {
-                    // Save NotAvailable marker (negative caching)
-                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    // 保存 NotAvailable 標記（負向快取）
+                    _dbContext.IndexPriceSnapshots.Add(new()
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,
@@ -650,8 +639,8 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Manually save a year-end stock price when automatic fetching fails.
-    /// This is for cases where Stooq API doesn't have the data (e.g., Taiwan stocks).
+    /// 當自動抓取失敗時，手動保存年終股票價格。
+    /// 用於 Stooq 沒有資料的情境（例如：台股）。
     /// </summary>
     [HttpPost("year-end-price")]
     [ProducesResponseType(typeof(YearEndPriceResult), StatusCodes.Status200OK)]
@@ -695,7 +684,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Manually save a year-end exchange rate when automatic fetching fails.
+    /// 當自動抓取失敗時，手動保存年終匯率。
     /// </summary>
     [HttpPost("year-end-exchange-rate")]
     [ProducesResponseType(typeof(YearEndExchangeRateResult), StatusCodes.Status200OK)]
@@ -739,8 +728,8 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Get exchange rate for a specific transaction date.
-    /// Uses cache → Stooq → persist pattern for automatic fetching.
+    /// 取得指定交易日期的匯率。
+    /// 自動抓取流程：cache → Stooq → persist。
     /// </summary>
     [HttpGet("transaction-date-exchange-rate")]
     [ProducesResponseType(typeof(TransactionDateExchangeRateResponse), StatusCodes.Status200OK)]
@@ -779,7 +768,7 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Manually save an exchange rate for a specific transaction date when automatic fetching fails.
+    /// 當自動抓取失敗時，手動保存指定交易日期的匯率。
     /// </summary>
     [HttpPost("transaction-date-exchange-rate")]
     [ProducesResponseType(typeof(TransactionDateExchangeRateResponse), StatusCodes.Status200OK)]
@@ -828,10 +817,10 @@ public class MarketDataController : ControllerBase
     }
 
     /// <summary>
-    /// Populate historical benchmark prices for a given year by fetching from Stooq/TWSE.
-    /// This is used to seed IndexPriceSnapshot data for historical year returns calculation.
+    /// 依指定年份抓取 Stooq/TWSE 資料，批次填入歷史基準價格。
+    /// 用於預先建立 IndexPriceSnapshot，以便後續計算年度報酬。
     /// </summary>
-    /// <param name="year">Year to populate (e.g., 2024 will populate 202412 data)</param>
+    /// <param name="year">要填入的年份（例如：2024 會填入 202412 資料）</param>
     [HttpPost("populate-benchmark-prices")]
     [ProducesResponseType(typeof(PopulateBenchmarkPricesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -844,15 +833,15 @@ public class MarketDataController : ControllerBase
             return BadRequest("Invalid year");
         }
 
-        var yearMonth = $"{year}12"; // December of the requested year
-        var results = new Dictionary<string, PopulateBenchmarkResult>();
+        var yearMonth = $"{year}12"; // 要處理年份的 12 月
+        Dictionary<string, PopulateBenchmarkResult> results = [];
         var benchmarks = MarketYtdService.SupportedBenchmarks;
 
-        foreach (var (marketKey, benchmarkInfo) in benchmarks)
+        foreach (var (marketKey, _) in benchmarks)
         {
             try
             {
-                // Check if already exists in database
+                // 檢查 DB 是否已存在
                 var existing = await _dbContext.IndexPriceSnapshots
                     .FirstOrDefaultAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
 
@@ -868,25 +857,25 @@ public class MarketDataController : ControllerBase
                 decimal? price = null;
                 string source = "Stooq";
 
-                // Fetch from appropriate source based on market
+                // 依市場選擇抓取來源
                 if (marketKey == "Taiwan 0050")
                 {
-                    // Use TWSE API for Taiwan ETF
+                    // 台灣 ETF 使用 TWSE API
                     var twseResult = await _twseService.GetYearEndPriceAsync("0050", year, cancellationToken);
                     price = twseResult?.Price;
                     source = "TWSE";
                 }
                 else
                 {
-                    // Use Stooq for UK-listed ETFs
+                    // 使用 Stooq 取得月末價格
                     price = await _stooqService.GetMonthEndPriceAsync(
                         marketKey, year, 12, cancellationToken);
                 }
 
                 if (price != null)
                 {
-                    // Save to database
-                    _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                    // 寫入 DB
+                    _dbContext.IndexPriceSnapshots.Add(new()
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,
@@ -928,7 +917,7 @@ public class MarketDataController : ControllerBase
 }
 
 /// <summary>
-/// Response for populate benchmark prices operation.
+/// 批次填入歷史基準價格的回應。
 /// </summary>
 public record PopulateBenchmarkPricesResponse(
     int Year,
@@ -938,12 +927,12 @@ public record PopulateBenchmarkPricesResponse(
     int FailCount);
 
 /// <summary>
-/// Result for individual benchmark price population.
+/// 單一基準價格填入結果。
 /// </summary>
 public record PopulateBenchmarkResult(decimal? Price, string Message, bool Success);
 
 /// <summary>
-/// Response for annual benchmark returns.
+/// 年度基準報酬查詢回應。
 /// </summary>
 public record BenchmarkReturnsResponse(
     int Year,
@@ -954,22 +943,22 @@ public record BenchmarkReturnsResponse(
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
 
 /// <summary>
-/// Request for fetching historical prices for multiple stocks.
+/// 多檔股票歷史價格查詢請求。
 /// </summary>
 public record HistoricalPricesRequest(string[] Tickers, string Date);
 
 /// <summary>
-/// Response for historical price lookup.
+/// 歷史價格查詢回應。
 /// </summary>
 public record HistoricalPriceResponse(decimal Price, string Currency, string ActualDate);
 
 /// <summary>
-/// Request for fetching Euronext quote.
+/// Euronext 報價查詢請求。
 /// </summary>
 public record EuronextQuoteRequest(string Isin, string Mic, string? HomeCurrency);
 
 /// <summary>
-/// Response for Euronext quote.
+/// Euronext 報價查詢回應。
 /// </summary>
 public record EuronextQuoteResponse(
     decimal Price,
@@ -982,12 +971,12 @@ public record EuronextQuoteResponse(
     decimal? Change = null);
 
 /// <summary>
-/// Response for historical exchange rate lookup.
+/// 歷史匯率查詢回應。
 /// </summary>
 public record HistoricalExchangeRateResponse(decimal Rate, string FromCurrency, string ToCurrency, string ActualDate);
 
 /// <summary>
-/// Request for manually saving a year-end stock price.
+/// 手動保存年終股票價格的請求。
 /// </summary>
 public record ManualYearEndPriceRequest(
     string Ticker,
@@ -997,7 +986,7 @@ public record ManualYearEndPriceRequest(
     DateTime? ActualDate = null);
 
 /// <summary>
-/// Request for manually saving a year-end exchange rate.
+/// 手動保存年終匯率的請求。
 /// </summary>
 public record ManualYearEndExchangeRateRequest(
     string FromCurrency,
@@ -1007,7 +996,7 @@ public record ManualYearEndExchangeRateRequest(
     DateTime? ActualDate = null);
 
 /// <summary>
-/// Request for manually saving a transaction-date exchange rate.
+/// 手動保存交易日期匯率的請求。
 /// </summary>
 public record ManualTransactionDateExchangeRateRequest(
     string FromCurrency,
@@ -1016,7 +1005,7 @@ public record ManualTransactionDateExchangeRateRequest(
     decimal Rate);
 
 /// <summary>
-/// Response for transaction-date exchange rate.
+/// 交易日期匯率查詢回應。
 /// </summary>
 public record TransactionDateExchangeRateResponse(
     decimal Rate,

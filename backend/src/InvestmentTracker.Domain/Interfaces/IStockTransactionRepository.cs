@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Entities;
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Repository interface for StockTransaction entity.
+/// StockTransaction Entity 的 Repository 介面。
 /// </summary>
 public interface IStockTransactionRepository
 {

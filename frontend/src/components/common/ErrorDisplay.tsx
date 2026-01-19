@@ -1,7 +1,16 @@
+/**
+ * ErrorDisplay
+ *
+ * 共用錯誤顯示元件：可做 full page 或 inline card 顯示，並可選擇提供重試按鈕。
+ */
 interface ErrorDisplayProps {
+  /** 標題（預設：發生錯誤） */
   title?: string;
+  /** 錯誤訊息 */
   message: string;
+  /** 重試 callback（若提供則顯示按鈕） */
   onRetry?: () => void;
+  /** 是否以較大的 full page 版型顯示 */
   fullPage?: boolean;
 }
 
@@ -56,8 +65,15 @@ export function ErrorDisplay({
   );
 }
 
+/**
+ * InlineError
+ *
+ * 較輕量的行內錯誤提示，可選擇提供關閉按鈕。
+ */
 interface InlineErrorProps {
+  /** 錯誤訊息 */
   message: string;
+  /** 關閉 callback（若提供則顯示關閉按鈕） */
   onDismiss?: () => void;
 }
 

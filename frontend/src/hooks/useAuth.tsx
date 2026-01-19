@@ -25,11 +25,26 @@ const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const USER_KEY = 'user';
 
+/**
+ * 依據前綴移除 localStorage 中的快取項目
+ * @param prefixes 要移除的 key 前綴陣列
+ */
+const removeLocalStorageByPrefixes = (prefixes: string[]) => {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && prefixes.some(prefix => key.startsWith(prefix))) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach(key => localStorage.removeItem(key));
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user from localStorage on mount
+  // 掛載時從 localStorage 載入使用者資料
   useEffect(() => {
     const storedUser = localStorage.getItem(USER_KEY);
     const token = localStorage.getItem(TOKEN_KEY);
@@ -45,51 +60,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAuthData = () => {
-    // Clear auth tokens
+    // 清除驗證 token
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
 
-    // Clear all user-specific cached data
-    // This prevents data leakage between accounts
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('quote_cache_')) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
+    // 清除所有使用者相關的快取資料，防止帳號間資料洩漏
+    // - quote_cache_: 報價快取
+    // - perf_cache_: 績效快取
+    // - xirr_cache_: XIRR 快取
+    // - rate_cache_: 匯率快取
+    removeLocalStorageByPrefixes([
+      'quote_cache_',
+      'perf_cache_',
+      'xirr_cache_',
+      'rate_cache_',
+    ]);
 
-    // Clear portfolio-specific cached data (prevents cross-account leakage)
-    const portfolioKeysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('perf_cache_') || key.startsWith('xirr_cache_'))) {
-        portfolioKeysToRemove.push(key);
-      }
-    }
-    portfolioKeysToRemove.forEach(key => localStorage.removeItem(key));
-
-    // Clear exchange rate caches (safe to refresh on new login)
-    const rateKeysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('rate_cache_')) {
-        rateKeysToRemove.push(key);
-      }
-    }
-    rateKeysToRemove.forEach(key => localStorage.removeItem(key));
-
-    // Clear market data caches (user-independent but should refresh on new login)
+    // 清除市場資料快取（登入時應重新取得）
     localStorage.removeItem('ytd_data_cache');
     localStorage.removeItem('cape_data_cache');
 
-    // Remove legacy navigation cache (do not persist across accounts)
+    // 移除導覽快取（不應跨帳號保留）
     localStorage.removeItem('default_portfolio_id');
 
-    // Keep user preferences (ytd_benchmark_preferences, cape_region_preferences)
-    // These are UI preferences and can persist across accounts
+    // 保留使用者偏好設定（ytd_benchmark_preferences, cape_region_preferences）
+    // 這些是 UI 偏好，可以跨帳號保留
 
     setUser(null);
   };
@@ -117,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await authApi.logout(refreshToken);
       } catch {
-        // Ignore logout errors
+        // 忽略登出錯誤
       }
     }
     clearAuthData();

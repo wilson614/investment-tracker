@@ -1,3 +1,12 @@
+/**
+ * Navigation
+ *
+ * 全站導覽列：提供桌面版側欄與手機版抽屜選單，並包含使用者下拉選單（個人資料/改密碼/登出/版本號）。
+ *
+ * 補充：
+ * - `APP_VERSION` 需在發版時同步更新。
+ * - 內建 Profile/Password 的 modal 表單狀態管理，並透過 `authApi` 更新後同步寫回 `useAuth().setUser`。
+ */
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -9,12 +18,19 @@ import type { LucideIcon } from 'lucide-react';
 const APP_VERSION = 'v1.0.0';
 
 interface NavLinkProps {
+  /** 目標路由 */
   to: string;
+  /** 連結文字 */
   children: React.ReactNode;
+  /** 可選 icon */
   icon?: LucideIcon;
+  /** click handler（常用於關閉 mobile menu） */
   onClick?: () => void;
 }
 
+/**
+ * 桌面版導覽連結：依目前 location 判斷 active 狀態。
+ */
 function NavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
   const location = useLocation();
   const isActive = location.pathname === to ||
@@ -36,6 +52,9 @@ function NavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
   );
 }
 
+/**
+ * 手機版導覽連結：搭配抽屜選單使用。
+ */
 function MobileNavLink({ to, children, icon: Icon, onClick }: NavLinkProps) {
   const location = useLocation();
   const isActive = location.pathname === to ||
@@ -83,7 +102,7 @@ export function Navigation() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Click outside to close dropdown
+  // 點擊 dropdown 外部時自動關閉。
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -115,7 +134,7 @@ export function Navigation() {
     }
   }, [showPasswordModal]);
 
-  // Load portfolio ID on mount
+  // 預先載入 portfolioId：點擊「投資組合」時可直接導頁。
   useEffect(() => {
     const loadPortfolioId = async () => {
       try {
@@ -130,6 +149,11 @@ export function Navigation() {
     loadPortfolioId();
   }, []);
 
+  /**
+   * 導覽列「投資組合」點擊處理：確保有 portfolioId 後再導頁。
+   *
+   * 若使用者尚未建立 portfolio，會導回首頁 `/`。
+   */
   const handlePortfolioClick = async (e: React.MouseEvent) => {
     e.preventDefault();
 
@@ -157,26 +181,41 @@ export function Navigation() {
     closeMobileMenu();
   };
 
+  /**
+   * 登出：呼叫 `useAuth().logout` 並關閉所有選單。
+   */
   const handleLogout = async () => {
     await logout();
     setIsMobileMenuOpen(false);
     setIsDropdownOpen(false);
   };
 
+  /**
+   * 關閉手機版抽屜選單。
+   */
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
   };
 
+  /**
+   * 開啟個人資料編輯 modal。
+   */
   const handleOpenProfile = () => {
     setIsDropdownOpen(false);
     setShowProfileModal(true);
   };
 
+  /**
+   * 開啟密碼變更 modal。
+   */
   const handleOpenPassword = () => {
     setIsDropdownOpen(false);
     setShowPasswordModal(true);
   };
 
+  /**
+   * 送出個人資料更新（displayName/email），成功後會短暫顯示成功狀態並自動關閉 modal。
+   */
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError(null);
@@ -202,6 +241,9 @@ export function Navigation() {
     }
   };
 
+  /**
+   * 送出密碼變更：做基本驗證後呼叫 `authApi.changePassword`。
+   */
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);

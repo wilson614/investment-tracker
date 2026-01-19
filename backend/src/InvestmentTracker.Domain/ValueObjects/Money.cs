@@ -1,8 +1,8 @@
 namespace InvestmentTracker.Domain.ValueObjects;
 
 /// <summary>
-/// Represents a monetary value with currency code.
-/// Immutable value object for financial calculations.
+/// 表示一筆帶有幣別代碼的金額。
+/// 這是一個不可變（immutable）的 Value Object，用於金融計算。
 /// </summary>
 public sealed record Money
 {
@@ -22,14 +22,14 @@ public sealed record Money
     }
 
     /// <summary>
-    /// Converts this money to another currency using the specified exchange rate.
+    /// 使用指定匯率將此金額換算成另一種幣別。
     /// </summary>
     public Money ConvertTo(string targetCurrency, decimal rate)
     {
         if (rate <= 0)
             throw new ArgumentException("Exchange rate must be positive", nameof(rate));
 
-        return new Money(Amount * rate, targetCurrency);
+        return new(Amount * rate, targetCurrency);
     }
 
     public static Money Zero(string currencyCode) => new(0m, currencyCode);

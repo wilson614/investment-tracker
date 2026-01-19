@@ -7,7 +7,7 @@ using InvestmentTracker.Domain.Services;
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
 
 /// <summary>
-/// Use case for getting currency ledger summary.
+/// 取得外幣帳本摘要（包含餘額、平均匯率、損益等計算欄位）的 Use Case。
 /// </summary>
 public class GetCurrencyLedgerSummaryUseCase
 {
@@ -63,7 +63,7 @@ public class GetCurrencyLedgerSummaryUseCase
             TotalInterest = totalInterest,
             TotalCost = totalCost,
             RealizedPnl = realizedPnl,
-            CurrentExchangeRate = null, // TODO: Integrate with exchange rate API
+            CurrentExchangeRate = null, // TODO: 串接匯率 API
             CurrentValueHome = null,
             UnrealizedPnlHome = null,
             UnrealizedPnlPercentage = null,
@@ -83,34 +83,34 @@ public class GetCurrencyLedgerSummaryUseCase
         foreach (var ledger in ledgers)
         {
             var fullLedger = await _ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken);
-            if (fullLedger != null)
-            {
-                var transactions = fullLedger.Transactions.ToList();
-                var balance = _currencyLedgerService.CalculateBalance(transactions);
-                var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
-                var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
-                var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
-                var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
-                var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
-                var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+            if (fullLedger == null)
+                continue;
 
-                results.Add(new CurrencyLedgerSummaryDto
-                {
-                    Ledger = MapLedgerToDto(fullLedger),
-                    Balance = balance,
-                    AverageExchangeRate = avgExchangeRate,
-                    TotalExchanged = totalExchanged,
-                    TotalSpentOnStocks = totalSpentOnStocks,
-                    TotalInterest = totalInterest,
-                    TotalCost = totalCost,
-                    RealizedPnl = realizedPnl,
-                    CurrentExchangeRate = null,
-                    CurrentValueHome = null,
-                    UnrealizedPnlHome = null,
-                    UnrealizedPnlPercentage = null,
-                    RecentTransactions = Array.Empty<CurrencyTransactionDto>()
-                });
-            }
+            var transactions = fullLedger.Transactions.ToList();
+            var balance = _currencyLedgerService.CalculateBalance(transactions);
+            var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
+            var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
+            var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
+            var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
+            var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
+            var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+
+            results.Add(new CurrencyLedgerSummaryDto
+            {
+                Ledger = MapLedgerToDto(fullLedger),
+                Balance = balance,
+                AverageExchangeRate = avgExchangeRate,
+                TotalExchanged = totalExchanged,
+                TotalSpentOnStocks = totalSpentOnStocks,
+                TotalInterest = totalInterest,
+                TotalCost = totalCost,
+                RealizedPnl = realizedPnl,
+                CurrentExchangeRate = null,
+                CurrentValueHome = null,
+                UnrealizedPnlHome = null,
+                UnrealizedPnlPercentage = null,
+                RecentTransactions = []
+            });
         }
 
         return results;

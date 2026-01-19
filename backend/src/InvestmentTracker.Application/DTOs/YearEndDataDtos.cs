@@ -1,7 +1,7 @@
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// Result of fetching a year-end stock price.
+/// 年末股價抓取結果。
 /// </summary>
 public class YearEndPriceResult
 {
@@ -13,7 +13,7 @@ public class YearEndPriceResult
 }
 
 /// <summary>
-/// Result of fetching a year-end exchange rate.
+/// 年末匯率抓取結果。
 /// </summary>
 public class YearEndExchangeRateResult
 {

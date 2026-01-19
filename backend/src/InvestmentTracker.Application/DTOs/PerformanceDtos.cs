@@ -1,124 +1,124 @@
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// Response for historical year performance calculation.
+/// 歷史年度績效計算的回應 DTO。
 /// </summary>
 public record YearPerformanceDto
 {
-    /// <summary>The year for this performance calculation.</summary>
+    /// <summary>此筆績效計算對應的年份。</summary>
     public int Year { get; init; }
 
-    // ===== Home Currency Performance (TWD) =====
+    // ===== 本位幣（Home Currency，例如 TWD）績效 =====
 
-    /// <summary>XIRR for the year in home currency (annualized return rate).</summary>
+    /// <summary>本位幣 XIRR（年化報酬率）。</summary>
     public double? Xirr { get; init; }
 
-    /// <summary>XIRR as percentage in home currency (e.g., 12.5 for 12.5%).</summary>
+    /// <summary>本位幣 XIRR 百分比（例如 12.5 代表 12.5%）。</summary>
     public double? XirrPercentage { get; init; }
 
-    /// <summary>Total return percentage for the year in home currency.</summary>
+    /// <summary>本位幣年度總報酬率百分比。</summary>
     public double? TotalReturnPercentage { get; init; }
 
-    /// <summary>Portfolio value at year start (home currency).</summary>
+    /// <summary>年度起始資產價值（本位幣）。</summary>
     public decimal? StartValueHome { get; init; }
 
-    /// <summary>Portfolio value at year end (home currency).</summary>
+    /// <summary>年度結束資產價值（本位幣）。</summary>
     public decimal? EndValueHome { get; init; }
 
-    /// <summary>Net contributions during the year (home currency).</summary>
+    /// <summary>年度期間淨投入（本位幣）。</summary>
     public decimal NetContributionsHome { get; init; }
 
-    // ===== Source Currency Performance (e.g., USD) =====
+    // ===== 原始幣別（Source/Base Currency，例如 USD）績效 =====
 
-    /// <summary>The source/base currency for this portfolio (e.g., USD).</summary>
+    /// <summary>投資組合的原始/基準幣別（例如 USD）。</summary>
     public string? SourceCurrency { get; init; }
 
-    /// <summary>XIRR for the year in source currency (annualized return rate).</summary>
+    /// <summary>原始幣別 XIRR（年化報酬率）。</summary>
     public double? XirrSource { get; init; }
 
-    /// <summary>XIRR as percentage in source currency (e.g., 12.5 for 12.5%).</summary>
+    /// <summary>原始幣別 XIRR 百分比（例如 12.5 代表 12.5%）。</summary>
     public double? XirrPercentageSource { get; init; }
 
-    /// <summary>Total return percentage for the year in source currency.</summary>
+    /// <summary>原始幣別年度總報酬率百分比。</summary>
     public double? TotalReturnPercentageSource { get; init; }
 
-    /// <summary>Portfolio value at year start (source currency).</summary>
+    /// <summary>年度起始資產價值（原始幣別）。</summary>
     public decimal? StartValueSource { get; init; }
 
-    /// <summary>Portfolio value at year end (source currency).</summary>
+    /// <summary>年度結束資產價值（原始幣別）。</summary>
     public decimal? EndValueSource { get; init; }
 
-    /// <summary>Net contributions during the year (source currency).</summary>
+    /// <summary>年度期間淨投入（原始幣別）。</summary>
     public decimal? NetContributionsSource { get; init; }
 
-    // ===== Common Fields =====
+    // ===== 共通欄位 =====
 
-    /// <summary>Number of cash flows used in XIRR calculation.</summary>
+    /// <summary>XIRR 計算所使用的現金流筆數。</summary>
     public int CashFlowCount { get; init; }
 
-    /// <summary>Number of actual transactions during the year (buy/sell only, excludes year-start/end valuations).</summary>
+    /// <summary>年度期間實際交易筆數（僅 buy/sell，不含年度起訖估值）。</summary>
     public int TransactionCount { get; init; }
 
-    /// <summary>Positions with missing reference prices needed for calculation.</summary>
+    /// <summary>計算所需但缺少參考價格的持倉清單。</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 
-    /// <summary>Whether this performance can be fully calculated (no missing prices).</summary>
+    /// <summary>是否可以完整計算績效（沒有缺少價格）。</summary>
     public bool IsComplete => MissingPrices.Count == 0;
 }
 
 /// <summary>
-/// Position with missing price for historical calculation.
+/// 歷史計算中缺少價格的持倉資訊。
 /// </summary>
 public record MissingPriceDto
 {
-    /// <summary>Stock ticker symbol.</summary>
+    /// <summary>股票代號。</summary>
     public string Ticker { get; init; } = string.Empty;
 
-    /// <summary>Date for which price is needed.</summary>
+    /// <summary>需要價格的日期。</summary>
     public DateTime Date { get; init; }
 
-    /// <summary>Whether this is a year-start reference price (typically prior-year Dec) or year-end/as-of price.</summary>
+    /// <summary>價格類型：年初參考價或年末/截止日參考價。</summary>
     public string PriceType { get; init; } = "YearEnd";
 }
 
 /// <summary>
-/// Response for available performance years.
+/// 可用績效年份清單的回應 DTO。
 /// </summary>
 public record AvailableYearsDto
 {
-    /// <summary>List of years with transaction data.</summary>
+    /// <summary>有交易資料的年份列表。</summary>
     public IReadOnlyList<int> Years { get; init; } = [];
 
-    /// <summary>Earliest year with transactions.</summary>
+    /// <summary>最早有交易的年份。</summary>
     public int? EarliestYear { get; init; }
 
-    /// <summary>Current year.</summary>
+    /// <summary>目前年份。</summary>
     public int CurrentYear { get; init; } = DateTime.UtcNow.Year;
 }
 
 /// <summary>
-/// Request for calculating year performance.
+/// 計算年度績效的請求 DTO。
 /// </summary>
 public record CalculateYearPerformanceRequest
 {
-    /// <summary>The year to calculate performance for.</summary>
+    /// <summary>要計算績效的年份。</summary>
     public int Year { get; init; }
 
-    /// <summary>Reference prices for positions at year END (keyed by ticker).</summary>
+    /// <summary>年度「年末」參考價格（以 ticker 為 key）。</summary>
     public Dictionary<string, YearEndPriceInfo>? YearEndPrices { get; init; }
 
-    /// <summary>Reference prices for positions at year START (keyed by ticker). If not provided, falls back to YearEndPrices.</summary>
+    /// <summary>年度「年初」參考價格（以 ticker 為 key）。若未提供，會回退使用 YearEndPrices。</summary>
     public Dictionary<string, YearEndPriceInfo>? YearStartPrices { get; init; }
 }
 
 /// <summary>
-/// Year-end price information for a position.
+/// 年末參考價格資訊。
 /// </summary>
 public record YearEndPriceInfo
 {
-    /// <summary>Price at the requested reference date in source currency.</summary>
+    /// <summary>指定參考日期的原始幣別價格。</summary>
     public decimal Price { get; init; }
 
-    /// <summary>Exchange rate at the reference date (source to home currency).</summary>
+    /// <summary>參考日期的匯率（原始幣別轉本位幣）。</summary>
     public decimal ExchangeRate { get; init; }
 }

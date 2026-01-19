@@ -1,3 +1,12 @@
+/**
+ * StockImportButton
+ *
+ * 股票交易 CSV 匯入按鈕：封裝「選擇是否使用外幣帳本 → 開啟 CSVImportModal → 逐列解析/驗證 → 呼叫交易 API」流程。
+ *
+ * 重要行為：
+ * - 會先將 CSV rows 依日期排序，避免出現 sell-before-buy 的計算/驗證問題。
+ * - 可選擇使用外幣帳本（currency ledger）輔助：非台股時可讓 backend 自動計算匯率。
+ */
 import { useState, useEffect } from 'react';
 import { Upload, Wallet } from 'lucide-react';
 import { CSVImportModal, type FieldDefinition } from './CSVImportModal';
@@ -15,14 +24,21 @@ import { FundSource } from '../../types';
 import type { CreateStockTransactionRequest, TransactionType, CurrencyLedgerSummary } from '../../types';
 
 interface StockImportButtonProps {
+  /** 目標 portfolio ID */
   portfolioId: string;
+  /** 匯入完成後 callback（通常用於重新載入頁面資料） */
   onImportComplete: () => void;
+  /** 縮小版按鈕樣式 */
   compact?: boolean;
-  /** If provided, renders custom trigger instead of default button */
+  /** 若提供，改用自訂 trigger（常用於搭配 FileDropdown） */
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
-// Field definitions for stock transaction CSV (exchangeRate is hidden when using currency ledger)
+/**
+ * 股票交易 CSV 欄位定義。
+ *
+ * 設計：當使用外幣帳本（currency ledger）時，非台股可讓 backend 依帳本交易推導匯率，因此匯率欄位會被隱藏。
+ */
 const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
   const fields: FieldDefinition[] = [
     {
@@ -85,7 +101,14 @@ const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
   return fields;
 };
 
-// Map transaction type string to enum
+/**
+ * 將 CSV 內的交易類型文字轉成 enum。
+ *
+ * 支援：
+ * - 中文：買/賣/分割/調整
+ * - 英文：buy/sell/split/adjust
+ * - 數字：1-4
+ */
 function parseTransactionType(typeStr: string): TransactionType | null {
   const normalized = typeStr.toLowerCase().trim();
 
@@ -124,17 +147,25 @@ export function StockImportButton({
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
   const [useCurrencyLedger, setUseCurrencyLedger] = useState(false);
 
-  // Load currency ledgers when selecting
+  // 當使用者進入「選擇外幣帳本」步驟時，載入帳本清單供選擇。
   useEffect(() => {
     if (isSelectingLedger) {
       currencyLedgerApi.getAll().then(setCurrencyLedgers).catch(console.error);
     }
   }, [isSelectingLedger]);
 
+  /**
+   * 開啟匯入流程：先讓使用者決定是否使用外幣帳本。
+   */
   const handleOpenImport = () => {
     setIsSelectingLedger(true);
   };
 
+  /**
+   * 選擇外幣帳本（或不使用帳本），然後開啟 CSVImportModal。
+   *
+   * @param ledgerId 選擇的 ledgerId；`null` 表示不使用外幣帳本
+   */
   const handleSelectLedger = (ledgerId: string | null) => {
     setSelectedLedgerId(ledgerId);
     setUseCurrencyLedger(ledgerId !== null);
@@ -142,6 +173,13 @@ export function StockImportButton({
     setIsModalOpen(true);
   };
 
+  /**
+   * 實際匯入：逐列解析/驗證後呼叫 API 建立交易。
+   *
+   * 設計重點：
+   * - 先依日期排序，避免 sell-before-buy 的順序問題。
+   * - 台股（ticker 以數字開頭）一律不使用外幣帳本，並要求有匯率（通常為 1）。
+   */
   const handleImport = async (
     csvData: ParsedCSV,
     mapping: ColumnMapping

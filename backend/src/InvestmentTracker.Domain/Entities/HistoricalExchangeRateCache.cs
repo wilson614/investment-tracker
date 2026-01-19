@@ -1,41 +1,41 @@
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Global immutable cache for historical exchange rates by transaction date.
-/// Key: (CurrencyPair, Date) - e.g., ("USDTWD", 2025-01-15)
-/// Once fetched and persisted, values are never updated.
+/// 歷史匯率快取實體，儲存交易日期的匯率資料
+/// Key: (幣別對, 日期) - 例如 (USDTWD, 2025-01-15)
+/// 一旦取得並儲存後，數值不會再更新（不可變）
 /// </summary>
 public class HistoricalExchangeRateCache
 {
     public int Id { get; private set; }
     
     /// <summary>
-    /// Currency pair in format "FROMTO" (e.g., "USDTWD", "EURTWD")
+    /// 幣別對格式為「來源目標」（如 USDTWD、EURTWD）
     /// </summary>
     public string CurrencyPair { get; private set; } = string.Empty;
     
     /// <summary>
-    /// The requested transaction date
+    /// 請求的交易日期
     /// </summary>
     public DateTime RequestedDate { get; private set; }
     
     /// <summary>
-    /// The exchange rate value
+    /// 匯率數值
     /// </summary>
     public decimal Rate { get; private set; }
     
     /// <summary>
-    /// The actual trading date the rate was retrieved for (may differ from RequestedDate due to weekends/holidays)
+    /// 實際取得匯率的交易日期（可能因週末/假日與 RequestedDate 不同）
     /// </summary>
     public DateTime ActualDate { get; private set; }
     
     /// <summary>
-    /// Source of the data (e.g., "Stooq", "Manual")
+    /// 資料來源（如 Stooq、Manual）
     /// </summary>
     public string Source { get; private set; } = string.Empty;
     
     /// <summary>
-    /// When this cache entry was created
+    /// 快取建立時間
     /// </summary>
     public DateTime FetchedAt { get; private set; }
 

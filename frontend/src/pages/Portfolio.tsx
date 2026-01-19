@@ -1,3 +1,13 @@
+/**
+ * Portfolio Page
+ *
+ * 投資組合主要操作頁：顯示持倉、交易清單、績效摘要，並提供新增/編輯/刪除交易與匯入/匯出功能。
+ *
+ * 特色：
+ * - 先讀取 localStorage 的報價快取，讓績效與持倉能更快顯示。
+ * - 在頁面載入後自動更新所有報價，並在新增持倉時針對單一 ticker 觸發自動抓價。
+ * - 支援 Euronext 報價流程（透過 `marketDataApi.getEuronextQuote` 產生 synthetic quote）。
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
@@ -18,6 +28,13 @@ import { isEuronextSymbol, getEuronextSymbol } from '../constants';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
+/**
+ * 依 ticker 格式推測市場別。
+ *
+ * - TW：純數字或數字+英文字尾（例如 `2330`、`00878`、`6547M`）
+ * - UK：以 `.L` 結尾（London Stock Exchange）
+ * - 其他：預設 US
+ */
 const guessMarket = (ticker: string): StockMarketType => {
   if (/^\d+[A-Za-z]*$/.test(ticker)) {
     return StockMarket.TW;
@@ -28,7 +45,11 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
-// Cache keys for localStorage - include portfolio ID to prevent cross-account data leakage
+/**
+ * localStorage 快取 key。
+ *
+ * 注意：perf cache 會包含 portfolioId，用來避免跨帳號/跨投資組合讀到錯誤資料。
+ */
 const getPerfCacheKey = (portfolioId: string) => `perf_cache_${portfolioId}`;
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
@@ -44,7 +65,13 @@ interface CachedQuote {
   market: StockMarketType;
 }
 
-// Load cached quotes for tickers (no time limit - always show cached, then refresh)
+/**
+ * 從 localStorage 載入報價快取（依 ticker）。
+ *
+ * 設計重點：
+ * - 不限制快取時效：進頁面時先用快取快速 render。
+ * - 僅在快取包含 exchangeRate 時回填，避免本位幣換算資料不完整。
+ */
 const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
 
@@ -91,6 +118,11 @@ export function PortfolioPage() {
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
 
+  /**
+   * 載入指定投資組合的資料（summary、交易清單），並嘗試套用報價快取做快速計算。
+   *
+   * 這個方法會先清空舊資料，避免 UI 短暫顯示上一個 portfolio 的內容（FR-100）。
+   */
   const loadDataForPortfolio = useCallback(async (portfolioId: string) => {
     try {
       setIsLoading(true);
@@ -134,6 +166,11 @@ export function PortfolioPage() {
     }
   }, [clearPerformanceState]);
 
+  /**
+   * 載入目前使用者的投資組合（若不存在則建立預設投資組合），並取得 summary / 交易。
+   *
+   * 單一投資組合模式：只使用第一個 portfolio，並透過 `selectPortfolio` 同步到全域 context。
+   */
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -201,13 +238,17 @@ export function PortfolioPage() {
     }
   }, [summary, isLoading]);
 
-  // T066: Helper function to fetch price for a single ticker (used for auto-fetch on new position)
+  /**
+   * 取得單一 ticker 的報價（含匯率），並用最新 prices 更新 summary。
+   *
+   * 使用時機：新增持倉後，自動補上新標的的報價，讓持倉/績效能立即更新。
+   */
   const fetchPriceForTicker = async (ticker: string): Promise<void> => {
     if (!summary) return;
     const homeCurrency = summary.portfolio.homeCurrency;
 
     try {
-      // Check if this is a Euronext symbol first
+      // Euronext 標的需先透過 ISIN/MIC 查詢，回傳後再組合成 synthetic quote 以沿用既有快取格式。
       const euronextInfo = getEuronextSymbol(ticker);
       if (euronextInfo) {
         const euronextQuote = await marketDataApi.getEuronextQuote(
@@ -267,6 +308,13 @@ export function PortfolioPage() {
     }
   };
 
+  /**
+   * 新增/更新交易後，重新載入資料。
+   *
+   * 行內重點：
+   * - 先記錄既有 tickers，用來判斷這筆買入是否產生「新持倉」（T066）。
+   * - 若是新持倉買入，背景觸發單一 ticker 抓價，不阻塞 UI。
+   */
   const handleAddTransaction = async (data: CreateStockTransactionRequest) => {
     // T065: Capture existing tickers before save to detect new positions
     const existingTickers = new Set(summary?.positions.map(p => p.ticker) ?? []);
@@ -304,11 +352,18 @@ export function PortfolioPage() {
     }
   };
 
+  /**
+   * 進入編輯模式：把目標交易帶入表單。
+   */
   const handleEditTransaction = (transaction: StockTransaction) => {
     setEditingTransaction(transaction);
     setShowForm(true);
   };
 
+  /**
+   * 刪除單筆交易後重新載入資料。
+   * @param transactionId 交易 ID
+   */
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
@@ -320,6 +375,11 @@ export function PortfolioPage() {
     }
   };
 
+  /**
+   * 以給定的最新 prices 重新計算 summary 與 XIRR，並同步寫入 localStorage 快取。
+   *
+   * 注意：如果 prices 為空，或還沒有 portfolio 物件，則不會進行任何計算。
+   */
   const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
     if (!portfolio || Object.keys(prices).length === 0) return;
 
@@ -353,11 +413,21 @@ export function PortfolioPage() {
     }
   };
 
+  /**
+   * 由子元件（例如 PositionCard）回傳單一持倉的最新價格/匯率時，用來更新整體 summary。
+   */
   const handlePositionPriceUpdate = useCallback((ticker: string, price: number, exchangeRate: number) => {
     currentPricesRef.current[ticker] = { price, exchangeRate };
     updateSummaryWithPrices({ ...currentPricesRef.current });
   }, [portfolio]);
 
+  /**
+   * 抓取所有持倉的最新報價（含匯率），並更新 summary / XIRR。
+   *
+   * 補充：
+   * - 先判斷是否為 Euronext symbol，若是則走 Euronext quote 流程，並建立 synthetic quote 以沿用快取格式。
+   * - 其餘走一般市場（TW/US/UK）報價，US 失敗時嘗試 UK。
+   */
   const handleFetchAllPrices = async () => {
     if (!summary) return;
 
@@ -472,6 +542,9 @@ export function PortfolioPage() {
     }
   };
 
+  /**
+   * 匯出交易清單為 CSV。
+   */
   const handleExportTransactions = () => {
     if (!summary || transactions.length === 0) return;
     exportTransactionsToCsv(

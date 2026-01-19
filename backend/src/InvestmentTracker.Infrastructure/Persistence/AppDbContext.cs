@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Persistence;
 
 /// <summary>
-/// Entity Framework Core database context for the Investment Tracker application.
+/// 投資追蹤應用程式的 Entity Framework Core 資料庫上下文
 /// </summary>
 public class AppDbContext : DbContext
 {
@@ -40,44 +40,34 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Apply all configurations from this assembly
+        // 從組件載入所有 Entity Configuration
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
-        // Global query filters for multi-tenancy
+        // 設定多租戶 Query Filter
         ConfigureQueryFilters(modelBuilder);
-
-        // Unique index for IndexPriceSnapshot (MarketKey + YearMonth)
-        modelBuilder.Entity<IndexPriceSnapshot>()
-            .HasIndex(s => new { s.MarketKey, s.YearMonth })
-            .IsUnique();
-
-        // Unique index for CapeDataSnapshot (DataDate)
-        modelBuilder.Entity<CapeDataSnapshot>()
-            .HasIndex(s => s.DataDate)
-            .IsUnique();
     }
 
     private void ConfigureQueryFilters(ModelBuilder modelBuilder)
     {
-        // Portfolio filter by user
+        // Portfolio：依使用者過濾 + 啟用狀態
         modelBuilder.Entity<Portfolio>()
             .HasQueryFilter(p => p.IsActive &&
                 (_currentUserService == null || p.UserId == _currentUserService.UserId));
 
-        // CurrencyLedger filter by user
+        // CurrencyLedger：依使用者過濾 + 啟用狀態
         modelBuilder.Entity<CurrencyLedger>()
             .HasQueryFilter(cl => cl.IsActive &&
                 (_currentUserService == null || cl.UserId == _currentUserService.UserId));
 
-        // StockTransaction soft delete filter
+        // StockTransaction：軟刪除過濾
         modelBuilder.Entity<StockTransaction>()
             .HasQueryFilter(st => !st.IsDeleted);
 
-        // CurrencyTransaction soft delete filter
+        // CurrencyTransaction：軟刪除過濾
         modelBuilder.Entity<CurrencyTransaction>()
             .HasQueryFilter(ct => !ct.IsDeleted);
 
-        // User active filter
+        // User：啟用狀態過濾
         modelBuilder.Entity<User>()
             .HasQueryFilter(u => u.IsActive);
     }

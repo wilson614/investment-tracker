@@ -1,13 +1,13 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Type of historical year-end data being cached.
+/// 年末歷史資料快取的資料類型。
 /// </summary>
 public enum HistoricalDataType
 {
-    /// <summary>Year-end stock price</summary>
+    /// <summary>年末股價</summary>
     StockPrice = 0,
 
-    /// <summary>Year-end exchange rate</summary>
+    /// <summary>年末匯率</summary>
     ExchangeRate = 1
 }

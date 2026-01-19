@@ -6,22 +6,27 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching market index/ETF prices for CAPE adjustment
-/// - US/Global markets: Sina for real-time, Stooq for historical
-/// - Taiwan: TWSE for both real-time and historical
-/// Falls back to database for historical prices if external sources unavailable
+/// 取得市場指數／ETF 價格以進行 CAPE 即時調整的服務。
+/// - 美股／全球市場：Sina 取即時價、Stooq 取歷史價
+/// - 台灣：TWSE 同時提供即時與歷史價格
+/// 若外部來源不可用，歷史價格會回退使用資料庫快取。
 /// </summary>
-public class IndexPriceService : IIndexPriceService
+public class IndexPriceService(
+    ISinaEtfPriceService sinaEtfPriceService,
+    IStooqHistoricalPriceService stooqHistoricalPriceService,
+    ITwseIndexPriceService twseIndexPriceService,
+    AppDbContext dbContext,
+    ILogger<IndexPriceService> logger) : IIndexPriceService
 {
-    private readonly ISinaEtfPriceService _sinaEtfPriceService;
-    private readonly IStooqHistoricalPriceService _stooqHistoricalPriceService;
-    private readonly ITwseIndexPriceService _twseIndexPriceService;
-    private readonly AppDbContext _dbContext;
-    private readonly ILogger<IndexPriceService> _logger;
+    private readonly ISinaEtfPriceService _sinaEtfPriceService = sinaEtfPriceService;
+    private readonly IStooqHistoricalPriceService _stooqHistoricalPriceService = stooqHistoricalPriceService;
+    private readonly ITwseIndexPriceService _twseIndexPriceService = twseIndexPriceService;
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ILogger<IndexPriceService> _logger = logger;
 
-    // All supported markets for CAPE adjustment
-    public static readonly IReadOnlyCollection<string> SupportedMarkets = new[]
-    {
+    // CAPE 調整所支援的所有市場（marketKey）
+    public static readonly IReadOnlyCollection<string> SupportedMarkets =
+    [
         "All Country",              // VWRA - Vanguard FTSE All-World
         "US Large",                 // VUAA - Vanguard S&P 500
         "US Small",                 // XRSU - Xtrackers Russell 2000
@@ -33,28 +38,14 @@ public class IndexPriceService : IIndexPriceService
         "Developed Markets Large",  // VHVE - Vanguard FTSE Developed World
         "Developed Markets Small",  // WSML - iShares MSCI World Small Cap
         "Dev ex US Large",          // EXUS - Vanguard FTSE Developed ex US
-    };
-
-    public IndexPriceService(
-        ISinaEtfPriceService sinaEtfPriceService,
-        IStooqHistoricalPriceService stooqHistoricalPriceService,
-        ITwseIndexPriceService twseIndexPriceService,
-        AppDbContext dbContext,
-        ILogger<IndexPriceService> logger)
-    {
-        _sinaEtfPriceService = sinaEtfPriceService;
-        _stooqHistoricalPriceService = stooqHistoricalPriceService;
-        _twseIndexPriceService = twseIndexPriceService;
-        _dbContext = dbContext;
-        _logger = logger;
-    }
+    ];
 
     public async Task<IndexPriceData?> GetIndexPricesAsync(
         string marketKey,
         DateTime referenceDate,
         CancellationToken cancellationToken = default)
     {
-        // Check if this market is supported
+        // 確認 marketKey 是否受支援
         if (!SupportedMarkets.Contains(marketKey))
         {
             _logger.LogDebug("Market {Market} is not supported for CAPE adjustment", marketKey);
@@ -69,14 +60,14 @@ public class IndexPriceService : IIndexPriceService
 
             if (marketKey == "Taiwan")
             {
-                // Taiwan uses TWSE for both real-time and historical
-                // Use fallback method that tries historical data if real-time fails
+                // 台灣同時使用 TWSE 取得即時與歷史價格
+                // 使用 fallback 版本：即時價失敗時會嘗試改抓歷史資料
                 currentPrice = await _twseIndexPriceService.GetCurrentPriceWithFallbackAsync(cancellationToken);
                 referencePrice = await GetTaiwanReferencePriceAsync(referenceDate, referenceYearMonth, cancellationToken);
             }
             else
             {
-                // US/Global markets use Sina + Stooq
+                // 美股／全球市場使用 Sina + Stooq
                 currentPrice = await _sinaEtfPriceService.GetCurrentPriceAsync(marketKey, cancellationToken);
                 referencePrice = await GetReferencePriceAsync(marketKey, referenceDate, referenceYearMonth, cancellationToken);
             }
@@ -121,21 +112,21 @@ public class IndexPriceService : IIndexPriceService
     }
 
     /// <summary>
-    /// Get Taiwan reference price - try TWSE first, then fallback to database
+    /// 取得台灣市場的基準價格：優先嘗試 TWSE，失敗則回退使用資料庫。
     /// </summary>
     private async Task<decimal?> GetTaiwanReferencePriceAsync(
         DateTime referenceDate,
         string yearMonth,
         CancellationToken cancellationToken)
     {
-        // First check database for cached/manual entry
+        // 先查資料庫是否已有快取／人工補登資料
         var dbPrice = await GetDatabasePriceAsync("Taiwan", yearMonth, cancellationToken);
         if (dbPrice != null)
         {
             return dbPrice;
         }
 
-        // Try to fetch from TWSE
+        // 嘗試從 TWSE 抓取
         var twsePrice = await _twseIndexPriceService.GetMonthEndPriceAsync(
             referenceDate.Year,
             referenceDate.Month,
@@ -143,7 +134,7 @@ public class IndexPriceService : IIndexPriceService
 
         if (twsePrice != null)
         {
-            // Cache in database for future use
+            // 寫入資料庫快取，避免下次重複抓取
             await SavePriceToDatabase("Taiwan", yearMonth, twsePrice.Value, cancellationToken);
             return twsePrice;
         }
@@ -152,8 +143,8 @@ public class IndexPriceService : IIndexPriceService
     }
 
     /// <summary>
-    /// Get reference price for US/Global markets - try Stooq first, then fallback to database
-    /// Implements negative caching: if price is confirmed unavailable, saves NotAvailable marker
+    /// 取得美股／全球市場的基準價格：優先嘗試 Stooq，失敗則回退使用資料庫。
+    /// 實作 negative caching：若確認價格不可取得，會存入 NotAvailable 標記以避免重複呼叫外部 API。
     /// </summary>
     private async Task<decimal?> GetReferencePriceAsync(
         string marketKey,
@@ -161,7 +152,7 @@ public class IndexPriceService : IIndexPriceService
         string yearMonth,
         CancellationToken cancellationToken)
     {
-        // First check database for cached entry (including NotAvailable markers)
+        // 先查資料庫是否已有快取（包含 NotAvailable 標記）
         var snapshot = await _dbContext.IndexPriceSnapshots
             .FirstOrDefaultAsync(
                 s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
@@ -169,7 +160,7 @@ public class IndexPriceService : IIndexPriceService
 
         if (snapshot != null)
         {
-            // If marked as NotAvailable, return null immediately (skip API call)
+            // 若標記為 NotAvailable，直接回傳 null（略過外部 API 呼叫）
             if (snapshot.IsNotAvailable)
             {
                 _logger.LogDebug("Negative cache hit for {Market}/{YearMonth} - marked NotAvailable", marketKey, yearMonth);
@@ -178,7 +169,7 @@ public class IndexPriceService : IIndexPriceService
             return snapshot.Price;
         }
 
-        // Try to fetch from Stooq
+        // 嘗試從 Stooq 抓取
         var stooqPrice = await _stooqHistoricalPriceService.GetMonthEndPriceAsync(
             marketKey,
             referenceDate.Year,
@@ -187,13 +178,13 @@ public class IndexPriceService : IIndexPriceService
 
         if (stooqPrice != null)
         {
-            // Cache in database for future use
+            // 寫入資料庫快取，避免下次重複抓取
             await SavePriceToDatabase(marketKey, yearMonth, stooqPrice.Value, cancellationToken);
             return stooqPrice;
         }
 
-        // API returned null - save NotAvailable marker (negative caching)
-        // Only for historical months (not current month which may still be loading)
+        // 外部 API 回傳 null：儲存 NotAvailable 標記（negative caching）
+        // 僅針對歷史月份（非當月，避免當月資料尚未更新導致誤判）
         var now = DateTime.UtcNow;
         var currentYearMonth = $"{now.Year}{now.Month:D2}";
         if (yearMonth != currentYearMonth)
@@ -251,7 +242,7 @@ public class IndexPriceService : IIndexPriceService
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            // Another concurrent request already inserted this record - that's fine
+            // 可能已被其他並發請求寫入；可忽略
             _logger.LogDebug("Duplicate key ignored for {Market} {YearMonth} - already exists", marketKey, yearMonth);
         }
         catch (Exception ex)
@@ -264,13 +255,14 @@ public class IndexPriceService : IIndexPriceService
     {
         // PostgreSQL unique constraint violation: 23505
         // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
+        // 以錯誤訊息字串判斷；若底層 provider 變更，可能需要更新此判斷邏輯
         return ex.InnerException?.Message?.Contains("23505") == true ||
                ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
     }
 
     /// <summary>
-    /// Save a NotAvailable marker for a (MarketKey, YearMonth) combination.
-    /// This prevents repeated API calls for prices that are known to be unavailable.
+    /// 儲存指定 (MarketKey, YearMonth) 的 NotAvailable 標記。
+    /// 這可以避免對已確認不可取得的價格重複呼叫外部 API。
     /// </summary>
     private async Task SaveNotAvailableMarker(
         string marketKey,
@@ -286,7 +278,7 @@ public class IndexPriceService : IIndexPriceService
 
             if (existing != null)
             {
-                // Already exists - don't overwrite a valid price with NotAvailable
+                // 已存在：避免用 NotAvailable 覆蓋有效價格
                 return;
             }
 

@@ -6,16 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for CurrencyTransaction entity.
+/// CurrencyTransaction entity 的 Repository 實作。
 /// </summary>
-public class CurrencyTransactionRepository : ICurrencyTransactionRepository
+public class CurrencyTransactionRepository(AppDbContext context) : ICurrencyTransactionRepository
 {
-    private readonly AppDbContext _context;
-
-    public CurrencyTransactionRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<CurrencyTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

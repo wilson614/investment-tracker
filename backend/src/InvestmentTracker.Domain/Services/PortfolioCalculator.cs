@@ -3,13 +3,12 @@ using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Services;
 
-// Note: PortfolioCalculator handles TransactionType.Split for manual split adjustments.
-// For automatic split adjustments based on StockSplits table, use StockSplitAdjustmentService
-// in the Application layer to pre-adjust transaction values before calling CalculatePosition.
+// 註：PortfolioCalculator 會處理 TransactionType.Split（手動分割調整）。
+// 若要依 StockSplits 資料表自動套用分割調整，請在 Application layer 使用 StockSplitAdjustmentService
+// 先調整歷史交易數值，再呼叫 CalculatePosition。
 
 /// <summary>
-/// Domain service for portfolio calculations including position tracking,
-/// moving average cost, and PnL calculations.
+/// 投資組合計算的領域服務（Domain Service），包含部位追蹤、移動平均成本與損益（PnL）計算。
 /// </summary>
 public class PortfolioCalculator
 {
@@ -40,7 +39,7 @@ public class PortfolioCalculator
             {
                 case TransactionType.Buy:
                     totalShares += transaction.Shares;
-                    // Only add to home currency totals if exchange rate exists
+                    // 僅在有匯率時才納入本位幣成本
                     if (transaction.TotalCostHome.HasValue)
                         totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
@@ -49,10 +48,10 @@ public class PortfolioCalculator
                 case TransactionType.Sell:
                     if (totalShares > 0)
                     {
-                        // Calculate average cost per share before sell
+                        // 賣出前先計算每股平均成本
                         var avgCostPerShareHome = totalCostHome / totalShares;
                         var avgCostPerShareSource = totalCostSource / totalShares;
-                        // Remove cost basis for sold shares
+                        // 扣除賣出股數對應的成本
                         totalCostHome -= transaction.Shares * avgCostPerShareHome;
                         totalCostSource -= transaction.Shares * avgCostPerShareSource;
                         totalShares -= transaction.Shares;
@@ -60,15 +59,15 @@ public class PortfolioCalculator
                     break;
 
                 case TransactionType.Split:
-                    // Adjust shares but keep total cost the same
-                    // Split ratio is stored in Shares field (e.g., 2 for 2:1 split)
+                    // 調整股數，但總成本不變
+                    // 分割比例存放在 Shares 欄位（例如：2 表示 2:1 split）
                     totalShares *= transaction.Shares;
                     break;
 
                 case TransactionType.Adjustment:
-                    // Direct adjustment to shares and/or cost
+                    // 直接調整股數與／或成本
                     totalShares += transaction.Shares;
-                    // Only add to home currency totals if exchange rate exists
+                    // 僅在有匯率時才納入本位幣成本
                     if (transaction.TotalCostHome.HasValue)
                         totalCostHome += transaction.TotalCostHome.Value;
                     totalCostSource += transaction.TotalCostSource;
@@ -76,7 +75,7 @@ public class PortfolioCalculator
             }
         }
 
-        // Prevent negative values due to rounding
+        // 避免因四捨五入導致的負值
         totalShares = Math.Max(0, totalShares);
         totalCostHome = Math.Max(0, totalCostHome);
         totalCostSource = Math.Max(0, totalCostSource);
@@ -88,7 +87,7 @@ public class PortfolioCalculator
     }
 
     /// <summary>
-    /// Calculates unrealized PnL for a position based on current market price.
+    /// 依據目前市價計算未實現損益（unrealized PnL）。
     /// </summary>
     public UnrealizedPnl CalculateUnrealizedPnl(
         StockPosition position,
@@ -110,7 +109,7 @@ public class PortfolioCalculator
     }
 
     /// <summary>
-    /// Calculates realized PnL for a sell transaction based on average cost method.
+    /// 以平均成本法計算單筆賣出交易的已實現損益（realized PnL）。
     /// </summary>
     public decimal CalculateRealizedPnl(StockPosition positionBeforeSell, StockTransaction sellTransaction)
     {
@@ -119,18 +118,18 @@ public class PortfolioCalculator
             throw new ArgumentException("Transaction must be a sell transaction", nameof(sellTransaction));
         }
 
-        // Cost basis for sold shares (using average cost)
+        // 賣出股數對應的成本基礎（使用平均成本）
         var costBasis = sellTransaction.Shares * positionBeforeSell.AverageCostPerShareHome;
 
-        // Sale proceeds subtotal (Shares × Price)
+        // 賣出金額小計（Shares × Price）
         var subtotal = sellTransaction.Shares * sellTransaction.PricePerShare;
 
-        // Taiwan stocks use floor for transaction subtotal (無條件捨去)
+        // 台股小計採無條件捨去
         if (sellTransaction.IsTaiwanStock)
             subtotal = Math.Floor(subtotal);
 
-        // Sale proceeds in home currency, minus fees
-        // If no exchange rate, use 1.0 (source currency = home currency assumption for sell PnL)
+        // 本位幣賣出入帳金額（扣除手續費）
+        // 若無匯率則使用 1.0（表示來源幣別 = 本位幣）
         var exchangeRate = sellTransaction.ExchangeRate ?? 1.0m;
         var saleProceeds = (subtotal - sellTransaction.Fees) * exchangeRate;
 

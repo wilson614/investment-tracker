@@ -4,26 +4,26 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Records stock split events for automatic adjustment of historical transaction values.
+/// 股票分割記錄實體，用於自動調整歷史交易數值
 /// </summary>
 public class StockSplit : BaseEntity
 {
-    /// <summary>Stock/ETF symbol (e.g., "0050", "AAPL")</summary>
+    /// <summary>股票/ETF 代號（如 0050、AAPL）</summary>
     public string Symbol { get; private set; } = string.Empty;
 
-    /// <summary>Market where the stock is traded</summary>
+    /// <summary>股票交易市場</summary>
     public StockMarket Market { get; private set; }
 
-    /// <summary>Effective date of the split</summary>
+    /// <summary>分割生效日期</summary>
     public DateTime SplitDate { get; private set; }
 
-    /// <summary>Multiplier for shares (e.g., 4.0 for 1:4 split, 0.5 for 2:1 reverse)</summary>
+    /// <summary>股數乘數（例如：1拆4 為 4.0，2併1 為 0.5）</summary>
     public decimal SplitRatio { get; private set; }
 
-    /// <summary>Human-readable description (e.g., "1拆4")</summary>
+    /// <summary>易讀描述（例如「1拆4」）</summary>
     public string? Description { get; private set; }
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private StockSplit() { }
 
     public StockSplit(string symbol, StockMarket market, DateTime splitDate, decimal splitRatio, string? description = null)
@@ -59,7 +59,7 @@ public class StockSplit : BaseEntity
         if (splitDate == default)
             throw new ArgumentException("Split date is required", nameof(splitDate));
 
-        // Ensure UTC Kind for PostgreSQL compatibility
+        // 確保 UTC Kind 以相容 PostgreSQL
         SplitDate = DateTime.SpecifyKind(splitDate.Date, DateTimeKind.Utc);
     }
 

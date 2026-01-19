@@ -1,3 +1,12 @@
+/**
+ * Currency Detail Page
+ *
+ * 外幣帳本詳情頁：顯示單一外幣帳本的交易明細、批次選取/刪除、匯入/匯出，以及即時匯率顯示。
+ *
+ * 特色：
+ * - 先用 localStorage 匯率快取做初始顯示，再自動抓取最新匯率。
+ * - 交易列表支援 Shift 範圍選取與 Ctrl/Cmd 單筆切換。
+ */
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
@@ -9,7 +18,11 @@ import { FileDropdown } from '../components/common';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
 import { CurrencyTransactionType } from '../types';
 
-// Cache key for exchange rate
+/**
+ * 匯率 localStorage 快取 key。
+ * @param from 外幣幣別（例如 USD）
+ * @param to 本位幣幣別（例如 TWD）
+ */
 const getRateCacheKey = (from: string, to: string) => `rate_cache_${from}_${to}`;
 
 interface CachedRate {
@@ -17,7 +30,11 @@ interface CachedRate {
   cachedAt: string;
 }
 
-// Load cached rate from localStorage (no time limit - always show cached, then refresh)
+/**
+ * 從 localStorage 載入匯率快取。
+ *
+ * 設計：不限制快取時效，先顯示快取，再於 ledger 載入後自動抓最新匯率。
+ */
 const loadCachedRate = (from: string, to: string): CachedRate | null => {
   try {
     const cached = localStorage.getItem(getRateCacheKey(from, to));
@@ -50,7 +67,10 @@ const transactionTypeBadgeClass: Record<number, string> = {
   [CurrencyTransactionType.OtherExpense]: 'badge-warning',
 };
 
-// Calculate balance change for a transaction
+/**
+ * 計算單筆交易對外幣餘額的影響（+ 增加 / - 減少）。
+ * @param tx 外幣交易
+ */
 function getBalanceChange(tx: CurrencyTransaction): number {
   switch (tx.transactionType) {
     case CurrencyTransactionType.ExchangeBuy:
@@ -67,7 +87,12 @@ function getBalanceChange(tx: CurrencyTransaction): number {
   }
 }
 
-// Calculate running balances for transactions (sorted by date)
+/**
+ * 計算每筆交易後的累計餘額（running balance）。
+ *
+ * 前提：transactions 應已依日期排序（由舊到新），否則累計結果會不符合使用者直覺。
+ * @param transactions 外幣交易清單
+ */
 function calculateRunningBalances(transactions: CurrencyTransaction[]): Map<string, number> {
   const balanceMap = new Map<string, number>();
   let runningBalance = 0;
@@ -99,6 +124,9 @@ export default function CurrencyDetail() {
   const hasFetchedRate = useRef(false);
   const importTriggerRef = useRef<(() => void) | null>(null);
 
+  /**
+   * 載入帳本摘要與交易清單，並在初次載入時優先套用匯率快取做顯示。
+   */
   const loadData = async () => {
     if (!id) return;
     try {
@@ -128,6 +156,9 @@ export default function CurrencyDetail() {
     loadData();
   }, [id]);
 
+  /**
+   * 取得最新匯率並寫入 state + localStorage 快取。
+   */
   const handleFetchRate = async () => {
     if (!ledger) return;
     setIsFetchingRate(true);
@@ -180,6 +211,12 @@ export default function CurrencyDetail() {
     }
   };
 
+  /**
+   * 交易多選互動：
+   * - Shift+click：連續範圍選取
+   * - Ctrl/Cmd+click：切換單筆選取
+   * - 一般 click：切換單筆選取
+   */
   const handleSelectOne = (txId: string, index: number, event?: React.MouseEvent) => {
     const newSelected = new Set(selectedIds);
 
@@ -210,6 +247,11 @@ export default function CurrencyDetail() {
     setLastSelectedIndex(index);
   };
 
+  /**
+   * 批次刪除目前選取的交易。
+   *
+   * 注意：此流程為逐筆 delete（目前無批次 API），刪除後會重新載入資料。
+   */
   const handleBatchDelete = async () => {
     setIsDeleting(true);
     try {
@@ -235,6 +277,9 @@ export default function CurrencyDetail() {
     }
   };
 
+  /**
+   * 編輯交易：因目前沒有 update API，採「刪除舊交易 + 建立新交易」的方式達成。
+   */
   const handleEditTransaction = async (data: CreateCurrencyTransactionRequest) => {
     if (!editingTransaction) return;
     try {
@@ -248,6 +293,9 @@ export default function CurrencyDetail() {
     }
   };
 
+  /**
+   * 匯出外幣交易明細為 CSV。
+   */
   const handleExportTransactions = () => {
     if (!ledger || transactions.length === 0) return;
     exportCurrencyTransactionsToCsv(

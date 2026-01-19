@@ -6,30 +6,25 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供股票分割（Stock Split）資料查詢與維護 API。
+/// </summary>
 [Authorize]
 [ApiController]
 [Route("api/stock-splits")]
-public class StockSplitsController : ControllerBase
+public class StockSplitsController(
+    GetStockSplitsUseCase getStockSplitsUseCase,
+    CreateStockSplitUseCase createStockSplitUseCase,
+    UpdateStockSplitUseCase updateStockSplitUseCase,
+    DeleteStockSplitUseCase deleteStockSplitUseCase) : ControllerBase
 {
-    private readonly GetStockSplitsUseCase _getStockSplitsUseCase;
-    private readonly CreateStockSplitUseCase _createStockSplitUseCase;
-    private readonly UpdateStockSplitUseCase _updateStockSplitUseCase;
-    private readonly DeleteStockSplitUseCase _deleteStockSplitUseCase;
-
-    public StockSplitsController(
-        GetStockSplitsUseCase getStockSplitsUseCase,
-        CreateStockSplitUseCase createStockSplitUseCase,
-        UpdateStockSplitUseCase updateStockSplitUseCase,
-        DeleteStockSplitUseCase deleteStockSplitUseCase)
-    {
-        _getStockSplitsUseCase = getStockSplitsUseCase;
-        _createStockSplitUseCase = createStockSplitUseCase;
-        _updateStockSplitUseCase = updateStockSplitUseCase;
-        _deleteStockSplitUseCase = deleteStockSplitUseCase;
-    }
+    private readonly GetStockSplitsUseCase _getStockSplitsUseCase = getStockSplitsUseCase;
+    private readonly CreateStockSplitUseCase _createStockSplitUseCase = createStockSplitUseCase;
+    private readonly UpdateStockSplitUseCase _updateStockSplitUseCase = updateStockSplitUseCase;
+    private readonly DeleteStockSplitUseCase _deleteStockSplitUseCase = deleteStockSplitUseCase;
 
     /// <summary>
-    /// Get all stock splits.
+    /// 取得所有股票分割資料。
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<StockSplitDto>), StatusCodes.Status200OK)]
@@ -40,7 +35,7 @@ public class StockSplitsController : ControllerBase
     }
 
     /// <summary>
-    /// Get a stock split by ID.
+    /// 依股票分割 ID 取得股票分割資料。
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(StockSplitDto), StatusCodes.Status200OK)]
@@ -55,7 +50,7 @@ public class StockSplitsController : ControllerBase
     }
 
     /// <summary>
-    /// Get stock splits for a specific symbol and market.
+    /// 依股票代號與市場查詢股票分割資料。
     /// </summary>
     [HttpGet("by-symbol")]
     [ProducesResponseType(typeof(IEnumerable<StockSplitDto>), StatusCodes.Status200OK)]
@@ -69,7 +64,7 @@ public class StockSplitsController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new stock split record.
+    /// 建立新的股票分割紀錄。
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(StockSplitDto), StatusCodes.Status201Created)]
@@ -90,7 +85,7 @@ public class StockSplitsController : ControllerBase
     }
 
     /// <summary>
-    /// Update an existing stock split record.
+    /// 更新既有的股票分割紀錄。
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(StockSplitDto), StatusCodes.Status200OK)]
@@ -117,7 +112,7 @@ public class StockSplitsController : ControllerBase
     }
 
     /// <summary>
-    /// Delete a stock split record.
+    /// 刪除股票分割紀錄。
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

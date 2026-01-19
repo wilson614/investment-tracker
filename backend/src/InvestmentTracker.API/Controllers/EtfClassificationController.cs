@@ -5,26 +5,20 @@ using Microsoft.AspNetCore.Mvc;
 namespace InvestmentTracker.API.Controllers;
 
 /// <summary>
-/// Controller for ETF classification endpoints.
+/// 提供 ETF 分類（例如配息型/累積型）相關查詢 API。
 /// </summary>
 [ApiController]
 [Route("api/etf-classification")]
 [Authorize]
-public class EtfClassificationController : ControllerBase
+public class EtfClassificationController(
+    EtfClassificationService classificationService,
+    ILogger<EtfClassificationController> logger) : ControllerBase
 {
-    private readonly EtfClassificationService _classificationService;
-    private readonly ILogger<EtfClassificationController> _logger;
-
-    public EtfClassificationController(
-        EtfClassificationService classificationService,
-        ILogger<EtfClassificationController> logger)
-    {
-        _classificationService = classificationService;
-        _logger = logger;
-    }
+    private readonly EtfClassificationService _classificationService = classificationService;
+    private readonly ILogger<EtfClassificationController> _logger = logger;
 
     /// <summary>
-    /// Get classification for a specific ticker.
+    /// 取得指定 ticker 的 ETF 分類結果。
     /// </summary>
     [HttpGet("{ticker}")]
     [ProducesResponseType(typeof(EtfClassificationResult), StatusCodes.Status200OK)]
@@ -35,7 +29,7 @@ public class EtfClassificationController : ControllerBase
     }
 
     /// <summary>
-    /// Get all known ETF classifications.
+    /// 取得系統已知的 ETF 分類清單。
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<EtfClassificationResult>), StatusCodes.Status200OK)]
@@ -46,7 +40,7 @@ public class EtfClassificationController : ControllerBase
     }
 
     /// <summary>
-    /// Check if dividend adjustment is needed for a ticker.
+    /// 判斷指定 ticker 在報酬計算時是否需要做股利調整。
     /// </summary>
     [HttpGet("{ticker}/needs-dividend-adjustment")]
     [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]

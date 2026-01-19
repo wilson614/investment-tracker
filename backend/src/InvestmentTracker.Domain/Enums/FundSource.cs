@@ -1,13 +1,13 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Source of funds for stock transactions.
+/// 股票交易資金來源。
 /// </summary>
 public enum FundSource
 {
-    /// <summary>Not tracked / external funding</summary>
+    /// <summary>不追蹤／外部資金</summary>
     None = 0,
 
-    /// <summary>Funds from a linked Currency Ledger</summary>
+    /// <summary>來自關聯的外幣台帳（Currency Ledger）</summary>
     CurrencyLedger = 1
 }

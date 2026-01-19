@@ -1,6 +1,14 @@
+/**
+ * LoadingSpinner
+ *
+ * 共用載入指示元件：支援大小、提示文字，以及 full-screen 覆蓋模式。
+ */
 interface LoadingSpinnerProps {
+  /** spinner 尺寸 */
   size?: 'sm' | 'md' | 'lg';
+  /** 顯示在 spinner 下方的文字 */
   text?: string;
+  /** 是否以 full-screen overlay 顯示 */
   fullScreen?: boolean;
 }
 
@@ -35,6 +43,9 @@ export function LoadingSpinner({
   return spinner;
 }
 
+/**
+ * 版面型載入：置中顯示較大的 spinner。
+ */
 export function PageLoader({ text = '載入中...' }: { text?: string }) {
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
@@ -43,6 +54,9 @@ export function PageLoader({ text = '載入中...' }: { text?: string }) {
   );
 }
 
+/**
+ * 行內載入：用於小區塊內顯示 spinner + 可選文字。
+ */
 export function InlineLoader({ text }: { text?: string }) {
   return (
     <div className="flex items-center gap-2 text-[var(--text-muted)]">

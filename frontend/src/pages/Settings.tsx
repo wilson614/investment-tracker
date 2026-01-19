@@ -1,3 +1,12 @@
+/**
+ * Settings Page
+ *
+ * 帳戶設定頁：提供個人資料（displayName/email）更新與密碼變更。
+ *
+ * 主要互動：
+ * - 透過 `authApi.updateProfile` 更新資料，並同步寫回 `useAuth().setUser`。
+ * - 透過 `authApi.changePassword` 更新密碼，並做基本表單驗證（確認密碼、最小長度）。
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, Mail, Lock, Save } from 'lucide-react';
@@ -30,6 +39,10 @@ export default function Settings() {
     }
   }, [user]);
 
+  /**
+   * 更新個人資料（displayName/email）。
+   * @param e React 表單事件
+   */
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError(null);
@@ -54,6 +67,14 @@ export default function Settings() {
     }
   };
 
+  /**
+   * 變更密碼。
+   *
+   * 行內驗證：
+   * - 新密碼與確認密碼需一致
+   * - 新密碼長度至少 6 個字元
+   * @param e React 表單事件
+   */
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);

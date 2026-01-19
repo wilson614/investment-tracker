@@ -1,3 +1,10 @@
+/**
+ * Transactions Page
+ *
+ * 交易紀錄列表頁：提供依股票代號與交易類型的前端篩選，並支援刪除交易。
+ *
+ * 注意：目前仍以單一投資組合模式運作，會取 `portfolioApi.getAll()` 的第一筆作為目標 portfolio。
+ */
 import { useState, useEffect } from 'react';
 import { transactionApi, portfolioApi } from '../services/api';
 import { TransactionList } from '../components/transactions/TransactionList';
@@ -37,6 +44,10 @@ export function TransactionsPage() {
     loadTransactions();
   }, []);
 
+  /**
+   * 刪除交易。
+   * @param id 交易 ID
+   */
   const handleDelete = async (id: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) {
       return;
@@ -45,6 +56,9 @@ export function TransactionsPage() {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // 交易篩選邏輯：
+  // - ticker：case-insensitive 包含比對
+  // - type：UI select 傳回 string，需要轉成 number 再與 enum 值比較
   const filteredTransactions = transactions.filter((tx) => {
     if (filter.ticker && !tx.ticker.toLowerCase().includes(filter.ticker.toLowerCase())) {
       return false;

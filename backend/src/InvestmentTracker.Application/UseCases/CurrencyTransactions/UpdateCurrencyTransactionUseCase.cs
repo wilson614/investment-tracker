@@ -6,7 +6,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 
 /// <summary>
-/// Use case for updating an existing currency transaction.
+/// 更新外幣交易（Currency Transaction）的 Use Case。
 /// </summary>
 public class UpdateCurrencyTransactionUseCase
 {

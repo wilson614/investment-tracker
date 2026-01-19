@@ -1,3 +1,13 @@
+/**
+ * Login Page
+ *
+ * 提供使用者登入/註冊入口，並在成功後導回先前嘗試進入的頁面。
+ *
+ * 行為重點：
+ * - `isLogin=true`：呼叫 `useAuth().login`
+ * - `isLogin=false`：先檢查顯示名稱，再呼叫 `useAuth().register`
+ * - 成功後使用 `navigate(from, { replace: true })` 導頁
+ */
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -14,9 +24,15 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // React Router 的 location.state 可能包含 ProtectedRoute 傳入的原始目標路徑。
+  // 這裡保守地處理型別與缺值，並且避免導回以 `/portfolio` 開頭的頁面（會改導回 `/`）。
   const rawFrom = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
   const from = rawFrom.startsWith('/portfolio') ? '/' : rawFrom;
 
+  /**
+   * 表單送出處理：依模式登入或註冊。
+   * @param e React 表單事件
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');

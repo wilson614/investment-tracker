@@ -1,12 +1,27 @@
+/**
+ * FileDropdown
+ *
+ * 共用「檔案」下拉選單：可同時提供匯入/匯出入口。
+ *
+ * 行為：
+ * - 若只提供匯出（沒有匯入），會退化成單一匯出按鈕。
+ * - 打開後點擊外部會自動關閉。
+ */
 import { useState, useRef, useEffect } from 'react';
 import { FileText, ChevronDown } from 'lucide-react';
 
 interface FileDropdownProps {
+  /** 點擊匯入 */
   onImport?: () => void;
+  /** 點擊匯出 */
   onExport?: () => void;
+  /** 禁用匯入 */
   importDisabled?: boolean;
+  /** 禁用匯出 */
   exportDisabled?: boolean;
+  /** 匯入顯示文字 */
   importLabel?: string;
+  /** 匯出顯示文字 */
   exportLabel?: string;
 }
 
@@ -21,7 +36,7 @@ export function FileDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // 點擊 dropdown 外部時自動關閉。
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -35,11 +50,17 @@ export function FileDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  /**
+   * 點擊匯入：先關閉 dropdown，再觸發 callback。
+   */
   const handleImport = () => {
     setIsOpen(false);
     onImport?.();
   };
 
+  /**
+   * 點擊匯出：先關閉 dropdown，再觸發 callback。
+   */
   const handleExport = () => {
     setIsOpen(false);
     onExport?.();

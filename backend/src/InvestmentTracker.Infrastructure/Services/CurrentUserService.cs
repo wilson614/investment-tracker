@@ -5,16 +5,11 @@ using Microsoft.AspNetCore.Http;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// Service for accessing the current authenticated user's context from HTTP context.
+/// 從 HttpContext 取得目前已驗證使用者資訊的服務。
 /// </summary>
-public class CurrentUserService : ICurrentUserService
+public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICurrentUserService
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
-
-    public CurrentUserService(IHttpContextAccessor httpContextAccessor)
-    {
-        _httpContextAccessor = httpContextAccessor;
-    }
+    private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
 
     public Guid? UserId
     {

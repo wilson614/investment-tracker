@@ -6,16 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for Euronext quote cache.
+/// Euronext 報價快取（EuronextQuoteCache）的 Repository 實作。
 /// </summary>
-public class EuronextQuoteCacheRepository : IEuronextQuoteCacheRepository
+public class EuronextQuoteCacheRepository(AppDbContext context) : IEuronextQuoteCacheRepository
 {
-    private readonly AppDbContext _context;
-
-    public EuronextQuoteCacheRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<EuronextQuoteCache?> GetByIsinAndMicAsync(string isin, string mic, CancellationToken cancellationToken = default)
     {

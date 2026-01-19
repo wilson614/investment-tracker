@@ -3,39 +3,39 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Global cache for historical year-end stock prices and exchange rates.
-/// Used to avoid repeated API calls to Stooq/TWSE and prevent rate limit issues.
+/// 年末歷史資料快取實體，儲存年末股價和匯率
+/// 用於避免重複呼叫 Stooq/TWSE API 並防止頻率限制問題
 /// </summary>
 public class HistoricalYearEndData
 {
-    /// <summary>Auto-increment primary key</summary>
+    /// <summary>自動遞增主鍵</summary>
     public int Id { get; private set; }
 
-    /// <summary>Type of data: StockPrice or ExchangeRate</summary>
+    /// <summary>資料類型：StockPrice 或 ExchangeRate</summary>
     public HistoricalDataType DataType { get; private set; }
 
-    /// <summary>Stock ticker or currency pair (e.g., "VT", "0050", "USDTWD")</summary>
+    /// <summary>股票代號或幣別對（如 VT、0050、USDTWD）</summary>
     public string Ticker { get; private set; } = string.Empty;
 
-    /// <summary>The year (e.g., 2024)</summary>
+    /// <summary>年份（如 2024）</summary>
     public int Year { get; private set; }
 
-    /// <summary>Price or exchange rate value</summary>
+    /// <summary>價格或匯率數值</summary>
     public decimal Value { get; private set; }
 
-    /// <summary>Original currency of the price (e.g., "USD", "TWD")</summary>
+    /// <summary>價格的原始幣別（如 USD、TWD）</summary>
     public string Currency { get; private set; } = string.Empty;
 
-    /// <summary>Actual trading date the price was recorded</summary>
+    /// <summary>價格記錄的實際交易日期</summary>
     public DateTime ActualDate { get; private set; }
 
-    /// <summary>Data source: "Stooq", "TWSE", or "Manual"</summary>
+    /// <summary>資料來源：Stooq、TWSE 或 Manual</summary>
     public string Source { get; private set; } = string.Empty;
 
-    /// <summary>Timestamp when data was fetched/entered</summary>
+    /// <summary>資料取得/輸入時間</summary>
     public DateTime FetchedAt { get; private set; }
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private HistoricalYearEndData() { }
 
     public HistoricalYearEndData(
@@ -69,7 +69,7 @@ public class HistoricalYearEndData
     }
 
     /// <summary>
-    /// Creates a stock price cache entry.
+    /// 建立股價快取項目
     /// </summary>
     public static HistoricalYearEndData CreateStockPrice(
         string ticker,
@@ -90,7 +90,7 @@ public class HistoricalYearEndData
     }
 
     /// <summary>
-    /// Creates an exchange rate cache entry.
+    /// 建立匯率快取項目
     /// </summary>
     public static HistoricalYearEndData CreateExchangeRate(
         string currencyPair,
@@ -99,7 +99,7 @@ public class HistoricalYearEndData
         DateTime actualDate,
         string source)
     {
-        // Exchange rates are stored with TWD as the target currency
+        // 匯率以 TWD 為目標幣別儲存
         return new HistoricalYearEndData(
             HistoricalDataType.ExchangeRate,
             currencyPair,

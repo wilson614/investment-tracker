@@ -6,30 +6,25 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供外幣交易（Currency Transaction）查詢與維護 API。
+/// </summary>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class CurrencyTransactionsController : ControllerBase
+public class CurrencyTransactionsController(
+    CreateCurrencyTransactionUseCase createUseCase,
+    UpdateCurrencyTransactionUseCase updateUseCase,
+    DeleteCurrencyTransactionUseCase deleteUseCase,
+    ICurrencyTransactionRepository transactionRepository) : ControllerBase
 {
-    private readonly CreateCurrencyTransactionUseCase _createUseCase;
-    private readonly UpdateCurrencyTransactionUseCase _updateUseCase;
-    private readonly DeleteCurrencyTransactionUseCase _deleteUseCase;
-    private readonly ICurrencyTransactionRepository _transactionRepository;
-
-    public CurrencyTransactionsController(
-        CreateCurrencyTransactionUseCase createUseCase,
-        UpdateCurrencyTransactionUseCase updateUseCase,
-        DeleteCurrencyTransactionUseCase deleteUseCase,
-        ICurrencyTransactionRepository transactionRepository)
-    {
-        _createUseCase = createUseCase;
-        _updateUseCase = updateUseCase;
-        _deleteUseCase = deleteUseCase;
-        _transactionRepository = transactionRepository;
-    }
+    private readonly CreateCurrencyTransactionUseCase _createUseCase = createUseCase;
+    private readonly UpdateCurrencyTransactionUseCase _updateUseCase = updateUseCase;
+    private readonly DeleteCurrencyTransactionUseCase _deleteUseCase = deleteUseCase;
+    private readonly ICurrencyTransactionRepository _transactionRepository = transactionRepository;
 
     /// <summary>
-    /// Get all transactions for a currency ledger.
+    /// 取得指定外幣帳本的所有交易。
     /// </summary>
     [HttpGet("ledger/{ledgerId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<CurrencyTransactionDto>), StatusCodes.Status200OK)]
@@ -37,8 +32,7 @@ public class CurrencyTransactionsController : ControllerBase
         Guid ledgerId,
         CancellationToken cancellationToken)
     {
-        var transactions = await _transactionRepository.GetByLedgerIdOrderedAsync(
-            ledgerId, cancellationToken);
+        var transactions = await _transactionRepository.GetByLedgerIdOrderedAsync(ledgerId, cancellationToken);
 
         return Ok(transactions.Select(t => new CurrencyTransactionDto
         {
@@ -57,7 +51,7 @@ public class CurrencyTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new currency transaction.
+    /// 建立新的外幣交易。
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(CurrencyTransactionDto), StatusCodes.Status201Created)]
@@ -85,7 +79,7 @@ public class CurrencyTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Update a currency transaction.
+    /// 更新外幣交易。
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyTransactionDto), StatusCodes.Status200OK)]
@@ -109,7 +103,7 @@ public class CurrencyTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Delete a currency transaction.
+    /// 刪除外幣交易。
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

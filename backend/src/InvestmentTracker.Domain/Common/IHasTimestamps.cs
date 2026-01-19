@@ -1,7 +1,7 @@
 namespace InvestmentTracker.Domain.Common;
 
 /// <summary>
-/// Interface for entities that track creation and modification timestamps.
+/// 提供建立與更新時間戳記的 Entity 介面。
 /// </summary>
 public interface IHasTimestamps
 {

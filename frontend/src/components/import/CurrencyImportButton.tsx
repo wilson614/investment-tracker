@@ -1,3 +1,12 @@
+/**
+ * CurrencyImportButton
+ *
+ * 外幣交易 CSV 匯入按鈕：使用通用 `CSVImportModal` 解析 CSV，逐列驗證後呼叫 `currencyTransactionApi.create`。
+ *
+ * 重要行為：
+ * - 換匯/期初餘額等類型需要 `homeAmount`（台幣金額）才能推導成本。
+ * - 換匯類型會由 `homeAmount / foreignAmount` 自動計算 exchangeRate。
+ */
 import { useState } from 'react';
 import { Upload } from 'lucide-react';
 import { CSVImportModal, type FieldDefinition } from './CSVImportModal';
@@ -15,9 +24,11 @@ import { CurrencyTransactionType } from '../../types';
 import type { CreateCurrencyTransactionRequest } from '../../types';
 
 interface CurrencyImportButtonProps {
+  /** 目標 ledger ID */
   ledgerId: string;
+  /** 匯入完成後 callback（通常用於重新載入頁面資料） */
   onImportComplete: () => void;
-  /** If provided, renders custom trigger instead of default button */
+  /** 若提供，改用自訂 trigger（常用於搭配 FileDropdown） */
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
@@ -55,7 +66,14 @@ const currencyFields: FieldDefinition[] = [
   },
 ];
 
-// Map transaction type string to enum
+/**
+ * 將 CSV 內的交易類型文字轉成 `CurrencyTransactionType`。
+ *
+ * 支援：
+ * - 中文：買/賣/利息/消費/期初/其他收入/其他支出
+ * - 英文：buy/sell/interest/spend/initial/balance/bonus/dividend/fee/transfer
+ * - 數字：1-7
+ */
 function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
   const normalized = typeStr.toLowerCase().trim();
 
@@ -98,8 +116,18 @@ export function CurrencyImportButton({
 }: CurrencyImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  /**
+   * 開啟匯入 Modal。
+   */
   const handleOpenImport = () => setIsModalOpen(true);
 
+  /**
+   * 實際匯入：逐列解析/驗證後呼叫 API 建立外幣交易。
+   *
+   * 規則摘要：
+   * - 換匯/期初餘額需要 `homeAmount` 作為成本基礎。
+   * - `homeAmount` 必須為整數（台幣）。
+   */
   const handleImport = async (
     csvData: ParsedCSV,
     mapping: ColumnMapping

@@ -3,19 +3,19 @@ using InvestmentTracker.Application.DTOs;
 namespace InvestmentTracker.Application.Interfaces;
 
 /// <summary>
-/// Service for calculating historical year performance.
+/// 歷史年度績效計算服務介面。
 /// </summary>
 public interface IHistoricalPerformanceService
 {
     /// <summary>
-    /// Get available years for performance calculation.
+    /// 取得可計算績效的年份清單。
     /// </summary>
     Task<AvailableYearsDto> GetAvailableYearsAsync(
         Guid portfolioId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Calculate performance for a specific year.
+    /// 計算指定年度的績效。
     /// </summary>
     Task<YearPerformanceDto> CalculateYearPerformanceAsync(
         Guid portfolioId,

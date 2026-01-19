@@ -6,23 +6,21 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供股價/匯率即時報價相關 API。
+/// </summary>
 [ApiController]
 [Route("api/stock-prices")]
 [Authorize]
-public class StockPricesController : ControllerBase
+public class StockPricesController(IStockPriceService stockPriceService) : ControllerBase
 {
-    private readonly IStockPriceService _stockPriceService;
-
-    public StockPricesController(IStockPriceService stockPriceService)
-    {
-        _stockPriceService = stockPriceService;
-    }
+    private readonly IStockPriceService _stockPriceService = stockPriceService;
 
     /// <summary>
-    /// Get real-time stock quote (basic)
+    /// 取得即時股價報價（基本資訊）。
     /// </summary>
-    /// <param name="market">Market: 1=TW, 2=US, 3=UK</param>
-    /// <param name="symbol">Stock symbol (e.g., 2330, AAPL, VOD)</param>
+    /// <param name="market">市場：1=TW、2=US、3=UK</param>
+    /// <param name="symbol">股票代號（例如：2330、AAPL、VOD）</param>
     [HttpGet]
     [ProducesResponseType(typeof(StockQuoteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -53,11 +51,11 @@ public class StockPricesController : ControllerBase
     }
 
     /// <summary>
-    /// Get real-time stock quote with exchange rate
+    /// 取得即時股價報價（包含匯率）。
     /// </summary>
-    /// <param name="market">Market: 1=TW, 2=US, 3=UK</param>
-    /// <param name="symbol">Stock symbol (e.g., 2330, AAPL, VOD)</param>
-    /// <param name="homeCurrency">Home currency for exchange rate (e.g., TWD)</param>
+    /// <param name="market">市場：1=TW、2=US、3=UK</param>
+    /// <param name="symbol">股票代號（例如：2330、AAPL、VOD）</param>
+    /// <param name="homeCurrency">換算匯率使用的本位幣（例如：TWD）</param>
     [HttpGet("with-rate")]
     [ProducesResponseType(typeof(StockQuoteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -95,10 +93,10 @@ public class StockPricesController : ControllerBase
     }
 
     /// <summary>
-    /// Get exchange rate between two currencies
+    /// 取得兩種幣別間的即時匯率。
     /// </summary>
-    /// <param name="from">Source currency (e.g., USD)</param>
-    /// <param name="to">Target currency (e.g., TWD)</param>
+    /// <param name="from">來源幣別（例如：USD）</param>
+    /// <param name="to">目標幣別（例如：TWD）</param>
     [HttpGet("exchange-rate")]
     [ProducesResponseType(typeof(ExchangeRateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -127,7 +125,7 @@ public class StockPricesController : ControllerBase
     }
 
     /// <summary>
-    /// Get available markets
+    /// 取得可用市場清單。
     /// </summary>
     [HttpGet("markets")]
     [ProducesResponseType(typeof(IEnumerable<object>), StatusCodes.Status200OK)]

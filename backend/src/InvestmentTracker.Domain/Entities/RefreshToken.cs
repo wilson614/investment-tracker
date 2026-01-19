@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Common;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Stores JWT refresh tokens for authentication.
+/// JWT 更新令牌實體，用於驗證機制
 /// </summary>
 public class RefreshToken : BaseEntity
 {
@@ -13,15 +13,15 @@ public class RefreshToken : BaseEntity
     public DateTime? RevokedAt { get; private set; }
     public Guid? ReplacedByTokenId { get; private set; }
 
-    // Navigation property
+    // 導覽屬性
     public User User { get; private set; } = null!;
 
-    // Computed properties
+    // 計算屬性
     public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
     public bool IsRevoked => RevokedAt.HasValue;
     public bool IsActive => !IsRevoked && !IsExpired;
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private RefreshToken() { }
 
     public RefreshToken(Guid userId, string token, DateTime expiresAt)

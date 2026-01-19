@@ -7,37 +7,30 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供股票交易（Stock Transaction）查詢與維護 API。
+/// </summary>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class StockTransactionsController : ControllerBase
+public class StockTransactionsController(
+    IStockTransactionRepository transactionRepository,
+    IStockSplitRepository stockSplitRepository,
+    StockSplitAdjustmentService splitAdjustmentService,
+    CreateStockTransactionUseCase createUseCase,
+    UpdateStockTransactionUseCase updateUseCase,
+    DeleteStockTransactionUseCase deleteUseCase) : ControllerBase
 {
-    private readonly IStockTransactionRepository _transactionRepository;
-    private readonly IStockSplitRepository _stockSplitRepository;
-    private readonly StockSplitAdjustmentService _splitAdjustmentService;
-    private readonly CreateStockTransactionUseCase _createUseCase;
-    private readonly UpdateStockTransactionUseCase _updateUseCase;
-    private readonly DeleteStockTransactionUseCase _deleteUseCase;
-
-    public StockTransactionsController(
-        IStockTransactionRepository transactionRepository,
-        IStockSplitRepository stockSplitRepository,
-        StockSplitAdjustmentService splitAdjustmentService,
-        CreateStockTransactionUseCase createUseCase,
-        UpdateStockTransactionUseCase updateUseCase,
-        DeleteStockTransactionUseCase deleteUseCase)
-    {
-        _transactionRepository = transactionRepository;
-        _stockSplitRepository = stockSplitRepository;
-        _splitAdjustmentService = splitAdjustmentService;
-        _createUseCase = createUseCase;
-        _updateUseCase = updateUseCase;
-        _deleteUseCase = deleteUseCase;
-    }
+    private readonly IStockTransactionRepository _transactionRepository = transactionRepository;
+    private readonly IStockSplitRepository _stockSplitRepository = stockSplitRepository;
+    private readonly StockSplitAdjustmentService _splitAdjustmentService = splitAdjustmentService;
+    private readonly CreateStockTransactionUseCase _createUseCase = createUseCase;
+    private readonly UpdateStockTransactionUseCase _updateUseCase = updateUseCase;
+    private readonly DeleteStockTransactionUseCase _deleteUseCase = deleteUseCase;
 
     /// <summary>
-    /// Get all transactions for a portfolio.
-    /// Includes split-adjusted values for transparency (FR-052a).
+    /// 取得指定投資組合的所有交易。
+    /// 包含分割調整後的欄位，便於追蹤（FR-052a）。
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<StockTransactionDto>), StatusCodes.Status200OK)]
@@ -71,7 +64,7 @@ public class StockTransactionsController : ControllerBase
                 RealizedPnlHome = t.RealizedPnlHome,
                 CreatedAt = t.CreatedAt,
                 UpdatedAt = t.UpdatedAt,
-                // Split adjustment fields
+                // 分割調整欄位
                 AdjustedShares = adjusted.HasSplitAdjustment ? adjusted.AdjustedShares : null,
                 AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
                 SplitRatio = adjusted.SplitRatio,
@@ -81,8 +74,8 @@ public class StockTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Get a transaction by ID.
-    /// Includes split-adjusted values for transparency (FR-052a).
+    /// 依交易 ID 取得單筆交易。
+    /// 包含分割調整後的欄位，便於追蹤（FR-052a）。
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
@@ -116,7 +109,7 @@ public class StockTransactionsController : ControllerBase
             RealizedPnlHome = transaction.RealizedPnlHome,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt,
-            // Split adjustment fields
+            // 分割調整欄位
             AdjustedShares = adjusted.HasSplitAdjustment ? adjusted.AdjustedShares : null,
             AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
             SplitRatio = adjusted.SplitRatio,
@@ -125,7 +118,7 @@ public class StockTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new stock transaction.
+    /// 建立新的股票交易。
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status201Created)]
@@ -150,7 +143,7 @@ public class StockTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Update a stock transaction.
+    /// 更新股票交易。
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
@@ -182,7 +175,7 @@ public class StockTransactionsController : ControllerBase
     }
 
     /// <summary>
-    /// Delete (soft-delete) a stock transaction.
+    /// 刪除（soft-delete）股票交易。
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

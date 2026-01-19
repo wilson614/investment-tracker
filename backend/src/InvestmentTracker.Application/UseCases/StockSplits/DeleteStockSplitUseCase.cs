@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.StockSplits;
 
 /// <summary>
-/// Use case for deleting a stock split record.
+/// 刪除拆股（Stock Split）資料的 Use Case。
 /// </summary>
 public class DeleteStockSplitUseCase
 {

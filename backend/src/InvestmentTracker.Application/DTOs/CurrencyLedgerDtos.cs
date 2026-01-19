@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// DTO for currency ledger.
+/// 外幣帳本（Currency Ledger）的資料傳輸物件。
 /// </summary>
 public record CurrencyLedgerDto
 {
@@ -17,7 +17,7 @@ public record CurrencyLedgerDto
 }
 
 /// <summary>
-/// DTO for currency transaction.
+/// 外幣交易（Currency Transaction）的資料傳輸物件。
 /// </summary>
 public record CurrencyTransactionDto
 {
@@ -35,34 +35,43 @@ public record CurrencyTransactionDto
 }
 
 /// <summary>
-/// DTO for currency ledger summary with calculated values.
+/// 外幣帳本摘要（包含計算後的統計欄位）。
 /// </summary>
 public record CurrencyLedgerSummaryDto
 {
     public CurrencyLedgerDto Ledger { get; init; } = null!;
-    /// <summary>Current foreign currency balance</summary>
+
+    /// <summary>目前外幣餘額。</summary>
     public decimal Balance { get; init; }
-    /// <summary>Average exchange rate from all exchanges (TWD per foreign unit)</summary>
+
+    /// <summary>依所有換匯交易計算的平均匯率（每 1 單位外幣對應的 TWD）。</summary>
     public decimal AverageExchangeRate { get; init; }
-    /// <summary>Net TWD invested (buy - sell)</summary>
+
+    /// <summary>投入的 TWD 淨額（買入 - 賣出）。</summary>
     public decimal TotalExchanged { get; init; }
-    /// <summary>Total foreign currency spent on stocks</summary>
+
+    /// <summary>用於買股票的外幣總支出。</summary>
     public decimal TotalSpentOnStocks { get; init; }
-    /// <summary>Total interest income in foreign currency</summary>
+
+    /// <summary>外幣利息收入總額。</summary>
     public decimal TotalInterest { get; init; }
-    /// <summary>Current cost basis for remaining balance (using moving average)</summary>
+
+    /// <summary>剩餘外幣餘額的成本基礎（移動平均法）。</summary>
     public decimal TotalCost { get; init; }
-    /// <summary>Realized profit/loss from selling foreign currency</summary>
+
+    /// <summary>賣出外幣的已實現損益。</summary>
     public decimal RealizedPnl { get; init; }
+
     public decimal? CurrentExchangeRate { get; init; }
     public decimal? CurrentValueHome { get; init; }
     public decimal? UnrealizedPnlHome { get; init; }
     public decimal? UnrealizedPnlPercentage { get; init; }
-    public IReadOnlyList<CurrencyTransactionDto> RecentTransactions { get; init; } = Array.Empty<CurrencyTransactionDto>();
+
+    public IReadOnlyList<CurrencyTransactionDto> RecentTransactions { get; init; } = [];
 }
 
 /// <summary>
-/// Request DTO for creating a currency ledger.
+/// 建立外幣帳本的請求 DTO。
 /// </summary>
 public record CreateCurrencyLedgerRequest
 {
@@ -72,7 +81,7 @@ public record CreateCurrencyLedgerRequest
 }
 
 /// <summary>
-/// Request DTO for updating a currency ledger.
+/// 更新外幣帳本的請求 DTO。
 /// </summary>
 public record UpdateCurrencyLedgerRequest
 {
@@ -80,7 +89,7 @@ public record UpdateCurrencyLedgerRequest
 }
 
 /// <summary>
-/// Request DTO for creating a currency transaction.
+/// 建立外幣交易的請求 DTO。
 /// </summary>
 public record CreateCurrencyTransactionRequest
 {
@@ -95,7 +104,7 @@ public record CreateCurrencyTransactionRequest
 }
 
 /// <summary>
-/// Request DTO for updating a currency transaction.
+/// 更新外幣交易的請求 DTO。
 /// </summary>
 public record UpdateCurrencyTransactionRequest
 {

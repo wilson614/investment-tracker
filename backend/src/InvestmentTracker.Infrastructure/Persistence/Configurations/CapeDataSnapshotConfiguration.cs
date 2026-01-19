@@ -8,7 +8,7 @@ public class CapeDataSnapshotConfiguration : IEntityTypeConfiguration<CapeDataSn
 {
     public void Configure(EntityTypeBuilder<CapeDataSnapshot> builder)
     {
-        builder.ToTable("CapeDataSnapshots");
+        builder.ToTable("cape_data_snapshots");
 
         builder.HasKey(c => c.Id);
 
@@ -25,7 +25,7 @@ public class CapeDataSnapshotConfiguration : IEntityTypeConfiguration<CapeDataSn
         builder.Property(c => c.CreatedAt)
             .IsRequired();
 
-        // Index on DataDate for quick lookups
+        // 依 DataDate 建立唯一索引，加速查詢
         builder.HasIndex(c => c.DataDate)
             .IsUnique();
     }

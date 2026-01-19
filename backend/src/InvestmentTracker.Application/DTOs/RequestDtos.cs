@@ -1,10 +1,10 @@
-using InvestmentTracker.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// Request DTO for creating a portfolio.
+/// 建立投資組合的請求 DTO。
 /// </summary>
 public record CreatePortfolioRequest
 {
@@ -18,19 +18,19 @@ public record CreatePortfolioRequest
     public string HomeCurrency { get; init; } = "TWD";
 
     /// <summary>
-    /// Type of portfolio (Primary or ForeignCurrency).
+    /// 投資組合類型（Primary 或 ForeignCurrency）。
     /// </summary>
     public PortfolioType PortfolioType { get; init; } = PortfolioType.Primary;
 
     /// <summary>
-    /// Display name for the portfolio (e.g., "美股投資組合").
+    /// 投資組合顯示名稱（例如："美股投資組合"）。
     /// </summary>
     [StringLength(100)]
     public string? DisplayName { get; init; }
 }
 
 /// <summary>
-/// Request DTO for updating a portfolio.
+/// 更新投資組合的請求 DTO。
 /// </summary>
 public record UpdatePortfolioRequest
 {
@@ -39,7 +39,7 @@ public record UpdatePortfolioRequest
 }
 
 /// <summary>
-/// Request DTO for creating a stock transaction.
+/// 建立股票交易的請求 DTO。
 /// </summary>
 public record CreateStockTransactionRequest
 {
@@ -65,8 +65,8 @@ public record CreateStockTransactionRequest
     public decimal PricePerShare { get; init; }
 
     /// <summary>
-    /// Exchange rate for conversion to home currency.
-    /// Optional when FundSource is CurrencyLedger - will be calculated from ledger's weighted average cost.
+    /// 兌換成本位幣用的匯率。
+    /// 當 FundSource 為 CurrencyLedger 時可選填；若未提供，會以帳本的加權平均成本推算。
     /// </summary>
     [Range(0, double.MaxValue)]
     public decimal? ExchangeRate { get; init; }
@@ -83,7 +83,7 @@ public record CreateStockTransactionRequest
 }
 
 /// <summary>
-/// Request DTO for updating a stock transaction.
+/// 更新股票交易的請求 DTO。
 /// </summary>
 public record UpdateStockTransactionRequest
 {
@@ -106,8 +106,8 @@ public record UpdateStockTransactionRequest
     public decimal PricePerShare { get; init; }
 
     /// <summary>
-    /// Exchange rate for conversion to home currency.
-    /// Optional - if not provided, transaction cost will be tracked in source currency only.
+    /// 兌換成本位幣用的匯率。
+    /// 可選填；若未提供，交易成本僅會以原始幣別追蹤。
     /// </summary>
     [Range(0.000001, double.MaxValue)]
     public decimal? ExchangeRate { get; init; }
@@ -124,15 +124,15 @@ public record UpdateStockTransactionRequest
 }
 
 /// <summary>
-/// Request for calculating portfolio performance with current prices.
+/// 以現價計算投資組合績效的請求 DTO。
 /// </summary>
 public record CalculatePerformanceRequest
 {
-    public Dictionary<string, CurrentPriceInfo> CurrentPrices { get; init; } = new();
+    public Dictionary<string, CurrentPriceInfo> CurrentPrices { get; init; } = [];
 }
 
 /// <summary>
-/// Request for calculating XIRR.
+/// 計算投資組合 XIRR 的請求 DTO。
 /// </summary>
 public record CalculateXirrRequest
 {
@@ -141,7 +141,7 @@ public record CalculateXirrRequest
 }
 
 /// <summary>
-/// Request for calculating XIRR for a single position.
+/// 計算單一持倉 XIRR 的請求 DTO。
 /// </summary>
 public record CalculatePositionXirrRequest
 {
@@ -151,7 +151,7 @@ public record CalculatePositionXirrRequest
 }
 
 /// <summary>
-/// Result of XIRR calculation.
+/// XIRR 計算結果 DTO。
 /// </summary>
 public record XirrResultDto
 {
@@ -159,16 +159,16 @@ public record XirrResultDto
     public double? XirrPercentage { get; init; }
     public int CashFlowCount { get; init; }
     public DateTime AsOfDate { get; init; }
-    
+
     /// <summary>
-    /// List of transaction dates with missing exchange rates that need manual input.
-    /// Null if all exchange rates are available.
+    /// 交易日缺少匯率、需要手動補齊的清單。
+    /// 若匯率皆齊全則為 null。
     /// </summary>
     public IReadOnlyList<MissingExchangeRateDto>? MissingExchangeRates { get; init; }
 }
 
 /// <summary>
-/// Information about a missing exchange rate for a transaction date.
+/// 交易日缺少匯率的資訊。
 /// </summary>
 public record MissingExchangeRateDto
 {
@@ -177,7 +177,7 @@ public record MissingExchangeRateDto
 }
 
 /// <summary>
-/// Current price information for a ticker.
+/// 股票代號的現價資訊。
 /// </summary>
 public record CurrentPriceInfo
 {

@@ -5,16 +5,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for Portfolio aggregate.
+/// Portfolio aggregate 的 Repository 實作。
 /// </summary>
-public class PortfolioRepository : IPortfolioRepository
+public class PortfolioRepository(Persistence.AppDbContext context) : IPortfolioRepository
 {
-    private readonly Persistence.AppDbContext _context;
-
-    public PortfolioRepository(Persistence.AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly Persistence.AppDbContext _context = context;
 
     public async Task<Portfolio?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

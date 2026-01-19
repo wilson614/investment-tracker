@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Common;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Tracks foreign currency holdings with weighted average cost.
+/// 外幣帳戶實體，追蹤外幣持有及加權平均成本
 /// </summary>
 public class CurrencyLedger : BaseEntity
 {
@@ -13,13 +13,13 @@ public class CurrencyLedger : BaseEntity
     public string HomeCurrency { get; private set; } = "TWD";
     public bool IsActive { get; private set; } = true;
 
-    // Navigation properties
+    // 導覽屬性
     public User User { get; private set; } = null!;
 
     private readonly List<CurrencyTransaction> _transactions = new();
     public IReadOnlyCollection<CurrencyTransaction> Transactions => _transactions.AsReadOnly();
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private CurrencyLedger() { }
 
     public CurrencyLedger(Guid userId, string currencyCode, string name, string homeCurrency = "TWD")

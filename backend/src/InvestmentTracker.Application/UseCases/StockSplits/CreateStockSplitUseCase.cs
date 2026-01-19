@@ -5,7 +5,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.StockSplits;
 
 /// <summary>
-/// Use case for creating a new stock split record.
+/// 建立拆股（Stock Split）資料的 Use Case。
 /// </summary>
 public class CreateStockSplitUseCase
 {
@@ -20,7 +20,7 @@ public class CreateStockSplitUseCase
         CreateStockSplitRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Check for duplicate
+        // 檢查是否重複建立
         var exists = await _repository.ExistsAsync(
             request.Symbol,
             request.Market,

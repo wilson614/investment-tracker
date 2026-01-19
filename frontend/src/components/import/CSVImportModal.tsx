@@ -1,3 +1,13 @@
+/**
+ * CSVImportModal
+ *
+ * 通用 CSV 匯入 Modal：提供「上傳 → 欄位對應 → 預覽 → 匯入結果」的流程 UI。
+ *
+ * 主要職責：
+ * - 讀取檔案文字並呼叫 `parseCSV`。
+ * - 使用 `autoMapColumns` 依欄位別名自動對應。
+ * - 將解析後的 `ParsedCSV` 與使用者確認的 mapping 交給呼叫端的 `onImport`。
+ */
 import { useState, useCallback } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import {
@@ -9,17 +19,29 @@ import {
 } from '../../utils/csvParser';
 
 export interface FieldDefinition {
+  /** 欄位 key（提供給 mapping 使用） */
   name: string;
+  /** UI 顯示名稱 */
   label: string;
+  /** CSV 欄位可能出現的別名（用於 auto mapping） */
   aliases: string[];
+  /** 是否必填 */
   required: boolean;
 }
 
 interface CSVImportModalProps {
+  /** 是否顯示 Modal */
   isOpen: boolean;
+  /** 關閉 callback（外層負責切換 isOpen） */
   onClose: () => void;
+  /** Modal 標題 */
   title: string;
+  /** 欄位定義（決定 mapping UI 與必填檢查） */
   fields: FieldDefinition[];
+  /**
+   * 實際匯入處理：由呼叫端將 `ParsedCSV` + mapping 轉成 API request。
+   * 回傳 errors 讓 UI 顯示錯誤列表。
+   */
   onImport: (
     data: ParsedCSV,
     mapping: ColumnMapping
@@ -44,6 +66,9 @@ export function CSVImportModal({
   } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
 
+  /**
+   * 上傳檔案後：讀取文字 → parse CSV → 自動欄位對應 → 進入 mapping step。
+   */
   const handleFileSelect = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -65,6 +90,11 @@ export function CSVImportModal({
     [fields]
   );
 
+  /**
+   * 更新單一欄位對應。
+   *
+   * 注意：`''` 代表未選擇，會轉成 `null`。
+   */
   const handleMappingChange = (fieldName: string, csvHeader: string | null) => {
     setMapping((prev) => ({
       ...prev,
@@ -72,6 +102,9 @@ export function CSVImportModal({
     }));
   };
 
+  /**
+   * 驗證必填欄位是否都有完成對應。
+   */
   const validateMapping = (): boolean => {
     const requiredFields = fields.filter((f) => f.required);
     const missingFields = requiredFields.filter((f) => !mapping[f.name]);
@@ -90,6 +123,9 @@ export function CSVImportModal({
     }
   };
 
+  /**
+   * 執行匯入：呼叫外部 `onImport`，並整理成功筆數/錯誤列表供 UI 呈現。
+   */
   const handleImport = async () => {
     if (!csvData) return;
 
@@ -109,6 +145,9 @@ export function CSVImportModal({
     }
   };
 
+  /**
+   * 關閉 Modal 並清理內部狀態，確保下次開啟從 upload step 開始。
+   */
   const handleClose = () => {
     setStep('upload');
     setCsvData(null);

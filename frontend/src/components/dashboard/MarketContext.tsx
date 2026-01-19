@@ -1,6 +1,7 @@
 /**
- * MarketContext Component
- * Displays Global CAPE (Cyclically Adjusted P/E) data with valuation context
+ * MarketContext
+ *
+ * 市場估值指標卡片：顯示各區域的 CAPE（Shiller P/E）、中位數與歷史百分位，並提供排序/篩選與顯示區域設定。
  */
 
 import { useState, useMemo } from 'react';
@@ -19,6 +20,7 @@ const CAPE_SORT_OPTIONS: { value: CapeSortKey; label: string }[] = [
 ];
 
 interface ValuationBadgeProps {
+  /** 估值分類（cheap/fair/expensive） */
   valuation: CapeValuation;
 }
 
@@ -52,12 +54,13 @@ function ValuationBadge({ valuation }: ValuationBadgeProps) {
 }
 
 interface PercentileBarProps {
+  /** 0-1 的小數（例如 0.83 表示 83%） */
   percentile: number;
 }
 
 function PercentileBar({ percentile }: PercentileBarProps) {
   const pct = Math.round(percentile * 100);
-  // Color based on percentile: low = green, mid = yellow, high = red
+  // 依百分位決定顏色：低 = 綠（便宜）、中 = 黃（合理）、高 = 紅（昂貴）。
   const getColor = (p: number) => {
     if (p < 25) return 'bg-green-500';
     if (p < 75) return 'bg-yellow-500';
@@ -78,11 +81,12 @@ function PercentileBar({ percentile }: PercentileBarProps) {
 }
 
 interface CapeRowProps {
+  /** 單列 CAPE 顯示資料 */
   item: CapeDisplayItem;
 }
 
 function CapeRow({ item }: CapeRowProps) {
-  // Use adjusted CAPE if available, otherwise use original
+  // 若有 adjusted CAPE（例如排除通膨/結構差異調整），則用調整後數值；否則使用原始 CAPE。
   const displayCape = item.adjustedCape ?? item.cape;
   const hasAdjusted = item.adjustedCape != null;
 
@@ -112,6 +116,7 @@ function CapeRow({ item }: CapeRowProps) {
 }
 
 interface MarketContextProps {
+  /** 額外 className */
   className?: string;
 }
 
@@ -127,6 +132,7 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     if (!data) return null;
     if (sortKey === 'default') return data;
 
+    // 排序時一律以 adjusted CAPE 優先，確保顯示與排序一致。
     return [...data].sort((a, b) => {
       const aValue = a.adjustedCape ?? a.cape;
       const bValue = b.adjustedCape ?? b.cape;
@@ -143,7 +149,7 @@ export function MarketContext({ className = '' }: MarketContextProps) {
   const filteredRegions = useMemo(() => {
     let regions = availableRegions;
 
-    // Filter by search query
+    // 依搜尋字串過濾（key/label 任一包含即保留）。
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       regions = regions.filter(
@@ -153,7 +159,7 @@ export function MarketContext({ className = '' }: MarketContextProps) {
       );
     }
 
-    // Sort: selected regions first (based on initial selection when dialog opened)
+    // 排序：將「開啟設定時原本已選取」的區域先排到前面，方便使用者快速檢視目前選項。
     return [...regions].sort((a, b) => {
       const aSelected = initialSelectedRegions.includes(a.key);
       const bSelected = initialSelectedRegions.includes(b.key);
@@ -163,6 +169,9 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     });
   }, [availableRegions, searchQuery, initialSelectedRegions]);
 
+  /**
+   * 開啟設定：以目前已選取的 regions 初始化暫存狀態，並重置搜尋字串。
+   */
   const handleOpenSettings = () => {
     setTempSelectedRegions(selectedRegions);
     setInitialSelectedRegions(selectedRegions);
@@ -170,6 +179,9 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     setShowSettings(true);
   };
 
+  /**
+   * 儲存設定：只有在至少選取 1 個 region 時才會套用，避免整張卡片無資料。
+   */
   const handleSaveSettings = () => {
     if (tempSelectedRegions.length > 0) {
       setSelectedRegions(tempSelectedRegions);
@@ -177,11 +189,17 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     setShowSettings(false);
   };
 
+  /**
+   * 取消設定：放棄 temp 選擇，並關閉設定對話框。
+   */
   const handleCancelSettings = () => {
     setTempSelectedRegions(selectedRegions);
     setShowSettings(false);
   };
 
+  /**
+   * 切換單一 region 的選取狀態（設定對話框用）。
+   */
   const toggleRegion = (regionKey: string) => {
     setTempSelectedRegions((prev) => {
       if (prev.includes(regionKey)) {
@@ -191,7 +209,7 @@ export function MarketContext({ className = '' }: MarketContextProps) {
     });
   };
 
-  // Graceful degradation: show placeholder when data unavailable
+  // 錯誤時以 placeholder 顯示，避免整個 Dashboard 崩潰。
   if (error) {
     return (
       <div className={`card-dark ${className}`}>

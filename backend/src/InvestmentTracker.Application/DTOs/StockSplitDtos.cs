@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// DTO for stock split data
+/// 拆股資料的 DTO。
 /// </summary>
 public record StockSplitDto
 {
@@ -18,7 +18,7 @@ public record StockSplitDto
 }
 
 /// <summary>
-/// Request DTO for creating a stock split
+/// 建立拆股資料的請求 DTO。
 /// </summary>
 public record CreateStockSplitRequest
 {
@@ -30,7 +30,7 @@ public record CreateStockSplitRequest
 }
 
 /// <summary>
-/// Request DTO for updating a stock split
+/// 更新拆股資料的請求 DTO。
 /// </summary>
 public record UpdateStockSplitRequest
 {

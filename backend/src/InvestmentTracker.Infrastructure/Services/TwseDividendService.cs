@@ -5,24 +5,24 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// DTO for dividend record
+/// 股利資料 DTO。
 /// </summary>
 public record DividendRecord(
     DateTime ExDividendDate,
     string StockNo,
     string StockName,
     decimal DividendAmount,
-    string DividendType // "息" for cash dividend
+    string DividendType // "息"：現金股利
 );
 
 /// <summary>
-/// Service for fetching dividend data from TWSE
-/// Used to adjust YTD calculations for dividend distributions
+/// 從 TWSE 取得除權息資料的服務。
+/// 用於在計算 YTD 時納入配息調整。
 /// </summary>
 public interface ITwseDividendService
 {
     /// <summary>
-    /// Get dividends for a stock within a date range
+    /// 取得指定年度的配息資料。
     /// </summary>
     Task<List<DividendRecord>> GetDividendsAsync(
         string stockNo,
@@ -30,21 +30,14 @@ public interface ITwseDividendService
         CancellationToken cancellationToken = default);
 }
 
-public class TwseDividendService : ITwseDividendService
+public class TwseDividendService(
+    HttpClient httpClient,
+    ITwseRateLimiter rateLimiter,
+    ILogger<TwseDividendService> logger) : ITwseDividendService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ITwseRateLimiter _rateLimiter;
-    private readonly ILogger<TwseDividendService> _logger;
-
-    public TwseDividendService(
-        HttpClient httpClient,
-        ITwseRateLimiter rateLimiter,
-        ILogger<TwseDividendService> logger)
-    {
-        _httpClient = httpClient;
-        _rateLimiter = rateLimiter;
-        _logger = logger;
-    }
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
+    private readonly ILogger<TwseDividendService> _logger = logger;
 
     public async Task<List<DividendRecord>> GetDividendsAsync(
         string stockNo,
@@ -57,12 +50,12 @@ public class TwseDividendService : ITwseDividendService
         {
             await _rateLimiter.WaitForSlotAsync(cancellationToken);
 
-            // TWSE uses ROC year (民國年) - subtract 1911
+            // TWSE 使用民國年：西元年需減 1911
             var rocYear = year - 1911;
             var startDate = $"{year}0101";
             var endDate = $"{year}1231";
 
-            // TWT49U returns historical dividend calculation results
+            // TWT49U：歷史除權息計算結果
             var url = $"https://www.twse.com.tw/rwd/zh/exRight/TWT49U?startDate={startDate}&endDate={endDate}&stockNo={stockNo}&response=json";
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -84,7 +77,8 @@ public class TwseDividendService : ITwseDividendService
                 return results;
             }
 
-            // Fields: [0]=日期, [1]=股票代號, [2]=名稱, [3]=除息前收盤價, [4]=除息參考價, [5]=權值+息值, [6]=權/息
+            // 欄位：
+            // [0]=日期, [1]=股票代號, [2]=名稱, [3]=除息前收盤價, [4]=除息參考價, [5]=權值+息值, [6]=權/息
             foreach (var row in dataArray.EnumerateArray())
             {
                 var rowStockNo = row[1].GetString();
@@ -92,11 +86,11 @@ public class TwseDividendService : ITwseDividendService
                     continue;
 
                 var dividendType = row[6].GetString();
-                // Only process cash dividends (息), skip stock dividends (權)
+                // 僅處理現金股利（息），略過股票股利（權）
                 if (dividendType != "息")
                     continue;
 
-                var dateStr = row[0].GetString(); // e.g., "114年01月17日"
+                var dateStr = row[0].GetString(); // 例如："114年01月17日"
                 var stockName = row[2].GetString() ?? stockNo;
                 var dividendStr = row[5].GetString();
 
@@ -133,7 +127,7 @@ public class TwseDividendService : ITwseDividendService
     }
 
     /// <summary>
-    /// Parse ROC date format (e.g., "114年01月17日") to DateTime
+    /// 將民國日期格式（例如："114年01月17日"）解析為 DateTime。
     /// </summary>
     private static bool TryParseRocDate(string? dateStr, out DateTime result)
     {
@@ -143,7 +137,7 @@ public class TwseDividendService : ITwseDividendService
 
         try
         {
-            // Extract year, month, day from "114年01月17日"
+            // 從 "114年01月17日" 拆出年／月／日
             var yearEnd = dateStr.IndexOf('年');
             var monthEnd = dateStr.IndexOf('月');
             var dayEnd = dateStr.IndexOf('日');
@@ -155,7 +149,7 @@ public class TwseDividendService : ITwseDividendService
             var month = int.Parse(dateStr[(yearEnd + 1)..monthEnd]);
             var day = int.Parse(dateStr[(monthEnd + 1)..dayEnd]);
 
-            var year = rocYear + 1911; // Convert ROC year to AD
+            var year = rocYear + 1911; // 民國年轉西元年
             result = new DateTime(year, month, day);
             return true;
         }

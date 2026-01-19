@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Common;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Represents a family member with authentication credentials.
+/// 使用者實體，包含驗證憑證和個人資訊
 /// </summary>
 public class User : BaseEntity
 {
@@ -12,7 +12,7 @@ public class User : BaseEntity
     public string DisplayName { get; private set; } = string.Empty;
     public bool IsActive { get; private set; } = true;
 
-    // Navigation properties
+    // 導覽屬性
     private readonly List<Portfolio> _portfolios = new();
     public IReadOnlyCollection<Portfolio> Portfolios => _portfolios.AsReadOnly();
 
@@ -22,7 +22,7 @@ public class User : BaseEntity
     private readonly List<RefreshToken> _refreshTokens = new();
     public IReadOnlyCollection<RefreshToken> RefreshTokens => _refreshTokens.AsReadOnly();
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private User() { }
 
     public User(string email, string passwordHash, string displayName)
@@ -62,7 +62,7 @@ public class User : BaseEntity
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
 
-    // Update methods (aliases for Set methods)
+    // 更新方法（Set 方法的別名）
     public void UpdateEmail(string email) => SetEmail(email);
     public void UpdateDisplayName(string displayName) => SetDisplayName(displayName);
     public void UpdatePassword(string passwordHash) => SetPasswordHash(passwordHash);

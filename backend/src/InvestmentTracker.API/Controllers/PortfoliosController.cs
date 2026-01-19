@@ -9,30 +9,25 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供投資組合（Portfolio）查詢、摘要與維護 API。
+/// </summary>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class PortfoliosController : ControllerBase
+public class PortfoliosController(
+    IPortfolioRepository portfolioRepository,
+    GetPortfolioSummaryUseCase getPortfolioSummaryUseCase,
+    CalculateXirrUseCase calculateXirrUseCase,
+    ICurrentUserService currentUserService) : ControllerBase
 {
-    private readonly IPortfolioRepository _portfolioRepository;
-    private readonly GetPortfolioSummaryUseCase _getPortfolioSummaryUseCase;
-    private readonly CalculateXirrUseCase _calculateXirrUseCase;
-    private readonly ICurrentUserService _currentUserService;
-
-    public PortfoliosController(
-        IPortfolioRepository portfolioRepository,
-        GetPortfolioSummaryUseCase getPortfolioSummaryUseCase,
-        CalculateXirrUseCase calculateXirrUseCase,
-        ICurrentUserService currentUserService)
-    {
-        _portfolioRepository = portfolioRepository;
-        _getPortfolioSummaryUseCase = getPortfolioSummaryUseCase;
-        _calculateXirrUseCase = calculateXirrUseCase;
-        _currentUserService = currentUserService;
-    }
+    private readonly IPortfolioRepository _portfolioRepository = portfolioRepository;
+    private readonly GetPortfolioSummaryUseCase _getPortfolioSummaryUseCase = getPortfolioSummaryUseCase;
+    private readonly CalculateXirrUseCase _calculateXirrUseCase = calculateXirrUseCase;
+    private readonly ICurrentUserService _currentUserService = currentUserService;
 
     /// <summary>
-    /// Get all portfolios for the current user.
+    /// 取得目前使用者的所有投資組合。
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PortfolioDto>), StatusCodes.Status200OK)]
@@ -56,7 +51,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Get a portfolio by ID.
+    /// 依投資組合 ID 取得投資組合資料。
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(PortfolioDto), StatusCodes.Status200OK)]
@@ -86,7 +81,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Get portfolio summary with calculated positions.
+    /// 取得投資組合摘要（含持倉計算）。
     /// </summary>
     [HttpGet("{id:guid}/summary")]
     [ProducesResponseType(typeof(PortfolioSummaryDto), StatusCodes.Status200OK)]
@@ -97,8 +92,7 @@ public class PortfoliosController : ControllerBase
     {
         try
         {
-            var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(
-                id, null, cancellationToken);
+            var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(id, null, cancellationToken);
             return Ok(summary);
         }
         catch (InvalidOperationException)
@@ -112,7 +106,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Get portfolio summary with calculated positions and current prices.
+    /// 取得投資組合摘要（含持倉計算與即時價格）。
     /// </summary>
     [HttpPost("{id:guid}/summary")]
     [ProducesResponseType(typeof(PortfolioSummaryDto), StatusCodes.Status200OK)]
@@ -124,8 +118,7 @@ public class PortfoliosController : ControllerBase
     {
         try
         {
-            var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(
-                id, performanceRequest, cancellationToken);
+            var summary = await _getPortfolioSummaryUseCase.ExecuteAsync(id, performanceRequest, cancellationToken);
             return Ok(summary);
         }
         catch (InvalidOperationException)
@@ -139,7 +132,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Calculate XIRR (Extended Internal Rate of Return) for a portfolio.
+    /// 計算投資組合的 XIRR（Extended Internal Rate of Return）。
     /// </summary>
     [HttpPost("{id:guid}/xirr")]
     [ProducesResponseType(typeof(XirrResultDto), StatusCodes.Status200OK)]
@@ -165,7 +158,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Calculate XIRR for a single position (ticker).
+    /// 計算投資組合單一持倉（ticker）的 XIRR。
     /// </summary>
     [HttpPost("{id:guid}/positions/{ticker}/xirr")]
     [ProducesResponseType(typeof(XirrResultDto), StatusCodes.Status200OK)]
@@ -192,7 +185,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new portfolio.
+    /// 建立新的投資組合。
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(PortfolioDto), StatusCodes.Status201Created)]
@@ -232,7 +225,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Update a portfolio.
+    /// 更新投資組合。
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(PortfolioDto), StatusCodes.Status200OK)]
@@ -269,7 +262,7 @@ public class PortfoliosController : ControllerBase
     }
 
     /// <summary>
-    /// Delete (deactivate) a portfolio.
+    /// 刪除（停用）投資組合。
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

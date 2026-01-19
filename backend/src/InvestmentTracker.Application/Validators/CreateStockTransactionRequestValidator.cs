@@ -3,6 +3,9 @@ using InvestmentTracker.Application.DTOs;
 
 namespace InvestmentTracker.Application.Validators;
 
+/// <summary>
+/// <see cref="CreateStockTransactionRequest"/> 的輸入驗證器。
+/// </summary>
 public class CreateStockTransactionRequestValidator : AbstractValidator<CreateStockTransactionRequest>
 {
     public CreateStockTransactionRequestValidator()
@@ -25,7 +28,8 @@ public class CreateStockTransactionRequestValidator : AbstractValidator<CreateSt
             .GreaterThan(0).WithMessage("Price per share must be greater than zero");
 
         RuleFor(x => x.ExchangeRate)
-            .GreaterThan(0).When(x => x.ExchangeRate.HasValue)
+            .GreaterThan(0)
+            .When(x => x.ExchangeRate.HasValue)
             .WithMessage("Exchange rate must be greater than zero");
 
         RuleFor(x => x.Fees)

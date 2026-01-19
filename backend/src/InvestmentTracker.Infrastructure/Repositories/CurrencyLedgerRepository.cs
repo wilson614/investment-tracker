@@ -6,16 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for CurrencyLedger aggregate.
+/// CurrencyLedger aggregate 的 Repository 實作。
 /// </summary>
-public class CurrencyLedgerRepository : ICurrencyLedgerRepository
+public class CurrencyLedgerRepository(AppDbContext context) : ICurrencyLedgerRepository
 {
-    private readonly AppDbContext _context;
-
-    public CurrencyLedgerRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<CurrencyLedger?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

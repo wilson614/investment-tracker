@@ -8,7 +8,7 @@ using InvestmentTracker.Domain.Services;
 namespace InvestmentTracker.Application.UseCases.StockTransactions;
 
 /// <summary>
-/// Use case for updating an existing stock transaction.
+/// 更新股票交易的 Use Case。
 /// </summary>
 public class UpdateStockTransactionUseCase
 {
@@ -37,7 +37,7 @@ public class UpdateStockTransactionUseCase
         var transaction = await _transactionRepository.GetByIdAsync(transactionId, cancellationToken)
             ?? throw new InvalidOperationException($"Transaction {transactionId} not found");
 
-        // Verify access through portfolio
+        // 透過投資組合確認存取權限
         var portfolio = await _portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {transaction.PortfolioId} not found");
 
@@ -46,11 +46,11 @@ public class UpdateStockTransactionUseCase
             throw new UnauthorizedAccessException("You do not have access to this transaction");
         }
 
-        // Track original values for calculations
+        // 保留原始值供後續計算使用
         var originalTicker = transaction.Ticker;
         var originalType = transaction.TransactionType;
 
-        // Update transaction properties (including ticker and type)
+        // 更新交易屬性（包含 ticker 與交易類型）
         transaction.SetTicker(request.Ticker);
         transaction.SetTransactionType(request.TransactionType);
         transaction.SetTransactionDate(request.TransactionDate);
@@ -61,16 +61,16 @@ public class UpdateStockTransactionUseCase
         transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
         transaction.SetNotes(request.Notes);
 
-        // Recalculate realized PnL for sell transactions (supports changing Buy/Sell)
+        // 若為賣出交易：重新計算已實現損益（支援 Buy/Sell 互換）
         if (transaction.TransactionType == TransactionType.Sell)
         {
-            // Get all transactions for this portfolio
+            // 取得此投資組合的所有交易
             var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(
                 transaction.PortfolioId, cancellationToken);
 
-            // Calculate position BEFORE this sell transaction using only earlier transactions
+            // 只使用較早的交易，計算此賣出交易發生前的持倉
             var transactionsBeforeSell = allTransactions
-                .Where(t => t.Id != transaction.Id) // Exclude current transaction
+                .Where(t => t.Id != transaction.Id) // 排除目前這筆交易
                 .Where(t => t.TransactionDate < transaction.TransactionDate ||
                            (t.TransactionDate == transaction.TransactionDate && t.CreatedAt < transaction.CreatedAt))
                 .ToList();
@@ -78,14 +78,14 @@ public class UpdateStockTransactionUseCase
             var positionBeforeSell = _portfolioCalculator.CalculatePosition(
                 transaction.Ticker, transactionsBeforeSell);
 
-            // Validate sufficient shares
+            // 確認持股足夠
             if (positionBeforeSell.TotalShares < request.Shares)
             {
                 throw new InvalidOperationException(
                     $"持股不足。可賣出: {positionBeforeSell.TotalShares:F4}，欲賣出: {request.Shares:F4}");
             }
 
-            // Create a temporary transaction with updated values for PnL calculation
+            // 建立暫時交易（使用更新後的數值）用於損益計算
             var tempSellTransaction = new StockTransaction(
                 transaction.PortfolioId,
                 request.TransactionDate,
@@ -101,7 +101,7 @@ public class UpdateStockTransactionUseCase
         }
         else if (originalType == TransactionType.Sell)
         {
-            // If changed from Sell to Buy, clear realized PnL
+            // 若從 Sell 改為 Buy，清除已實現損益
             transaction.SetRealizedPnl(null);
         }
 

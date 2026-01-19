@@ -1,3 +1,12 @@
+/**
+ * Dashboard Page
+ *
+ * 顯示投資組合的整體概況（總成本/市值/未實現損益/XIRR）、資產配置圖、持倉績效與近期交易。
+ *
+ * 特色：
+ * - 先顯示 localStorage 的快取報價，再背景更新最新報價，減少使用者等待時間。
+ * - 針對部分 ETF（例如 VWRA）在 US 報價失敗時，會改用 UK 市場作為 fallback。
+ */
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
@@ -16,7 +25,13 @@ interface CachedQuote {
 
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
-// Load cached quotes for a list of tickers (no time limit - always show cached, then refresh)
+/**
+ * 從 localStorage 載入指定 ticker 的快取報價。
+ *
+ * 設計重點：
+ * - 不設定時效限制：先用快取讓 UI 立即有數字，再由使用者/自動更新取得最新報價。
+ * - 只有在快取資料包含 exchangeRate 時，才會回填到 currentPrices。
+ */
 const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
 
@@ -39,6 +54,14 @@ const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> =
   return prices;
 };
 
+/**
+ * 依 ticker 格式推測市場別。
+ *
+ * 規則：
+ * - TW：純數字或數字+英文字尾（例如 `2330`、`00878`、`6547M`）
+ * - UK：以 `.L` 結尾（London Stock Exchange）
+ * - 其他：預設 US
+ */
 const guessMarket = (ticker: string): StockMarketType => {
   // Taiwan: pure digits, or digits ending with letters (e.g., 2330, 00878, 6547M)
   if (/^\d+[A-Za-z]*$/.test(ticker)) {
@@ -89,6 +112,14 @@ export function DashboardPage() {
     }
   }, [isLoading, portfolio, summary]);
 
+  /**
+   * 取得 Dashboard 需要的初始資料。
+   *
+   * 流程：
+   * 1) 取得投資組合清單（目前設計為單一投資組合模式，取第一個）
+   * 2) 並行載入 summary 與交易清單
+   * 3) 讀取快取報價並先用快取重新計算 summary / XIRR（若快取存在）
+   */
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
@@ -144,6 +175,11 @@ export function DashboardPage() {
     }
   };
 
+  /**
+   * 取得所有持倉的最新報價（含匯率），並更新 summary / XIRR。
+   *
+   * 同時會刷新市場資料（CAPE、YTD），但即使報價失敗也會盡量保留快取結果。
+   */
   const handleFetchAllPrices = async () => {
     if (!portfolio || !summary) return;
 
@@ -169,14 +205,14 @@ export function DashboardPage() {
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
           let finalMarket = market;
 
-          // If US market fails, try UK as fallback (for ETFs like VWRA)
+          // 若預設市場是 US，但報價失敗，改用 UK 作為備援（例如 VWRA 等在 LSE 掛牌的 ETF）。
           if (!quote && market === StockMarket.US) {
             quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
             if (quote) finalMarket = StockMarket.UK;
           }
 
           if (quote?.exchangeRate) {
-            // Save full quote to cache
+            // 快取完整 quote，讓下次進入 Dashboard 能先顯示上次結果。
             const cacheData: CachedQuote = {
               quote,
               updatedAt: new Date().toISOString(),
@@ -187,12 +223,11 @@ export function DashboardPage() {
           }
           return null;
         } catch {
-          // If US fails, try UK as fallback
+          // 如果一開始推測為 US，失敗後再嘗試 UK（與上方 !quote 分支互補）。
           if (guessMarket(position.ticker) === StockMarket.US) {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
               if (ukQuote?.exchangeRate) {
-                // Save full quote to cache
                 const cacheData: CachedQuote = {
                   quote: ukQuote,
                   updatedAt: new Date().toISOString(),
@@ -202,7 +237,7 @@ export function DashboardPage() {
                 return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
               }
             } catch {
-              // UK also failed
+              // UK 也失敗時就略過
             }
           }
           console.error(`Failed to fetch price for ${position.ticker}`);
@@ -257,7 +292,13 @@ export function DashboardPage() {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  // Calculate position data with PnL
+  /**
+   * 以 summary 為基礎，整理出 UI 需要的持倉績效欄位。
+   *
+   * 包含：
+   * - pnlPercentage / unrealizedPnlHome：未實現損益（% 與本位幣金額）
+   * - weight：FR-131，依持倉市值 / 總市值計算權重（%）
+   */
   const getPositionsWithPnl = (): PositionWithPnl[] => {
     if (!summary) return [];
 
@@ -276,14 +317,18 @@ export function DashboardPage() {
     }));
   };
 
-  // Get positions sorted by PnL percentage (best performers first)
+  // 依未實現損益率排序，取表現最佳的持倉（給 UI 顯示 Top performers）。
   const getTopPerformers = () => {
     return getPositionsWithPnl()
       .filter(p => p.pnlPercentage != null)
       .sort((a, b) => (b.pnlPercentage ?? 0) - (a.pnlPercentage ?? 0));
   };
 
-  // Calculate asset allocation percentages
+  /**
+   * 計算資產配置（各持倉市值佔比）。
+   *
+   * 注意：僅納入有 `currentValueHome` 的持倉，並依百分比由大到小排序。
+   */
   const getAssetAllocation = () => {
     if (!summary?.totalValueHome) return [];
 

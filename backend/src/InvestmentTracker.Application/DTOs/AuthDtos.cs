@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// Request to register a new user.
+/// 註冊新使用者的請求。
 /// </summary>
 public record RegisterRequest
 {
@@ -23,7 +23,7 @@ public record RegisterRequest
 }
 
 /// <summary>
-/// Request to login.
+/// 使用者登入的請求。
 /// </summary>
 public record LoginRequest
 {
@@ -36,7 +36,7 @@ public record LoginRequest
 }
 
 /// <summary>
-/// Request to refresh tokens.
+/// 重新整理 token 的請求。
 /// </summary>
 public record RefreshTokenRequest
 {
@@ -45,7 +45,7 @@ public record RefreshTokenRequest
 }
 
 /// <summary>
-/// Authentication response with tokens.
+/// 驗證成功後回傳的 token 與使用者資訊。
 /// </summary>
 public record AuthResponse
 {
@@ -56,7 +56,7 @@ public record AuthResponse
 }
 
 /// <summary>
-/// User information.
+/// 使用者基本資訊。
 /// </summary>
 public record UserDto
 {
@@ -66,7 +66,7 @@ public record UserDto
 }
 
 /// <summary>
-/// Request to update user profile.
+/// 更新使用者個人資料的請求。
 /// </summary>
 public record UpdateUserProfileRequest
 {
@@ -79,7 +79,7 @@ public record UpdateUserProfileRequest
 }
 
 /// <summary>
-/// Request to change password.
+/// 變更密碼的請求。
 /// </summary>
 public record ChangePasswordRequest
 {

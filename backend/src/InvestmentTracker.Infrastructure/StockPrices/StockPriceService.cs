@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
-/// Service that aggregates multiple stock price providers
+/// 彙整多個股價與匯率來源的服務。
 /// </summary>
 public interface IStockPriceService
 {
@@ -14,30 +14,23 @@ public interface IStockPriceService
     Task<ExchangeRateResponse?> GetExchangeRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
 }
 
-public class StockPriceService : IStockPriceService
+public class StockPriceService(
+    IEnumerable<IStockPriceProvider> providers,
+    IExchangeRateProvider exchangeRateProvider,
+    ILogger<StockPriceService> logger) : IStockPriceService
 {
-    private readonly IEnumerable<IStockPriceProvider> _providers;
-    private readonly IExchangeRateProvider _exchangeRateProvider;
-    private readonly ILogger<StockPriceService> _logger;
+    private readonly IEnumerable<IStockPriceProvider> _providers = providers;
+    private readonly IExchangeRateProvider _exchangeRateProvider = exchangeRateProvider;
+    private readonly ILogger<StockPriceService> _logger = logger;
 
-    // Market to base currency mapping
-    // Note: UK market also uses USD since most ETFs (VWRA, VUSA, etc.) are USD-denominated
+    // 市場對應的基準幣別
+    // 注意：英國市場多數 ETF（如 VWRA、VUSA）以 USD 計價，因此此處也以 USD 作為基準幣別
     private static readonly Dictionary<StockMarket, string> MarketCurrencies = new()
     {
-        { StockMarket.TW, "TWD" },
-        { StockMarket.US, "USD" },
-        { StockMarket.UK, "USD" }
+        [StockMarket.TW] = "TWD",
+        [StockMarket.US] = "USD",
+        [StockMarket.UK] = "USD",
     };
-
-    public StockPriceService(
-        IEnumerable<IStockPriceProvider> providers,
-        IExchangeRateProvider exchangeRateProvider,
-        ILogger<StockPriceService> logger)
-    {
-        _providers = providers;
-        _exchangeRateProvider = exchangeRateProvider;
-        _logger = logger;
-    }
 
     public async Task<StockQuoteResponse?> GetQuoteAsync(StockMarket market, string symbol, CancellationToken cancellationToken = default)
     {

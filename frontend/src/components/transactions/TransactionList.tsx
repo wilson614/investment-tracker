@@ -1,9 +1,21 @@
+/**
+ * TransactionList
+ *
+ * 交易清單表格：以表格呈現交易明細，並支援可選的編輯/刪除操作。
+ *
+ * 特色：
+ * - 支援股票分割調整顯示（FR-052a）：原始股數/價格會以刪除線顯示，並顯示調整後數值。
+ * - 當 `totalCostHome` 為 null 時，代表沒有匯率資料，改顯示 source currency 成本。
+ */
 import { Pencil, Trash2, SplitSquareHorizontal } from 'lucide-react';
 import type { StockTransaction, TransactionType } from '../../types';
 
 interface TransactionListProps {
+  /** 要顯示的交易清單 */
   transactions: StockTransaction[];
+  /** 刪除 callback（若提供則顯示刪除按鈕） */
   onDelete?: (id: string) => Promise<void>;
+  /** 編輯 callback（若提供則顯示編輯按鈕） */
   onEdit?: (transaction: StockTransaction) => void;
 }
 
@@ -42,7 +54,9 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
     return Math.round(value).toLocaleString('zh-TW');
   };
 
-  // Render shares with split adjustment indicator (FR-052a)
+  /**
+   * 顯示股數：若交易有 split adjustment，會同時顯示原始值與調整後值（FR-052a）。
+   */
   const renderShares = (tx: StockTransaction) => {
     if (tx.hasSplitAdjustment && tx.adjustedShares != null) {
       return (
@@ -60,7 +74,9 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
     return formatNumber(tx.shares, 4);
   };
 
-  // Render price with split adjustment indicator (FR-052a)
+  /**
+   * 顯示價格：若交易有 split adjustment，會同時顯示原始值與調整後值（FR-052a）。
+   */
   const renderPrice = (tx: StockTransaction) => {
     if (tx.hasSplitAdjustment && tx.adjustedPricePerShare != null) {
       return (

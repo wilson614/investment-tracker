@@ -7,8 +7,8 @@ using InvestmentTracker.Domain.Services;
 namespace InvestmentTracker.Application.UseCases.Portfolio;
 
 /// <summary>
-/// Use case for getting portfolio summary with calculated positions.
-/// Applies stock split adjustments when calculating positions for accurate comparison with current prices.
+/// 取得投資組合摘要（包含計算後的持倉）的 Use Case。
+/// 會在計算持倉時套用拆股調整，以確保與現價比較一致。
 /// </summary>
 public class GetPortfolioSummaryUseCase
 {
@@ -51,21 +51,21 @@ public class GetPortfolioSummaryUseCase
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
-        // Use split-adjusted positions for accurate comparison with current prices (FR-052)
+        // 使用拆股調整後的持倉，確保與現價比較一致（FR-052）
         var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
             transactions, stockSplits, _splitAdjustmentService);
 
-        // Convert to case-insensitive dictionary for reliable ticker matching
+        // 轉為不分大小寫的 dictionary，避免 ticker 比對失敗
         var currentPrices = performanceRequest?.CurrentPrices != null
             ? new Dictionary<string, CurrentPriceInfo>(
                 performanceRequest.CurrentPrices, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        // For ForeignCurrency portfolios, all metrics are calculated in source currency (no exchange rate conversion)
+        // ForeignCurrency 投資組合：所有指標都以原始幣別計算（不做匯率換算）
         var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
 
         var positionDtos = new List<StockPositionDto>();
-        // totalCostHome: only includes positions that have quotes (for accurate PnL percentage)
+        // totalCostHome：僅包含有報價的持倉（避免損益百分比失真）
         decimal totalCostHome = 0m;
         decimal? totalValueHome = null;
         decimal? totalUnrealizedPnl = null;
@@ -73,8 +73,8 @@ public class GetPortfolioSummaryUseCase
         foreach (var position in positions.Where(p => p.TotalShares > 0))
         {
             var hasHomeCost = position.TotalCostHome > 0;
-            // Only treat home-currency metrics as available when there is at least one transaction with ExchangeRate
-            // For ForeignCurrency portfolios, we always use source currency, so treat as having "exchange rate" for consistency
+            // 僅在至少一筆交易具有 ExchangeRate 時，才視為可提供本位幣指標
+            // ForeignCurrency 投資組合永遠使用原始幣別，為一致性視為「有匯率」
             var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
@@ -85,12 +85,12 @@ public class GetPortfolioSummaryUseCase
 
             if (isForeignCurrencyPortfolio)
             {
-                // ForeignCurrency portfolio: use source currency for all metrics
+                // ForeignCurrency 投資組合：所有指標以原始幣別計算
                 dto = new StockPositionDto
                 {
                     Ticker = position.Ticker,
                     TotalShares = position.TotalShares,
-                    // For FC portfolios, display source values in the "Home" fields since they're the primary display
+                    // 對 FC 投資組合：將原始幣別數值放在 "Home" 欄位作為主要顯示
                     TotalCostHome = position.TotalCostSource,
                     TotalCostSource = position.TotalCostSource,
                     AverageCostPerShareHome = position.AverageCostPerShareSource,
@@ -110,15 +110,15 @@ public class GetPortfolioSummaryUseCase
                 };
             }
 
-            // Track whether this position contributes to PnL totals
+            // 紀錄此持倉是否應納入總損益統計
             var contributesToPnl = false;
 
-            // If current prices provided, calculate unrealized PnL
+            // 若提供現價，則計算未實現損益
             if (currentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
             {
                 if (isForeignCurrencyPortfolio)
                 {
-                    // ForeignCurrency portfolio: calculate PnL in source currency (exchange rate = 1)
+                    // ForeignCurrency 投資組合：以原始幣別計算損益（匯率 = 1）
                     var currentValueSource = position.TotalShares * priceInfo.Price;
                     var unrealizedPnlSource = currentValueSource - position.TotalCostSource;
                     var unrealizedPnlPercentage = position.TotalCostSource > 0
@@ -128,7 +128,7 @@ public class GetPortfolioSummaryUseCase
                     dto = dto with
                     {
                         CurrentPrice = priceInfo.Price,
-                        CurrentExchangeRate = 1m, // FC portfolios don't use exchange rates
+                        CurrentExchangeRate = 1m, // FC 投資組合不使用匯率
                         CurrentValueHome = currentValueSource,
                         UnrealizedPnlHome = unrealizedPnlSource,
                         UnrealizedPnlPercentage = unrealizedPnlPercentage
@@ -169,8 +169,8 @@ public class GetPortfolioSummaryUseCase
                 }
             }
 
-            // Only add to totalCostHome if this position contributes to PnL calculations
-            // This ensures TotalCost and TotalValue are comparable for percentage calculation
+            // 只有在此持倉納入損益計算時，才累加到 totalCostHome
+            // 以確保 TotalCost 與 TotalValue 可比較，進而正確計算百分比
             if (contributesToPnl)
             {
                 if (isForeignCurrencyPortfolio)

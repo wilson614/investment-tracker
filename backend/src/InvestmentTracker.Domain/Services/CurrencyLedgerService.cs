@@ -4,12 +4,12 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Services;
 
 /// <summary>
-/// Domain service for currency ledger calculations.
+/// 外幣台帳的領域服務（Domain Service），負責餘額、成本與損益等計算。
 /// </summary>
 public class CurrencyLedgerService
 {
     /// <summary>
-    /// Calculates the current balance of foreign currency.
+    /// 計算外幣目前餘額。
     /// </summary>
     public decimal CalculateBalance(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -24,8 +24,8 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the average exchange rate (only from ExchangeBuy and InitialBalance).
-    /// This is the simple average rate at which foreign currency was purchased.
+    /// 計算平均買入匯率（僅納入 ExchangeBuy 與 InitialBalance）。
+    /// 這是外幣買入匯率的簡單平均值。
     /// </summary>
     public decimal CalculateAverageExchangeRate(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -49,9 +49,9 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the net investment in home currency (TWD).
-    /// Net = (ExchangeBuy + InitialBalance) - ExchangeSell HomeAmount.
-    /// This represents the actual TWD invested, accounting for any sell-backs.
+    /// 計算本位幣（TWD）淨投入金額。
+    /// 淨投入 =（ExchangeBuy + InitialBalance）- ExchangeSell 的 HomeAmount。
+    /// 用於表示實際投入的 TWD（包含賣回的回收）。
     /// </summary>
     public decimal CalculateTotalExchanged(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -75,7 +75,7 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the total foreign currency spent on stocks (Spend type transactions).
+    /// 計算用於買股的外幣支出總額（Spend 類型）。
     /// </summary>
     public decimal CalculateTotalSpentOnStocks(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -85,7 +85,7 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the total interest income (Interest type transactions).
+    /// 計算利息收入總額（Interest 類型）。
     /// </summary>
     public decimal CalculateTotalInterest(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -95,8 +95,8 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the weighted average cost per unit of foreign currency.
-    /// Uses the moving average cost method.
+    /// 計算外幣單位的加權平均成本。
+    /// 使用移動平均成本法（moving average cost）。
     /// </summary>
     public decimal CalculateWeightedAverageCost(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -109,13 +109,13 @@ public class CurrencyLedgerService
             {
                 case CurrencyTransactionType.ExchangeBuy:
                 case CurrencyTransactionType.InitialBalance:
-                    // Add to cost basis
+                    // 納入成本基礎（cost basis）
                     totalCost += tx.HomeAmount ?? 0m;
                     balance += tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
-                    // Reduce cost basis proportionally
+                    // 依比例扣除成本基礎（cost basis）
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -127,13 +127,13 @@ public class CurrencyLedgerService
 
                 case CurrencyTransactionType.Interest:
                 case CurrencyTransactionType.OtherIncome:
-                    // Interest/OtherIncome adds to balance but not to cost (reduces average cost)
+                    // Interest/OtherIncome 會增加餘額但不增加成本（因此平均成本會下降）
                     balance += tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.Spend:
                 case CurrencyTransactionType.OtherExpense:
-                    // Spending/OtherExpense reduces balance and cost proportionally
+                    // Spend/OtherExpense 會扣除餘額並依比例扣除成本
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -152,8 +152,8 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the total cost basis in home currency.
-    /// Uses the same moving average cost method as weighted average cost.
+    /// 計算本位幣的總成本（cost basis）。
+    /// 使用與加權平均成本相同的移動平均成本法。
     /// </summary>
     public decimal CalculateTotalCost(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -171,7 +171,7 @@ public class CurrencyLedgerService
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
-                    // Reduce cost basis proportionally (same as weighted average method)
+                    // 依比例扣除成本基礎（與加權平均成本計算相同）
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -201,7 +201,7 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the realized profit/loss from currency exchanges.
+    /// 計算外幣買賣（Exchange）所產生的已實現損益。
     /// </summary>
     public decimal CalculateRealizedPnl(IEnumerable<CurrencyTransaction> transactions)
     {
@@ -253,7 +253,7 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Validates if a spend amount is possible given the current balance.
+    /// 依據目前餘額，驗證指定支出金額是否可行。
     /// </summary>
     public bool ValidateSpend(IEnumerable<CurrencyTransaction> transactions, decimal spendAmount)
     {
@@ -262,15 +262,15 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the weighted average cost at a specific date.
-    /// Only considers transactions on or before the specified date.
+    /// 計算指定日期的加權平均成本。
+    /// 僅納入該日期（含）之前的交易。
     /// </summary>
     public decimal CalculateWeightedAverageCostAtDate(IEnumerable<CurrencyTransaction> transactions, DateTime asOfDate)
     {
         decimal totalCost = 0m;
         decimal balance = 0m;
 
-        // Only include transactions on or before the specified date
+        // 僅納入指定日期（含）之前的交易
         var relevantTransactions = transactions
             .Where(t => !t.IsDeleted && t.TransactionDate.Date <= asOfDate.Date)
             .OrderBy(t => t.TransactionDate);
@@ -281,13 +281,13 @@ public class CurrencyLedgerService
             {
                 case CurrencyTransactionType.ExchangeBuy:
                 case CurrencyTransactionType.InitialBalance:
-                    // Add to cost basis
+                    // 納入成本基礎（cost basis）
                     totalCost += tx.HomeAmount ?? 0m;
                     balance += tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
-                    // Reduce cost basis proportionally
+                    // 依比例扣除成本基礎（cost basis）
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -299,13 +299,13 @@ public class CurrencyLedgerService
 
                 case CurrencyTransactionType.Interest:
                 case CurrencyTransactionType.OtherIncome:
-                    // Interest/OtherIncome adds to balance but not to cost (reduces average cost)
+                    // Interest/OtherIncome 會增加餘額但不增加成本（因此平均成本會下降）
                     balance += tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.Spend:
                 case CurrencyTransactionType.OtherExpense:
-                    // Spending/OtherExpense reduces balance and cost proportionally
+                    // Spend/OtherExpense 會扣除餘額並依比例扣除成本
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -324,8 +324,8 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the balance at a specific date.
-    /// Only considers transactions on or before the specified date.
+    /// 計算指定日期的餘額。
+    /// 僅納入該日期（含）之前的交易。
     /// </summary>
     public decimal CalculateBalanceAtDate(IEnumerable<CurrencyTransaction> transactions, DateTime asOfDate)
     {
@@ -344,18 +344,18 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the exchange rate to use for a stock purchase.
-    /// Uses LIFO-like logic: traces back income transactions (exchanges, interest, bonuses)
-    /// but only counts actual exchanges (ExchangeBuy/InitialBalance) for rate calculation.
-    /// This way, free income like bonuses reduces the amount needing exchange rate calculation.
+    /// 計算買股時應採用的匯率。
+    /// 使用類 LIFO 邏輯：回溯收入類交易（換匯、利息、回饋），
+    /// 但匯率計算僅納入實際換匯（ExchangeBuy／InitialBalance）。
+    /// 因此，像回饋這類「免費收入」會先抵減需計算匯率的金額。
     /// </summary>
     public decimal CalculateExchangeRateForPurchase(
         IEnumerable<CurrencyTransaction> transactions,
         DateTime purchaseDate,
         decimal purchaseAmount)
     {
-        // Get all income transactions up to purchase date, ordered by most recent first
-        // Include: ExchangeBuy, InitialBalance, Interest, OtherIncome
+        // 取得買入日（含）之前的所有收入類交易，依時間由新到舊排序
+        // 包含：ExchangeBuy、InitialBalance、Interest、OtherIncome
         var incomeTransactions = transactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
@@ -367,32 +367,32 @@ public class CurrencyLedgerService
             .ThenByDescending(t => t.CreatedAt)
             .ToList();
 
-        // Get all expense transactions (to calculate remaining amounts via LIFO)
+        // 取得所有支出類交易（用於透過 LIFO 計算剩餘可用金額）
         var expenseTransactions = transactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
                        (t.TransactionType == CurrencyTransactionType.ExchangeSell ||
                         t.TransactionType == CurrencyTransactionType.Spend ||
                         t.TransactionType == CurrencyTransactionType.OtherExpense))
-            // Exclude spend on purchase date (that's what we're calculating for)
+            // 排除買入日當天的 Spend（因為這筆就是正在計算的買股）
             .Where(t => !(t.TransactionDate.Date == purchaseDate.Date &&
                          (t.TransactionType == CurrencyTransactionType.Spend ||
                           t.TransactionType == CurrencyTransactionType.OtherExpense)))
             .ToList();
 
-        // Calculate total expenses to deduct from income (LIFO)
+        // 計算需從收入中扣除的支出總額（LIFO）
         decimal totalExpenses = expenseTransactions.Sum(t => t.ForeignAmount);
 
-        // Build available amounts for each income transaction after LIFO deduction
+        // 建立每筆收入交易在 LIFO 扣除後的可用金額
         var availableAmounts = new List<(CurrencyTransaction tx, decimal available)>();
         decimal remainingExpenses = totalExpenses;
 
-        // Process from oldest to newest to apply LIFO correctly
+        // 由舊到新處理，才能正確套用 LIFO 扣抵
         foreach (var tx in incomeTransactions.AsEnumerable().Reverse())
         {
             decimal available = tx.ForeignAmount;
 
-            // LIFO: expenses consume from oldest income first
+            // LIFO：支出會先消耗最早的收入
             if (remainingExpenses > 0)
             {
                 var consumed = Math.Min(available, remainingExpenses);
@@ -406,10 +406,10 @@ public class CurrencyLedgerService
             }
         }
 
-        // Reverse to get most recent first for purchase allocation
+        // 反轉後改為由新到舊，供買入分配使用
         availableAmounts.Reverse();
 
-        // Allocate purchase amount using LIFO (most recent first)
+        // 使用 LIFO（由新到舊）分配買入金額
         decimal remaining = purchaseAmount;
         decimal totalExchangeCost = 0m;
         decimal totalExchangeAmount = 0m;
@@ -422,7 +422,7 @@ public class CurrencyLedgerService
             var take = Math.Min(available, remaining);
             remaining -= take;
 
-            // Only ExchangeBuy/InitialBalance count toward exchange rate
+            // 只有 ExchangeBuy/InitialBalance 會納入匯率計算
             if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
                 tx.TransactionType == CurrencyTransactionType.InitialBalance)
             {
@@ -430,7 +430,7 @@ public class CurrencyLedgerService
                 totalExchangeCost += (tx.HomeAmount ?? 0m) * ratio;
                 totalExchangeAmount += take;
             }
-            // Interest/OtherIncome: reduces 'remaining' but doesn't add to exchange cost
+            // Interest/OtherIncome：會扣掉 remaining，但不會增加換匯成本
         }
 
         if (totalExchangeAmount <= 0)
@@ -440,9 +440,9 @@ public class CurrencyLedgerService
     }
 
     /// <summary>
-    /// Calculates the balance before any spend transactions on a specific date.
-    /// Includes all transactions before the date, plus buy/interest on the date,
-    /// but excludes spend transactions on the date.
+    /// 計算指定日期「支出交易之前」的餘額。
+    /// 包含該日期之前的所有交易，以及該日期當天的買入／利息，
+    /// 但排除該日期當天的支出交易。
     /// </summary>
     private decimal CalculateBalanceBeforeSpend(IEnumerable<CurrencyTransaction> transactions, DateTime asOfDate)
     {
@@ -454,7 +454,7 @@ public class CurrencyLedgerService
 
         foreach (var tx in relevantTransactions)
         {
-            // Skip spend/expense transactions on the target date (they happen after the balance calculation)
+            // 跳過目標日期當天的 Spend/OtherExpense（它們應視為在餘額計算之後發生）
             if (tx.TransactionDate.Date == asOfDate.Date &&
                 (tx.TransactionType == CurrencyTransactionType.Spend || tx.TransactionType == CurrencyTransactionType.OtherExpense))
                 continue;

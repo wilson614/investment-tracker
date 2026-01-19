@@ -6,38 +6,32 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
-/// Exchange rate provider using Sina Finance API
-/// Supports major currency pairs like USD/TWD, GBP/USD, etc.
-/// For pairs like GBP/TWD, calculates via cross rate (GBP/USD * USD/TWD)
+/// 使用 Sina Finance API 的匯率提供者。
+/// 支援常見幣別對（例如 USD/TWD、GBP/USD 等）。
+/// 對於 GBP/TWD 這類 cross rate，會以 USD 作為中介（GBP/USD * USD/TWD）。
 /// </summary>
 public interface IExchangeRateProvider
 {
     Task<ExchangeRateResponse?> GetExchangeRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
 }
 
-public class SinaExchangeRateProvider : IExchangeRateProvider
+public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchangeRateProvider> logger) : IExchangeRateProvider
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<SinaExchangeRateProvider> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<SinaExchangeRateProvider> _logger = logger;
     private const string BaseUrl = "http://hq.sinajs.cn/list=";
     private const string Referer = "http://vip.stock.finance.sina.com.cn";
 
-    // Direct pairs supported by Sina
-    private static readonly HashSet<string> DirectPairs = new()
-    {
+    // Sina 支援的 direct pair
+    private static readonly HashSet<string> DirectPairs =
+    [
         "usdtwd", "usdcny", "usdjpy", "usdchf", "usdcad", "usdhkd", "usdsgd",
-        "gbpusd", "eurusd", "audusd", "nzdusd"
-    };
+        "gbpusd", "eurusd", "audusd", "nzdusd",
+    ];
 
     static SinaExchangeRateProvider()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-    }
-
-    public SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchangeRateProvider> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
     }
 
     public async Task<ExchangeRateResponse?> GetExchangeRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default)
@@ -45,7 +39,7 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
         var from = fromCurrency.ToUpperInvariant();
         var to = toCurrency.ToUpperInvariant();
 
-        // Same currency
+        // 同幣別
         if (from == to)
         {
             return new ExchangeRateResponse
@@ -60,14 +54,14 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
 
         var directPair = $"{from}{to}".ToLowerInvariant();
 
-        // Try direct pair first
+        // 先嘗試 direct pair
         if (DirectPairs.Contains(directPair))
         {
             var result = await FetchRateAsync(directPair, from, to, cancellationToken);
             if (result != null) return result;
         }
 
-        // Try inverse pair
+        // 再嘗試 inverse pair
         var inversePair = $"{to}{from}".ToLowerInvariant();
         if (DirectPairs.Contains(inversePair))
         {
@@ -85,7 +79,7 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
             }
         }
 
-        // For cross rates like GBP/TWD, calculate via USD
+        // 對於 GBP/TWD 這類 cross rate，以 USD 作為中介計算
         if (to == "TWD" && from != "USD")
         {
             var toUsd = await GetCrossRateViaUsd(from, to, cancellationToken);
@@ -98,10 +92,10 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
 
     private async Task<ExchangeRateResponse?> GetCrossRateViaUsd(string from, string to, CancellationToken cancellationToken)
     {
-        // Calculate cross rate: FROM/TO = FROM/USD * USD/TO
-        // For GBP/TWD: GBP/USD * USD/TWD
+        // 計算 cross rate：FROM/TO = FROM/USD * USD/TO
+        // 例如 GBP/TWD：GBP/USD * USD/TWD
 
-        // Step 1: Get FROM/USD (e.g., GBP/USD)
+        // Step 1：取得 FROM/USD（例如 GBP/USD）
         var fromUsdPair = $"{from}USD".ToLowerInvariant();
         decimal fromToUsd;
 
@@ -113,7 +107,7 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
         }
         else
         {
-            // Try inverse: USD/FROM
+            // 嘗試 inverse：USD/FROM
             var usdFromPair = $"USD{from}".ToLowerInvariant();
             if (!DirectPairs.Contains(usdFromPair)) return null;
 
@@ -122,7 +116,7 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
             fromToUsd = 1m / inverseResult.Rate;
         }
 
-        // Step 2: Get USD/TO (e.g., USD/TWD)
+        // Step 2：取得 USD/TO（例如 USD/TWD）
         var usdToPair = $"USD{to}".ToLowerInvariant();
         if (!DirectPairs.Contains(usdToPair)) return null;
 
@@ -172,7 +166,7 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
 
     private ExchangeRateResponse? ParseExchangeRateResponse(string content, string fromCurrency, string toCurrency)
     {
-        // Response format: var hq_str_fx_susdtwd="30.5234,30.5678,..."
+        // 回應格式：var hq_str_fx_susdtwd="30.5234,30.5678,..."
         if (string.IsNullOrWhiteSpace(content))
         {
             _logger.LogWarning("Empty response from Sina for {From}/{To}", fromCurrency, toCurrency);
@@ -197,15 +191,15 @@ public class SinaExchangeRateProvider : IExchangeRateProvider
 
         var fields = data.Split(',');
 
-        // Forex data format: time,bid,ask,latest,volume,high,low,...
-        // The current rate is typically the "latest" at index 3, but bid (index 1) works better
+        // Forex 資料格式：time,bid,ask,latest,volume,high,low,...
+        // 目前匯率通常為 index 3（latest），但實務上 index 1（bid）更穩定
         if (fields.Length < 4)
         {
             _logger.LogWarning("Insufficient fields in Sina response for {From}/{To}: {Data}", fromCurrency, toCurrency, data);
             return null;
         }
 
-        // Try to get the current/latest rate (index 3), fallback to bid (index 1)
+        // 優先使用 current/latest（index 3），失敗則回退使用 bid（index 1）
         decimal rate = 0;
         if (!decimal.TryParse(fields[3], NumberStyles.Any, CultureInfo.InvariantCulture, out rate) || rate <= 0)
         {

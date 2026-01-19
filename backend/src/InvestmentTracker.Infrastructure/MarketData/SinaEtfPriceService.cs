@@ -5,41 +5,35 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching real-time ETF prices from Sina Finance
-/// Supports UK-listed ETFs (LSE) with USD denomination
+/// 從 Sina Finance 取得 ETF 即時價格的服務。
+/// 支援英國掛牌 ETF（LSE），且多數以 USD 計價。
 /// </summary>
-public class SinaEtfPriceService : ISinaEtfPriceService
+public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceService> logger) : ISinaEtfPriceService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<SinaEtfPriceService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<SinaEtfPriceService> _logger = logger;
 
     private const string BaseUrl = "https://hq.sinajs.cn/list=";
     private const string Referer = "http://vip.stock.finance.sina.com.cn";
 
-    // Sina symbol mappings for UK-listed ETFs (USD denominated)
+    // 英國掛牌 ETF 的 Sina symbol 對應（多為 USD 計價）
     private static readonly Dictionary<string, string> SinaSymbols = new()
     {
-        ["All Country"] = "lse_vwra",           // Vanguard FTSE All-World UCITS ETF (Acc)
-        ["US Large"] = "lse_vuaa",              // Vanguard S&P 500 UCITS ETF (Acc)
-        ["US Small"] = "lse_xrsu",              // Xtrackers Russell 2000 UCITS ETF (Acc)
-        ["Emerging Markets"] = "lse_vfem",      // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
-        ["Europe"] = "lse_veua",                // Vanguard FTSE Developed Europe UCITS ETF (Acc)
-        ["Japan"] = "lse_vjpa",                 // Vanguard FTSE Japan UCITS ETF (Acc)
-        ["Developed Markets Large"] = "lse_vhve", // Vanguard FTSE Developed World UCITS ETF (Acc)
-        ["Developed Markets Small"] = "lse_wsml", // iShares MSCI World Small Cap UCITS ETF (Acc)
-        ["Dev ex US Large"] = "lse_exus",       // Vanguard FTSE Developed ex US UCITS ETF (Acc)
-        ["China"] = "lse_hcha",                 // HSBC MSCI China UCITS ETF (Acc)
+        ["All Country"] = "lse_vwra",             // Vanguard FTSE All-World UCITS ETF (Acc)
+        ["US Large"] = "lse_vuaa",                // Vanguard S&P 500 UCITS ETF (Acc)
+        ["US Small"] = "lse_xrsu",                // Xtrackers Russell 2000 UCITS ETF (Acc)
+        ["Emerging Markets"] = "lse_vfem",        // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
+        ["Europe"] = "lse_veua",                  // Vanguard FTSE Developed Europe UCITS ETF (Acc)
+        ["Japan"] = "lse_vjpa",                   // Vanguard FTSE Japan UCITS ETF (Acc)
+        ["Developed Markets Large"] = "lse_vhve",  // Vanguard FTSE Developed World UCITS ETF (Acc)
+        ["Developed Markets Small"] = "lse_wsml",  // iShares MSCI World Small Cap UCITS ETF (Acc)
+        ["Dev ex US Large"] = "lse_exus",         // Vanguard FTSE Developed ex US UCITS ETF (Acc)
+        ["China"] = "lse_hcha",                   // HSBC MSCI China UCITS ETF (Acc)
     };
 
     static SinaEtfPriceService()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-    }
-
-    public SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceService> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
     }
 
     public static IReadOnlyCollection<string> SupportedMarkets => SinaSymbols.Keys;
@@ -78,13 +72,13 @@ public class SinaEtfPriceService : ISinaEtfPriceService
     }
 
     /// <summary>
-    /// Parse Sina response for LSE ETFs
-    /// Format: var hq_str_lse_vwra="vwra,172.02,172.28,172.14,171.94,172.96,74599,...";
-    /// Fields: symbol, price, high, open, low, previous_close, volume, ...
+    /// 解析 Sina 對 LSE ETF 的回應。
+    /// 格式：var hq_str_lse_vwra="vwra,172.02,172.28,172.14,171.94,172.96,74599,...";
+    /// 欄位：symbol, price, high, open, low, previous_close, volume, ...
     /// </summary>
     private decimal? ParseSinaResponse(string content, string marketKey)
     {
-        // Extract the quoted data
+        // 取出引號內的資料
         var startIdx = content.IndexOf('"');
         var endIdx = content.LastIndexOf('"');
 
@@ -108,10 +102,10 @@ public class SinaEtfPriceService : ISinaEtfPriceService
             return null;
         }
 
-        // Field 1 is the current price, Field 5 is yesterday's close
+        // 欄位 1：目前價格；欄位 5：昨收
         if (decimal.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
         {
-            // If current price is 0, use yesterday's close as fallback
+            // 若目前價格為 0，回退使用昨收
             if (price <= 0 && parts.Length > 5 &&
                 decimal.TryParse(parts[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var yesterdayClose) &&
                 yesterdayClose > 0)

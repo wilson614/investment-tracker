@@ -1,26 +1,51 @@
+/**
+ * Toast
+ *
+ * 全站通知系統（Toast）：透過 React Context 提供 `success/error/warning/info` API。
+ *
+ * 行為重點：
+ * - `addToast` 會建立唯一 id，並在 duration > 0 時自動移除。
+ * - `useToast` 必須在 `ToastProvider` 之內使用。
+ */
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface Toast {
+  /** 唯一識別碼 */
   id: string;
+  /** 通知類型 */
   type: ToastType;
+  /** 顯示訊息 */
   message: string;
+  /** 自動關閉時間（ms）；<= 0 表示不自動關閉 */
   duration?: number;
 }
 
 interface ToastContextType {
+  /** 目前顯示中的 toast 列表 */
   toasts: Toast[];
+  /** 新增 toast */
   addToast: (type: ToastType, message: string, duration?: number) => void;
+  /** 移除指定 toast */
   removeToast: (id: string) => void;
+  /** success shorthand */
   success: (message: string, duration?: number) => void;
+  /** error shorthand */
   error: (message: string, duration?: number) => void;
+  /** warning shorthand */
   warning: (message: string, duration?: number) => void;
+  /** info shorthand */
   info: (message: string, duration?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+/**
+ * ToastProvider
+ *
+ * 將 toast context 掛到 app tree，並負責渲染 ToastContainer。
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -74,6 +99,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * useToast
+ *
+ * 取得 toast context；若未包在 ToastProvider 內會丟錯。
+ */
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) {

@@ -12,24 +12,32 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// Service for calculating Market YTD benchmark returns
-/// Uses IndexPriceSnapshot table with YearMonth format YYYYMM (month-end snapshots)
-/// Uses previous year's December month-end price as the YTD baseline
-/// Auto-fetches missing baseline prices from Stooq/TWSE when needed
+/// 計算市場 YTD 基準報酬率的服務。
+/// 使用 IndexPriceSnapshot（YearMonth=YYYYMM 的月末快照）
+/// 以前一年度 12 月月末價格作為 YTD 基準
+/// 若缺少基準價，會視需要從 Stooq/TWSE 自動補抓
 /// </summary>
-public class MarketYtdService : IMarketYtdService
+public class MarketYtdService(
+    AppDbContext dbContext,
+    IStockPriceService stockPriceService,
+    IStooqHistoricalPriceService stooqService,
+    ITwseDividendService dividendService,
+    EtfClassificationService etfClassificationService,
+    ITwseRateLimiter twseRateLimiter,
+    HttpClient httpClient,
+    ILogger<MarketYtdService> logger) : IMarketYtdService
 {
-    private readonly AppDbContext _dbContext;
-    private readonly IStockPriceService _stockPriceService;
-    private readonly IStooqHistoricalPriceService _stooqService;
-    private readonly ITwseDividendService _dividendService;
-    private readonly EtfClassificationService _etfClassificationService;
-    private readonly ITwseRateLimiter _twseRateLimiter;
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<MarketYtdService> _logger;
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly IStockPriceService _stockPriceService = stockPriceService;
+    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
+    private readonly ITwseDividendService _dividendService = dividendService;
+    private readonly EtfClassificationService _etfClassificationService = etfClassificationService;
+    private readonly ITwseRateLimiter _twseRateLimiter = twseRateLimiter;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<MarketYtdService> _logger = logger;
 
-    // Benchmark definitions: MarketKey -> (Symbol, Name, Market)
-    // Note: "Taiwan 0050" is different from "Taiwan" (used for CAPE with TWII index)
+    // 基準定義：MarketKey -> (Symbol, Name, Market)
+    // 注意：「Taiwan 0050」與「Taiwan」（用於 CAPE 的 TWII 指數）不同
     private static readonly Dictionary<string, (string Symbol, string Name, StockMarket Market)> Benchmarks = new()
     {
         ["All Country"] = ("VWRA", "Vanguard FTSE All-World", StockMarket.UK),
@@ -45,26 +53,6 @@ public class MarketYtdService : IMarketYtdService
         ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW),
     };
 
-    public MarketYtdService(
-        AppDbContext dbContext,
-        IStockPriceService stockPriceService,
-        IStooqHistoricalPriceService stooqService,
-        ITwseDividendService dividendService,
-        EtfClassificationService etfClassificationService,
-        ITwseRateLimiter twseRateLimiter,
-        HttpClient httpClient,
-        ILogger<MarketYtdService> logger)
-    {
-        _dbContext = dbContext;
-        _stockPriceService = stockPriceService;
-        _stooqService = stooqService;
-        _dividendService = dividendService;
-        _etfClassificationService = etfClassificationService;
-        _twseRateLimiter = twseRateLimiter;
-        _httpClient = httpClient;
-        _logger = logger;
-    }
-
     public static IReadOnlyDictionary<string, (string Symbol, string Name, StockMarket Market)> SupportedBenchmarks => Benchmarks;
 
     public async Task<MarketYtdComparisonDto> GetYtdComparisonAsync(CancellationToken cancellationToken = default)
@@ -73,16 +61,16 @@ public class MarketYtdService : IMarketYtdService
         var previousYear = year - 1;
         var yearEndYearMonth = $"{previousYear}12";  // Use previous year December as baseline
 
-        // Load year-end reference prices from database (e.g., 202512 for 2026 YTD)
-        // Use GroupBy to handle potential duplicate keys (race condition from concurrent saves)
-        // Filter out NotAvailable entries and only get snapshots with actual prices
+        // 從資料庫載入年末基準價（例如：2026 的 YTD 會用 202512）
+        // 使用 GroupBy 處理可能的重複 key（並發寫入導致的 race condition）
+        // 排除 NotAvailable，並僅取有實際價格的快照
         var yearEndPrices = (await _dbContext.IndexPriceSnapshots
             .Where(s => s.YearMonth == yearEndYearMonth && Benchmarks.Keys.Contains(s.MarketKey) && !s.IsNotAvailable && s.Price.HasValue)
             .ToListAsync(cancellationToken))
             .GroupBy(s => s.MarketKey)
             .ToDictionary(g => g.Key, g => g.First().Price!.Value);
 
-        // Auto-fetch missing year-end prices from previous year
+        // 自動補抓上一年度 12 月的缺漏基準價
         var missingMarkets = Benchmarks.Keys.Where(k => !yearEndPrices.ContainsKey(k)).ToList();
         if (missingMarkets.Count > 0)
         {
@@ -90,7 +78,7 @@ public class MarketYtdService : IMarketYtdService
             await PopulateMissingYearEndPricesAsync(previousYear, missingMarkets, yearEndPrices, cancellationToken);
         }
 
-        // Fetch current prices for all benchmarks
+        // 抓取所有基準的最新價格
         var benchmarkResults = new List<MarketYtdReturnDto>();
 
         foreach (var (marketKey, benchmark) in Benchmarks)
@@ -109,7 +97,7 @@ public class MarketYtdService : IMarketYtdService
 
     public async Task<MarketYtdComparisonDto> RefreshYtdComparisonAsync(CancellationToken cancellationToken = default)
     {
-        // Simply delegate to GetYtdComparisonAsync which handles auto-fetching
+        // 直接委派給 GetYtdComparisonAsync（內含自動補抓邏輯）
         return await GetYtdComparisonAsync(cancellationToken);
     }
 
@@ -140,7 +128,7 @@ public class MarketYtdService : IMarketYtdService
                 };
             }
 
-            // Fetch dividends for distributing ETFs (currently only Taiwan stocks supported)
+            // 配息型 ETF 的股利調整（目前僅支援台股）
             decimal dividendsPaid = 0;
             var needsDividendAdjustment = benchmark.Market == StockMarket.TW &&
                 _etfClassificationService.NeedsDividendAdjustment(benchmark.Symbol);
@@ -201,8 +189,10 @@ public class MarketYtdService : IMarketYtdService
     }
 
     /// <summary>
-    /// Fetch missing year-end prices from Stooq (UK ETFs) or TWSE (Taiwan 0050)
-    /// and store them in the database for future use
+    /// 補抓缺漏的年末基準價：
+    /// - 英國掛牌 ETF：Stooq
+    /// - 台灣 0050：TWSE
+    /// 並寫入資料庫，供後續使用。
     /// </summary>
     private async Task PopulateMissingYearEndPricesAsync(
         int year,
@@ -210,7 +200,7 @@ public class MarketYtdService : IMarketYtdService
         Dictionary<string, decimal> yearEndPrices,
         CancellationToken cancellationToken)
     {
-        var yearMonth = $"{year}12";  // Store as YYYYMM format (e.g., 202512)
+        var yearMonth = $"{year}12";  // 以 YYYYMM 格式存放（例如：202512）
 
         foreach (var marketKey in missingMarkets)
         {
@@ -220,18 +210,18 @@ public class MarketYtdService : IMarketYtdService
 
                 if (marketKey == "Taiwan 0050")
                 {
-                    // Fetch 0050 year-end price from TWSE
+                    // 從 TWSE 抓取 0050 年末價格
                     yearEndPrice = await FetchTwse0050YearEndPriceAsync(year, cancellationToken);
                 }
                 else
                 {
-                    // Fetch UK ETF year-end price from Stooq
+                    // 從 Stooq 抓取英國掛牌 ETF 的年末價格
                     yearEndPrice = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
                 }
 
                 if (yearEndPrice.HasValue)
                 {
-                    // Check if record already exists (prevent duplicates from concurrent requests)
+                    // 確認是否已存在（避免並發請求造成重複寫入）
                     var exists = await _dbContext.IndexPriceSnapshots
                         .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
 
@@ -268,16 +258,16 @@ public class MarketYtdService : IMarketYtdService
     }
 
     /// <summary>
-    /// Fetch 0050 ETF year-end closing price from TWSE
+    /// 從 TWSE 取得 0050 ETF 年末收盤價。
     /// </summary>
     private async Task<decimal?> FetchTwse0050YearEndPriceAsync(int year, CancellationToken cancellationToken)
     {
         try
         {
-            // Wait for rate limit slot before making request
+            // 發送請求前先等待 rate limit 的可用額度
             await _twseRateLimiter.WaitForSlotAsync(cancellationToken);
 
-            // TWSE API for individual stock historical data
+            // TWSE 個股歷史資料 API
             var url = $"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={year}1201&stockNo=0050";
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);

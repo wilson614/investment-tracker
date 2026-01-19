@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Application.Services;
 
 /// <summary>
-/// ETF type classification for YTD performance calculation.
+/// 用於 YTD 計算的 ETF 類型分類。
 /// </summary>
 public enum EtfType
 {
@@ -14,7 +14,7 @@ public enum EtfType
 }
 
 /// <summary>
-/// ETF classification result.
+/// ETF 分類結果。
 /// </summary>
 public record EtfClassificationResult(
     string Ticker,
@@ -24,14 +24,14 @@ public record EtfClassificationResult(
 );
 
 /// <summary>
-/// Service for classifying ETF types (accumulating vs distributing).
-/// Used to determine if dividend adjustment is needed for YTD calculations.
+/// ETF 類型分類服務（accumulating vs distributing）。
+/// 用於判斷 YTD 計算是否需要做股息調整。
 /// </summary>
 public class EtfClassificationService
 {
     private readonly ILogger<EtfClassificationService> _logger;
 
-    // Known accumulating ETFs (no dividend adjustment needed)
+    // 已知的 accumulating ETF（不需要股息調整）
     private static readonly HashSet<string> KnownAccumulatingEtfs = new(StringComparer.OrdinalIgnoreCase)
     {
         // Vanguard UK accumulating ETFs
@@ -44,7 +44,7 @@ public class EtfClassificationService
         "AGAC",
     };
 
-    // Known Taiwan stocks/ETFs (dividend adjustment needed)
+    // 已知的台股/台灣 ETF（需要股息調整）
     private static readonly HashSet<string> KnownTaiwanDistributing = new(StringComparer.OrdinalIgnoreCase)
     {
         "0050", "0056", "006208", "00878", "00919",
@@ -56,42 +56,42 @@ public class EtfClassificationService
     }
 
     /// <summary>
-    /// Classify an ETF by ticker symbol.
+    /// 依 ticker 對 ETF 做分類。
     /// </summary>
     public EtfClassificationResult ClassifyEtf(string ticker)
     {
-        // Check known accumulating ETFs
+        // 檢查已知的 accumulating ETF
         if (KnownAccumulatingEtfs.Contains(ticker))
         {
             return new EtfClassificationResult(ticker, EtfType.Accumulating, true, "Known List");
         }
 
-        // Check Taiwan distributing ETFs
+        // 檢查台灣 distributing ETF
         if (KnownTaiwanDistributing.Contains(ticker))
         {
             return new EtfClassificationResult(ticker, EtfType.Distributing, true, "Known List");
         }
 
-        // Taiwan stock pattern (numeric with optional suffix)
+        // 台股代號樣式（數字，可能帶字母後綴）
         if (System.Text.RegularExpressions.Regex.IsMatch(ticker, @"^\d+[A-Za-z]*$"))
         {
             _logger.LogDebug("Ticker {Ticker} appears to be Taiwan stock, assuming distributing", ticker);
             return new EtfClassificationResult(ticker, EtfType.Distributing, false, "Pattern Match");
         }
 
-        // LSE-listed ETFs (ending with .L) - likely accumulating if ACC in name
+        // LSE 上市 ETF（.L 結尾）：通常視為 accumulating（若命名含 ACC）
         if (ticker.EndsWith(".L", StringComparison.OrdinalIgnoreCase))
         {
             return new EtfClassificationResult(ticker, EtfType.Accumulating, false, "LSE Pattern");
         }
 
-        // Default to unknown
+        // 預設回傳 unknown
         _logger.LogDebug("Unable to classify ticker {Ticker}, returning unknown", ticker);
         return new EtfClassificationResult(ticker, EtfType.Unknown, false, null);
     }
 
     /// <summary>
-    /// Check if dividend adjustment is needed for a ticker.
+    /// 判斷此 ticker 是否需要做股息調整。
     /// </summary>
     public bool NeedsDividendAdjustment(string ticker)
     {
@@ -100,7 +100,7 @@ public class EtfClassificationService
     }
 
     /// <summary>
-    /// Get all known ETF classifications.
+    /// 取得所有已知的 ETF 分類結果。
     /// </summary>
     public IReadOnlyList<EtfClassificationResult> GetKnownClassifications()
     {

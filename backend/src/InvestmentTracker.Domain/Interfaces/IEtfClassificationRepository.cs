@@ -4,27 +4,27 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Repository interface for ETF classification operations.
+/// ETF 分類相關操作的 Repository 介面。
 /// </summary>
 public interface IEtfClassificationRepository
 {
     /// <summary>
-    /// Gets an ETF classification by symbol and market.
+    /// 依據代號與市場取得 ETF 分類。
     /// </summary>
     Task<EtfClassification?> GetBySymbolAndMarketAsync(string symbol, string market, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all ETF classifications.
+    /// 取得所有 ETF 分類。
     /// </summary>
     Task<IReadOnlyList<EtfClassification>> GetAllAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Adds or updates an ETF classification.
+    /// 新增或更新 ETF 分類。
     /// </summary>
     Task UpsertAsync(EtfClassification classification, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets ETF classifications for multiple symbols.
+    /// 取得多個代號的 ETF 分類。
     /// </summary>
     Task<IReadOnlyList<EtfClassification>> GetBySymbolsAsync(IEnumerable<string> symbols, CancellationToken cancellationToken = default);
 }

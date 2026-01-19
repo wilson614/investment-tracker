@@ -8,8 +8,8 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Application.Services;
 
 /// <summary>
-/// Service for calculating historical year performance.
-/// Calculates XIRR and returns for any historical year (2020+).
+/// 歷史年度績效計算服務。
+/// 計算任一年度（2020+）的 XIRR 與總報酬。
 /// </summary>
 public class HistoricalPerformanceService : IHistoricalPerformanceService
 {
@@ -40,7 +40,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
     }
 
     /// <summary>
-    /// Get available years for performance calculation.
+    /// 取得可計算績效的年份清單。
     /// </summary>
     public async Task<AvailableYearsDto> GetAvailableYearsAsync(
         Guid portfolioId,
@@ -84,7 +84,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
     }
 
     /// <summary>
-    /// Calculate performance for a specific year.
+    /// 計算指定年度的績效。
     /// </summary>
     public async Task<YearPerformanceDto> CalculateYearPerformanceAsync(
         Guid portfolioId,

@@ -4,13 +4,13 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Repository interface for HistoricalYearEndData cache operations.
-/// This is a global cache (not per-user) for year-end stock prices and exchange rates.
+/// HistoricalYearEndData 快取相關操作的 Repository 介面。
+/// 這是一個全域快取（非 per-user），用於保存年末股價與年末匯率。
 /// </summary>
 public interface IHistoricalYearEndDataRepository
 {
     /// <summary>
-    /// Gets a cached year-end data entry by type, ticker, and year.
+    /// 依據資料類型、ticker 與年度取得年末快取資料。
     /// </summary>
     Task<HistoricalYearEndData?> GetAsync(
         HistoricalDataType dataType,
@@ -19,7 +19,7 @@ public interface IHistoricalYearEndDataRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a cached stock price for a specific ticker and year.
+    /// 取得指定 ticker 與年度的年末股價快取。
     /// </summary>
     Task<HistoricalYearEndData?> GetStockPriceAsync(
         string ticker,
@@ -27,7 +27,7 @@ public interface IHistoricalYearEndDataRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a cached exchange rate for a specific currency pair and year.
+    /// 取得指定幣別對與年度的年末匯率快取。
     /// </summary>
     Task<HistoricalYearEndData?> GetExchangeRateAsync(
         string currencyPair,
@@ -35,21 +35,21 @@ public interface IHistoricalYearEndDataRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all cached entries for a specific year.
+    /// 取得指定年度的所有快取資料。
     /// </summary>
     Task<IReadOnlyList<HistoricalYearEndData>> GetByYearAsync(
         int year,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Adds a new cache entry. Throws if entry already exists (cache is immutable).
+    /// 新增一筆快取資料。若已存在則丟出例外（快取設計為不可變）。
     /// </summary>
     Task<HistoricalYearEndData> AddAsync(
         HistoricalYearEndData data,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Checks if a cache entry exists for the given parameters.
+    /// 檢查指定條件的快取資料是否存在。
     /// </summary>
     Task<bool> ExistsAsync(
         HistoricalDataType dataType,

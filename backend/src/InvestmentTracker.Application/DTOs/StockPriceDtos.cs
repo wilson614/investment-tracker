@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// Request for fetching stock price
+/// 取得股票價格的請求 DTO。
 /// </summary>
 public record StockPriceRequest
 {
@@ -12,7 +12,7 @@ public record StockPriceRequest
 }
 
 /// <summary>
-/// Stock quote response
+/// 股票報價的回應 DTO。
 /// </summary>
 public record StockQuoteResponse
 {
@@ -24,14 +24,16 @@ public record StockQuoteResponse
     public StockMarket Market { get; init; }
     public string Source { get; init; } = string.Empty;
     public DateTime FetchedAt { get; init; }
-    /// <summary>Exchange rate to home currency (e.g., USD/TWD)</summary>
+
+    /// <summary>換算成本位幣的匯率（例如 USD/TWD）。</summary>
     public decimal? ExchangeRate { get; init; }
-    /// <summary>Exchange rate pair description (e.g., "USD/TWD")</summary>
+
+    /// <summary>匯率幣別對描述（例如 "USD/TWD"）。</summary>
     public string? ExchangeRatePair { get; init; }
 }
 
 /// <summary>
-/// Exchange rate response
+/// 匯率查詢的回應 DTO。
 /// </summary>
 public record ExchangeRateResponse
 {
@@ -43,52 +45,52 @@ public record ExchangeRateResponse
 }
 
 /// <summary>
-/// YTD return for a single benchmark ETF
+/// 單一基準 ETF 的年初至今（YTD）報酬。
 /// </summary>
 public record MarketYtdReturnDto
 {
-    /// <summary>Market category (e.g., "All Country", "US Large", "Taiwan", "Emerging Markets")</summary>
+    /// <summary>市場分類 key（例如 "All Country"、"US Large"、"Taiwan"、"Emerging Markets"）。</summary>
     public string MarketKey { get; init; } = string.Empty;
 
-    /// <summary>ETF ticker symbol (e.g., "VWRA", "VUAA", "0050", "VFEM")</summary>
+    /// <summary>ETF 股票代號（例如 "VWRA"、"VUAA"、"0050"、"VFEM"）。</summary>
     public string Symbol { get; init; } = string.Empty;
 
-    /// <summary>Human-readable name</summary>
+    /// <summary>可讀性較佳的名稱。</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>YTD baseline reference price (typically prior-year December closing price)</summary>
+    /// <summary>YTD 基準參考價（通常為前一年 12 月收盤價）。</summary>
     public decimal? Jan1Price { get; init; }
 
-    /// <summary>Current price</summary>
+    /// <summary>目前價格。</summary>
     public decimal? CurrentPrice { get; init; }
 
-    /// <summary>Total dividends paid YTD (for dividend-adjusted return)</summary>
+    /// <summary>YTD 已配息總額（用於含息報酬）。</summary>
     public decimal? DividendsPaid { get; init; }
 
-    /// <summary>YTD return percentage (price return only, excluding dividends)</summary>
+    /// <summary>YTD 報酬率百分比（僅價格，不含股息）。</summary>
     public decimal? YtdReturnPercent { get; init; }
 
-    /// <summary>YTD total return percentage (including dividends)</summary>
+    /// <summary>YTD 總報酬率百分比（含股息）。</summary>
     public decimal? YtdTotalReturnPercent { get; init; }
 
-    /// <summary>When current price was fetched</summary>
+    /// <summary>目前價格的抓取時間。</summary>
     public DateTime? FetchedAt { get; init; }
 
-    /// <summary>Error message if price fetch failed</summary>
+    /// <summary>抓價失敗時的錯誤訊息。</summary>
     public string? Error { get; init; }
 }
 
 /// <summary>
-/// Collection of YTD returns for all benchmarks
+/// 所有基準 ETF 的 YTD 報酬比較結果。
 /// </summary>
 public record MarketYtdComparisonDto
 {
-    /// <summary>Year for YTD calculation</summary>
+    /// <summary>YTD 計算年度。</summary>
     public int Year { get; init; }
 
-    /// <summary>List of benchmark YTD returns</summary>
+    /// <summary>基準 ETF 的 YTD 報酬清單。</summary>
     public List<MarketYtdReturnDto> Benchmarks { get; init; } = [];
 
-    /// <summary>When this data was generated</summary>
+    /// <summary>資料產生時間。</summary>
     public DateTime GeneratedAt { get; init; }
 }

@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Records currency exchange, interest, and spend events.
+/// 外幣交易記錄實體，記錄換匯、利息及支出事件
 /// </summary>
 public class CurrencyTransaction : BaseEntity
 {
@@ -18,11 +18,11 @@ public class CurrencyTransaction : BaseEntity
     public string? Notes { get; private set; }
     public bool IsDeleted { get; private set; }
 
-    // Navigation properties
+    // 導覽屬性
     public CurrencyLedger CurrencyLedger { get; private set; } = null!;
     public StockTransaction? RelatedStockTransaction { get; private set; }
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private CurrencyTransaction() { }
 
     public CurrencyTransaction(
@@ -51,7 +51,7 @@ public class CurrencyTransaction : BaseEntity
         if (date > DateTime.UtcNow.AddDays(1))
             throw new ArgumentException("Transaction date cannot be in the future", nameof(date));
 
-        // Ensure UTC Kind for PostgreSQL compatibility
+        // 確保 UTC Kind 以相容 PostgreSQL
         TransactionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
 
@@ -64,7 +64,7 @@ public class CurrencyTransaction : BaseEntity
         if (foreignAmount <= 0)
             throw new ArgumentException("Foreign amount must be positive", nameof(foreignAmount));
 
-        // Validate required fields based on transaction type
+        // 根據交易類型驗證必填欄位
         switch (transactionType)
         {
             case CurrencyTransactionType.ExchangeBuy:
@@ -76,11 +76,11 @@ public class CurrencyTransaction : BaseEntity
                 break;
 
             case CurrencyTransactionType.Interest:
-                // Home amount and exchange rate are optional for interest
+                // 利息交易的本國幣金額和匯率為選填
                 break;
 
             case CurrencyTransactionType.Spend:
-                // No home amount or exchange rate needed for spend
+                // 支出交易不需要本國幣金額或匯率
                 break;
         }
 

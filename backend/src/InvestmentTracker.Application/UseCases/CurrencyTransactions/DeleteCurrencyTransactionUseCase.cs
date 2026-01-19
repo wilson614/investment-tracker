@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 
 /// <summary>
-/// Use case for soft-deleting a currency transaction.
+/// 軟刪除外幣交易（Currency Transaction）的 Use Case。
 /// </summary>
 public class DeleteCurrencyTransactionUseCase
 {

@@ -7,7 +7,7 @@ using InvestmentTracker.Domain.Services;
 namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 
 /// <summary>
-/// Use case for creating a new currency transaction.
+/// 建立外幣交易（Currency Transaction）的 Use Case。
 /// </summary>
 public class CreateCurrencyTransactionUseCase
 {
@@ -40,8 +40,8 @@ public class CreateCurrencyTransactionUseCase
         if (ledger.UserId != _currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this currency ledger");
 
-        // Note: Spend and ExchangeSell transactions can result in negative balance
-        // IB and other brokers support margin/leverage trading
+        // 備註：Spend 與 ExchangeSell 可能導致帳本餘額為負
+        // IB 等券商支援融資/槓桿交易
 
         var transaction = new CurrencyTransaction(
             request.CurrencyLedgerId,

@@ -1,3 +1,12 @@
+/**
+ * AssetAllocationPieChart
+ *
+ * 資產配置圓餅圖：以 Recharts 呈現各持倉在投資組合中的市值佔比。
+ *
+ * 注意：
+ * - `AssetAllocationData` 加上 index signature 是為了符合 Recharts 內部的型別需求。
+ * - label 會過濾過小扇區（< 5%）避免文字擁擠。
+ */
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { getChartColor } from '../../constants/chartColors';
 
@@ -9,11 +18,15 @@ export interface AssetAllocationData {
 }
 
 interface AssetAllocationPieChartProps {
+  /** 資產配置資料（ticker/value/percentage） */
   data: AssetAllocationData[];
+  /** 顯示用的本位幣（預設 TWD） */
   homeCurrency?: string;
 }
 
-// Custom tooltip component
+/**
+ * 自訂 Tooltip：顯示 ticker、市值（四捨五入）、百分比。
+ */
 const CustomTooltip = ({
   active,
   payload,
@@ -37,7 +50,9 @@ const CustomTooltip = ({
   );
 };
 
-// Custom legend component
+/**
+ * 自訂 Legend：以顏色點 + ticker 顯示。
+ */
 const CustomLegend = ({
   payload,
 }: {
@@ -86,6 +101,7 @@ export function AssetAllocationPieChart({
             outerRadius={80}
             paddingAngle={2}
             label={({ name, percent }: { name?: string; percent?: number }) =>
+              // 避免過小扇區的 label 擁擠：僅顯示 >= 5% 的項目。
               (percent ?? 0) >= 0.05 ? `${name}` : ''
             }
             labelLine={false}

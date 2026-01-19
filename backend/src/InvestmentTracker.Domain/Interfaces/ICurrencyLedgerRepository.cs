@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Entities;
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Repository interface for CurrencyLedger aggregate.
+/// CurrencyLedger 彙總根（aggregate）的 Repository 介面。
 /// </summary>
 public interface ICurrencyLedgerRepository
 {

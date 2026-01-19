@@ -1,6 +1,9 @@
 /**
- * MarketYtdSection Component
- * Displays YTD (Year-to-Date) returns for benchmark ETFs
+ * MarketYtdSection
+ *
+ * 年初至今報酬（YTD）卡片：顯示多個 benchmark 的 YTD 報酬率，並提供排序與「最多 10 個」的選擇設定。
+ *
+ * 設定會寫入 localStorage（與 Performance 頁面的 benchmark 選擇相互呼應）。
  */
 
 import { useState, useMemo } from 'react';
@@ -19,7 +22,9 @@ const YTD_SORT_OPTIONS: { value: YtdSortKey; label: string }[] = [
 
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 
-// English key to Chinese label mapping (matches backend MarketYtdService.Benchmarks)
+/**
+ * 英文 key → 中文顯示名稱（需與 backend `MarketYtdService.Benchmarks` 一致）。
+ */
 const BENCHMARK_LABELS: Record<string, string> = {
   'All Country': '全球',
   'US Large': '美國大型',
@@ -40,6 +45,11 @@ const DEFAULT_BENCHMARKS = [
   'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
 ];
 
+/**
+ * 從 localStorage 讀取使用者選擇的 benchmarks。
+ *
+ * 回傳英文 key（例如 `All Country`），以符合 API 回傳與其他頁面的同步。
+ */
 function getSelectedBenchmarks(): string[] {
   try {
     const stored = localStorage.getItem(YTD_PREFS_KEY);
@@ -55,6 +65,9 @@ function getSelectedBenchmarks(): string[] {
   return DEFAULT_BENCHMARKS;
 }
 
+/**
+ * 將 benchmarks 寫入 localStorage（供 Dashboard/Performance 共用）。
+ */
 function saveSelectedBenchmarks(benchmarks: string[]): void {
   try {
     localStorage.setItem(YTD_PREFS_KEY, JSON.stringify(benchmarks));

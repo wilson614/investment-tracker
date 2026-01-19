@@ -1,18 +1,18 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Type of portfolio for different currency handling modes.
+/// 投資組合類型，用於不同的幣別處理模式。
 /// </summary>
 public enum PortfolioType
 {
     /// <summary>
-    /// Primary portfolio - tracks costs in home currency (TWD) with exchange rate conversion.
+    /// 主投資組合：以本位幣（TWD）追蹤成本，並透過匯率換算。
     /// </summary>
     Primary = 0,
 
     /// <summary>
-    /// Foreign currency portfolio - tracks all metrics in a single source currency without exchange rate conversion.
-    /// Used for portfolios where all stocks are in the same foreign currency (e.g., USD).
+    /// 外幣投資組合：所有指標以單一來源幣別計算，不進行匯率換算。
+    /// 適用於投資組合內的標的皆為同一外幣（例如 USD）。
     /// </summary>
     ForeignCurrency = 1
 }

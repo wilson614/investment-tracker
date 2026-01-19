@@ -7,24 +7,17 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// Service for managing historical exchange rate cache by transaction date.
-/// Provides lazy loading: check cache first, fetch from Stooq if missing, save to cache.
+/// 依交易日期管理歷史匯率快取的服務。
+/// 採 lazy loading：先查快取，若缺少則從 Stooq 抓取並寫入快取。
 /// </summary>
-public class TransactionDateExchangeRateService : ITransactionDateExchangeRateService
+public class TransactionDateExchangeRateService(
+    IHistoricalExchangeRateCacheRepository repository,
+    IStooqHistoricalPriceService stooqService,
+    ILogger<TransactionDateExchangeRateService> logger) : ITransactionDateExchangeRateService
 {
-    private readonly IHistoricalExchangeRateCacheRepository _repository;
-    private readonly IStooqHistoricalPriceService _stooqService;
-    private readonly ILogger<TransactionDateExchangeRateService> _logger;
-
-    public TransactionDateExchangeRateService(
-        IHistoricalExchangeRateCacheRepository repository,
-        IStooqHistoricalPriceService stooqService,
-        ILogger<TransactionDateExchangeRateService> logger)
-    {
-        _repository = repository;
-        _stooqService = stooqService;
-        _logger = logger;
-    }
+    private readonly IHistoricalExchangeRateCacheRepository _repository = repository;
+    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
+    private readonly ILogger<TransactionDateExchangeRateService> _logger = logger;
 
     public async Task<TransactionDateExchangeRateResult?> GetOrFetchAsync(
         string fromCurrency,
@@ -35,7 +28,7 @@ public class TransactionDateExchangeRateService : ITransactionDateExchangeRateSe
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
         var dateOnly = transactionDate.Date;
 
-        // Check cache first
+        // 先查快取
         var cached = await _repository.GetAsync(currencyPair, dateOnly, cancellationToken);
         if (cached != null)
         {
@@ -52,7 +45,7 @@ public class TransactionDateExchangeRateService : ITransactionDateExchangeRateSe
             };
         }
 
-        // Fetch from Stooq API
+        // 從 Stooq API 抓取
         _logger.LogInformation("Cache miss for {CurrencyPair}/{Date}, fetching from Stooq...", 
             currencyPair, dateOnly.ToString("yyyy-MM-dd"));
         
@@ -60,7 +53,7 @@ public class TransactionDateExchangeRateService : ITransactionDateExchangeRateSe
 
         if (apiResult != null)
         {
-            // Save to cache
+            // 寫入快取
             try
             {
                 var cacheEntry = HistoricalExchangeRateCache.Create(
@@ -78,7 +71,7 @@ public class TransactionDateExchangeRateService : ITransactionDateExchangeRateSe
             }
             catch (InvalidOperationException ex)
             {
-                // Entry might have been added by another request - this is fine
+                // 可能已被其他並發請求寫入；可忽略
                 _logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Date}", 
                     currencyPair, dateOnly.ToString("yyyy-MM-dd"));
             }
@@ -97,7 +90,7 @@ public class TransactionDateExchangeRateService : ITransactionDateExchangeRateSe
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
         var dateOnly = transactionDate.Date;
 
-        // Check if entry already exists
+        // 確認是否已存在快取資料
         if (await _repository.ExistsAsync(currencyPair, dateOnly, cancellationToken))
         {
             throw new InvalidOperationException(

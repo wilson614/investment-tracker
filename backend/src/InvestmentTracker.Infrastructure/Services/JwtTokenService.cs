@@ -11,7 +11,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// JWT token service with Argon2id password hashing.
+/// JWT token 服務，並提供 Argon2id 密碼雜湊。
 /// </summary>
 public class JwtTokenService : IJwtTokenService
 {
@@ -80,14 +80,14 @@ public class JwtTokenService : IJwtTokenService
 
     public string HashPassword(string password)
     {
-        // Generate salt
+        // 產生 salt
         var salt = new byte[16];
         using (var rng = RandomNumberGenerator.Create())
         {
             rng.GetBytes(salt);
         }
 
-        // Hash with Argon2id
+        // 使用 Argon2id 進行雜湊
         using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
         {
             Salt = salt,
@@ -98,7 +98,7 @@ public class JwtTokenService : IJwtTokenService
 
         var hash = argon2.GetBytes(32);
 
-        // Combine salt and hash for storage
+        // 將 salt 與 hash 組合後存放
         var result = new byte[salt.Length + hash.Length];
         Buffer.BlockCopy(salt, 0, result, 0, salt.Length);
         Buffer.BlockCopy(hash, 0, result, salt.Length, hash.Length);
@@ -112,15 +112,15 @@ public class JwtTokenService : IJwtTokenService
         {
             var hashBytes = Convert.FromBase64String(passwordHash);
 
-            // Extract salt (first 16 bytes)
+            // 取出 salt（前 16 bytes）
             var salt = new byte[16];
             Buffer.BlockCopy(hashBytes, 0, salt, 0, 16);
 
-            // Extract stored hash (remaining bytes)
+            // 取出已存的 hash（剩餘 bytes）
             var storedHash = new byte[hashBytes.Length - 16];
             Buffer.BlockCopy(hashBytes, 16, storedHash, 0, storedHash.Length);
 
-            // Hash the provided password with the same salt
+            // 使用相同 salt 對輸入密碼進行雜湊
             using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
             {
                 Salt = salt,
@@ -131,7 +131,7 @@ public class JwtTokenService : IJwtTokenService
 
             var computedHash = argon2.GetBytes(32);
 
-            // Compare hashes
+            // 比對 hash
             return CryptographicOperations.FixedTimeEquals(storedHash, computedHash);
         }
         catch

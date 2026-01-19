@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Contains holdings and transactions for a specific user.
+/// 投資組合實體，包含特定使用者的持股和交易記錄
 /// </summary>
 public class Portfolio : BaseEntity
 {
@@ -15,22 +15,22 @@ public class Portfolio : BaseEntity
     public bool IsActive { get; private set; } = true;
 
     /// <summary>
-    /// Type of portfolio for different currency handling modes.
+    /// 投資組合類型，決定幣別處理模式
     /// </summary>
     public PortfolioType PortfolioType { get; private set; } = PortfolioType.Primary;
 
     /// <summary>
-    /// Display name for the portfolio (e.g., "美股投資組合").
+    /// 顯示名稱（例如：「美股投資組合」）
     /// </summary>
     public string? DisplayName { get; private set; }
 
-    // Navigation properties
+    // 導覽屬性
     public User User { get; private set; } = null!;
 
     private readonly List<StockTransaction> _transactions = new();
     public IReadOnlyCollection<StockTransaction> Transactions => _transactions.AsReadOnly();
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private Portfolio() { }
 
     public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD", PortfolioType portfolioType = PortfolioType.Primary, string? displayName = null)

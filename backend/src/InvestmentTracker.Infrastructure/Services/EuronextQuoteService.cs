@@ -6,40 +6,32 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// Service for fetching and caching Euronext stock quotes.
-/// Handles quote caching and exchange rate conversion.
+/// 取得並快取 Euronext 報價的服務。
+/// 內含報價快取與匯率換算邏輯。
 /// </summary>
-public class EuronextQuoteService
+public class EuronextQuoteService(
+    IEuronextApiClient apiClient,
+    IEuronextQuoteCacheRepository cacheRepository,
+    IExchangeRateProvider exchangeRateProvider,
+    ILogger<EuronextQuoteService> logger)
 {
-    private readonly IEuronextApiClient _apiClient;
-    private readonly IEuronextQuoteCacheRepository _cacheRepository;
-    private readonly IExchangeRateProvider _exchangeRateProvider;
-    private readonly ILogger<EuronextQuoteService> _logger;
+    private readonly IEuronextApiClient _apiClient = apiClient;
+    private readonly IEuronextQuoteCacheRepository _cacheRepository = cacheRepository;
+    private readonly IExchangeRateProvider _exchangeRateProvider = exchangeRateProvider;
+    private readonly ILogger<EuronextQuoteService> _logger = logger;
 
-    // Cache duration in minutes (15 minutes during market hours)
+    // 快取有效期間（分鐘）（交易時段預設 15 分鐘）
     private const int CacheMinutes = 15;
 
-    public EuronextQuoteService(
-        IEuronextApiClient apiClient,
-        IEuronextQuoteCacheRepository cacheRepository,
-        IExchangeRateProvider exchangeRateProvider,
-        ILogger<EuronextQuoteService> logger)
-    {
-        _apiClient = apiClient;
-        _cacheRepository = cacheRepository;
-        _exchangeRateProvider = exchangeRateProvider;
-        _logger = logger;
-    }
-
     /// <summary>
-    /// Get quote for a Euronext-listed stock with optional exchange rate to home currency.
+    /// 取得 Euronext 掛牌股票報價，並可選擇換算成指定的本位幣匯率。
     /// </summary>
-    /// <param name="isin">ISIN code (e.g., IE000FHBZDZ8 for AGAC)</param>
-    /// <param name="mic">Market Identifier Code (e.g., XAMS for Amsterdam)</param>
-    /// <param name="homeCurrency">Target currency for exchange rate (default: TWD)</param>
-    /// <param name="forceRefresh">Whether to bypass cache</param>
+    /// <param name="isin">ISIN（例如：AGAC 的 IE000FHBZDZ8）</param>
+    /// <param name="mic">Market Identifier Code（例如：阿姆斯特丹 XAMS）</param>
+    /// <param name="homeCurrency">要換算的目標幣別（預設：TWD）</param>
+    /// <param name="forceRefresh">是否略過快取直接刷新</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Quote result with price and exchange rate</returns>
+    /// <returns>包含價格與匯率的報價結果</returns>
     public async Task<EuronextQuoteResult?> GetQuoteAsync(
         string isin,
         string mic,
@@ -49,7 +41,7 @@ public class EuronextQuoteService
     {
         try
         {
-            // Try to get from cache first
+            // 優先嘗試從快取取得
             if (!forceRefresh)
             {
                 var cached = await _cacheRepository.GetByIsinAndMicAsync(isin, mic, cancellationToken);
@@ -57,7 +49,7 @@ public class EuronextQuoteService
                 {
                     _logger.LogDebug("Using cached quote for {Isin}-{Mic}", isin, mic);
 
-                    // Get exchange rate for cached quote
+                    // 取得快取資料對應的匯率
                     var rate = await GetExchangeRateAsync(cached.Currency, homeCurrency, cancellationToken);
 
                     return new EuronextQuoteResult(
@@ -72,7 +64,7 @@ public class EuronextQuoteService
                 }
             }
 
-            // Fetch fresh quote
+            // 抓取最新報價
             _logger.LogInformation("Fetching fresh quote for {Isin}-{Mic}", isin, mic);
             var quote = await _apiClient.GetQuoteAsync(isin, mic, cancellationToken);
 
@@ -82,7 +74,7 @@ public class EuronextQuoteService
                 return null;
             }
 
-            // Cache the result
+            // 寫入快取
             var cacheEntry = new EuronextQuoteCache(
                 isin,
                 mic,
@@ -94,7 +86,7 @@ public class EuronextQuoteService
 
             await _cacheRepository.UpsertAsync(cacheEntry, cancellationToken);
 
-            // Get exchange rate
+            // 取得匯率
             var exchangeRate = await GetExchangeRateAsync(quote.Currency, homeCurrency, cancellationToken);
 
             return new EuronextQuoteResult(
@@ -144,7 +136,7 @@ public class EuronextQuoteService
 }
 
 /// <summary>
-/// Result of a Euronext quote fetch with exchange rate.
+/// 含匯率的 Euronext 報價結果。
 /// </summary>
 public record EuronextQuoteResult(
     decimal Price,

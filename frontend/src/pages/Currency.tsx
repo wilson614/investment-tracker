@@ -1,10 +1,22 @@
+/**
+ * Currency Page
+ *
+ * 外幣帳本首頁：列出使用者的外幣帳本摘要，並提供建立新帳本的入口。
+ *
+ * 目前限制：
+ * - `SUPPORTED_CURRENCIES` 目前僅包含 USD（後續可擴充）。
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { currencyLedgerApi } from '../services/api';
 import { CurrencyLedgerCard } from '../components/currency/CurrencyLedgerCard';
 import type { CurrencyLedgerSummary, CreateCurrencyLedgerRequest } from '../types';
 
-// Supported currencies (expand later)
+/**
+ * 可建立的幣別清單。
+ *
+ * 目前僅提供 USD，未來可視需求擴充。
+ */
 const SUPPORTED_CURRENCIES = [
   { code: 'USD', name: '美金' },
 ];
@@ -20,6 +32,9 @@ export default function Currency() {
   const [selectedCurrency, setSelectedCurrency] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /**
+   * 載入所有外幣帳本摘要。
+   */
   const loadLedgers = async () => {
     try {
       setLoading(true);
@@ -39,6 +54,10 @@ export default function Currency() {
   // Get existing currency codes
   const existingCurrencies = new Set(ledgers.map(l => l.ledger.currencyCode));
 
+  /**
+   * 建立新的外幣帳本。
+   * @param e React 表單事件
+   */
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCurrency) return;
@@ -69,7 +88,7 @@ export default function Currency() {
     );
   }
 
-  // Check if all currencies are already created
+  // 判斷是否還有可建立的幣別：若全部幣別都已建立，則禁用「新增帳本」。
   const availableCurrencies = SUPPORTED_CURRENCIES.filter(c => !existingCurrencies.has(c.code));
   const canCreateNew = availableCurrencies.length > 0;
 

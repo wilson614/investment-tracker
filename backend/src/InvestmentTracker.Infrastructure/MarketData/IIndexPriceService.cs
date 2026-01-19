@@ -1,18 +1,18 @@
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching market index prices for CAPE adjustment
+/// 取得市場指數價格以進行 CAPE 調整的服務。
 /// </summary>
 public interface IIndexPriceService
 {
     /// <summary>
-    /// Get current and historical index prices for CAPE adjustment
+    /// 取得 CAPE 調整所需的指數即時價與參考歷史價。
     /// </summary>
     Task<IndexPriceData?> GetIndexPricesAsync(string marketKey, DateTime referenceDate, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Index price data for CAPE adjustment calculation
+/// 用於 CAPE 調整計算的指數價格資料。
 /// </summary>
 public record IndexPriceData(
     string MarketKey,

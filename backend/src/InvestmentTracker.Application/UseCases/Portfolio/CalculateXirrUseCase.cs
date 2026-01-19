@@ -9,9 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Application.UseCases.Portfolio;
 
 /// <summary>
-/// Use case for calculating XIRR (Extended Internal Rate of Return) for a portfolio.
-/// Applies stock split adjustments when calculating current positions for accurate comparison with current prices.
-/// US9: Uses transaction-date FX cache for auto-filling missing exchange rates.
+/// 計算投資組合 XIRR（Extended Internal Rate of Return）的 Use Case。
+/// 會在計算持倉時套用拆股調整，以確保與現價比較一致。
+/// US9：使用交易日 FX cache 自動補齊缺漏匯率。
 /// </summary>
 public class CalculateXirrUseCase
 {
@@ -60,8 +60,8 @@ public class CalculateXirrUseCase
         var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
-        // Build cash flows list - include ALL non-deleted transactions
-        // US9: Auto-fill exchange rates for transactions missing them
+        // 建立現金流清單（包含所有未刪除的交易）
+        // US9：自動補齊缺漏匯率
         var cashFlows = new List<CashFlow>();
         var missingFxDates = new List<MissingExchangeRateDto>();
 
@@ -76,7 +76,7 @@ public class CalculateXirrUseCase
             
             if (!fxRate.HasValue)
             {
-                // Track missing FX rate for reporting
+                // 紀錄缺漏匯率（用於回報給前端）
                 var currency = tx.IsTaiwanStock ? "TWD" : "USD"; // Default assumption
                 missingFxDates.Add(new MissingExchangeRateDto
                 {
@@ -85,33 +85,33 @@ public class CalculateXirrUseCase
                 });
                 _logger.LogWarning("Missing exchange rate for transaction {TxId} on {Date}",
                     tx.Id, tx.TransactionDate.ToString("yyyy-MM-dd"));
-                continue; // Skip this transaction in XIRR calculation
+                continue; // XIRR 計算中略過此交易
             }
 
             if (tx.TransactionType == TransactionType.Buy)
             {
-                // Use home currency cost (TotalCostSource * ExchangeRate)
+                // 使用本位幣成本（TotalCostSource × ExchangeRate）
                 var homeCost = tx.TotalCostSource * fxRate.Value;
                 cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                // Use home currency proceeds
+                // 使用本位幣賣出收入
                 var proceeds = ((tx.Shares * tx.PricePerShare) - tx.Fees) * fxRate.Value;
                 cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
 
-        // Add current portfolio value as final cash flow
+        // 將目前投資組合市值作為最後一筆現金流
         if (request.CurrentPrices != null && request.CurrentPrices.Count > 0)
         {
             _logger.LogDebug("XIRR: Received {Count} current prices", request.CurrentPrices.Count);
 
-            // Convert to case-insensitive dictionary for reliable ticker matching
+            // 轉為不分大小寫的 dictionary，避免 ticker 比對失敗
             var currentPrices = new Dictionary<string, CurrentPriceInfo>(
                 request.CurrentPrices, StringComparer.OrdinalIgnoreCase);
 
-            // Use split-adjusted positions for accurate comparison with current prices
+            // 使用拆股調整後的持倉，確保與現價比較一致
             var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
                 transactions, stockSplits, _splitAdjustmentService).ToList();
 
@@ -123,7 +123,7 @@ public class CalculateXirrUseCase
             {
                 if (currentPrices.TryGetValue(position.Ticker, out var priceInfo))
                 {
-                    // Use home currency value (price * shares * current exchange rate)
+                    // 使用本位幣市值（price × shares × current exchange rate）
                     var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
                     _logger.LogDebug("XIRR: Position {Ticker}: {Shares} shares * {Price} * {Rate} = {Value}",
                         position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
@@ -164,7 +164,7 @@ public class CalculateXirrUseCase
     }
 
     /// <summary>
-    /// Calculate XIRR for a single position (ticker).
+    /// 計算單一持倉（ticker）的 XIRR。
     /// </summary>
     public async Task<XirrResultDto> ExecuteForPositionAsync(
         Guid portfolioId,
@@ -183,7 +183,7 @@ public class CalculateXirrUseCase
         var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
 
-        // Filter to only this ticker's transactions
+        // 僅保留此 ticker 的交易
         var tickerTransactions = allTransactions
             .Where(t => !t.IsDeleted && t.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.TransactionDate)
@@ -200,7 +200,7 @@ public class CalculateXirrUseCase
             };
         }
 
-        // Build cash flows list - include ALL transactions, auto-fill FX
+        // 建立現金流清單（包含所有交易，並自動補齊匯率）
         var cashFlows = new List<CashFlow>();
         var missingFxDates = new List<MissingExchangeRateDto>();
 
@@ -231,16 +231,16 @@ public class CalculateXirrUseCase
             }
         }
 
-        // Add current position value as final cash flow
+        // 將目前持倉市值作為最後一筆現金流
         if (request.CurrentPrice.HasValue)
         {
-            // Use split-adjusted position for accurate comparison with current price
+            // 使用拆股調整後的持倉，確保與現價比較一致
             var position = _portfolioCalculator.CalculatePositionWithSplitAdjustments(
                 ticker, allTransactions, stockSplits, _splitAdjustmentService);
 
             if (position.TotalShares > 0)
             {
-                // Use home currency value
+                // 使用本位幣市值
                 var currentValue = position.TotalShares * request.CurrentPrice.Value * (request.CurrentExchangeRate ?? 1m);
                 cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
             }
@@ -259,29 +259,29 @@ public class CalculateXirrUseCase
     }
 
     /// <summary>
-    /// Gets exchange rate for a transaction:
-    /// 1. Use transaction's stored ExchangeRate if available
-    /// 2. For TWD (IsTaiwanStock), return 1.0
-    /// 3. Otherwise, try to fetch from transaction-date FX cache
+    /// 取得單筆交易的匯率：
+    /// 1. 若交易本身已有 ExchangeRate，直接使用
+    /// 2. 若為台股（IsTaiwanStock），回傳 1.0
+    /// 3. 否則嘗試從交易日 FX cache 取得
     /// </summary>
     private async Task<decimal?> GetExchangeRateForTransactionAsync(
         StockTransaction tx,
         CancellationToken cancellationToken)
     {
-        // If transaction already has exchange rate, use it
+        // 若交易本身已有匯率，直接使用
         if (tx.HasExchangeRate)
         {
             return tx.ExchangeRate!.Value;
         }
 
-        // Taiwan stocks are in TWD, no conversion needed
+        // 台股以 TWD 計價，不需要換匯
         if (tx.IsTaiwanStock)
         {
             return 1.0m;
         }
 
-        // Try to get from transaction-date FX cache
-        // Default to USD for non-Taiwan stocks (most common foreign currency)
+        // 嘗試從交易日 FX cache 取得
+        // 非台股預設以 USD 為外幣（最常見外幣）
         var fxResult = await _txDateFxService.GetOrFetchAsync(
             "USD", "TWD", tx.TransactionDate, cancellationToken);
 

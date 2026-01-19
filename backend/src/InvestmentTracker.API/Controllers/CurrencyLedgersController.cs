@@ -5,35 +5,29 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供外幣帳本（Currency Ledger）查詢與維護 API。
+/// </summary>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class CurrencyLedgersController : ControllerBase
+public class CurrencyLedgersController(
+    GetCurrencyLedgerSummaryUseCase getSummaryUseCase,
+    CreateCurrencyLedgerUseCase createUseCase,
+    UpdateCurrencyLedgerUseCase updateUseCase,
+    DeleteCurrencyLedgerUseCase deleteUseCase) : ControllerBase
 {
-    private readonly GetCurrencyLedgerSummaryUseCase _getSummaryUseCase;
-    private readonly CreateCurrencyLedgerUseCase _createUseCase;
-    private readonly UpdateCurrencyLedgerUseCase _updateUseCase;
-    private readonly DeleteCurrencyLedgerUseCase _deleteUseCase;
-
-    public CurrencyLedgersController(
-        GetCurrencyLedgerSummaryUseCase getSummaryUseCase,
-        CreateCurrencyLedgerUseCase createUseCase,
-        UpdateCurrencyLedgerUseCase updateUseCase,
-        DeleteCurrencyLedgerUseCase deleteUseCase)
-    {
-        _getSummaryUseCase = getSummaryUseCase;
-        _createUseCase = createUseCase;
-        _updateUseCase = updateUseCase;
-        _deleteUseCase = deleteUseCase;
-    }
+    private readonly GetCurrencyLedgerSummaryUseCase _getSummaryUseCase = getSummaryUseCase;
+    private readonly CreateCurrencyLedgerUseCase _createUseCase = createUseCase;
+    private readonly UpdateCurrencyLedgerUseCase _updateUseCase = updateUseCase;
+    private readonly DeleteCurrencyLedgerUseCase _deleteUseCase = deleteUseCase;
 
     /// <summary>
-    /// Get all currency ledgers for the current user.
+    /// 取得目前使用者的所有外幣帳本。
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<CurrencyLedgerSummaryDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<CurrencyLedgerSummaryDto>>> GetAll(
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<CurrencyLedgerSummaryDto>>> GetAll(CancellationToken cancellationToken)
     {
         try
         {
@@ -47,14 +41,12 @@ public class CurrencyLedgersController : ControllerBase
     }
 
     /// <summary>
-    /// Get a currency ledger by ID with summary.
+    /// 依外幣帳本 ID 取得外幣帳本摘要。
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyLedgerSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<CurrencyLedgerSummaryDto>> GetById(
-        Guid id,
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<CurrencyLedgerSummaryDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         try
         {
@@ -70,7 +62,7 @@ public class CurrencyLedgersController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new currency ledger.
+    /// 建立新的外幣帳本。
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(CurrencyLedgerDto), StatusCodes.Status201Created)]
@@ -95,7 +87,7 @@ public class CurrencyLedgersController : ControllerBase
     }
 
     /// <summary>
-    /// Update a currency ledger.
+    /// 更新外幣帳本。
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyLedgerDto), StatusCodes.Status200OK)]
@@ -119,7 +111,7 @@ public class CurrencyLedgersController : ControllerBase
     }
 
     /// <summary>
-    /// Delete (deactivate) a currency ledger.
+    /// 刪除（停用）外幣帳本。
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

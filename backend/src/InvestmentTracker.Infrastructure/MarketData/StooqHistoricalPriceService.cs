@@ -4,17 +4,17 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching historical ETF prices from Stooq
-/// Stooq provides free historical data for UK-listed ETFs
+/// 從 Stooq 取得 ETF 歷史價格的服務。
+/// Stooq 提供英國掛牌 ETF 的免費歷史資料。
 /// </summary>
-public class StooqHistoricalPriceService : IStooqHistoricalPriceService
+public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHistoricalPriceService> logger) : IStooqHistoricalPriceService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<StooqHistoricalPriceService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<StooqHistoricalPriceService> _logger = logger;
 
     private const string BaseUrl = "https://stooq.com/q/d/l/";
 
-    // ETF symbol mappings for Stooq (UK-listed, USD denominated)
+    // Stooq 的 ETF symbol 對應（英國掛牌，部分以 USD 計價）
     private static readonly Dictionary<string, string> StooqSymbols = new()
     {
         ["All Country"] = "vwra.uk",                // Vanguard FTSE All-World UCITS ETF (Acc)
@@ -29,16 +29,10 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
         ["China"] = "hcha.uk",                     // HSBC MSCI China A UCITS ETF (Acc)
     };
 
-    public StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHistoricalPriceService> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
-
     public static IReadOnlyCollection<string> SupportedMarkets => StooqSymbols.Keys;
 
     /// <summary>
-    /// Get the closing price for the last trading day of a given month
+    /// 取得指定月份最後一個交易日的收盤價。
     /// </summary>
     public async Task<decimal?> GetMonthEndPriceAsync(
         string marketKey,
@@ -54,9 +48,9 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
 
         try
         {
-            // Get the last day of the month
+            // 取得當月最後一天
             var lastDay = new DateTime(year, month, DateTime.DaysInMonth(year, month));
-            // Start from a week before to ensure we get data even if last day is weekend
+            // 往前抓一週，避免月底落在週末而拿不到資料
             var startDay = lastDay.AddDays(-7);
 
             var url = $"{BaseUrl}?s={symbol}&d1={startDay:yyyyMMdd}&d2={lastDay:yyyyMMdd}&i=d";
@@ -73,7 +67,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
             if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
             {
                 throw new StooqDailyHitsLimitExceededException(symbol);
@@ -93,8 +87,8 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Parse Stooq CSV response and get the last closing price
-    /// Format: Date,Open,High,Low,Close,Volume
+    /// 解析 Stooq 的 CSV 回應並取得最後一筆收盤價。
+    /// 格式：Date,Open,High,Low,Close,Volume
     /// </summary>
     private decimal? ParseLastClose(string csvContent, string marketKey)
     {
@@ -106,7 +100,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return null;
         }
 
-        // Get the last data line (most recent date)
+        // 取得最後一筆資料列（最新日期）
         var lastLine = lines[^1].Trim();
         if (string.IsNullOrEmpty(lastLine) || lastLine.StartsWith("Date"))
         {
@@ -125,7 +119,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return null;
         }
 
-        // Column 4 is Close (0-indexed)
+        // 第 4 欄為 Close（0-indexed）
         if (decimal.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out var closePrice))
         {
             _logger.LogDebug("Got historical price {Price} for {Market} from Stooq", closePrice, marketKey);
@@ -136,18 +130,18 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Get historical price for a stock ticker on a specific date.
-    /// Tries multiple market suffixes to find the stock.
+    /// 取得指定日期的個股歷史價格。
+    /// 會嘗試多個市場 suffix，以提高命中率。
     /// </summary>
     public async Task<StooqPriceResult?> GetStockPriceAsync(
         string ticker,
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
-        // Normalize ticker - remove any existing suffix
+        // 正規化 ticker：移除既有 suffix
         var baseTicker = ticker.Split('.')[0].ToUpperInvariant();
 
-        // Determine which market suffixes to try based on ticker pattern
+        // 依 ticker 型態決定要嘗試的市場 suffix
         var suffixes = GetMarketSuffixes(ticker);
 
         foreach (var suffix in suffixes)
@@ -165,20 +159,20 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Determine which market suffixes to try based on ticker pattern
+    /// 依 ticker 型態決定要嘗試的市場 suffix。
     /// </summary>
     private static string[] GetMarketSuffixes(string ticker)
     {
         var upperTicker = ticker.ToUpperInvariant();
 
-        // If ticker already has a suffix, use it directly
+        // 若 ticker 已包含 suffix，直接使用
         if (upperTicker.Contains('.'))
         {
             var suffix = "." + upperTicker.Split('.')[^1].ToLowerInvariant();
             return new[] { suffix };
         }
 
-        // UK-listed ETFs (common patterns)
+        // 英國掛牌 ETF（常見代號）
         if (upperTicker is "VWRA" or "VWRD" or "VUAA" or "VUSA" or "VHVE" or "VFEM" or
             "VEVE" or "VJPA" or "VEUA" or "WSML" or "XRSU" or "EXUS" or "HCHA" or
             "SWDA" or "IWDA" or "EIMI" or "EMIM" or "CSPX")
@@ -186,18 +180,18 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return new[] { StooqMarkets.UK };
         }
 
-        // Euronext tickers (Amsterdam, Paris)
+        // Euronext（阿姆斯特丹、巴黎）常見代號
         if (upperTicker.StartsWith("VWCE") || upperTicker.StartsWith("V3AA"))
         {
             return new[] { StooqMarkets.DE, StooqMarkets.NL };
         }
 
-        // Default: try US first, then UK
+        // 預設：先嘗試美股，再嘗試英股
         return new[] { StooqMarkets.US, StooqMarkets.UK };
     }
 
     /// <summary>
-    /// Try to get price for a specific symbol from Stooq
+    /// 嘗試從 Stooq 取得指定 symbol 的價格。
     /// </summary>
     private async Task<StooqPriceResult?> TryGetStockPriceAsync(
         string symbol,
@@ -206,7 +200,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     {
         try
         {
-            // Fetch a 10-day window ending on the specified date to handle weekends/holidays
+            // 抓取以指定日期結尾的 10 天區間，處理週末／假日
             var endDate = date;
             var startDate = date.AddDays(-10);
 
@@ -224,7 +218,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
             if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
             {
                 throw new StooqDailyHitsLimitExceededException(symbol);
@@ -244,7 +238,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Parse Stooq CSV and find the closest price to the target date
+    /// 解析 Stooq CSV，找出最接近目標日期（且不晚於目標日期）的價格。
     /// </summary>
     private StooqPriceResult? ParseStockPrice(string csvContent, string symbol, DateOnly targetDate)
     {
@@ -255,7 +249,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return null;
         }
 
-        // Parse all data lines and find the one closest to (but not after) target date
+        // 解析所有資料列，找出最接近（且不晚於）目標日期的那一筆
         StooqPriceResult? bestMatch = null;
 
         foreach (var line in lines.Skip(1)) // Skip header
@@ -277,13 +271,13 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             if (!decimal.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out var closePrice))
                 continue;
 
-            // Determine currency from symbol
-            // IMPORTANT: Many UK-listed ETFs are USD-denominated (Vanguard UCITS ETFs)
+            // 由 symbol 推導交易幣別
+            // 注意：許多英國掛牌 ETF（特別是 Vanguard UCITS ETFs）以 USD 計價
             var baseTicker = symbol.Split('.')[0].ToUpperInvariant();
             var currency = GetTradingCurrency(baseTicker, symbol);
 
-            // UK ETFs quoted in GBX (pence) need conversion to GBP
-            // Only applies to GBP-denominated securities
+            // 英股若以 GBX（便士）報價，需換算成 GBP
+            // 僅適用於 GBP 計價的標的
             if (currency == "GBP" && closePrice > 100)
             {
                 closePrice /= 100m;
@@ -305,13 +299,13 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Determine the actual trading currency for a ticker.
-    /// Many UK-listed ETFs are USD-denominated (especially Vanguard UCITS ETFs).
+    /// 判斷 ticker 的實際交易幣別。
+    /// 許多英國掛牌 ETF（特別是 Vanguard UCITS ETFs）以 USD 計價。
     /// </summary>
     private static string GetTradingCurrency(string baseTicker, string fullSymbol)
     {
-        // USD-denominated ETFs commonly traded on LSE
-        // These are all Accumulating/Distributing versions of Vanguard UCITS ETFs
+        // LSE 常見的 USD 計價 ETF
+        // 多為 Vanguard UCITS ETFs 的累積／配息版本
         var usdDenominatedEtfs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             // Vanguard FTSE All-World
@@ -345,7 +339,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return "USD";
         }
 
-        // Default to currency based on exchange suffix
+        // 預設以交易所 suffix 推導幣別
         var lowerSymbol = fullSymbol.ToLowerInvariant();
         return lowerSymbol switch
         {
@@ -359,8 +353,8 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Get historical exchange rate from Stooq.
-    /// Symbol format: e.g., "usdtwd" for USD to TWD
+    /// 從 Stooq 取得歷史匯率。
+    /// Symbol 格式：例如 "usdtwd" 代表 USD/TWD。
     /// </summary>
     public async Task<StooqExchangeRateResult?> GetExchangeRateAsync(
         string fromCurrency,
@@ -372,7 +366,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
         {
             var symbol = $"{fromCurrency.ToLowerInvariant()}{toCurrency.ToLowerInvariant()}";
 
-            // Fetch a 10-day window ending on the specified date to handle weekends/holidays
+            // 抓取以指定日期結尾的 10 天區間，處理週末／假日
             var endDate = date;
             var startDate = date.AddDays(-10);
 
@@ -390,7 +384,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Stooq may respond with HTTP 200 + error.csv when rate limited.
+            // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
             if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
             {
                 throw new StooqDailyHitsLimitExceededException(symbol);
@@ -410,7 +404,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
     }
 
     /// <summary>
-    /// Parse Stooq CSV and find the closest exchange rate to the target date
+    /// 解析 Stooq CSV，找出最接近目標日期（且不晚於目標日期）的匯率。
     /// </summary>
     private StooqExchangeRateResult? ParseExchangeRate(string csvContent, string fromCurrency, string toCurrency, DateOnly targetDate)
     {
@@ -421,7 +415,7 @@ public class StooqHistoricalPriceService : IStooqHistoricalPriceService
             return null;
         }
 
-        // Check for "No data" response
+        // 檢查是否為 "No data" 回應
         if (lines.Any(l => l.Trim().Equals("No data", StringComparison.OrdinalIgnoreCase)))
         {
             return null;

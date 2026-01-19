@@ -6,16 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for ETF classifications.
+/// ETF 分類（EtfClassification）的 Repository 實作。
 /// </summary>
-public class EtfClassificationRepository : IEtfClassificationRepository
+public class EtfClassificationRepository(AppDbContext context) : IEtfClassificationRepository
 {
-    private readonly AppDbContext _context;
-
-    public EtfClassificationRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<EtfClassification?> GetBySymbolAndMarketAsync(string symbol, string market, CancellationToken cancellationToken = default)
     {

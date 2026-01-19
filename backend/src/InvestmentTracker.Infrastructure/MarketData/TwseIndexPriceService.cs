@@ -6,22 +6,16 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching Taiwan Stock Exchange index prices
-/// Uses TWSE official API for both real-time and historical data
+/// 從 TWSE 取得台灣證交所指數價格的服務。
+/// 使用 TWSE 官方 API 取得即時與歷史資料。
 /// </summary>
-public class TwseIndexPriceService : ITwseIndexPriceService
+public class TwseIndexPriceService(HttpClient httpClient, ILogger<TwseIndexPriceService> logger) : ITwseIndexPriceService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<TwseIndexPriceService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<TwseIndexPriceService> _logger = logger;
 
     private const string RealTimeUrl = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0";
     private const string HistoricalUrl = "https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date=";
-
-    public TwseIndexPriceService(HttpClient httpClient, ILogger<TwseIndexPriceService> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
 
     public async Task<decimal?> GetCurrentPriceAsync(CancellationToken cancellationToken = default)
     {
@@ -33,7 +27,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TWSE returned {Status}", response.StatusCode);
+                _logger.LogWarning("TWSE returned {Status}", response.StatusCode); // TWSE 回傳非成功狀態碼
                 return null;
             }
 
@@ -43,7 +37,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
             var msgArray = json.RootElement.GetProperty("msgArray");
             if (msgArray.GetArrayLength() == 0)
             {
-                _logger.LogWarning("Empty msgArray from TWSE");
+                _logger.LogWarning("Empty msgArray from TWSE"); // TWSE 回傳空的 msgArray
                 return null;
             }
 
@@ -59,7 +53,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
                 }
             }
 
-            // Fallback to yesterday's close if market is closed
+            // 若已收盤，回退使用昨收
             if (data.TryGetProperty("y", out var closeElement))
             {
                 var closeStr = closeElement.GetString();
@@ -71,7 +65,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
                 }
             }
 
-            _logger.LogWarning("Could not parse TWSE price data");
+            _logger.LogWarning("Could not parse TWSE price data"); // 無法解析 TWSE 價格資料
             return null;
         }
         catch (Exception ex)
@@ -83,17 +77,17 @@ public class TwseIndexPriceService : ITwseIndexPriceService
 
     public async Task<decimal?> GetCurrentPriceWithFallbackAsync(CancellationToken cancellationToken = default)
     {
-        // Try real-time API first
+        // 先嘗試即時 API
         var realTimePrice = await GetCurrentPriceAsync(cancellationToken);
         if (realTimePrice != null)
         {
             return realTimePrice;
         }
 
-        // Fallback: use the latest available historical data
-        _logger.LogInformation("Real-time TWSE API failed, trying historical fallback");
+        // 回退：改用最新可取得的歷史資料
+        _logger.LogInformation("Real-time TWSE API failed, trying historical fallback"); // 即時 API 失敗，改用歷史資料回退
 
-        // Try current month first
+        // 先嘗試當月
         var now = DateTime.Now;
         var price = await GetMonthEndPriceAsync(now.Year, now.Month, cancellationToken);
         if (price != null)
@@ -102,7 +96,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
             return price;
         }
 
-        // Try previous month if current month has no data yet
+        // 若當月尚無資料，再嘗試上月
         var prevMonth = now.AddMonths(-1);
         price = await GetMonthEndPriceAsync(prevMonth.Year, prevMonth.Month, cancellationToken);
         if (price != null)
@@ -118,8 +112,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
     {
         try
         {
-            // TWSE uses ROC year (民國年)
-            var rocYear = year - 1911;
+            // TWSE 使用民國年（西元年需減 1911）
             var dateParam = $"{year}{month:D2}01";
 
             var url = $"{HistoricalUrl}{dateParam}";
@@ -129,7 +122,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TWSE historical API returned {Status}", response.StatusCode);
+                _logger.LogWarning("TWSE historical API returned {Status}", response.StatusCode); // TWSE 歷史 API 回傳非成功狀態碼
                 return null;
             }
 
@@ -139,18 +132,18 @@ public class TwseIndexPriceService : ITwseIndexPriceService
             if (!json.RootElement.TryGetProperty("data", out var dataArray) ||
                 dataArray.GetArrayLength() == 0)
             {
-                _logger.LogWarning("No historical data from TWSE for {Year}/{Month}", year, month);
+                _logger.LogWarning("No historical data from TWSE for {Year}/{Month}", year, month); // TWSE 未回傳歷史資料
                 return null;
             }
 
-            // Get last trading day of the month (last row)
+            // 取當月最後一個交易日（最後一列）
             var lastRow = dataArray[dataArray.GetArrayLength() - 1];
 
-            // Field index 4 is "發行量加權股價指數"
+            // 欄位 index 4 為「發行量加權股價指數」
             var indexValue = lastRow[4].GetString();
             if (!string.IsNullOrEmpty(indexValue))
             {
-                // Remove commas from number
+                // 移除數字中的逗號
                 indexValue = indexValue.Replace(",", "");
                 if (decimal.TryParse(indexValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
                 {
@@ -159,7 +152,7 @@ public class TwseIndexPriceService : ITwseIndexPriceService
                 }
             }
 
-            _logger.LogWarning("Could not parse TWSE historical price for {Year}/{Month}", year, month);
+            _logger.LogWarning("Could not parse TWSE historical price for {Year}/{Month}", year, month); // 無法解析 TWSE 歷史價格
             return null;
         }
         catch (Exception ex)

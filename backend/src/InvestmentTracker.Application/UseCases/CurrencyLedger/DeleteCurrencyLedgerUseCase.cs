@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
 
 /// <summary>
-/// Use case for deleting (deactivating) a currency ledger.
+/// 刪除（停用）外幣帳本（Currency Ledger）的 Use Case。
 /// </summary>
 public class DeleteCurrencyLedgerUseCase
 {

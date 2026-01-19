@@ -1,52 +1,52 @@
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Client interface for fetching quotes from Euronext exchange.
+/// 從 Euronext 交易所抓取報價的 Client 介面。
 /// </summary>
 public interface IEuronextApiClient
 {
     /// <summary>
-    /// Fetches a real-time quote for a Euronext-listed security.
+    /// 取得 Euronext 上市標的的即時報價。
     /// </summary>
-    /// <param name="isin">The ISIN (International Securities Identification Number).</param>
-    /// <param name="mic">The Market Identifier Code (e.g., XAMS for Amsterdam).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Quote result containing price and currency, or null if not found.</returns>
+    /// <param name="isin">ISIN（International Securities Identification Number）。</param>
+    /// <param name="mic">MIC（Market Identifier Code，例如：Amsterdam 的 XAMS）。</param>
+    /// <param name="cancellationToken">Cancellation token。</param>
+    /// <returns>包含價格與幣別的報價結果；若查無資料則回傳 null。</returns>
     Task<EuronextQuoteResult?> GetQuoteAsync(string isin, string mic, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Result of a Euronext quote fetch operation.
+/// Euronext 報價查詢結果。
 /// </summary>
 public record EuronextQuoteResult
 {
     /// <summary>
-    /// The current price of the security.
+    /// 標的目前價格。
     /// </summary>
     public required decimal Price { get; init; }
 
     /// <summary>
-    /// The currency code (e.g., "EUR", "USD").
+    /// 幣別代碼（例如："EUR"、"USD"）。
     /// </summary>
     public required string Currency { get; init; }
 
     /// <summary>
-    /// The time of the last trade, if available.
+    /// 最新成交時間（若有提供）。
     /// </summary>
     public DateTime? MarketTime { get; init; }
 
     /// <summary>
-    /// The name of the security.
+    /// 標的名稱。
     /// </summary>
     public string? Name { get; init; }
 
     /// <summary>
-    /// The change percentage from previous close (e.g., "+1.25%", "-0.50%").
+    /// 與前一日收盤相比的漲跌幅（例如："+1.25%"、"-0.50%"）。
     /// </summary>
     public string? ChangePercent { get; init; }
 
     /// <summary>
-    /// The absolute price change from previous close.
+    /// 與前一日收盤相比的價格變動（絕對值）。
     /// </summary>
     public decimal? Change { get; init; }
 }

@@ -7,17 +7,12 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for HistoricalYearEndData cache.
-/// This is a global cache shared across all users.
+/// HistoricalYearEndData 快取的 Repository 實作。
+/// 這是一個跨使用者共用的全域快取。
 /// </summary>
-public class HistoricalYearEndDataRepository : IHistoricalYearEndDataRepository
+public class HistoricalYearEndDataRepository(AppDbContext context) : IHistoricalYearEndDataRepository
 {
-    private readonly AppDbContext _context;
-
-    public HistoricalYearEndDataRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<HistoricalYearEndData?> GetAsync(
         HistoricalDataType dataType,
@@ -63,7 +58,7 @@ public class HistoricalYearEndDataRepository : IHistoricalYearEndDataRepository
         HistoricalYearEndData data,
         CancellationToken cancellationToken = default)
     {
-        // Check if entry already exists (cache is immutable)
+        // 確認是否已存在（快取為 immutable，不允許覆寫）
         var exists = await ExistsAsync(data.DataType, data.Ticker, data.Year, cancellationToken);
         if (exists)
         {

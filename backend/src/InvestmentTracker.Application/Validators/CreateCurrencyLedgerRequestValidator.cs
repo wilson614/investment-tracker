@@ -3,6 +3,9 @@ using InvestmentTracker.Application.DTOs;
 
 namespace InvestmentTracker.Application.Validators;
 
+/// <summary>
+/// <see cref="CreateCurrencyLedgerRequest"/> 的輸入驗證器。
+/// </summary>
 public class CreateCurrencyLedgerRequestValidator : AbstractValidator<CreateCurrencyLedgerRequest>
 {
     public CreateCurrencyLedgerRequestValidator()

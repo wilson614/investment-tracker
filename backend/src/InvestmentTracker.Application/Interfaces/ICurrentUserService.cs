@@ -1,22 +1,22 @@
 namespace InvestmentTracker.Application.Interfaces;
 
 /// <summary>
-/// Service for accessing the current authenticated user's context.
+/// 取得目前已驗證使用者資訊的服務介面。
 /// </summary>
 public interface ICurrentUserService
 {
     /// <summary>
-    /// Gets the current user's ID, or null if not authenticated.
+    /// 取得目前使用者 ID；若未登入則為 null。
     /// </summary>
     Guid? UserId { get; }
 
     /// <summary>
-    /// Gets the current user's email, or null if not authenticated.
+    /// 取得目前使用者 Email；若未登入則為 null。
     /// </summary>
     string? Email { get; }
 
     /// <summary>
-    /// Indicates whether the current request is authenticated.
+    /// 目前請求是否已驗證。
     /// </summary>
     bool IsAuthenticated { get; }
 }

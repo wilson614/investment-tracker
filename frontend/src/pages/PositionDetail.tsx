@@ -1,3 +1,12 @@
+/**
+ * Position Detail Page
+ *
+ * 單一持倉詳情頁：顯示該 ticker 的持倉資訊、交易明細、即時報價與單一持倉 XIRR。
+ *
+ * 特色：
+ * - 進頁面先套用 localStorage 快取 quote / XIRR 讓數字立即可見，再自動抓最新報價。
+ * - 報價支援 US 失敗時的 UK fallback。
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
@@ -15,6 +24,9 @@ import type {
   XirrResult,
 } from '../types';
 
+/**
+ * 依 ticker 格式推測市場別（TW/UK/US）。
+ */
 const guessMarket = (ticker: string): StockMarketType => {
   if (/^\d+[A-Za-z]*$/.test(ticker)) {
     return StockMarket.TW;
@@ -31,7 +43,11 @@ const MARKET_LABELS: Record<StockMarketType, string> = {
   [StockMarket.UK]: '英股',
 };
 
-// Cache key for localStorage (same as PositionCard)
+/**
+ * localStorage 快取 key。
+ * - quote cache：與 PositionCard/Portfolio/Dashboard 共用
+ * - xirr cache：以 portfolioId + ticker 區隔，避免跨投資組合汙染
+ */
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 const getXirrCacheKey = (portfolioId: string, ticker: string) => `xirr_cache_${portfolioId}_${ticker}`;
 
@@ -46,7 +62,11 @@ interface CachedXirr {
   cachedAt: string;
 }
 
-// Load cached quote from localStorage
+/**
+ * 從 localStorage 載入報價快取。
+ *
+ * 回傳 `market` 會以快取為優先；若無快取則用 `guessMarket` 推測。
+ */
 const loadCachedQuote = (ticker: string): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
   try {
     const cached = localStorage.getItem(getQuoteCacheKey(ticker));
@@ -64,7 +84,11 @@ const loadCachedQuote = (ticker: string): { quote: StockQuoteResponse | null; up
   return { quote: null, updatedAt: null, market: guessMarket(ticker) };
 };
 
-// Load cached XIRR from localStorage (no time limit - always show cached, then refresh)
+/**
+ * 從 localStorage 載入單一持倉 XIRR 快取。
+ *
+ * 設計：不限制快取時效，先讓 UI 有數字，再在頁面載入後背景刷新。
+ */
 const loadCachedXirr = (portfolioId: string, ticker: string): XirrResult | null => {
   try {
     const cached = localStorage.getItem(getXirrCacheKey(portfolioId, ticker));
@@ -106,6 +130,11 @@ export function PositionDetailPage() {
   const hasFetched = useRef(false);
   const hasAppliedCache = useRef(false);
 
+  /**
+   * 載入持倉頁面所需資料：portfolio、指定 ticker 的 position、以及該 ticker 的交易明細。
+   *
+   * 若 quote cache 存在，會先用快取價格計算 currentValue / PnL，讓頁面能更快顯示。
+   */
   const loadData = useCallback(async () => {
     if (!ticker) return;
 
@@ -210,6 +239,14 @@ export function PositionDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolio, portfolioId, position, isLoading]);
 
+  /**
+   * 取得最新報價（含匯率）並更新：
+   * - quote state（lastQuote/lastUpdated/fetchStatus）
+   * - localStorage quote cache
+   * - position 的 currentValue / PnL
+   *
+   * 若選擇 US 且失敗，會自動 fallback 至 UK。
+   */
   const handleFetchQuote = async () => {
     if (!portfolio || !portfolioId) return;
 
@@ -300,12 +337,19 @@ export function PositionDetailPage() {
     }
   };
 
+  /**
+   * 刪除單筆交易後重新載入頁面資料。
+   * @param transactionId 交易 ID
+   */
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
     await transactionApi.delete(transactionId);
     await loadData();
   };
 
+  /**
+   * 匯出該 ticker 的交易明細為 CSV。
+   */
   const handleExportTransactions = () => {
     if (!portfolio || transactions.length === 0) return;
     exportTransactionsToCsv(

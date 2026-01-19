@@ -7,30 +7,20 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
-/// Stock price provider using TWSE (Taiwan Stock Exchange) API
-/// Includes rate limiting to avoid being blocked (3 requests per 5 seconds)
+/// 使用 TWSE（台灣證券交易所）API 的股價提供者。
+/// 內含 rate limiting，避免被封鎖（5 秒內最多 3 次請求）。
 /// </summary>
-public class TwseStockPriceProvider : IStockPriceProvider
+public class TwseStockPriceProvider(
+    HttpClient httpClient,
+    ITwseRateLimiter rateLimiter,
+    ILogger<TwseStockPriceProvider> logger) : IStockPriceProvider
 {
-    private readonly HttpClient _httpClient;
-    private readonly ITwseRateLimiter _rateLimiter;
-    private readonly ILogger<TwseStockPriceProvider> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
+    private readonly ILogger<TwseStockPriceProvider> _logger = logger;
     private const string BaseUrl = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp";
 
-    public TwseStockPriceProvider(
-        HttpClient httpClient,
-        ITwseRateLimiter rateLimiter,
-        ILogger<TwseStockPriceProvider> logger)
-    {
-        _httpClient = httpClient;
-        _rateLimiter = rateLimiter;
-        _logger = logger;
-    }
-
-    public bool SupportsMarket(StockMarket market)
-    {
-        return market == StockMarket.TW;
-    }
+    public bool SupportsMarket(StockMarket market) => market == StockMarket.TW;
 
     public async Task<StockQuoteResponse?> GetQuoteAsync(StockMarket market, string symbol, CancellationToken cancellationToken = default)
     {
@@ -58,7 +48,7 @@ public class TwseStockPriceProvider : IStockPriceProvider
 
         try
         {
-            // Wait for rate limit slot before making request
+            // 發送請求前先等待 rate limit 的可用額度
             await _rateLimiter.WaitForSlotAsync(cancellationToken);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -92,9 +82,9 @@ public class TwseStockPriceProvider : IStockPriceProvider
 
             var stock = msgArray[0];
 
-            // Parse fields
-            // z: Latest trade price, n: Name, y: Yesterday's close
-            // o: Open, h: High, l: Low, v: Volume
+            // 欄位解析
+            // z：最新成交價、n：名稱、y：昨收
+            // o：開盤、h：最高、l：最低、v：成交量
 
             var priceStr = stock.TryGetProperty("z", out var zProp) ? zProp.GetString() : null;
             var name = stock.TryGetProperty("n", out var nProp) ? nProp.GetString() : symbol;
@@ -108,7 +98,7 @@ public class TwseStockPriceProvider : IStockPriceProvider
             }
 
             decimal price;
-            // z might be "-" if no trade yet; fallback to yesterday's close
+            // z 可能為 "-"（尚未成交）；此時回退使用昨收價
             if (string.IsNullOrEmpty(priceStr) || priceStr == "-")
             {
                 if (yesterdayClose is null || yesterdayClose <= 0)

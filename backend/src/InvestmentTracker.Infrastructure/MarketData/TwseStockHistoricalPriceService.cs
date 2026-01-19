@@ -8,28 +8,21 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching historical prices for individual Taiwan stocks from TWSE.
-/// Uses TWSE STOCK_DAY API for daily trading data.
-/// Rate limited via ITwseRateLimiter to avoid being blocked.
+/// 從 TWSE 取得台股個股歷史價格的服務。
+/// 使用 TWSE STOCK_DAY API 取得日成交資料。
+/// 透過 ITwseRateLimiter 進行 rate limiting，避免被封鎖。
 /// </summary>
-public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
+public class TwseStockHistoricalPriceService(
+    HttpClient httpClient,
+    ITwseRateLimiter rateLimiter,
+    ILogger<TwseStockHistoricalPriceService> logger) : ITwseStockHistoricalPriceService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ITwseRateLimiter _rateLimiter;
-    private readonly ILogger<TwseStockHistoricalPriceService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
+    private readonly ILogger<TwseStockHistoricalPriceService> _logger = logger;
 
-    // TWSE API for individual stock daily data
+    // TWSE 個股日資料 API
     private const string StockDayUrl = "https://www.twse.com.tw/exchangeReport/STOCK_DAY";
-
-    public TwseStockHistoricalPriceService(
-        HttpClient httpClient,
-        ITwseRateLimiter rateLimiter,
-        ILogger<TwseStockHistoricalPriceService> logger)
-    {
-        _httpClient = httpClient;
-        _rateLimiter = rateLimiter;
-        _logger = logger;
-    }
 
     public async Task<TwseStockPriceResult?> GetStockPriceAsync(
         string stockNo,
@@ -40,7 +33,7 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
         {
             await _rateLimiter.WaitForSlotAsync(cancellationToken);
 
-            // TWSE API requires date format: YYYYMM01 (first day of month)
+            // TWSE API 需要日期格式：YYYYMM01（該月第一天）
             var dateParam = $"{date.Year}{date.Month:D2}01";
             var url = $"{StockDayUrl}?response=json&date={dateParam}&stockNo={stockNo}";
 
@@ -69,14 +62,14 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
         int year,
         CancellationToken cancellationToken = default)
     {
-        // Try December first
+        // 先嘗試 12 月
         var result = await GetStockPriceAsync(stockNo, new DateOnly(year, 12, 31), cancellationToken);
         if (result != null)
         {
             return result;
         }
 
-        // If December fails (e.g., stock not yet listed), try earlier months
+        // 若 12 月失敗（例如尚未上市），改嘗試更早月份
         _logger.LogDebug("No December data for {StockNo}/{Year}, trying November", stockNo, year);
         return await GetStockPriceAsync(stockNo, new DateOnly(year, 11, 30), cancellationToken);
     }
@@ -88,7 +81,7 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
             using var doc = JsonDocument.Parse(content);
             var root = doc.RootElement;
 
-            // Check for valid response
+            // 確認回應是否有效
             if (!root.TryGetProperty("stat", out var stat) || stat.GetString() != "OK")
             {
                 var statValue = stat.ValueKind == JsonValueKind.String ? stat.GetString() : "unknown";
@@ -102,9 +95,9 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
                 return null;
             }
 
-            // Data format: [日期, 成交股數, 成交金額, 開盤價, 最高價, 最低價, 收盤價, 漲跌價差, 成交筆數]
-            // Date format in data: "114/01/02" (ROC year/month/day)
-            // Find the closest date <= target date
+            // 資料格式：[日期, 成交股數, 成交金額, 開盤價, 最高價, 最低價, 收盤價, 漲跌價差, 成交筆數]
+            // 日期格式："114/01/02"（民國年/月/日）
+            // 找出最接近（且不晚於）target date 的那一筆
 
             TwseStockPriceResult? bestResult = null;
 
@@ -119,7 +112,7 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
                 if (string.IsNullOrEmpty(dateStr) || string.IsNullOrEmpty(closePriceStr))
                     continue;
 
-                // Parse ROC date (e.g., "114/01/02")
+                // 解析民國日期（例如 "114/01/02"）
                 var dateParts = dateStr.Split('/');
                 if (dateParts.Length != 3)
                     continue;
@@ -132,16 +125,16 @@ public class TwseStockHistoricalPriceService : ITwseStockHistoricalPriceService
                 var year = rocYear + 1911;
                 var rowDate = new DateOnly(year, month, day);
 
-                // Skip dates after target
+                // 略過晚於 target 的日期
                 if (rowDate > targetDate)
                     continue;
 
-                // Parse price (remove commas)
+                // 解析價格（移除逗號）
                 var priceStr = closePriceStr.Replace(",", "");
                 if (!decimal.TryParse(priceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
                     continue;
 
-                // Keep the latest date <= target
+                // 保留最後一筆 <= target 的日期
                 if (bestResult == null || rowDate > bestResult.ActualDate)
                 {
                     bestResult = new TwseStockPriceResult(price, rowDate, stockNo);

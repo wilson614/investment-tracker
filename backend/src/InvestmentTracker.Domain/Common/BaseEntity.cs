@@ -1,7 +1,7 @@
 namespace InvestmentTracker.Domain.Common;
 
 /// <summary>
-/// Base class for all domain entities with common properties.
+/// 所有領域 Entity 的基底類別，提供共通欄位（Id、建立/更新時間）。
 /// </summary>
 public abstract class BaseEntity : IHasTimestamps
 {

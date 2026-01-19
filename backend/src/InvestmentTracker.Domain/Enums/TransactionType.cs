@@ -1,19 +1,19 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Types of stock/ETF transactions.
+/// 股票／ETF 的交易類型。
 /// </summary>
 public enum TransactionType
 {
-    /// <summary>Purchase shares</summary>
+    /// <summary>買入</summary>
     Buy = 1,
 
-    /// <summary>Sell shares</summary>
+    /// <summary>賣出</summary>
     Sell = 2,
 
-    /// <summary>Stock split adjustment (changes share count, not cost basis)</summary>
+    /// <summary>股票分割調整（只改股數，不改成本）</summary>
     Split = 3,
 
-    /// <summary>Manual correction/adjustment</summary>
+    /// <summary>手動修正／調整</summary>
     Adjustment = 4
 }

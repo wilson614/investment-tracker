@@ -3,26 +3,26 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Tracks ETF type classification for dividend adjustment in YTD calculations.
+/// ETF 分類實體，用於 YTD 計算中的股息調整
 /// </summary>
 public class EtfClassification
 {
-    /// <summary>Stock/ETF ticker symbol</summary>
+    /// <summary>股票/ETF 代號</summary>
     public string Symbol { get; private set; } = string.Empty;
 
-    /// <summary>Market identifier (e.g., "TW", "US", "XAMS")</summary>
+    /// <summary>市場識別碼（如 TW、US、XAMS）</summary>
     public string Market { get; private set; } = string.Empty;
 
-    /// <summary>ETF classification type</summary>
+    /// <summary>ETF 分類類型</summary>
     public EtfType Type { get; private set; }
 
-    /// <summary>When the classification was last updated</summary>
+    /// <summary>分類最後更新時間</summary>
     public DateTime UpdatedAt { get; private set; }
 
-    /// <summary>User who set the classification (null if system-determined)</summary>
+    /// <summary>設定分類的使用者（若為系統判定則為 null）</summary>
     public Guid? UpdatedByUserId { get; private set; }
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private EtfClassification() { }
 
     public EtfClassification(

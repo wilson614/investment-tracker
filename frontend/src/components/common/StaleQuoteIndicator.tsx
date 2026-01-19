@@ -1,15 +1,23 @@
 import { AlertCircle, Clock } from 'lucide-react';
 
+/**
+ * StaleQuoteIndicator
+ *
+ * 報價狀態提示：顯示「過期報價」或「快取」標記，提醒使用者目前價格可能非即時。
+ */
 interface StaleQuoteIndicatorProps {
+  /** 是否判定為過期報價 */
   isStale: boolean;
+  /** 是否來自快取（即使未過期也可能想顯示） */
   fromCache?: boolean;
+  /** 報價取得時間（ISO string） */
   fetchedAt?: string;
+  /** 額外 className */
   className?: string;
 }
 
 /**
- * Indicator component showing when a quote is stale or from cache.
- * Used to warn users that the displayed price may not be current.
+ * 指示目前顯示的報價是否為快取或已過期。
  */
 export function StaleQuoteIndicator({
   isStale,

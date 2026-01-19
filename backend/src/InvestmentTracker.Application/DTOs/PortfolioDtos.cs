@@ -3,7 +3,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
-/// DTO for portfolio summary.
+/// 投資組合摘要的資料傳輸物件。
 /// </summary>
 public record PortfolioDto
 {
@@ -19,7 +19,7 @@ public record PortfolioDto
 }
 
 /// <summary>
-/// DTO for stock transaction.
+/// 股票交易的資料傳輸物件。
 /// </summary>
 public record StockTransactionDto
 {
@@ -37,25 +37,31 @@ public record StockTransactionDto
     public string? Notes { get; init; }
     public decimal TotalCostSource { get; init; }
     public decimal? TotalCostHome { get; init; }
-    /// <summary>Indicates whether this transaction has an exchange rate for home currency conversion.</summary>
+
+    /// <summary>是否包含可用於換算本位幣的匯率。</summary>
     public bool HasExchangeRate { get; init; }
+
     public decimal? RealizedPnlHome { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
 
-    // Split adjustment fields (FR-052a: display both original and adjusted values)
-    /// <summary>Adjusted shares after applying split ratio (= Shares × SplitRatio)</summary>
+    // 拆股調整欄位（FR-052a：顯示原始與調整後的數值）
+
+    /// <summary>套用拆股比例後的股數（= Shares × SplitRatio）。</summary>
     public decimal? AdjustedShares { get; init; }
-    /// <summary>Adjusted price after applying split ratio (= PricePerShare / SplitRatio)</summary>
+
+    /// <summary>套用拆股比例後的單價（= PricePerShare / SplitRatio）。</summary>
     public decimal? AdjustedPricePerShare { get; init; }
-    /// <summary>Cumulative split ratio applied to this transaction (1.0 if no split)</summary>
+
+    /// <summary>此筆交易套用的累計拆股比例（若無拆股則為 1.0）。</summary>
     public decimal SplitRatio { get; init; } = 1.0m;
-    /// <summary>Whether this transaction has been adjusted for stock splits</summary>
+
+    /// <summary>此筆交易是否已套用拆股調整。</summary>
     public bool HasSplitAdjustment { get; init; }
 }
 
 /// <summary>
-/// DTO for stock position (calculated from transactions).
+/// 依交易紀錄計算出的股票持倉資料。
 /// </summary>
 public record StockPositionDto
 {
@@ -73,12 +79,12 @@ public record StockPositionDto
 }
 
 /// <summary>
-/// DTO for portfolio summary with positions.
+/// 投資組合摘要（含持倉清單）的資料傳輸物件。
 /// </summary>
 public record PortfolioSummaryDto
 {
     public PortfolioDto Portfolio { get; init; } = null!;
-    public IReadOnlyList<StockPositionDto> Positions { get; init; } = Array.Empty<StockPositionDto>();
+    public IReadOnlyList<StockPositionDto> Positions { get; init; } = [];
     public decimal TotalCostHome { get; init; }
     public decimal? TotalValueHome { get; init; }
     public decimal? TotalUnrealizedPnlHome { get; init; }

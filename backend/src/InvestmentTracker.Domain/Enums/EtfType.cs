@@ -1,16 +1,16 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Classification of ETF distribution type for YTD calculation.
+/// ETF 配息型態分類，用於 YTD 計算。
 /// </summary>
 public enum EtfType
 {
-    /// <summary>Type not determined - treated as Accumulating for calculations</summary>
+    /// <summary>尚未判定；計算時視為 Accumulating</summary>
     Unknown = 0,
 
-    /// <summary>Accumulating ETF - reinvests dividends, no adjustment needed</summary>
+    /// <summary>累積型 ETF：配息再投入，不需要做股利調整</summary>
     Accumulating = 1,
 
-    /// <summary>Distributing ETF - pays out dividends, may need adjustment</summary>
+    /// <summary>配息型 ETF：會發放股利，可能需要做股利調整</summary>
     Distributing = 2
 }

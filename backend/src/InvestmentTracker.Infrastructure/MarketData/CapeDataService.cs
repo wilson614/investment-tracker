@@ -8,45 +8,37 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching CAPE data from Research Affiliates API
-/// Stores data in database - fetches new data only when current month's data becomes available
+/// 從 Research Affiliates API 取得 CAPE 資料的服務。
+/// 會將資料存入資料庫；僅在當月資料可用時才會抓取較新的資料。
 /// </summary>
-public class CapeDataService : ICapeDataService
+public class CapeDataService(
+    HttpClient httpClient,
+    AppDbContext dbContext,
+    IIndexPriceService indexPriceService,
+    ILogger<CapeDataService> logger) : ICapeDataService
 {
-    private readonly HttpClient _httpClient;
-    private readonly AppDbContext _dbContext;
-    private readonly IIndexPriceService _indexPriceService;
-    private readonly ILogger<CapeDataService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly IIndexPriceService _indexPriceService = indexPriceService;
+    private readonly ILogger<CapeDataService> _logger = logger;
 
     private const string BaseUrl = "https://interactive.researchaffiliates.com/asset-allocation-data";
 
-    public CapeDataService(
-        HttpClient httpClient,
-        AppDbContext dbContext,
-        IIndexPriceService indexPriceService,
-        ILogger<CapeDataService> logger)
-    {
-        _httpClient = httpClient;
-        _dbContext = dbContext;
-        _indexPriceService = indexPriceService;
-        _logger = logger;
-    }
-
     public async Task<CapeDataResponse?> GetCapeDataAsync(CancellationToken cancellationToken = default)
     {
-        // Get the latest snapshot from database
+        // 從資料庫取得最新快照
         var snapshot = await _dbContext.CapeDataSnapshots
             .OrderByDescending(s => s.DataDate)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (snapshot != null)
         {
-            // Parse the data date to check if we need new data
+            // 解析資料日期，判斷是否需要檢查新資料
             var shouldCheckForNew = ShouldCheckForNewData(snapshot.DataDate, snapshot.FetchedAt);
 
             if (shouldCheckForNew)
             {
-                // Try to get newer data, but return existing if fetch fails
+                // 嘗試取得較新的資料；若抓取失敗則仍回傳既有資料
                 var newData = await TryFetchNewerDataAsync(snapshot.DataDate, cancellationToken);
                 if (newData != null)
                 {
@@ -58,7 +50,7 @@ public class CapeDataService : ICapeDataService
             return await ApplyRealTimeAdjustmentsAsync(data, cancellationToken);
         }
 
-        // No data in database, fetch fresh
+        // 資料庫沒有資料，直接抓取最新資料
         var freshData = await FetchAndSaveAsync(cancellationToken);
         if (freshData != null)
         {
@@ -68,20 +60,20 @@ public class CapeDataService : ICapeDataService
     }
 
     /// <summary>
-    /// Apply real-time adjustments to CAPE values based on current index prices
+    /// 依照目前指數價格，對 CAPE 值套用即時調整。
     /// </summary>
     private async Task<CapeDataResponse> ApplyRealTimeAdjustmentsAsync(
         CapeDataResponse data,
         CancellationToken cancellationToken)
     {
-        // Parse the data date to get the reference date for historical prices
-        // API date format: "2026-01-02" means data is as of end of previous month (2025-12-31)
+        // 解析資料日期，取得歷史參考價格用的 reference date
+        // API 日期格式："2026-01-02" 代表資料是以前一個月月底（2025-12-31）為準
         if (!DateTime.TryParse(data.Date, out var apiDate))
         {
             return data;
         }
 
-        // The CAPE data is for the previous month's end
+        // CAPE 資料對應到前一個月月底
         var referenceDate = new DateTime(apiDate.Year, apiDate.Month, 1).AddDays(-1);
 
         var adjustedItems = new List<CapeDataItem>();
@@ -101,7 +93,7 @@ public class CapeDataService : ICapeDataService
     }
 
     /// <summary>
-    /// Calculate adjusted CAPE value based on current vs reference index price
+    /// 依照目前指數價與參考指數價，計算調整後的 CAPE。
     /// </summary>
     private async Task<decimal?> CalculateAdjustedValueAsync(
         string marketKey,
@@ -109,7 +101,7 @@ public class CapeDataService : ICapeDataService
         DateTime referenceDate,
         CancellationToken cancellationToken)
     {
-        // Check if this market supports adjustment
+        // 確認此 marketKey 是否支援調整
         if (!IndexPriceService.SupportedMarkets.Contains(marketKey))
         {
             return null;
@@ -128,7 +120,7 @@ public class CapeDataService : ICapeDataService
                 return null;
             }
 
-            // Adjusted CAPE = Original CAPE × (Current Index / Reference Index)
+            // 調整後 CAPE = 原始 CAPE ×（目前指數／參考指數）
             var adjustmentRatio = indexPrices.CurrentPrice / indexPrices.ReferencePrice;
             var adjustedValue = originalValue * adjustmentRatio;
 
@@ -146,25 +138,25 @@ public class CapeDataService : ICapeDataService
     }
 
     /// <summary>
-    /// Determine if we should check for new CAPE data
-    /// - If current data is from this month: no need to check
-    /// - If current data is from previous month: check once per day
+    /// 判斷是否需要檢查新的 CAPE 資料。
+    /// - 若已有當月資料：不需檢查
+    /// - 若仍為上月資料：每天最多檢查一次
     /// </summary>
     private static bool ShouldCheckForNewData(string dataDate, DateTime lastFetchedAt)
     {
         var now = DateTime.UtcNow;
         var currentYearMonth = $"{now.Year}-{now.Month:D2}";
 
-        // Extract year-month from data date (format: "2026-01-02")
+        // 從 data date 抽出 year-month（格式："2026-01-02"）
         var dataYearMonth = dataDate.Substring(0, 7);
 
-        // If we already have current month's data, no need to check
+        // 若已是當月資料，就不需要檢查
         if (dataYearMonth == currentYearMonth)
         {
             return false;
         }
 
-        // Data is from previous month - check once per day
+        // 資料為上月：每天最多檢查一次
         return (now - lastFetchedAt) > TimeSpan.FromDays(1);
     }
 
@@ -183,14 +175,14 @@ public class CapeDataService : ICapeDataService
         var result = await DiscoverLatestCapeDataAsync(cancellationToken);
         if (result == null) return null;
 
-        // Only save if we found newer data
+        // 只有在找到更新的資料時才寫入
         if (string.Compare(result.Date, currentDataDate, StringComparison.Ordinal) > 0)
         {
             await SaveSnapshotAsync(result, cancellationToken);
             return result;
         }
 
-        // Update FetchedAt to avoid checking again soon
+        // 更新 FetchedAt，避免短時間內重複檢查
         var snapshot = await _dbContext.CapeDataSnapshots
             .FirstOrDefaultAsync(s => s.DataDate == currentDataDate, cancellationToken);
         if (snapshot != null)
@@ -207,7 +199,7 @@ public class CapeDataService : ICapeDataService
         var result = await DiscoverLatestCapeDataAsync(cancellationToken);
         if (result == null)
         {
-            _logger.LogWarning("Failed to discover CAPE data");
+            _logger.LogWarning("Failed to discover CAPE data"); // 無法探索到 CAPE 資料
             return null;
         }
 
@@ -219,11 +211,11 @@ public class CapeDataService : ICapeDataService
     {
         try
         {
-            // Check if we already have this date
+            // 確認是否已存在同日期快照
             var existing = await _dbContext.CapeDataSnapshots
                 .FirstOrDefaultAsync(s => s.DataDate == data.Date, cancellationToken);
 
-            // Store items without AdjustedValue (it's calculated on-the-fly)
+            // 儲存不含 AdjustedValue 的 items（AdjustedValue 會即時計算）
             var itemsToStore = data.Items.Select(i => new StoredCapeItem(
                 i.BoxName, i.CurrentValue, i.CurrentValuePercentile,
                 i.Range25th, i.Range50th, i.Range75th
@@ -247,11 +239,11 @@ public class CapeDataService : ICapeDataService
             }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date);
+            _logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date); // 已儲存 CAPE 快照
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            // Another concurrent request already inserted this record - that's fine
+            // 可能已被其他並發請求寫入；可忽略
             _logger.LogDebug("Duplicate CAPE snapshot ignored for {Date} - already exists", data.Date);
         }
     }
@@ -260,6 +252,7 @@ public class CapeDataService : ICapeDataService
     {
         // PostgreSQL unique constraint violation: 23505
         // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
+        // 以錯誤訊息字串判斷；若底層 provider 變更，可能需要更新此判斷邏輯
         return ex.InnerException?.Message?.Contains("23505") == true ||
                ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
     }
@@ -275,8 +268,8 @@ public class CapeDataService : ICapeDataService
     }
 
     /// <summary>
-    /// Discover the latest available CAPE data
-    /// Try current month first (days 1-10), then previous month
+    /// 探索最新可用的 CAPE 資料。
+    /// 會先嘗試當月（1～10 日），再嘗試上月。
     /// </summary>
     private async Task<CapeDataResponse?> DiscoverLatestCapeDataAsync(CancellationToken cancellationToken)
     {
@@ -284,22 +277,22 @@ public class CapeDataService : ICapeDataService
         var year = now.Year;
         var month = now.Month;
 
-        // Try only 2 months: current month and previous month
+        // 僅嘗試兩個月份：當月與上月
         for (var monthIndex = 0; monthIndex < 2; monthIndex++)
         {
-            // Try days 1-10 in ascending order
+            // 依序嘗試 1～10 日
             for (var day = 1; day <= 10; day++)
             {
                 var items = await TryFetchForDateAsync(year, month, day, cancellationToken);
                 if (items != null)
                 {
                     var date = $"{year}-{month:D2}-{day:D2}";
-                    _logger.LogInformation("Found CAPE data for {Date}", date);
+                    _logger.LogInformation("Found CAPE data for {Date}", date); // 找到可用的 CAPE 資料
                     return new CapeDataResponse(date, items, DateTime.UtcNow);
                 }
             }
 
-            // Move to previous month
+            // 切換到上月
             month--;
             if (month == 0)
             {
@@ -341,7 +334,7 @@ public class CapeDataService : ICapeDataService
             return rawItems.Select(item => new CapeDataItem(
                 item.BoxName ?? "",
                 item.CurrentValue,
-                null, // AdjustedValue will be calculated later
+                null, // AdjustedValue 會在後續即時計算
                 item.CurrentValuePercentile,
                 item.Range25th,
                 item.Range50th,
@@ -364,7 +357,7 @@ public class CapeDataService : ICapeDataService
         decimal Range75th
     );
 
-    // For storing in database without AdjustedValue
+    // 用於資料庫儲存（不含 AdjustedValue）
     private record StoredCapeItem(
         string BoxName,
         decimal CurrentValue,

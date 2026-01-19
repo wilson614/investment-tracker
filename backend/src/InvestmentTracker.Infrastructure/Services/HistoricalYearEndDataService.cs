@@ -9,27 +9,19 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// Service for managing historical year-end data cache.
-/// Provides lazy loading: check cache first, fetch from API if missing, save to cache.
+/// 管理歷史年末資料快取的服務。
+/// 採 lazy loading：先查快取，若缺少則從 API 抓取並寫入快取。
 /// </summary>
-public class HistoricalYearEndDataService : IHistoricalYearEndDataService
+public class HistoricalYearEndDataService(
+    IHistoricalYearEndDataRepository repository,
+    IStooqHistoricalPriceService stooqService,
+    ITwseStockHistoricalPriceService twseStockService,
+    ILogger<HistoricalYearEndDataService> logger) : IHistoricalYearEndDataService
 {
-    private readonly IHistoricalYearEndDataRepository _repository;
-    private readonly IStooqHistoricalPriceService _stooqService;
-    private readonly ITwseStockHistoricalPriceService _twseStockService;
-    private readonly ILogger<HistoricalYearEndDataService> _logger;
-
-    public HistoricalYearEndDataService(
-        IHistoricalYearEndDataRepository repository,
-        IStooqHistoricalPriceService stooqService,
-        ITwseStockHistoricalPriceService twseStockService,
-        ILogger<HistoricalYearEndDataService> logger)
-    {
-        _repository = repository;
-        _stooqService = stooqService;
-        _twseStockService = twseStockService;
-        _logger = logger;
-    }
+    private readonly IHistoricalYearEndDataRepository _repository = repository;
+    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
+    private readonly ITwseStockHistoricalPriceService _twseStockService = twseStockService;
+    private readonly ILogger<HistoricalYearEndDataService> _logger = logger;
 
     /// <summary>
     /// Gets year-end stock price from cache, or fetches from API and caches it.
@@ -40,7 +32,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
         int year,
         CancellationToken cancellationToken = default)
     {
-        // Never cache current year (YTD prices are still changing)
+        // 不快取當年度（YTD 價格仍在變動）
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
@@ -48,7 +40,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             return await FetchPriceFromApiAsync(ticker, year, cancellationToken);
         }
 
-        // Check cache first
+        // 先查快取
         var cached = await _repository.GetStockPriceAsync(ticker, year, cancellationToken);
         if (cached != null)
         {
@@ -63,13 +55,13 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             };
         }
 
-        // Fetch from API
+        // 從 API 抓取
         _logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", ticker, year);
         var apiResult = await FetchPriceFromApiAsync(ticker, year, cancellationToken);
 
         if (apiResult != null)
         {
-            // Save to cache
+            // 寫入快取
             try
             {
                 var cacheEntry = HistoricalYearEndData.CreateStockPrice(
@@ -87,7 +79,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             }
             catch (InvalidOperationException ex)
             {
-                // Entry might have been added by another request - this is fine
+                // 可能已被其他並發請求寫入；可忽略
                 _logger.LogDebug(ex, "Cache entry already exists for {Ticker}/{Year}", ticker, year);
             }
         }
@@ -107,7 +99,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
 
-        // Never cache current year
+        // 不快取當年度
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
@@ -115,7 +107,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             return await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
         }
 
-        // Check cache first
+        // 先查快取
         var cached = await _repository.GetExchangeRateAsync(currencyPair, year, cancellationToken);
         if (cached != null)
         {
@@ -130,13 +122,13 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
             };
         }
 
-        // Fetch from API
+        // 從 API 抓取
         _logger.LogInformation("Cache miss for exchange rate {CurrencyPair}/{Year}, fetching from API...", currencyPair, year);
         var apiResult = await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
 
         if (apiResult != null)
         {
-            // Save to cache
+            // 寫入快取
             try
             {
                 var cacheEntry = HistoricalYearEndData.CreateExchangeRate(
@@ -247,13 +239,13 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
     {
         try
         {
-            // Check if this is a Taiwan stock (numeric ticker like 2330, 0050)
+            // 判斷是否為台股（例如 2330、0050 這類純數字代號）
             if (IsTaiwanStock(ticker))
             {
                 return await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
             }
 
-            // Use Dec 31 as target date (Stooq will find nearest trading day)
+            // 以 12/31 作為目標日期（Stooq 會回傳最近的交易日）
             var targetDate = new DateOnly(year, 12, 31);
             var result = await _stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
 
@@ -284,25 +276,25 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
     }
 
     /// <summary>
-    /// Determines if a ticker is a Taiwan stock (numeric format like 2330, 0050).
+    /// 判斷 ticker 是否為台股代號（例如 2330、0050 等純數字格式）。
     /// </summary>
     private static bool IsTaiwanStock(string ticker)
     {
-        // Taiwan stocks are typically 4-digit numeric codes (e.g., 2330, 0050, 2454)
-        // Some may have suffixes like ".TW" which we strip
+        // 台股通常是 4 位數（例如 2330、0050、2454）
+        // 可能帶有 ".TW" 等後綴，這裡會先去除
         var baseTicker = ticker.Split('.')[0];
         return baseTicker.Length >= 4 && baseTicker.Length <= 6 && baseTicker.All(char.IsDigit);
     }
 
     /// <summary>
-    /// Fetches historical price for Taiwan stocks from TWSE.
+    /// 從 TWSE 取得台股歷史價格。
     /// </summary>
     private async Task<YearEndPriceResult?> FetchTaiwanStockPriceAsync(
         string ticker,
         int year,
         CancellationToken cancellationToken)
     {
-        var stockNo = ticker.Split('.')[0]; // Remove any suffix like ".TW"
+        var stockNo = ticker.Split('.')[0]; // 去除 ".TW" 等後綴
         var result = await _twseStockService.GetYearEndPriceAsync(stockNo, year, cancellationToken);
 
         if (result == null)
@@ -314,7 +306,7 @@ public class HistoricalYearEndDataService : IHistoricalYearEndDataService
         return new YearEndPriceResult
         {
             Price = result.Price,
-            Currency = "TWD", // Taiwan stocks are always in TWD
+            Currency = "TWD", // 台股皆以 TWD 計價
             ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             Source = "TWSE",
             FromCache = false

@@ -7,16 +7,11 @@ using Microsoft.EntityFrameworkCore;
 namespace InvestmentTracker.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository implementation for StockSplit entity.
+/// StockSplit entity 的 Repository 實作。
 /// </summary>
-public class StockSplitRepository : IStockSplitRepository
+public class StockSplitRepository(AppDbContext context) : IStockSplitRepository
 {
-    private readonly AppDbContext _context;
-
-    public StockSplitRepository(AppDbContext context)
-    {
-        _context = context;
-    }
+    private readonly AppDbContext _context = context;
 
     public async Task<StockSplit?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

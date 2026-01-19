@@ -4,27 +4,23 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching index prices from Google Finance
-/// Scrapes the Google Finance website for real-time prices
+/// 從 Google Finance 取得指數即時價格的服務。
+/// 透過抓取 Google Finance 網站來取得即時價格。
 /// </summary>
-public partial class GoogleFinanceService : IGoogleFinanceService
+public partial class GoogleFinanceService(
+    HttpClient httpClient,
+    ILogger<GoogleFinanceService> logger) : IGoogleFinanceService
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<GoogleFinanceService> _logger;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<GoogleFinanceService> _logger = logger;
 
-    // Google Finance symbol format: SYMBOL:EXCHANGE
+    // Google Finance symbol 格式：SYMBOL:EXCHANGE
     private static readonly Dictionary<string, string> GoogleFinanceSymbols = new()
     {
         ["All Country"] = "GEISAC:INDEXFTSE",    // FTSE Global All Cap Index
         ["US Large"] = ".INX:INDEXSP",            // S&P 500
-        ["Taiwan"] = "TWII:TPE",                  // Taiwan Weighted Index
+        ["Taiwan"] = "TWII:TPE",                  // 台灣加權指數
     };
-
-    public GoogleFinanceService(HttpClient httpClient, ILogger<GoogleFinanceService> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
 
     public async Task<decimal?> GetCurrentPriceAsync(string marketKey, CancellationToken cancellationToken = default)
     {

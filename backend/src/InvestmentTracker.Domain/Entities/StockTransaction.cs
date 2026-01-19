@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Records buy/sell activity for stocks/ETFs.
+/// 股票交易記錄實體，記錄股票/ETF 的買賣活動
 /// </summary>
 public class StockTransaction : BaseEntity
 {
@@ -22,27 +22,26 @@ public class StockTransaction : BaseEntity
     public bool IsDeleted { get; private set; }
     public decimal? RealizedPnlHome { get; private set; }
 
-    // Navigation properties
+    // 導覽屬性
     public Portfolio Portfolio { get; private set; } = null!;
     public CurrencyLedger? CurrencyLedger { get; private set; }
 
-    // Computed properties (not stored in DB)
+    // 計算屬性（不儲存於資料庫）
     /// <summary>
-    /// Determines if this is a Taiwan stock based on ticker pattern.
-    /// Taiwan stocks start with a digit (e.g., 0050, 2330, 6547R).
+    /// 判斷是否為台股。台股代號以數字開頭（如 0050、2330、6547R）
     /// </summary>
     public bool IsTaiwanStock => !string.IsNullOrEmpty(Ticker) && char.IsDigit(Ticker[0]);
 
     /// <summary>
-    /// Total cost in source currency: (Shares × Price) + Fees.
-    /// For Taiwan stocks, Floor(Shares × Price) is used per market convention.
+    /// 原幣總成本：(股數 × 單價) + 手續費
+    /// 台股依市場慣例使用無條件捨去計算
     /// </summary>
     public decimal TotalCostSource
     {
         get
         {
             var subtotal = Shares * PricePerShare;
-            // Taiwan market uses floor for transaction subtotal (無條件捨去)
+            // 台股交易小計採無條件捨去
             if (IsTaiwanStock)
                 subtotal = Math.Floor(subtotal);
             return subtotal + Fees;
@@ -50,17 +49,17 @@ public class StockTransaction : BaseEntity
     }
 
     /// <summary>
-    /// Total cost in home currency: TotalCostSource × ExchangeRate.
-    /// Returns null if ExchangeRate is not set (no TWD conversion).
+    /// 本國幣總成本：原幣總成本 × 匯率
+    /// 若未設定匯率則回傳 null
     /// </summary>
     public decimal? TotalCostHome => ExchangeRate.HasValue ? TotalCostSource * ExchangeRate.Value : null;
 
     /// <summary>
-    /// Indicates whether this transaction has an exchange rate for home currency conversion.
+    /// 是否有設定本國幣換算匯率
     /// </summary>
     public bool HasExchangeRate => ExchangeRate.HasValue;
 
-    // Required by EF Core
+    // EF Core 必要的無參數建構子
     private StockTransaction() { }
 
     public StockTransaction(
@@ -96,7 +95,7 @@ public class StockTransaction : BaseEntity
         if (date > DateTime.UtcNow.AddDays(1))
             throw new ArgumentException("Transaction date cannot be in the future", nameof(date));
 
-        // Ensure UTC Kind for PostgreSQL compatibility
+        // 確保 UTC Kind 以相容 PostgreSQL
         TransactionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
 
@@ -116,7 +115,7 @@ public class StockTransaction : BaseEntity
         if (shares <= 0)
             throw new ArgumentException("Shares must be positive", nameof(shares));
 
-        // Validate 4 decimal places
+        // 驗證 4 位小數
         Shares = Math.Round(shares, 4);
     }
 

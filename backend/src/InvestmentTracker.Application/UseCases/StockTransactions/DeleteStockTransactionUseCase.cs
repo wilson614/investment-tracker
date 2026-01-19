@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Interfaces;
 namespace InvestmentTracker.Application.UseCases.StockTransactions;
 
 /// <summary>
-/// Use case for soft-deleting a stock transaction.
+/// 軟刪除股票交易的 Use Case。
 /// </summary>
 public class DeleteStockTransactionUseCase
 {
@@ -30,7 +30,7 @@ public class DeleteStockTransactionUseCase
         var transaction = await _transactionRepository.GetByIdAsync(transactionId, cancellationToken)
             ?? throw new InvalidOperationException($"Transaction {transactionId} not found");
 
-        // Verify access through portfolio
+        // 透過投資組合確認存取權限
         var portfolio = await _portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {transaction.PortfolioId} not found");
 
@@ -39,7 +39,7 @@ public class DeleteStockTransactionUseCase
             throw new UnauthorizedAccessException("You do not have access to this transaction");
         }
 
-        // Find and delete linked currency transaction (if any)
+        // 找出並刪除連動的外幣交易（若存在）
         var linkedCurrencyTransaction = await _currencyTransactionRepository.GetByStockTransactionIdAsync(
             transactionId, cancellationToken);
         if (linkedCurrencyTransaction != null)
@@ -47,7 +47,7 @@ public class DeleteStockTransactionUseCase
             await _currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
         }
 
-        // Soft delete stock transaction
+        // 軟刪除股票交易
         await _transactionRepository.SoftDeleteAsync(transactionId, cancellationToken);
     }
 }

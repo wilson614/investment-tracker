@@ -1,17 +1,17 @@
 namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
-/// Service for fetching CAPE (Cyclically Adjusted P/E) data from Research Affiliates
+/// 從 Research Affiliates 取得 CAPE（Cyclically Adjusted P/E）資料的服務。
 /// </summary>
 public interface ICapeDataService
 {
     /// <summary>
-    /// Get the latest CAPE data, using cache if available
+    /// 取得最新 CAPE 資料；若可用則使用快取。
     /// </summary>
     Task<CapeDataResponse?> GetCapeDataAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clear the cache and fetch fresh data
+    /// 清除快取並抓取最新資料。
     /// </summary>
     Task<CapeDataResponse?> RefreshCapeDataAsync(CancellationToken cancellationToken = default);
 }

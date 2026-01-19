@@ -1,3 +1,13 @@
+/**
+ * Performance Page
+ *
+ * 顯示年度績效與對照基準（benchmark）比較。
+ *
+ * 主要資料來源：
+ * - `useHistoricalPerformance`：取得投資組合在指定年度的績效與缺漏價格清單。
+ * - `marketDataApi`：取得 YTD benchmark 比較與歷史 benchmark 報酬。
+ * - `stockPriceApi` / `marketDataApi.getEuronextQuote`：在需要即時補價（例如當年度）時，抓取缺漏 ticker 的報價。
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
 import { stockPriceApi, marketDataApi } from '../services/api';
@@ -10,7 +20,12 @@ import { StockMarket } from '../types';
 import { getEuronextSymbol } from '../constants';
 import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison } from '../types';
 
-// Available benchmark options for comparison (matches backend MarketYtdService.Benchmarks)
+/**
+ * 可選擇的 benchmark 清單（需與 backend `MarketYtdService.Benchmarks` 的 key 對齊）。
+ *
+ * 注意：
+ * - key 使用英文（例如 `All Country`），因為後端 API / dashboard 偏好設定會用這個 key。
+ */
 const BENCHMARK_OPTIONS = [
   { key: 'All Country', label: '全球 (VWRA)', symbol: 'VWRA' },
   { key: 'US Large', label: '美國大型 (VUAA)', symbol: 'VUAA' },
@@ -28,8 +43,11 @@ const BENCHMARK_OPTIONS = [
 // Shared localStorage key with dashboard MarketYtdSection
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 
-// Load selected benchmarks from localStorage (synced with dashboard)
-// Dashboard stores English keys (e.g., "All Country")
+/**
+ * 從 localStorage 讀取使用者選擇的 benchmark（與 Dashboard 同步）。
+ *
+ * Dashboard 會存英文 key（例如 `All Country`），這裡會做基本驗證，避免壞資料造成 UI 異常。
+ */
 function loadSelectedBenchmarks(): string[] {
   try {
     const stored = localStorage.getItem(YTD_PREFS_KEY);
@@ -47,7 +65,9 @@ function loadSelectedBenchmarks(): string[] {
   return ['All Country']; // Default
 }
 
-// Save selected benchmarks to localStorage (synced with dashboard)
+/**
+ * 將使用者選擇的 benchmark 寫回 localStorage（與 Dashboard 同步）。
+ */
 function saveSelectedBenchmarks(keys: string[]): void {
   try {
     localStorage.setItem(YTD_PREFS_KEY, JSON.stringify(keys));
@@ -59,6 +79,13 @@ function saveSelectedBenchmarks(keys: string[]): void {
 // Cache key for localStorage quote cache (shared with Portfolio page)
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 
+/**
+ * 依 ticker 格式推測市場別。
+ *
+ * - TW：純數字或數字+英文字尾（例如 `2330`、`00878`、`6547M`）
+ * - UK：以 `.L` 結尾
+ * - 其他：預設 US
+ */
 const guessMarket = (ticker: string): StockMarketType => {
   if (/^\d+[A-Za-z]*$/.test(ticker)) {
     return StockMarket.TW;
@@ -131,7 +158,16 @@ export function PerformancePage() {
     loadYtdData();
   }, []);
 
-  // Calculate benchmark returns when year or benchmarks change
+  /**
+   * 當年度或 benchmark 選擇變動時，更新 benchmark 報酬。
+   *
+   * 規則：
+   * - 當年度：用 YTD API（`marketDataApi.getYtdComparison`）資料。
+   * - 歷史年度：用 `marketDataApi.getBenchmarkReturns(year)` 的快取快照。
+   *
+   * UI 策略：
+   * - 避免閃爍（FR-095）：更新時不清空舊值，等新值回來再覆蓋。
+   */
   useEffect(() => {
     const fetchBenchmarkReturns = async () => {
       if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) {
@@ -192,7 +228,12 @@ export function PerformancePage() {
     fetchBenchmarkReturns();
   }, [selectedYear, selectedBenchmarks, availableYears, ytdData]);
 
-  // Load cached prices from localStorage
+  /**
+   * 從 localStorage 載入報價快取（與 Portfolio/Dashboard 共用 quote cache）。
+   *
+   * 使用時機：
+   * - 在補齊缺漏價格前，先用快取減少 API 呼叫與等待。
+   */
   const loadCachedPrices = useCallback((tickers: string[]): Record<string, YearEndPriceInfo> => {
     const prices: Record<string, YearEndPriceInfo> = {};
     for (const ticker of tickers) {
@@ -214,7 +255,13 @@ export function PerformancePage() {
     return prices;
   }, []);
 
-  // Fetch prices for missing tickers (for YTD - uses real-time Sina/Euronext API)
+  /**
+   * 補齊缺漏 ticker 的「即時」報價（通常用於當年度/YTD）。
+   *
+   * 規則：
+   * - 先判斷是否為 Euronext symbol，若是改走 `marketDataApi.getEuronextQuote`。
+   * - 其餘用 `stockPriceApi.getQuoteWithRate`，若推測為 US 但失敗則嘗試 UK。
+   */
   const fetchCurrentPrices = useCallback(async (
     missingPrices: MissingPrice[],
     homeCurrency: string
@@ -280,8 +327,17 @@ export function PerformancePage() {
     return prices;
   }, []);
 
-  // Fetch historical prices (for past years - uses Stooq API)
-  // Returns separate year-start and year-end prices with real historical exchange rates
+  /**
+   * 補齊「歷史年度」的缺漏價格。
+   *
+   * 資料來源：
+   * - `marketDataApi.getHistoricalPrices`：透過 Stooq 取得國際標的歷史收盤價。
+   * - `marketDataApi.getHistoricalExchangeRate`：取得對應日期的歷史匯率（目前特別針對 homeCurrency=TWD）。
+   *
+   * 回傳：
+   * - yearStartPrices：以上一年度 12/31 作為 year start
+   * - yearEndPrices：以當年度 12/31 作為 year end
+   */
   const fetchHistoricalPrices = useCallback(async (
     missingPrices: MissingPrice[],
     year: number,
@@ -420,7 +476,11 @@ export function PerformancePage() {
     return { yearStartPrices, yearEndPrices };
   }, []);
 
-  // Fallback exchange rates (used only when API fails)
+  /**
+   * 匯率查詢失敗時的 fallback（僅作最後手段）。
+   *
+   * 注意：這些是硬編碼估值，用於避免完全無法計算，但不保證準確。
+   */
   const getFallbackExchangeRate = (currency: string, homeCurrency: string): number | null => {
     if (currency === homeCurrency) return 1;
 
@@ -447,7 +507,15 @@ export function PerformancePage() {
     return null;
   };
 
-  // Auto-fetch prices when we have missing prices (uses different API based on year)
+  /**
+   * 當 `useHistoricalPerformance` 回報有缺漏價格時，自動嘗試補價。
+   *
+   * 規則：
+   * - 當年度：先讀 quote cache，再用即時 API 補剩下的。
+   * - 歷史年度：以 Stooq 歷史價 + 歷史匯率補 year-start/year-end。
+   *
+   * 透過 `hasFetchedForYearRef` 避免同年度重複自動抓取。
+   */
   useEffect(() => {
     const autoFetchPrices = async () => {
       if (!performance || !portfolio || !selectedYear || !availableYears) return;

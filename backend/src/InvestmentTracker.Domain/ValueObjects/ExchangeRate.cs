@@ -1,41 +1,45 @@
 namespace InvestmentTracker.Domain.ValueObjects;
 
 /// <summary>
-/// Represents an exchange rate between two currencies at a specific point in time.
-/// Immutable value object.
+/// 表示兩種幣別之間在特定時間點的匯率。
+/// 這是一個不可變（immutable）的 Value Object。
 /// </summary>
-public sealed record ExchangeRate
+public sealed record ExchangeRate(string FromCurrency, string ToCurrency, decimal Rate, DateTime AsOf)
 {
-    public string FromCurrency { get; }
-    public string ToCurrency { get; }
-    public decimal Rate { get; }
-    public DateTime AsOf { get; }
-
     public ExchangeRate(string fromCurrency, string toCurrency, decimal rate, DateTime? asOf = null)
+        : this(
+            FromCurrency: NormalizeCurrencyOrThrow(fromCurrency, nameof(fromCurrency)),
+            ToCurrency: NormalizeCurrencyOrThrow(toCurrency, nameof(toCurrency)),
+            Rate: ValidateRateOrThrow(rate, nameof(rate)),
+            AsOf: asOf ?? DateTime.UtcNow)
     {
-        if (string.IsNullOrWhiteSpace(fromCurrency))
-            throw new ArgumentException("From currency is required", nameof(fromCurrency));
-
-        if (string.IsNullOrWhiteSpace(toCurrency))
-            throw new ArgumentException("To currency is required", nameof(toCurrency));
-
-        if (rate <= 0)
-            throw new ArgumentException("Exchange rate must be positive", nameof(rate));
-
-        FromCurrency = fromCurrency.ToUpperInvariant();
-        ToCurrency = toCurrency.ToUpperInvariant();
-        Rate = rate;
-        AsOf = asOf ?? DateTime.UtcNow;
     }
 
+    private static string NormalizeCurrencyOrThrow(string currency, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(currency))
+            throw new ArgumentException("Currency is required", paramName);
+
+        return currency.ToUpperInvariant();
+    }
+
+    private static decimal ValidateRateOrThrow(decimal rate, string paramName)
+    {
+        if (rate <= 0)
+            throw new ArgumentException("Exchange rate must be positive", paramName);
+
+        return rate;
+    }
+
+
     /// <summary>
-    /// Gets the inverse exchange rate (swap from/to currencies).
+    /// 取得反向匯率（交換 From/To 幣別）。
     /// </summary>
     public ExchangeRate Inverse()
         => new(ToCurrency, FromCurrency, 1m / Rate, AsOf);
 
     /// <summary>
-    /// Converts an amount from the source currency to the target currency.
+    /// 將金額從來源幣別換算到目標幣別。
     /// </summary>
     public decimal Convert(decimal amount) => amount * Rate;
 

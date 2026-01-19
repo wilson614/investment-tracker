@@ -1,36 +1,36 @@
 namespace InvestmentTracker.Domain.Entities;
 
 /// <summary>
-/// Stores end-of-month index prices for CAPE adjustment calculation
-/// These are captured monthly and used as reference prices
+/// 指數價格快照實體，儲存月底指數價格用於 CAPE 調整計算
+/// 每月擷取一次作為參考價格
 /// </summary>
 public class IndexPriceSnapshot
 {
     public int Id { get; set; }
 
     /// <summary>
-    /// Market key (e.g., "All Country", "US Large", "Taiwan")
+    /// 市場識別碼（如 All Country、US Large、Taiwan）
     /// </summary>
     public string MarketKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Year and month in YYYYMM format (e.g., "202512" for December 2025)
+    /// 年月格式為 YYYYMM（如 202512 代表 2025 年 12 月）
     /// </summary>
     public string YearMonth { get; set; } = string.Empty;
 
     /// <summary>
-    /// End of month closing price. Null when IsNotAvailable is true.
+    /// 月底收盤價。當 IsNotAvailable 為 true 時為 null
     /// </summary>
     public decimal? Price { get; set; }
 
     /// <summary>
-    /// When this price was recorded
+    /// 價格記錄時間
     /// </summary>
     public DateTime RecordedAt { get; set; }
 
     /// <summary>
-    /// Indicates the price is permanently unavailable (e.g., ETF not listed in that year).
-    /// When true, Price should be null and no further API calls should be made.
+    /// 表示價格永久無法取得（如 ETF 該年度尚未上市）
+    /// 當為 true 時，Price 應為 null 且不應再進行 API 呼叫
     /// </summary>
     public bool IsNotAvailable { get; set; }
 }

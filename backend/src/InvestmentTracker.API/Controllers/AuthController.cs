@@ -8,21 +8,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvestmentTracker.API.Controllers;
 
+/// <summary>
+/// 提供使用者註冊、登入與 Token 管理等驗證相關 API。
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController : ControllerBase
+public class AuthController(AppDbContext context, IJwtTokenService jwtTokenService) : ControllerBase
 {
-    private readonly AppDbContext _context;
-    private readonly IJwtTokenService _jwtTokenService;
-
-    public AuthController(AppDbContext context, IJwtTokenService jwtTokenService)
-    {
-        _context = context;
-        _jwtTokenService = jwtTokenService;
-    }
+    private readonly AppDbContext _context = context;
+    private readonly IJwtTokenService _jwtTokenService = jwtTokenService;
 
     /// <summary>
-    /// Register a new user account.
+    /// 註冊新使用者帳號。
     /// </summary>
     [HttpPost("register")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status201Created)]
@@ -32,7 +29,7 @@ public class AuthController : ControllerBase
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        // Check if email already exists
+        // 檢查 Email 是否已註冊
         var existingUser = await _context.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
@@ -42,26 +39,26 @@ public class AuthController : ControllerBase
             return Conflict(new { message = "Email already registered" });
         }
 
-        // Create user
+        // 建立使用者
         var passwordHash = _jwtTokenService.HashPassword(request.Password);
         var user = new User(normalizedEmail, passwordHash, request.DisplayName.Trim());
 
         _context.Users.Add(user);
 
-        // Create default portfolio for new user
+        // 為新使用者建立預設投資組合
         var portfolio = new Portfolio(user.Id, "USD", "TWD");
         _context.Portfolios.Add(portfolio);
 
         await _context.SaveChangesAsync();
 
-        // Generate tokens
+        // 產生 Token
         var authResponse = await CreateAuthResponse(user);
 
         return CreatedAtAction(nameof(Register), authResponse);
     }
 
     /// <summary>
-    /// Login with email and password.
+    /// 使用 Email 與密碼登入。
     /// </summary>
     [HttpPost("login")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
@@ -85,7 +82,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Refresh access token using refresh token.
+    /// 使用 refresh token 取得新的 access token。
     /// </summary>
     [HttpPost("refresh")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
@@ -103,17 +100,17 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid or expired refresh token" });
         }
 
-        // Revoke old token
+        // 撤銷舊 Token
         storedToken.Revoke();
 
-        // Generate new tokens
+        // 產生新 Token
         var authResponse = await CreateAuthResponse(storedToken.User, storedToken.Id);
 
         return Ok(authResponse);
     }
 
     /// <summary>
-    /// Logout and revoke refresh token.
+    /// 登出並撤銷 refresh token。
     /// </summary>
     [HttpPost("logout")]
     [Authorize]
@@ -140,7 +137,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Get current user profile.
+    /// 取得目前登入使用者的個人資料。
     /// </summary>
     [HttpGet("me")]
     [Authorize]
@@ -162,7 +159,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Update current user profile.
+    /// 更新目前登入使用者的個人資料。
     /// </summary>
     [HttpPut("me")]
     [Authorize]
@@ -177,7 +174,7 @@ public class AuthController : ControllerBase
         if (user == null)
             return NotFound();
 
-        // Update email if provided
+        // 若有提供 Email，則更新 Email
         if (!string.IsNullOrWhiteSpace(request.Email))
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
@@ -194,7 +191,7 @@ public class AuthController : ControllerBase
             }
         }
 
-        // Update display name if provided
+        // 若有提供顯示名稱，則更新顯示名稱
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {
             user.UpdateDisplayName(request.DisplayName.Trim());
@@ -211,7 +208,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Change current user password.
+    /// 變更目前登入使用者的密碼。
     /// </summary>
     [HttpPost("change-password")]
     [Authorize]

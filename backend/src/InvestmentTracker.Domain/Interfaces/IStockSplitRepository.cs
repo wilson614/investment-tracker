@@ -4,7 +4,7 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Interfaces;
 
 /// <summary>
-/// Repository interface for StockSplit entity.
+/// StockSplit Entity 的 Repository 介面。
 /// </summary>
 public interface IStockSplitRepository
 {

@@ -6,27 +6,20 @@ using Microsoft.AspNetCore.Mvc;
 namespace InvestmentTracker.API.Controllers;
 
 /// <summary>
-/// Controller for portfolio performance analysis endpoints.
+/// 提供投資組合績效分析（Performance）相關 API。
 /// </summary>
 [ApiController]
 [Route("api/portfolios/{portfolioId:guid}/performance")]
 [Authorize]
-public class PerformanceController : ControllerBase
+public class PerformanceController(
+    IHistoricalPerformanceService performanceService,
+    ILogger<PerformanceController> logger) : ControllerBase
 {
-    private readonly IHistoricalPerformanceService _performanceService;
-    private readonly ILogger<PerformanceController> _logger;
-
-    public PerformanceController(
-        IHistoricalPerformanceService performanceService,
-        ILogger<PerformanceController> logger)
-    {
-        _performanceService = performanceService;
-        _logger = logger;
-    }
+    private readonly IHistoricalPerformanceService _performanceService = performanceService;
+    private readonly ILogger<PerformanceController> _logger = logger;
 
     /// <summary>
-    /// Get available years for performance calculation.
-    /// Returns list of years with transaction data.
+    /// 取得可用於績效計算的年度清單（有交易資料的年份）。
     /// </summary>
     [HttpGet("years")]
     [ProducesResponseType(typeof(AvailableYearsDto), StatusCodes.Status200OK)]
@@ -51,7 +44,7 @@ public class PerformanceController : ControllerBase
     }
 
     /// <summary>
-    /// Calculate performance for a specific year.
+    /// 計算指定年度的投資組合績效。
     /// </summary>
     [HttpPost("year")]
     [ProducesResponseType(typeof(YearPerformanceDto), StatusCodes.Status200OK)]

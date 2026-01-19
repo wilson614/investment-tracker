@@ -1,28 +1,28 @@
 namespace InvestmentTracker.Domain.Enums;
 
 /// <summary>
-/// Types of currency ledger transactions.
+/// 外幣台帳（Currency Ledger）的交易類型。
 /// </summary>
 public enum CurrencyTransactionType
 {
-    /// <summary>Buy foreign currency with home currency (e.g., TWD → USD)</summary>
+    /// <summary>用本位幣買入外幣（例如：TWD → USD）</summary>
     ExchangeBuy = 1,
 
-    /// <summary>Sell foreign currency for home currency (e.g., USD → TWD)</summary>
+    /// <summary>賣出外幣換回本位幣（例如：USD → TWD）</summary>
     ExchangeSell = 2,
 
-    /// <summary>Bank interest received (increases balance with 0 cost basis)</summary>
+    /// <summary>銀行利息入帳（以 0 成本增加餘額）</summary>
     Interest = 3,
 
-    /// <summary>Spend foreign currency (e.g., for stock purchase)</summary>
+    /// <summary>支出外幣（例如：用於買股）</summary>
     Spend = 4,
 
-    /// <summary>Initial balance (opening balance with known cost basis)</summary>
+    /// <summary>期初餘額（開戶／起始餘額，含已知成本）</summary>
     InitialBalance = 5,
 
-    /// <summary>Other income (e.g., broker bonus, dividends)</summary>
+    /// <summary>其他收入（例如：券商回饋、股利）</summary>
     OtherIncome = 6,
 
-    /// <summary>Other expense (e.g., transfer out, fees)</summary>
+    /// <summary>其他支出（例如：轉出、費用）</summary>
     OtherExpense = 7
 }

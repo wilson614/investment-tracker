@@ -4,20 +4,20 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Domain.Services;
 
 /// <summary>
-/// Domain service for adjusting stock transaction values based on stock split events.
-/// Adjustments are calculated at display time; original data is preserved unchanged.
+/// 依據股票分割事件調整交易顯示值的領域服務（Domain Service）。
+/// 調整在顯示時即時計算，原始資料保持不變。
 /// </summary>
 public class StockSplitAdjustmentService
 {
     /// <summary>
-    /// Calculates the cumulative split ratio for a given symbol/market at a specific transaction date.
-    /// Returns the product of all split ratios for splits occurring AFTER the transaction date.
+    /// 計算指定代號／市場在某個交易日期的累積分割比例。
+    /// 回傳所有「交易日期之後」發生的 split ratio 乘積。
     /// </summary>
-    /// <param name="symbol">Stock symbol</param>
-    /// <param name="market">Stock market</param>
-    /// <param name="transactionDate">Date of the original transaction</param>
-    /// <param name="splits">All known stock splits</param>
-    /// <returns>Cumulative split ratio (1.0 if no splits apply)</returns>
+    /// <param name="symbol">股票代號</param>
+    /// <param name="market">股票市場</param>
+    /// <param name="transactionDate">原始交易日期</param>
+    /// <param name="splits">所有已知的股票分割事件</param>
+    /// <returns>累積分割比例（若不適用任何分割則為 1.0）</returns>
     public decimal GetCumulativeSplitRatio(
         string symbol,
         StockMarket market,
@@ -38,7 +38,7 @@ public class StockSplitAdjustmentService
     }
 
     /// <summary>
-    /// Gets the adjusted number of shares for a transaction considering all subsequent splits.
+    /// 取得考量後續所有分割事件後的調整股數。
     /// AdjustedShares = OriginalShares × CumulativeSplitRatio
     /// </summary>
     public decimal GetAdjustedShares(
@@ -53,7 +53,7 @@ public class StockSplitAdjustmentService
     }
 
     /// <summary>
-    /// Gets the adjusted price per share for a transaction considering all subsequent splits.
+    /// 取得考量後續所有分割事件後的調整每股價格。
     /// AdjustedPrice = OriginalPrice / CumulativeSplitRatio
     /// </summary>
     public decimal GetAdjustedPrice(
@@ -69,8 +69,8 @@ public class StockSplitAdjustmentService
     }
 
     /// <summary>
-    /// Calculates adjusted values for a transaction considering all applicable stock splits.
-    /// Returns original values if no splits apply.
+    /// 計算套用所有適用股票分割事件後的交易調整值。
+    /// 若不適用任何分割，則回傳原始值。
     /// </summary>
     public AdjustedTransactionValues GetAdjustedValues(
         StockTransaction transaction,
@@ -90,30 +90,30 @@ public class StockSplitAdjustmentService
     }
 
     /// <summary>
-    /// Detects the stock market based on ticker symbol pattern.
-    /// Taiwan stocks: numeric only or numeric with suffix (e.g., 0050, 2330, 6547R)
-    /// US/UK stocks: alphabetic (e.g., AAPL, VOO, VWRA)
+    /// 依據 ticker 樣式推測股票市場。
+    /// 台股：純數字或數字加尾碼（例如：0050、2330、6547R）
+    /// 美股／英股：字母（例如：AAPL、VOO、VWRA）
     /// </summary>
     public StockMarket DetectMarket(string ticker)
     {
         if (string.IsNullOrWhiteSpace(ticker))
             return StockMarket.US;
 
-        // Taiwan stocks: start with digit (e.g., 0050, 2330, 6547R)
+        // 台股：以數字開頭（例如：0050、2330、6547R）
         if (char.IsDigit(ticker[0]))
             return StockMarket.TW;
 
-        // Check for UK LSE patterns (commonly .L suffix, or known UK ETFs)
+        // 英股：常見為 .L 後綴（London Stock Exchange）
         if (ticker.EndsWith(".L", StringComparison.OrdinalIgnoreCase))
             return StockMarket.UK;
 
-        // Default to US for alphabetic tickers
+        // 預設：字母 ticker 視為美股
         return StockMarket.US;
     }
 }
 
 /// <summary>
-/// Contains original and adjusted values for a transaction after applying split adjustments.
+/// 套用分割調整後，交易的原始值與調整值。
 /// </summary>
 public record AdjustedTransactionValues(
     decimal OriginalShares,
