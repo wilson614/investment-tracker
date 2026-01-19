@@ -329,8 +329,8 @@
 - [x] T120 [P] Create responsive navigation component in frontend/src/components/layout/Navigation.tsx
 - [x] T121 [P] Add loading states and error handling to frontend components (LoadingSpinner, ErrorDisplay)
 - [x] T122 [P] Add toast notifications for user feedback (ToastProvider)
-- [ ] T123 Run quickstart.md validation scenarios
-- [ ] T124 Performance testing with 10,000 transactions
+- [-] T123 Run quickstart.md validation scenarios *(deferred: manual validation done during development)*
+- [-] T124 Performance testing with 10,000 transactions *(deferred: not required for v1.0)*
 
 **Checkpoint**: Phase 9 complete - cross-cutting concerns implemented
 
@@ -403,28 +403,28 @@
 
 ### Setup (Database & Infrastructure)
 
-- [ ] T148 [US7] Create HistoricalPrice entity in backend/src/InvestmentTracker.Domain/Entities/HistoricalPrice.cs
-- [ ] T149 [US7] Add HistoricalPriceConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/HistoricalPriceConfiguration.cs
-- [ ] T150 [US7] Add DbSet<HistoricalPrice> to AppDbContext in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
-- [ ] T151 [US7] Create and apply EF Core migration for historical_prices table
+- [x] T148 [US7] Create HistoricalPrice entity in backend/src/InvestmentTracker.Domain/Entities/HistoricalPrice.cs *(implemented as HistoricalYearEndData in 002)*
+- [x] T149 [US7] Add HistoricalPriceConfiguration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/HistoricalPriceConfiguration.cs *(implemented as HistoricalYearEndDataConfiguration in 002)*
+- [x] T150 [US7] Add DbSet<HistoricalPrice> to AppDbContext in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs *(implemented as HistoricalYearEndData in 002)*
+- [x] T151 [US7] Create and apply EF Core migration for historical_prices table *(implemented as historical_year_end_data in 002)*
 
 ### Backend - Historical Price Service (C1)
 
-- [ ] T152 [P] [US7] Create IHistoricalPriceRepository interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceRepository.cs
-- [ ] T153 [P] [US7] Create IHistoricalPriceService interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceService.cs
-- [ ] T154 [US7] Implement HistoricalPriceRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalPriceRepository.cs
-- [ ] T155 [US7] Implement YahooFinanceHistoricalService for US/UK stocks in backend/src/InvestmentTracker.Infrastructure/Services/YahooFinanceHistoricalService.cs
-- [ ] T156 [US7] Implement TwseHistoricalService for Taiwan stocks in backend/src/InvestmentTracker.Infrastructure/Services/TwseHistoricalService.cs
-- [ ] T157 [US7] Create HistoricalPriceService facade in backend/src/InvestmentTracker.Infrastructure/Services/HistoricalPriceService.cs
-- [ ] T158 [US7] Register historical price services in DI container in backend/src/InvestmentTracker.API/Program.cs
+- [x] T152 [P] [US7] Create IHistoricalPriceRepository interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceRepository.cs *(implemented as IHistoricalYearEndDataRepository in 002)*
+- [x] T153 [P] [US7] Create IHistoricalPriceService interface in backend/src/InvestmentTracker.Application/Interfaces/IHistoricalPriceService.cs *(implemented as IHistoricalYearEndDataService in 002)*
+- [x] T154 [US7] Implement HistoricalPriceRepository in backend/src/InvestmentTracker.Infrastructure/Repositories/HistoricalPriceRepository.cs *(implemented as HistoricalYearEndDataRepository in 002)*
+- [x] T155 [US7] Implement YahooFinanceHistoricalService for US/UK stocks in backend/src/InvestmentTracker.Infrastructure/Services/YahooFinanceHistoricalService.cs *(implemented via StooqHistoricalPriceService in 002)*
+- [x] T156 [US7] Implement TwseHistoricalService for Taiwan stocks in backend/src/InvestmentTracker.Infrastructure/Services/TwseHistoricalService.cs *(implemented as TwseStockHistoricalPriceService in 002)*
+- [x] T157 [US7] Create HistoricalPriceService facade in backend/src/InvestmentTracker.Infrastructure/Services/HistoricalPriceService.cs *(implemented as HistoricalYearEndDataService in 002)*
+- [x] T158 [US7] Register historical price services in DI container in backend/src/InvestmentTracker.API/Program.cs *(completed in 002)*
 
 ### Backend - Historical Returns Calculation (C2)
 
-- [ ] T159 [US7] Create HistoricalReturnDto and related DTOs in backend/src/InvestmentTracker.Application/DTOs/HistoricalReturnDtos.cs
-- [ ] T160 [US7] Create GetHistoricalReturnsUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetHistoricalReturnsUseCase.cs
-- [ ] T161 [US7] Add historical returns endpoint to PortfoliosController in backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs
-- [ ] T162 [US7] Implement year-end share calculation logic (shares held at specific date) in GetHistoricalReturnsUseCase
-- [ ] T163 [US7] Implement YTD return calculation in GetHistoricalReturnsUseCase
+- [x] T159 [US7] Create HistoricalReturnDto and related DTOs in backend/src/InvestmentTracker.Application/DTOs/HistoricalReturnDtos.cs *(implemented as YearPerformanceDto in 002)*
+- [x] T160 [US7] Create GetHistoricalReturnsUseCase in backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetHistoricalReturnsUseCase.cs *(implemented as HistoricalPerformanceService in 002)*
+- [x] T161 [US7] Add historical returns endpoint to PortfoliosController in backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs *(implemented as PerformanceController in 002)*
+- [x] T162 [US7] Implement year-end share calculation logic (shares held at specific date) in GetHistoricalReturnsUseCase *(implemented in HistoricalPerformanceService in 002)*
+- [x] T163 [US7] Implement YTD return calculation in GetHistoricalReturnsUseCase *(implemented in HistoricalPerformanceService in 002)*
 
 ### Frontend - CAPE Service (C3)
 
@@ -433,25 +433,25 @@
 
 ### Frontend - Historical Returns Service
 
-- [ ] T166 [P] [US7] Add HistoricalReturn types in frontend/src/types/index.ts
-- [ ] T167 [P] [US7] Add getHistoricalReturns API method in frontend/src/services/api.ts
+- [x] T166 [P] [US7] Add HistoricalReturn types in frontend/src/types/index.ts *(implemented as YearPerformance types in 002)*
+- [x] T167 [P] [US7] Add getHistoricalReturns API method in frontend/src/services/api.ts *(implemented as calculateYearPerformance in 002)*
 
 ### Frontend - Dashboard Components (C4)
 
 - [x] T168 [P] [US7] Create MarketContext component (CAPE display) in frontend/src/components/dashboard/MarketContext.tsx
-- [ ] T169 [P] [US7] Create HistoricalReturnsTable component in frontend/src/components/dashboard/HistoricalReturnsTable.tsx
-- [ ] T170 [P] [US7] Create PositionAllocation component (with weights) in frontend/src/components/dashboard/PositionAllocation.tsx
+- [x] T169 [P] [US7] Create HistoricalReturnsTable component in frontend/src/components/dashboard/HistoricalReturnsTable.tsx *(implemented as Performance.tsx page with PerformanceBarChart in 002)*
+- [x] T170 [P] [US7] Create PositionAllocation component (with weights) in frontend/src/components/dashboard/PositionAllocation.tsx *(implemented as AssetAllocationPieChart in 002)*
 - [x] T171 [US7] Update Dashboard page to integrate new components in frontend/src/pages/Dashboard.tsx
 - [x] T172 [US7] Add useCapeData hook for CAPE fetching in frontend/src/hooks/useCapeData.ts
-- [ ] T173 [US7] Add useHistoricalReturns hook for returns fetching in frontend/src/hooks/useHistoricalReturns.ts
+- [x] T173 [US7] Add useHistoricalReturns hook for returns fetching in frontend/src/hooks/useHistoricalReturns.ts *(implemented as useHistoricalPerformance in 002)*
 
 ### Polish & Edge Cases
 
 - [x] T174 [US7] Add error handling for CAPE API failures (graceful degradation) in MarketContext component
-- [ ] T175 [US7] Add loading states for historical returns calculation
-- [ ] T176 [US7] Handle edge case: no historical data available (first year of investing)
-- [ ] T177 [US7] Handle edge case: missing year-end price (use last available trading day)
-- [ ] T178 [US7] Add tooltip explanations for CAPE and return calculations
+- [x] T175 [US7] Add loading states for historical returns calculation *(implemented in Performance.tsx in 002)*
+- [x] T176 [US7] Handle edge case: no historical data available (first year of investing) *(implemented in Performance.tsx in 002)*
+- [x] T177 [US7] Handle edge case: missing year-end price (use last available trading day) *(implemented via MissingPriceModal in 002)*
+- [x] T178 [US7] Add tooltip explanations for CAPE and return calculations *(implemented in Performance.tsx in 002)*
 
 **Checkpoint**: Phase 12 complete - Dashboard displays CAPE, historical returns, and allocation weights
 
@@ -737,7 +737,7 @@ T174 → T175 → T176 → T177 → T178
 ### Validation
 
 - [x] T236 [US12] Run `npm run build` to verify no TypeScript errors in `frontend/`
-- [ ] T237 [US12] Manual test: Navigate through Currency pages and verify all changes match spec
+- [x] T237 [US12] Manual test: Navigate through Currency pages and verify all changes match spec *(validated with v1.0.0 release)*
 
 **Checkpoint**: Currency Ledger UI simplified - metrics focused on investment holding use case
 
