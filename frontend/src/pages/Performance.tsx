@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
 import { stockPriceApi, marketDataApi } from '../services/api';
+import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytdApi';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { YearSelector } from '../components/performance/YearSelector';
@@ -96,11 +97,6 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
-// Check if a ticker is Taiwan market (uses Sina, not Stooq)
-const isTaiwanTicker = (ticker: string): boolean => {
-  return /^\d+[A-Za-z]*$/.test(ticker);
-};
-
 export function PerformancePage() {
   // Use shared portfolio context (synced with Portfolio page)
   const { currentPortfolio: portfolio, isLoading: isLoadingPortfolio, performanceVersion } = usePortfolio();
@@ -108,6 +104,7 @@ export function PerformancePage() {
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
+  const fetchRetryCountRef = useRef<number>(0); // Limit auto-retries to prevent infinite loops
 
   // Benchmark comparison state - multi-select support, synced with dashboard
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarks);
@@ -136,6 +133,7 @@ export function PerformancePage() {
   // Reset price fetch state when portfolio changes
   useEffect(() => {
     hasFetchedForYearRef.current = null;
+    fetchRetryCountRef.current = 0;
     setPriceFetchFailed(false);
     setIsFetchingPrices(false);
     // Reset benchmark state to prevent stale data showing
@@ -146,16 +144,24 @@ export function PerformancePage() {
   }, [performanceVersion]);
 
   // Load YTD benchmark data for current year comparison
+  // Use cached data first for instant display, then fetch fresh data in background
   useEffect(() => {
-    const loadYtdData = async () => {
+    // First, try to load from cache for instant display
+    const cached = loadCachedYtdData();
+    if (cached.data) {
+      setYtdData(transformYtdData(cached.data));
+    }
+
+    // Then fetch fresh data in background
+    const loadFreshYtdData = async () => {
       try {
-        const data = await marketDataApi.getYtdComparison();
-        setYtdData(data);
+        const data = await getYtdData();
+        setYtdData(transformYtdData(data));
       } catch (err) {
         console.error('Failed to load YTD data:', err);
       }
     };
-    loadYtdData();
+    loadFreshYtdData();
   }, []);
 
   /**
@@ -331,7 +337,7 @@ export function PerformancePage() {
    * 補齊「歷史年度」的缺漏價格。
    *
    * 資料來源：
-   * - `marketDataApi.getHistoricalPrices`：透過 Stooq 取得國際標的歷史收盤價。
+   * - `marketDataApi.getHistoricalPrices`：透過 backend 取得歷史收盤價（國際股用 Stooq，台股用 TWSE）。
    * - `marketDataApi.getHistoricalExchangeRate`：取得對應日期的歷史匯率（目前特別針對 homeCurrency=TWD）。
    *
    * 回傳：
@@ -350,29 +356,19 @@ export function PerformancePage() {
     const yearStartMissing = missingPrices.filter(mp => mp.priceType === 'YearStart');
     const yearEndMissing = missingPrices.filter(mp => mp.priceType === 'YearEnd');
 
-    // Separate Taiwan tickers (use Sina) from international tickers (use Stooq)
-    const intlYearStartTickers = yearStartMissing.filter(mp => !isTaiwanTicker(mp.ticker));
-    const intlYearEndTickers = yearEndMissing.filter(mp => !isTaiwanTicker(mp.ticker));
-    const taiwanTickers = missingPrices.filter(mp => isTaiwanTicker(mp.ticker));
-
-    // For Taiwan tickers, we still need real-time API (Stooq doesn't support Taiwan)
-    // These will remain as "missing" and user needs to input manually
-    if (taiwanTickers.length > 0) {
-      console.log(`Taiwan tickers ${taiwanTickers.map(t => t.ticker).join(', ')} require manual input for historical prices`);
-    }
-
     // Collect unique currencies needed for exchange rate lookup
     const currenciesNeeded = new Set<string>();
 
     // Fetch year-start prices from prior year Dec 31
+    // Backend handles both international (Stooq) and Taiwan (TWSE) stocks
     const yearStartDate = `${year - 1}-12-31`;
-    if (intlYearStartTickers.length > 0) {
-      const tickers = intlYearStartTickers.map(mp => mp.ticker);
+    if (yearStartMissing.length > 0) {
+      const tickers = yearStartMissing.map(mp => mp.ticker);
 
       try {
         const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearStartDate);
 
-        for (const mp of intlYearStartTickers) {
+        for (const mp of yearStartMissing) {
           const result = stooqPrices[mp.ticker];
           if (result && result.currency !== homeCurrency) {
             currenciesNeeded.add(result.currency);
@@ -395,7 +391,7 @@ export function PerformancePage() {
           await Promise.all(ratePromises);
         }
 
-        for (const mp of intlYearStartTickers) {
+        for (const mp of yearStartMissing) {
           const result = stooqPrices[mp.ticker];
           if (result) {
             let exchangeRate: number;
@@ -420,14 +416,14 @@ export function PerformancePage() {
 
     // Fetch year-end prices from current year Dec 31
     const yearEndDate = `${year}-12-31`;
-    if (intlYearEndTickers.length > 0) {
-      const tickers = intlYearEndTickers.map(mp => mp.ticker);
+    if (yearEndMissing.length > 0) {
+      const tickers = yearEndMissing.map(mp => mp.ticker);
       const yearEndCurrenciesNeeded = new Set<string>();
 
       try {
         const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearEndDate);
 
-        for (const mp of intlYearEndTickers) {
+        for (const mp of yearEndMissing) {
           const result = stooqPrices[mp.ticker];
           if (result && result.currency !== homeCurrency) {
             yearEndCurrenciesNeeded.add(result.currency);
@@ -450,7 +446,7 @@ export function PerformancePage() {
           await Promise.all(ratePromises);
         }
 
-        for (const mp of intlYearEndTickers) {
+        for (const mp of yearEndMissing) {
           const result = stooqPrices[mp.ticker];
           if (result) {
             let exchangeRate: number;
@@ -519,43 +515,71 @@ export function PerformancePage() {
   useEffect(() => {
     const autoFetchPrices = async () => {
       if (!performance || !portfolio || !selectedYear || !availableYears) return;
-      if (performance.missingPrices.length === 0) return;
+      if (performance.missingPrices.length === 0) {
+        fetchRetryCountRef.current = 0; // Reset retry count when no missing prices
+        return;
+      }
       if (hasFetchedForYearRef.current === selectedYear) return; // Already fetched for this year
 
-      hasFetchedForYearRef.current = selectedYear;
-      setIsFetchingPrices(true);
+      // Limit auto-retries to prevent infinite loops (max 2 retries)
+      if (fetchRetryCountRef.current >= 2) {
+        setPriceFetchFailed(true);
+        return;
+      }
+
+      // Mark as fetching in progress (use negative value to indicate in-progress)
+      const fetchingMarker = -selectedYear;
+      if (hasFetchedForYearRef.current === fetchingMarker) return; // Already fetching
+      hasFetchedForYearRef.current = fetchingMarker;
+      fetchRetryCountRef.current += 1;
+
       setPriceFetchFailed(false);
 
       try {
         const isCurrentYear = selectedYear === availableYears.currentYear;
-        let fetchedCount = 0;
+        let allFetched = false;
 
         if (isCurrentYear) {
           // YTD: Use cached prices first, then fetch remaining from Sina/Euronext
           const tickers = performance.missingPrices.map(mp => mp.ticker);
           const cachedPrices = loadCachedPrices(tickers);
 
+          // If we have cached prices, immediately calculate with them (no loading spinner)
+          // This provides instant feedback while we fetch fresh prices in the background
+          const cachedCount = Object.keys(cachedPrices).length;
+          if (cachedCount > 0) {
+            // Calculate immediately with cached prices (no spinner shown)
+            calculatePerformance(selectedYear, cachedPrices);
+          }
+
           const stillMissing = performance.missingPrices.filter(
             mp => !cachedPrices[mp.ticker]
           );
 
+          // Only show loading spinner if we need to fetch prices
           let fetchedPrices: Record<string, YearEndPriceInfo> = {};
           if (stillMissing.length > 0) {
+            setIsFetchingPrices(true);
             fetchedPrices = await fetchCurrentPrices(stillMissing, portfolio.homeCurrency);
           }
 
           const allPrices = { ...cachedPrices, ...fetchedPrices };
-          fetchedCount = Object.keys(allPrices).length;
-          if (fetchedCount > 0) {
+          const fetchedCount = Object.keys(allPrices).length;
+
+          // Only call calculatePerformance again if we fetched new prices
+          // (if we only had cached prices, we already calculated above)
+          if (Object.keys(fetchedPrices).length > 0 && fetchedCount > 0) {
             calculatePerformance(selectedYear, allPrices);
           }
-          
-          // Check if still missing after fetch
-          if (fetchedCount < performance.missingPrices.length) {
+
+          // Check if all prices fetched
+          allFetched = fetchedCount >= performance.missingPrices.length;
+          if (!allFetched) {
             setPriceFetchFailed(true);
           }
         } else {
           // Historical year: Use Stooq for international stocks
+          setIsFetchingPrices(true);
           const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
             performance.missingPrices,
             selectedYear,
@@ -566,16 +590,28 @@ export function PerformancePage() {
           if (hasPrices) {
             calculatePerformance(selectedYear, yearEndPrices, yearStartPrices);
           }
-          
-          // Check if still missing after fetch
+
+          // Check if all prices fetched
           const totalFetched = Object.keys(yearEndPrices).length + Object.keys(yearStartPrices).length;
-          if (totalFetched < performance.missingPrices.length) {
+          allFetched = totalFetched >= performance.missingPrices.length;
+          if (!allFetched) {
             setPriceFetchFailed(true);
           }
+        }
+
+        // Only mark as fetched if all prices were retrieved
+        // This allows retry on next render if partial fetch occurred
+        if (allFetched) {
+          hasFetchedForYearRef.current = selectedYear;
+        } else {
+          // Reset to allow retry (clear the fetching marker)
+          hasFetchedForYearRef.current = null;
         }
       } catch (err) {
         console.error('Failed to auto-fetch prices:', err);
         setPriceFetchFailed(true);
+        // Reset to allow retry on error
+        hasFetchedForYearRef.current = null;
       } finally {
         setIsFetchingPrices(false);
       }
@@ -591,6 +627,7 @@ export function PerformancePage() {
 
     setIsFetchingPrices(true);
     hasFetchedForYearRef.current = null; // Reset to allow re-fetch
+    fetchRetryCountRef.current = 0; // Reset retry count for manual refresh
 
     try {
       const isCurrentYear = selectedYear === availableYears.currentYear;
@@ -627,6 +664,7 @@ export function PerformancePage() {
     setSelectedYear(year);
     setPriceFetchFailed(false);
     hasFetchedForYearRef.current = null; // Reset to allow fresh fetch for new year
+    fetchRetryCountRef.current = 0; // Reset retry count for new year
   };
 
   const handleMissingPricesSubmit = (prices: Record<string, YearEndPriceInfo>) => {

@@ -320,50 +320,49 @@ public class MarketDataController(
             targetDate.Day == 31 &&
             targetDate.Year < DateTime.UtcNow.Year;
 
-        // 平行抓取價格
-        var tasks = request.Tickers.Select(async (string ticker) =>
+        // Process tickers sequentially to avoid DbContext threading issues
+        // DbContext is not thread-safe and cannot be used in parallel operations
+        foreach (var ticker in request.Tickers)
         {
             var normalizedTicker = ticker.Trim().ToUpperInvariant();
 
-            if (isCompletedYearEndLookup)
+            try
             {
-                var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
-                    normalizedTicker,
-                    targetDate.Year,
-                    cancellationToken);
-
-                if (cachedResult == null)
+                if (isCompletedYearEndLookup)
                 {
-                    return (ValueTuple<string, decimal, string, DateOnly>?)null;
+                    var cachedResult = await _historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                        normalizedTicker,
+                        targetDate.Year,
+                        cancellationToken);
+
+                    if (cachedResult != null)
+                    {
+                        results[ticker] = new HistoricalPriceResponse(
+                            cachedResult.Price,
+                            cachedResult.Currency,
+                            cachedResult.ActualDate.ToString("yyyy-MM-dd"));
+                    }
                 }
+                else
+                {
+                    var result = await _stooqService.GetStockPriceAsync(
+                        normalizedTicker,
+                        targetDate,
+                        cancellationToken);
 
-                return (ticker, cachedResult.Price, cachedResult.Currency, DateOnly.FromDateTime(cachedResult.ActualDate));
+                    if (result != null)
+                    {
+                        results[ticker] = new HistoricalPriceResponse(
+                            result.Price,
+                            result.Currency,
+                            result.ActualDate.ToString("yyyy-MM-dd"));
+                    }
+                }
             }
-
-            var result = await _stooqService.GetStockPriceAsync(
-                normalizedTicker,
-                targetDate,
-                cancellationToken);
-
-            if (result == null)
+            catch (Exception ex)
             {
-                return (ValueTuple<string, decimal, string, DateOnly>?)null;
-            }
-
-            return (ticker, result.Price, result.Currency, result.ActualDate);
-        });
-
-        var priceResults = await Task.WhenAll(tasks);
-
-        foreach (var item in priceResults)
-        {
-            if (item is { } value)
-            {
-                var (ticker, price, currency, actualDate) = value;
-                results[ticker] = new HistoricalPriceResponse(
-                    price,
-                    currency,
-                    actualDate.ToString("yyyy-MM-dd"));
+                _logger.LogWarning(ex, "Failed to fetch historical price for {Ticker}", ticker);
+                // Continue with other tickers
             }
         }
 

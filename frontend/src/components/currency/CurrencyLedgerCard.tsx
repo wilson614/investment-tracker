@@ -1,13 +1,26 @@
+/**
+ * CurrencyLedgerCard
+ *
+ * 外幣帳本卡片：顯示外幣餘額、淨投入、換匯均價，並在卡片上顯示即時匯率與更新時間。
+ *
+ * 特色：
+ * - 先讀取 localStorage 的匯率快取，避免初次 render 閃爍。
+ * - 掛載後只抓一次匯率（用 `hasFetchedRate` 防止重複）。
+ */
 import { useEffect, useState, useRef } from 'react';
 import { stockPriceApi } from '../../services/api';
 import type { CurrencyLedgerSummary } from '../../types';
 
 interface CurrencyLedgerCardProps {
+  /** 要顯示的帳本摘要 */
   ledger: CurrencyLedgerSummary;
+  /** 點擊卡片 callback */
   onClick?: () => void;
 }
 
-// Cache key for exchange rate
+/**
+ * 匯率 localStorage 快取 key。
+ */
 const getRateCacheKey = (from: string, to: string) => `rate_cache_${from}_${to}`;
 
 interface CachedRate {
@@ -15,7 +28,9 @@ interface CachedRate {
   cachedAt: string;
 }
 
-// Load cached rate from localStorage
+/**
+ * 從 localStorage 載入匯率快取。
+ */
 const loadCachedRate = (from: string, to: string): CachedRate | null => {
   try {
     const cached = localStorage.getItem(getRateCacheKey(from, to));
@@ -29,7 +44,7 @@ const loadCachedRate = (from: string, to: string): CachedRate | null => {
 };
 
 export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps) {
-  // Initialize from cache immediately to prevent flickering
+  // 先用快取初始化，避免初次 render 因等待 API 而閃爍。
   const cachedData = loadCachedRate(ledger.ledger.currencyCode, ledger.ledger.homeCurrency);
   const [currentRate, setCurrentRate] = useState<number | null>(cachedData?.rate ?? null);
   const [rateUpdatedAt, setRateUpdatedAt] = useState<Date | null>(
@@ -55,7 +70,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
     return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  // Fetch exchange rate on mount
+  // 掛載後抓取即時匯率（失敗時會保留快取值）。
   useEffect(() => {
     if (!hasFetchedRate.current) {
       hasFetchedRate.current = true;
@@ -82,9 +97,9 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
     }
   }, [ledger.ledger.currencyCode, ledger.ledger.homeCurrency]);
 
-  // Calculate TWD equivalent
-  const twdEquivalent = currentRate && ledger.balance > 0 
-    ? ledger.balance * currentRate 
+  // 依目前匯率計算約當台幣（只在 balance > 0 時顯示）。
+  const twdEquivalent = currentRate && ledger.balance > 0
+    ? ledger.balance * currentRate
     : null;
 
   return (
