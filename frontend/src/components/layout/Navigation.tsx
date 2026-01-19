@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { authApi, portfolioApi } from '../../services/api';
-import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, TrendingUp, User, ChevronDown, Lock, Mail, Save, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // App version - update this when releasing new versions
@@ -244,7 +244,7 @@ export function Navigation() {
               to="/dashboard"
               className="flex items-center gap-2 flex-shrink-0 text-xl font-bold transition-colors"
             >
-              <TrendingUp className="w-7 h-7 text-[var(--accent-peach)]" />
+              <img src="/inv-icon.svg" alt="Note Wealth" className="w-7 h-7 brightness-0 invert opacity-90" />
               <span className="brand-text">Note Wealth</span>
             </Link>
 
