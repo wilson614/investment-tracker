@@ -245,7 +245,7 @@ export function Navigation() {
               className="flex items-center gap-2 flex-shrink-0 text-xl font-bold transition-colors"
             >
               <TrendingUp className="w-7 h-7 text-[var(--accent-peach)]" />
-              <span className="brand-text">投資追蹤</span>
+              <span className="brand-text">Note Wealth</span>
             </Link>
 
             {/* Desktop Navigation */}

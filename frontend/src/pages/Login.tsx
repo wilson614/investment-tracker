@@ -45,7 +45,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card-dark max-w-md w-full p-8">
         <h1 className="text-2xl font-bold text-center mb-6">
-          <span className="brand-text">Investment Tracker</span>
+          <span className="brand-text">Note Wealth</span>
         </h1>
 
         <div className="flex mb-6">

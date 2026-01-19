@@ -14,19 +14,19 @@
   --text-secondary: #c9bfb0;
   --text-muted: #8a8078;
 
-  /* Accent Colors - Warm Pastel */
+  /* Accent Colors - Warm Pastel (Yellow Theme) */
   --accent-cream: #e8d5b5;
   --accent-cream-soft: rgba(232, 213, 181, 0.15);
-  --accent-peach: #e8a87c;
-  --accent-peach-soft: rgba(232, 168, 124, 0.15);
+  --accent-peach: #e8c85c;
+  --accent-peach-soft: rgba(232, 200, 92, 0.15);
   --accent-blush: #d4a5a5;
   --accent-blush-soft: rgba(212, 165, 165, 0.15);
   --accent-butter: #e8d98c;
   --accent-butter-soft: rgba(232, 217, 140, 0.15);
   --accent-sand: #d4c4a8;
   --accent-sand-soft: rgba(212, 196, 168, 0.15);
-  --accent-caramel: #c4956a;
-  --accent-caramel-soft: rgba(196, 149, 106, 0.15);
+  --accent-caramel: #c4a056;
+  --accent-caramel-soft: rgba(196, 160, 86, 0.15);
 
   /* Status Colors */
   --color-success: #9abe8c;
