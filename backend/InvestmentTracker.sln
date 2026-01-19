@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvestmentTracker.Applicati
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvestmentTracker.API.Tests", "tests\InvestmentTracker.API.Tests\InvestmentTracker.API.Tests.csproj", "{8AFAD134-E390-4986-86F4-C1CEB37BB26D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvestmentTracker.Infrastructure.Tests", "tests\InvestmentTracker.Infrastructure.Tests\InvestmentTracker.Infrastructure.Tests.csproj", "{9379EB8C-2999-419D-853D-40320C716403}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{8AFAD134-E390-4986-86F4-C1CEB37BB26D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8AFAD134-E390-4986-86F4-C1CEB37BB26D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8AFAD134-E390-4986-86F4-C1CEB37BB26D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9379EB8C-2999-419D-853D-40320C716403}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9379EB8C-2999-419D-853D-40320C716403}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9379EB8C-2999-419D-853D-40320C716403}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9379EB8C-2999-419D-853D-40320C716403}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2CC3C4BF-423D-4BCE-8712-DD5138D5A242} = {8DCB63FC-6D2F-4E9B-9ECF-D98FFADBE2CB}
@@ -67,5 +73,6 @@ Global
 		{23001B59-EA7B-4889-B734-83AA12542AD6} = {7424DDEA-3EC6-48A0-A94F-A6DE034CA698}
 		{5A2C3AF8-EC8E-4F4A-8A45-87580272FE45} = {7424DDEA-3EC6-48A0-A94F-A6DE034CA698}
 		{8AFAD134-E390-4986-86F4-C1CEB37BB26D} = {7424DDEA-3EC6-48A0-A94F-A6DE034CA698}
+		{9379EB8C-2999-419D-853D-40320C716403} = {7424DDEA-3EC6-48A0-A94F-A6DE034CA698}
 	EndGlobalSection
 EndGlobal

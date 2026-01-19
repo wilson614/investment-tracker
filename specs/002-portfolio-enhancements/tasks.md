@@ -247,7 +247,7 @@
 
 ### Tests (Required)
 
-- [ ] T083 [US9] Add unit tests for TWD XIRR FX auto-fill (known edge cases) in `backend/tests/InvestmentTracker.API.Tests/`
+- [X] T083 [US9] Add unit tests for TWD XIRR FX auto-fill (known edge cases) in `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateXirrUseCaseTests.cs`
 
 **Checkpoint**: US9 complete - single portfolio works; missing ExchangeRate does not break TWD metrics ✓
 
@@ -276,9 +276,9 @@
 - [X] T099 [US10] Sync benchmark preferences with dashboard localStorage (`ytd_benchmark_preferences`) in `frontend/src/pages/Performance.tsx` *(loadSelectedBenchmarks/saveSelectedBenchmarks)*
 - [X] T100 [US10] Enforce max 10 selected benchmarks (block >10) in `frontend/src/components/dashboard/MarketYtdSection.tsx`
 - [X] T101 [US10] Implement render-once gate for current-year comparison (holdings + benchmarks ready) in `frontend/src/pages/Performance.tsx` *(fixed via T130: added check for isFetchingPrices and missingPrices)*
-- [~] T102 [US10] Prevent flicker by keeping previous benchmark series during loading in `frontend/src/pages/Performance.tsx` *(deferred: spinner UX is acceptable)*
+- [-] T102 [US10] ~~Prevent flicker by keeping previous benchmark series during loading~~ *(removed: spinner UX sufficient, low ROI)*
 - [X] T103 [US10] Show "手動輸入" button only after auto-fetch fails (not immediately) in `frontend/src/pages/Performance.tsx` *(priceFetchFailed state)*
-- [~] T104 [US10] Add skeleton loader for XIRR cards during calculation in `frontend/src/pages/Performance.tsx` *(deferred: using spinner instead)*
+- [-] T104 [US10] ~~Add skeleton loader for XIRR cards~~ *(removed: spinner approach adequate, YAGNI)*
 
 **Checkpoint**: US10 complete - performance page UX improved with better labels and loading states
 
@@ -295,7 +295,7 @@
 - [X] T105 [US11] Ensure query keys include `portfolioId` so performance state resets on portfolio changes in `frontend/src/hooks/useHistoricalPerformance.ts`
 - [X] T106 [US11] Clear derived UI state on portfolio changes (show loading/empty, not stale value) in `frontend/src/pages/Performance.tsx`
 - [X] T107 [US11] Ensure new empty portfolio shows "-" or loading for XIRR (not previous portfolio values) in `frontend/src/pages/Performance.tsx`
-- [ ] T108 [US11] Add frontend test for performance state reset on portfolio change in `frontend/` (Jest/RTL)
+- [X] T108 [US11] Add frontend test for performance state reset on portfolio change in `frontend/src/test/performanceStateReset.test.ts`
 
 **Checkpoint**: US11 complete - portfolio switching clears stale XIRR data within 100ms
 
@@ -335,11 +335,11 @@
 
 **Purpose**: Final improvements across all features
 
-- [ ] T123 [P] Add backend tests for benchmark negative caching (NotAvailable persisted, no repeated Stooq calls) in `backend/tests/InvestmentTracker.API.Tests/`
-- [ ] T124 [P] Add backend tests for transaction-date FX auto-fill in XIRR cashflows in `backend/tests/InvestmentTracker.API.Tests/`
-- [ ] T125 [P] Add backend tests for year-end cache reuse (no duplicate API calls) in `backend/tests/InvestmentTracker.API.Tests/`
-- [ ] T126 [P] Add frontend tests for benchmark selection cap (max 10) and render gate (no initial 0) in `frontend/` (Jest/RTL)
-- [ ] T127 Run `specs/002-portfolio-enhancements/quickstart.md` scenarios and update if needed in `specs/002-portfolio-enhancements/quickstart.md`
+- [X] T123 [P] Add backend tests for benchmark negative caching (NotAvailable persisted, no repeated Stooq calls) in `backend/tests/InvestmentTracker.API.Tests/BenchmarkNegativeCachingTests.cs`
+- [X] T124 [P] Add backend tests for transaction-date FX auto-fill in XIRR cashflows in `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateXirrUseCaseTests.cs`
+- [X] T125 [P] Add backend tests for year-end cache reuse (no duplicate API calls) in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/HistoricalYearEndDataServiceTests.cs`
+- [X] T126 [P] Add frontend tests for benchmark selection cap (max 10) and render gate (no initial 0) in `frontend/src/test/benchmarkSelection.test.ts`
+- [X] T127 Run `specs/002-portfolio-enhancements/quickstart.md` scenarios and update if needed *(scenarios reviewed, up to date)*
 
 ---
 
@@ -365,7 +365,7 @@
 - [X] T136 [US13] Implement TwseStockHistoricalPriceService for individual Taiwan stock historical prices in `backend/src/InvestmentTracker.Infrastructure/MarketData/TwseStockHistoricalPriceService.cs`
 - [X] T137 [US13] Register TwseStockHistoricalPriceService in DI container in `backend/src/InvestmentTracker.API/Program.cs`
 - [X] T138 [US13] Update HistoricalYearEndDataService to use TwseStockHistoricalPriceService for Taiwan stocks in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs`
-- [~] T139 [US13] Add API endpoint to fetch Taiwan stock historical price *(deferred: integrated via HistoricalYearEndDataService)*
+- [-] T139 [US13] ~~Add API endpoint to fetch Taiwan stock historical price~~ *(removed: integrated into HistoricalYearEndDataService, no standalone need)*
 
 **Checkpoint**: US13 complete - UI cleaned up, meaningful data displayed, Taiwan stock historical prices working
 
