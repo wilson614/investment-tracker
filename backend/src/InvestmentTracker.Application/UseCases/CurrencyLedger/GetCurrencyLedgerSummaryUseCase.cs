@@ -52,7 +52,7 @@ public class GetCurrencyLedgerSummaryUseCase(
             TotalInterest = totalInterest,
             TotalCost = totalCost,
             RealizedPnl = realizedPnl,
-            CurrentExchangeRate = null, // TODO: 串接匯率 API
+            CurrentExchangeRate = null, // 由前端獨立呼叫匯率 API 以避免延遲
             CurrentValueHome = null,
             UnrealizedPnlHome = null,
             UnrealizedPnlPercentage = null,
