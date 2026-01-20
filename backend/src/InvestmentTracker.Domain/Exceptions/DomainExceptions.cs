@@ -38,9 +38,4 @@ public class AccessDeniedException : Exception
 /// <summary>
 /// 當業務規則驗證失敗時拋出的異常。
 /// </summary>
-public class BusinessRuleException : Exception
-{
-    public BusinessRuleException(string message) : base(message)
-    {
-    }
-}
+public class BusinessRuleException(string message) : Exception(message);

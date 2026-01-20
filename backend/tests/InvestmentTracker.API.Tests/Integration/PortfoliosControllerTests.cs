@@ -9,10 +9,8 @@ namespace InvestmentTracker.API.Tests.Integration;
 /// Integration tests for PortfoliosController.
 /// Tests the full HTTP request/response cycle including middleware.
 /// </summary>
-public class PortfoliosControllerTests : IntegrationTestBase
+public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : IntegrationTestBase(factory)
 {
-    public PortfoliosControllerTests(CustomWebApplicationFactory factory) : base(factory) { }
-
     [Fact]
     public async Task GetAll_ReturnsEmptyList_WhenNoPortfolios()
     {
@@ -38,7 +36,7 @@ public class PortfoliosControllerTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var portfolio = await response.Content.ReadFromJsonAsync<PortfolioDto>();
         portfolio.Should().NotBeNull();
-        portfolio!.Description.Should().Be("My Test Portfolio");
+        portfolio.Description.Should().Be("My Test Portfolio");
         portfolio.Id.Should().NotBeEmpty();
     }
 
@@ -55,7 +53,7 @@ public class PortfoliosControllerTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var portfolio = await response.Content.ReadFromJsonAsync<PortfolioDto>();
         portfolio.Should().NotBeNull();
-        portfolio!.Id.Should().Be(created.Id);
+        portfolio.Id.Should().Be(created.Id);
         portfolio.Description.Should().Be("Get By Id Test");
     }
 
@@ -83,7 +81,7 @@ public class PortfoliosControllerTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var updated = await response.Content.ReadFromJsonAsync<PortfolioDto>();
         updated.Should().NotBeNull();
-        updated!.Description.Should().Be("Updated Description");
+        updated.Description.Should().Be("Updated Description");
     }
 
     [Fact]

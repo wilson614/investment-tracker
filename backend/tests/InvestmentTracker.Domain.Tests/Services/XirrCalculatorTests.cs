@@ -113,7 +113,7 @@ public class XirrCalculatorTests
 
         // Assert
         xirr.Should().NotBeNull();
-        xirr!.Value.Should().BeGreaterThan(10);
+        xirr.Value.Should().BeGreaterThan(10);
     }
 
     [Fact]
@@ -121,6 +121,7 @@ public class XirrCalculatorTests
     {
         // Arrange
         var cashFlows = new List<CashFlow>();
+        if (cashFlows == null) throw new ArgumentNullException(nameof(cashFlows));
 
         // Act
         var xirr = _calculator.CalculateXirr(cashFlows);

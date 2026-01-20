@@ -27,7 +27,7 @@ public class BenchmarkNegativeCachingTests
     public async Task IndexPriceSnapshot_NotAvailableMarker_IsPersisted()
     {
         // Arrange
-        using var context = CreateInMemoryContext();
+        await using var context = CreateInMemoryContext();
         var marketKey = "Test Market";
         var yearMonth = "202312";
 
@@ -49,7 +49,7 @@ public class BenchmarkNegativeCachingTests
             .FirstOrDefaultAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth);
 
         saved.Should().NotBeNull();
-        saved!.IsNotAvailable.Should().BeTrue();
+        saved.IsNotAvailable.Should().BeTrue();
         saved.Price.Should().BeNull();
     }
 
@@ -57,7 +57,7 @@ public class BenchmarkNegativeCachingTests
     public async Task IndexPriceSnapshot_NotAvailableQuery_FiltersCorrectly()
     {
         // Arrange
-        using var context = CreateInMemoryContext();
+        await using var context = CreateInMemoryContext();
         var yearMonth = "202312";
 
         // Add a valid price
@@ -105,7 +105,7 @@ public class BenchmarkNegativeCachingTests
     public async Task IndexPriceSnapshot_SkipFetchingForNotAvailable()
     {
         // Arrange
-        using var context = CreateInMemoryContext();
+        await using var context = CreateInMemoryContext();
         var yearMonth = "202312";
         var allBenchmarks = new[] { "US Large", "Europe", "Japan", "Unavailable Market" };
 
@@ -157,7 +157,7 @@ public class BenchmarkNegativeCachingTests
     public async Task IndexPriceSnapshot_NotAvailableMarker_PreventsDuplicateFetches()
     {
         // Arrange
-        using var context = CreateInMemoryContext();
+        await using var context = CreateInMemoryContext();
         var marketKey = "Dead Market";
         var yearMonth = "202312";
 
@@ -191,9 +191,9 @@ public class BenchmarkNegativeCachingTests
     public async Task IndexPriceSnapshot_ValidPrice_NotMarkedAsNotAvailable()
     {
         // Arrange
-        using var context = CreateInMemoryContext();
-        var marketKey = "Valid Market";
-        var yearMonth = "202312";
+        await using var context = CreateInMemoryContext();
+        const string marketKey = "Valid Market";
+        const string yearMonth = "202312";
 
         // Save a valid price (simulating successful Stooq fetch)
         context.IndexPriceSnapshots.Add(new IndexPriceSnapshot
@@ -212,7 +212,7 @@ public class BenchmarkNegativeCachingTests
 
         // Assert
         entry.Should().NotBeNull();
-        entry!.Price.Should().Be(123.45m);
+        entry.Price.Should().Be(123.45m);
         entry.IsNotAvailable.Should().BeFalse();
     }
 }

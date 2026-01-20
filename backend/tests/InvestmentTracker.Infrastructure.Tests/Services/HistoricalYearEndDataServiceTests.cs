@@ -18,7 +18,6 @@ public class HistoricalYearEndDataServiceTests
     private readonly Mock<IHistoricalYearEndDataRepository> _repositoryMock;
     private readonly Mock<IStooqHistoricalPriceService> _stooqServiceMock;
     private readonly Mock<ITwseStockHistoricalPriceService> _twseServiceMock;
-    private readonly Mock<ILogger<HistoricalYearEndDataService>> _loggerMock;
     private readonly HistoricalYearEndDataService _service;
 
     public HistoricalYearEndDataServiceTests()
@@ -26,13 +25,13 @@ public class HistoricalYearEndDataServiceTests
         _repositoryMock = new Mock<IHistoricalYearEndDataRepository>();
         _stooqServiceMock = new Mock<IStooqHistoricalPriceService>();
         _twseServiceMock = new Mock<ITwseStockHistoricalPriceService>();
-        _loggerMock = new Mock<ILogger<HistoricalYearEndDataService>>();
+        var loggerMock = new Mock<ILogger<HistoricalYearEndDataService>>();
 
         _service = new HistoricalYearEndDataService(
             _repositoryMock.Object,
             _stooqServiceMock.Object,
             _twseServiceMock.Object,
-            _loggerMock.Object);
+            loggerMock.Object);
     }
 
     #region Year-End Price Cache Tests (T125)
@@ -56,7 +55,7 @@ public class HistoricalYearEndDataServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Price.Should().Be(100.50m);
+        result.Price.Should().Be(100.50m);
         result.FromCache.Should().BeTrue();
 
         // Verify NO API call was made
@@ -85,7 +84,7 @@ public class HistoricalYearEndDataServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Price.Should().Be(105.25m);
+        result.Price.Should().Be(105.25m);
         result.FromCache.Should().BeFalse();
 
         // Verify cache was updated
@@ -128,8 +127,8 @@ public class HistoricalYearEndDataServiceTests
         // Assert
         result1.Should().NotBeNull();
         result2.Should().NotBeNull();
-        result1!.FromCache.Should().BeFalse();
-        result2!.FromCache.Should().BeTrue();
+        result1.FromCache.Should().BeFalse();
+        result2.FromCache.Should().BeTrue();
 
         // Stooq should only be called ONCE
         _stooqServiceMock.Verify(
@@ -183,7 +182,7 @@ public class HistoricalYearEndDataServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Price.Should().Be(580.00m);
+        result.Price.Should().Be(580.00m);
         result.Currency.Should().Be("TWD");
         result.Source.Should().Be("TWSE");
 
@@ -222,7 +221,7 @@ public class HistoricalYearEndDataServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Rate.Should().Be(30.75m);
+        result.Rate.Should().Be(30.75m);
         result.FromCache.Should().BeTrue();
 
         // Verify NO API call was made
@@ -256,7 +255,7 @@ public class HistoricalYearEndDataServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Rate.Should().Be(31.25m);
+        result.Rate.Should().Be(31.25m);
         result.FromCache.Should().BeFalse();
 
         // Verify cache was updated

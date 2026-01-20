@@ -113,7 +113,7 @@ public class MultiTenancyTests : IDisposable
     public async Task Portfolio_GlobalFilter_User1CanOnlySeeOwnPortfolios()
     {
         // Arrange
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act
         var portfolios = await context.Portfolios.ToListAsync();
@@ -128,7 +128,7 @@ public class MultiTenancyTests : IDisposable
     public async Task Portfolio_GlobalFilter_User2CanOnlySeeOwnPortfolios()
     {
         // Arrange
-        using var context = CreateContextForUser(_user2Id);
+        await using var context = CreateContextForUser(_user2Id);
 
         // Act
         var portfolios = await context.Portfolios.ToListAsync();
@@ -143,7 +143,7 @@ public class MultiTenancyTests : IDisposable
     public async Task CurrencyLedger_GlobalFilter_User1CanOnlySeeOwnLedgers()
     {
         // Arrange
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act
         var ledgers = await context.CurrencyLedgers.ToListAsync();
@@ -158,7 +158,7 @@ public class MultiTenancyTests : IDisposable
     public async Task CurrencyLedger_GlobalFilter_User2CanOnlySeeOwnLedgers()
     {
         // Arrange
-        using var context = CreateContextForUser(_user2Id);
+        await using var context = CreateContextForUser(_user2Id);
 
         // Act
         var ledgers = await context.CurrencyLedgers.ToListAsync();
@@ -173,7 +173,7 @@ public class MultiTenancyTests : IDisposable
     public async Task Portfolio_CannotFindOtherUserPortfolioById()
     {
         // Arrange - User1 trying to access User2's portfolio
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act
         var portfolio = await context.Portfolios.FindAsync(_user2PortfolioId);
@@ -186,7 +186,7 @@ public class MultiTenancyTests : IDisposable
     public async Task CurrencyLedger_CannotFindOtherUserLedgerById()
     {
         // Arrange - User1 trying to access User2's ledger
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act
         var ledger = await context.CurrencyLedgers.FindAsync(_user2LedgerId);
@@ -199,7 +199,7 @@ public class MultiTenancyTests : IDisposable
     public async Task StockTransaction_FilteredByPortfolioOwnership()
     {
         // Arrange - User1 should only see transactions from their portfolio
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act - Get transactions for user1's portfolio
         var transactions = await context.StockTransactions
@@ -215,7 +215,7 @@ public class MultiTenancyTests : IDisposable
     public async Task StockTransaction_CannotAccessOtherUserTransactions()
     {
         // Arrange - User1 trying to access User2's portfolio transactions
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act - User2's portfolio ID shouldn't return any transactions
         // because User1 can't see User2's portfolio
@@ -229,7 +229,7 @@ public class MultiTenancyTests : IDisposable
     public async Task CurrencyTransaction_FilteredByLedgerOwnership()
     {
         // Arrange - User1 should only see transactions from their ledger
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act - Get transactions for user1's ledger
         var transactions = await context.CurrencyTransactions
@@ -245,7 +245,7 @@ public class MultiTenancyTests : IDisposable
     public async Task CurrencyTransaction_CannotAccessOtherUserTransactions()
     {
         // Arrange - User1 trying to access User2's ledger transactions
-        using var context = CreateContextForUser(_user1Id);
+        await using var context = CreateContextForUser(_user1Id);
 
         // Act - User2's ledger ID shouldn't return any transactions
         // because User1 can't see User2's ledger
@@ -259,7 +259,7 @@ public class MultiTenancyTests : IDisposable
     public async Task IgnoreQueryFilters_ReturnsAllData()
     {
         // Arrange - Admin context ignoring filters
-        using var context = new AppDbContext(_dbOptions);
+        await using var context = new AppDbContext(_dbOptions);
 
         // Act
         var allPortfolios = await context.Portfolios.IgnoreQueryFilters().ToListAsync();
