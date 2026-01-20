@@ -8,6 +8,11 @@ namespace InvestmentTracker.API.Controllers;
 /// <summary>
 /// 提供投資組合績效分析（Performance）相關 API。
 /// </summary>
+/// <remarks>
+/// 異常由 ExceptionHandlingMiddleware 統一處理：
+/// - EntityNotFoundException → 404 Not Found
+/// - AccessDeniedException → 403 Forbidden
+/// </remarks>
 [ApiController]
 [Route("api/portfolios/{portfolioId:guid}/performance")]
 [Authorize]
@@ -20,23 +25,13 @@ public class PerformanceController(
     [HttpGet("years")]
     [ProducesResponseType(typeof(AvailableYearsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<AvailableYearsDto>> GetAvailableYears(
         Guid portfolioId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await performanceService.GetAvailableYearsAsync(portfolioId, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await performanceService.GetAvailableYearsAsync(portfolioId, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -45,24 +40,14 @@ public class PerformanceController(
     [HttpPost("year")]
     [ProducesResponseType(typeof(YearPerformanceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<YearPerformanceDto>> CalculateYearPerformance(
         Guid portfolioId,
         [FromBody] CalculateYearPerformanceRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await performanceService.CalculateYearPerformanceAsync(
-                portfolioId, request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await performanceService.CalculateYearPerformanceAsync(
+            portfolioId, request, cancellationToken);
+        return Ok(result);
     }
 }

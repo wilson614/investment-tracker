@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.StockSplits;
@@ -14,7 +15,7 @@ public class UpdateStockSplitUseCase(IStockSplitRepository repository)
         CancellationToken cancellationToken = default)
     {
         var split = await repository.GetByIdAsync(id, cancellationToken)
-            ?? throw new InvalidOperationException($"Stock split {id} not found");
+            ?? throw new EntityNotFoundException("StockSplit", id);
 
         split.Update(request.SplitDate, request.SplitRatio, request.Description);
 

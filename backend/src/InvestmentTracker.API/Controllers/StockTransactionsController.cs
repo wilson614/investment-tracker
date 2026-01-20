@@ -113,80 +113,57 @@ public class StockTransactionsController(
     /// <summary>
     /// 建立新的股票交易。
     /// </summary>
+    /// <remarks>
+    /// 異常由 ExceptionHandlingMiddleware 統一處理：
+    /// - EntityNotFoundException → 404 Not Found
+    /// - AccessDeniedException → 403 Forbidden
+    /// - BusinessRuleException → 400 Bad Request
+    /// </remarks>
     [HttpPost]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<StockTransactionDto>> Create(
         [FromBody] CreateStockTransactionRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await createUseCase.ExecuteAsync(request, cancellationToken);
-            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await createUseCase.ExecuteAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     /// <summary>
     /// 更新股票交易。
     /// </summary>
+    /// <remarks>
+    /// 異常由 ExceptionHandlingMiddleware 統一處理。
+    /// </remarks>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<StockTransactionDto>> Update(
         Guid id,
         [FromBody] UpdateStockTransactionRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex) when (
-            ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
     /// 刪除（soft-delete）股票交易。
     /// </summary>
+    /// <remarks>
+    /// 異常由 ExceptionHandlingMiddleware 統一處理。
+    /// </remarks>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            await deleteUseCase.ExecuteAsync(id, cancellationToken);
-            return NoContent();
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        await deleteUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }

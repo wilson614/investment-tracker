@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.Portfolio;
@@ -17,13 +18,13 @@ public class UpdatePortfolioUseCase(
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
-            ?? throw new UnauthorizedAccessException("User not authenticated");
+            ?? throw new AccessDeniedException("User not authenticated");
 
         var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
-            ?? throw new InvalidOperationException("Portfolio not found");
+            ?? throw new EntityNotFoundException("Portfolio", portfolioId);
 
         if (portfolio.UserId != userId)
-            throw new UnauthorizedAccessException("Access denied");
+            throw new AccessDeniedException();
 
         portfolio.SetDescription(request.Description);
 

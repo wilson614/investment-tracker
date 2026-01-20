@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 
@@ -25,12 +26,10 @@ public class CreateStockTransactionUseCase(
     {
         // 確認投資組合存在，且屬於目前使用者
         var portfolio = await portfolioRepository.GetByIdAsync(request.PortfolioId, cancellationToken)
-            ?? throw new InvalidOperationException($"Portfolio {request.PortfolioId} not found");
+            ?? throw new EntityNotFoundException("Portfolio", request.PortfolioId);
 
         if (portfolio.UserId != currentUserService.UserId)
-        {
-            throw new UnauthorizedAccessException("You do not have access to this portfolio");
-        }
+            throw new AccessDeniedException();
 
         // 取得匯率：若未提供，且資金來源為外幣帳本時，會自動由帳本推算
         var exchangeRate = request.ExchangeRate;
@@ -41,13 +40,11 @@ public class CreateStockTransactionUseCase(
         {
             currencyLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
                 request.CurrencyLedgerId.Value, cancellationToken)
-                ?? throw new InvalidOperationException($"Currency ledger {request.CurrencyLedgerId} not found");
+                ?? throw new EntityNotFoundException("CurrencyLedger", request.CurrencyLedgerId);
 
             // 確認外幣帳本屬於目前使用者
             if (currencyLedger.UserId != currentUserService.UserId)
-            {
-                throw new UnauthorizedAccessException("You do not have access to this currency ledger");
-            }
+                throw new AccessDeniedException();
 
             // 取得既有外幣交易
             var currencyTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
@@ -58,9 +55,7 @@ public class CreateStockTransactionUseCase(
 
             // 在建立任何交易前先確認餘額足夠
             if (!currencyLedgerService.ValidateSpend(currencyTransactions, requiredAmount.Value))
-            {
-                throw new InvalidOperationException("Insufficient balance");
-            }
+                throw new BusinessRuleException("Insufficient balance");
 
             // 若未提供匯率，則以近期換匯交易推算（LIFO）
             // 僅考慮實際換匯交易，不包含利息/紅利
@@ -70,18 +65,14 @@ public class CreateStockTransactionUseCase(
                     currencyTransactions, request.TransactionDate, requiredAmount.Value);
 
                 if (calculatedRate <= 0)
-                {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Cannot calculate exchange rate from currency ledger. No transactions found on or before {request.TransactionDate:yyyy-MM-dd}");
-                }
 
                 exchangeRate = calculatedRate;
             }
         }
         else if (exchangeRate is <= 0)
-        {
-            throw new InvalidOperationException("Exchange rate must be greater than zero");
-        }
+            throw new BusinessRuleException("Exchange rate must be greater than zero");
 
         // 若為賣出交易：檢查持股是否足夠，並計算已實現損益
         decimal? realizedPnlHome = null;
@@ -97,10 +88,8 @@ public class CreateStockTransactionUseCase(
 
             // 確認持股足夠
             if (currentPosition.TotalShares < request.Shares)
-            {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"持股不足。可賣出: {currentPosition.TotalShares:F4}，欲賣出: {request.Shares:F4}");
-            }
 
             // 建立暫時的賣出交易，用於損益計算
             var tempSellTransaction = new StockTransaction(

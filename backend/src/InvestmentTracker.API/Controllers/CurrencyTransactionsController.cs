@@ -9,6 +9,12 @@ namespace InvestmentTracker.API.Controllers;
 /// <summary>
 /// 提供外幣交易（Currency Transaction）查詢與維護 API。
 /// </summary>
+/// <remarks>
+/// 異常由 ExceptionHandlingMiddleware 統一處理：
+/// - EntityNotFoundException → 404 Not Found
+/// - AccessDeniedException → 403 Forbidden
+/// - BusinessRuleException → 400 Bad Request
+/// </remarks>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
@@ -51,26 +57,17 @@ public class CurrencyTransactionsController(
     [HttpPost]
     [ProducesResponseType(typeof(CurrencyTransactionDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CurrencyTransactionDto>> Create(
         [FromBody] CreateCurrencyTransactionRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var transaction = await createUseCase.ExecuteAsync(request, cancellationToken);
-            return CreatedAtAction(
-                nameof(GetByLedger),
-                new { ledgerId = transaction.CurrencyLedgerId },
-                transaction);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var transaction = await createUseCase.ExecuteAsync(request, cancellationToken);
+        return CreatedAtAction(
+            nameof(GetByLedger),
+            new { ledgerId = transaction.CurrencyLedgerId },
+            transaction);
     }
 
     /// <summary>
@@ -78,23 +75,16 @@ public class CurrencyTransactionsController(
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CurrencyTransactionDto>> Update(
         Guid id,
         [FromBody] UpdateCurrencyTransactionRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var transaction = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
-            if (transaction == null)
-                return NotFound();
-            return Ok(transaction);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var transaction = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(transaction);
     }
 
     /// <summary>
@@ -102,19 +92,12 @@ public class CurrencyTransactionsController(
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            var deleted = await deleteUseCase.ExecuteAsync(id, cancellationToken);
-            if (!deleted)
-                return NotFound();
-            return NoContent();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        await deleteUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }

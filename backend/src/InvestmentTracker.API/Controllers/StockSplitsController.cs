@@ -9,6 +9,11 @@ namespace InvestmentTracker.API.Controllers;
 /// <summary>
 /// 提供股票分割（Stock Split）資料查詢與維護 API。
 /// </summary>
+/// <remarks>
+/// 異常由 ExceptionHandlingMiddleware 統一處理：
+/// - EntityNotFoundException → 404 Not Found
+/// - BusinessRuleException → 400 Bad Request
+/// </remarks>
 [Authorize]
 [ApiController]
 [Route("api/stock-splits")]
@@ -68,15 +73,8 @@ public class StockSplitsController(
         [FromBody] CreateStockSplitRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var split = await createStockSplitUseCase.ExecuteAsync(request, cancellationToken);
-            return CreatedAtAction(nameof(GetById), new { id = split.Id }, split);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var split = await createStockSplitUseCase.ExecuteAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = split.Id }, split);
     }
 
     /// <summary>
@@ -91,19 +89,8 @@ public class StockSplitsController(
         [FromBody] UpdateStockSplitRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var split = await updateStockSplitUseCase.ExecuteAsync(id, request, cancellationToken);
-            return Ok(split);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var split = await updateStockSplitUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(split);
     }
 
     /// <summary>
@@ -114,14 +101,7 @@ public class StockSplitsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            await deleteStockSplitUseCase.ExecuteAsync(id, cancellationToken);
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
+        await deleteStockSplitUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }

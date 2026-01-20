@@ -4,6 +4,7 @@ using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.Persistence;
@@ -165,7 +166,7 @@ public class AtomicTransactionTests : IDisposable
 
         // Act & Assert
         var act = async () => await useCase.ExecuteAsync(request);
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<BusinessRuleException>()
             .WithMessage("*Insufficient balance*");
 
         // Verify no spend transaction was created
@@ -252,7 +253,7 @@ public class AtomicTransactionTests : IDisposable
         // Act & Assert
         // Due to global query filter, ledger belongs to other user won't be found
         var act = async () => await useCase.ExecuteAsync(request);
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<EntityNotFoundException>()
             .WithMessage("*not found*");
     }
 

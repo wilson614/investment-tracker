@@ -33,24 +33,19 @@ public class PortfoliosController(
     /// <summary>
     /// 依投資組合 ID 取得投資組合資料。
     /// </summary>
+    /// <remarks>
+    /// 異常由 ExceptionHandlingMiddleware 統一處理：
+    /// - EntityNotFoundException → 404 Not Found
+    /// - AccessDeniedException → 403 Forbidden
+    /// </remarks>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(PortfolioDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PortfolioDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            var portfolio = await getPortfoliosUseCase.GetByIdAsync(id, cancellationToken);
-            return Ok(portfolio);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var portfolio = await getPortfoliosUseCase.GetByIdAsync(id, cancellationToken);
+        return Ok(portfolio);
     }
 
     /// <summary>
@@ -63,19 +58,8 @@ public class PortfoliosController(
         Guid id,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var summary = await getPortfolioSummaryUseCase.ExecuteAsync(id, null, cancellationToken);
-            return Ok(summary);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var summary = await getPortfolioSummaryUseCase.ExecuteAsync(id, null, cancellationToken);
+        return Ok(summary);
     }
 
     /// <summary>
@@ -89,19 +73,8 @@ public class PortfoliosController(
         [FromBody] CalculatePerformanceRequest? performanceRequest,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var summary = await getPortfolioSummaryUseCase.ExecuteAsync(id, performanceRequest, cancellationToken);
-            return Ok(summary);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var summary = await getPortfolioSummaryUseCase.ExecuteAsync(id, performanceRequest, cancellationToken);
+        return Ok(summary);
     }
 
     /// <summary>
@@ -115,19 +88,8 @@ public class PortfoliosController(
         [FromBody] CalculateXirrRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await calculateXirrUseCase.ExecuteAsync(id, request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await calculateXirrUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -142,19 +104,8 @@ public class PortfoliosController(
         [FromBody] CalculatePositionXirrRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await calculateXirrUseCase.ExecuteForPositionAsync(id, ticker, request, cancellationToken);
-            return Ok(result);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var result = await calculateXirrUseCase.ExecuteForPositionAsync(id, ticker, request, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -177,24 +128,14 @@ public class PortfoliosController(
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(PortfolioDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PortfolioDto>> Update(
         Guid id,
         [FromBody] UpdatePortfolioRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var dto = await updatePortfolioUseCase.ExecuteAsync(id, request, cancellationToken);
-            return Ok(dto);
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var dto = await updatePortfolioUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -203,20 +144,10 @@ public class PortfoliosController(
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            await deletePortfolioUseCase.ExecuteAsync(id, cancellationToken);
-            return NoContent();
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        await deletePortfolioUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }

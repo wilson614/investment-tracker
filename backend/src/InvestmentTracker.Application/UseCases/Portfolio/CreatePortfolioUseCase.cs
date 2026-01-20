@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.Portfolio;
@@ -16,7 +17,7 @@ public class CreatePortfolioUseCase(
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
-            ?? throw new UnauthorizedAccessException("User not authenticated");
+            ?? throw new AccessDeniedException("User not authenticated");
 
         var portfolio = new Domain.Entities.Portfolio(
             userId,

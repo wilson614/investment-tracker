@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 
@@ -22,16 +23,14 @@ public class UpdateStockTransactionUseCase(
         CancellationToken cancellationToken = default)
     {
         var transaction = await transactionRepository.GetByIdAsync(transactionId, cancellationToken)
-            ?? throw new InvalidOperationException($"Transaction {transactionId} not found");
+            ?? throw new EntityNotFoundException("Transaction", transactionId);
 
         // 透過投資組合確認存取權限
         var portfolio = await portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
-            ?? throw new InvalidOperationException($"Portfolio {transaction.PortfolioId} not found");
+            ?? throw new EntityNotFoundException("Portfolio", transaction.PortfolioId);
 
         if (portfolio.UserId != currentUserService.UserId)
-        {
-            throw new UnauthorizedAccessException("You do not have access to this transaction");
-        }
+            throw new AccessDeniedException();
 
         // 保留原始值供後續計算使用
         var originalType = transaction.TransactionType;
@@ -66,10 +65,8 @@ public class UpdateStockTransactionUseCase(
 
             // 確認持股足夠
             if (positionBeforeSell.TotalShares < request.Shares)
-            {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"持股不足。可賣出: {positionBeforeSell.TotalShares:F4}，欲賣出: {request.Shares:F4}");
-            }
 
             // 建立暫時交易（使用更新後的數值）用於損益計算
             var tempSellTransaction = new StockTransaction(

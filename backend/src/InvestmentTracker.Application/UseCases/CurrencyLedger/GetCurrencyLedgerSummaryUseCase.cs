@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 
@@ -14,16 +15,15 @@ public class GetCurrencyLedgerSummaryUseCase(
     CurrencyLedgerService currencyLedgerService,
     ICurrentUserService currentUserService)
 {
-    public async Task<CurrencyLedgerSummaryDto?> ExecuteAsync(
+    public async Task<CurrencyLedgerSummaryDto> ExecuteAsync(
         Guid ledgerId,
         CancellationToken cancellationToken = default)
     {
-        var ledger = await ledgerRepository.GetByIdWithTransactionsAsync(ledgerId, cancellationToken);
-        if (ledger == null)
-            return null;
+        var ledger = await ledgerRepository.GetByIdWithTransactionsAsync(ledgerId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyLedger", ledgerId);
 
         if (ledger.UserId != currentUserService.UserId)
-            throw new UnauthorizedAccessException("You do not have access to this currency ledger");
+            throw new AccessDeniedException();
 
         var transactions = ledger.Transactions.ToList();
 
@@ -64,7 +64,7 @@ public class GetCurrencyLedgerSummaryUseCase(
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
-            ?? throw new UnauthorizedAccessException("User not authenticated");
+            ?? throw new AccessDeniedException("User not authenticated");
         var ledgers = await ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
 
         var results = new List<CurrencyLedgerSummaryDto>();

@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
@@ -10,19 +11,16 @@ public class DeleteCurrencyLedgerUseCase(
     ICurrencyLedgerRepository ledgerRepository,
     ICurrentUserService currentUserService)
 {
-    public async Task<bool> ExecuteAsync(
+    public async Task ExecuteAsync(
         Guid ledgerId,
         CancellationToken cancellationToken = default)
     {
-        var ledger = await ledgerRepository.GetByIdAsync(ledgerId, cancellationToken);
-        if (ledger == null)
-            return false;
+        var ledger = await ledgerRepository.GetByIdAsync(ledgerId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyLedger", ledgerId);
 
         if (ledger.UserId != currentUserService.UserId)
-            throw new UnauthorizedAccessException("You do not have access to this currency ledger");
+            throw new AccessDeniedException();
 
         await ledgerRepository.DeleteAsync(ledgerId, cancellationToken);
-
-        return true;
     }
 }

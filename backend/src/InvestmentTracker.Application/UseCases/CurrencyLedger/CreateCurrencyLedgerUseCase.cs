@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
@@ -16,13 +17,11 @@ public class CreateCurrencyLedgerUseCase(
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
-            ?? throw new UnauthorizedAccessException("User not authenticated");
+            ?? throw new AccessDeniedException("User not authenticated");
 
         // Check if ledger with same currency already exists
         if (await ledgerRepository.ExistsByCurrencyCodeAsync(userId, request.CurrencyCode, cancellationToken))
-        {
-            throw new InvalidOperationException($"A currency ledger for {request.CurrencyCode} already exists");
-        }
+            throw new BusinessRuleException($"A currency ledger for {request.CurrencyCode} already exists");
 
         var ledger = new Domain.Entities.CurrencyLedger(
             userId,

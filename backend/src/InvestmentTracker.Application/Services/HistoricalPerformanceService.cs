@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using Microsoft.Extensions.Logging;
@@ -27,12 +28,10 @@ public class HistoricalPerformanceService(
         CancellationToken cancellationToken = default)
     {
         var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
-            ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
+            ?? throw new EntityNotFoundException("Portfolio", portfolioId);
 
         if (portfolio.UserId != currentUserService.UserId)
-        {
-            throw new UnauthorizedAccessException("You do not have access to this portfolio");
-        }
+            throw new AccessDeniedException();
 
         var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var validTransactions = transactions.Where(t => !t.IsDeleted).ToList();
@@ -72,12 +71,10 @@ public class HistoricalPerformanceService(
         CancellationToken cancellationToken = default)
     {
         var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
-            ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
+            ?? throw new EntityNotFoundException("Portfolio", portfolioId);
 
         if (portfolio.UserId != currentUserService.UserId)
-        {
-            throw new UnauthorizedAccessException("You do not have access to this portfolio");
-        }
+            throw new AccessDeniedException();
 
         var year = request.Year;
         var currentYear = DateTime.UtcNow.Year;

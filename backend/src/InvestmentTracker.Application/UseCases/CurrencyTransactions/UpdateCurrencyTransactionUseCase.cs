@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
@@ -13,23 +14,24 @@ public class UpdateCurrencyTransactionUseCase(
     ICurrencyLedgerRepository ledgerRepository,
     ICurrentUserService currentUserService)
 {
-    public async Task<CurrencyTransactionDto?> ExecuteAsync(
+    public async Task<CurrencyTransactionDto> ExecuteAsync(
         Guid transactionId,
         UpdateCurrencyTransactionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var transaction = await transactionRepository.GetByIdAsync(transactionId, cancellationToken);
-        if (transaction == null)
-            return null;
+        var transaction = await transactionRepository.GetByIdAsync(transactionId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyTransaction", transactionId);
 
         // Verify ledger belongs to current user
-        var ledger = await ledgerRepository.GetByIdAsync(transaction.CurrencyLedgerId, cancellationToken);
-        if (ledger == null || ledger.UserId != currentUserService.UserId)
-            throw new UnauthorizedAccessException("You do not have access to this transaction");
+        var ledger = await ledgerRepository.GetByIdAsync(transaction.CurrencyLedgerId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyLedger", transaction.CurrencyLedgerId);
+
+        if (ledger.UserId != currentUserService.UserId)
+            throw new AccessDeniedException();
 
         // Prevent editing transactions linked to stock purchases
         if (transaction.RelatedStockTransactionId.HasValue)
-            throw new InvalidOperationException("Cannot edit transactions linked to stock purchases. Edit the stock transaction instead.");
+            throw new BusinessRuleException("Cannot edit transactions linked to stock purchases. Edit the stock transaction instead.");
 
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetAmounts(

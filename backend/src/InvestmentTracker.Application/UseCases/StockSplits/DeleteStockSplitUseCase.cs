@@ -1,3 +1,4 @@
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.StockSplits;
@@ -10,7 +11,7 @@ public class DeleteStockSplitUseCase(IStockSplitRepository repository)
     public async Task ExecuteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         _ = await repository.GetByIdAsync(id, cancellationToken)
-            ?? throw new InvalidOperationException($"Stock split {id} not found");
+            ?? throw new EntityNotFoundException("StockSplit", id);
 
         await repository.DeleteAsync(id, cancellationToken);
     }

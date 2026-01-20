@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.StockSplits;
@@ -21,10 +22,8 @@ public class CreateStockSplitUseCase(IStockSplitRepository repository)
             cancellationToken);
 
         if (exists)
-        {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 $"A stock split already exists for {request.Symbol} on {request.SplitDate:yyyy-MM-dd}");
-        }
 
         var split = new StockSplit(
             request.Symbol,

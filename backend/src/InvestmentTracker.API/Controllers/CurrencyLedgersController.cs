@@ -8,6 +8,12 @@ namespace InvestmentTracker.API.Controllers;
 /// <summary>
 /// 提供外幣帳本（Currency Ledger）查詢與維護 API。
 /// </summary>
+/// <remarks>
+/// 異常由 ExceptionHandlingMiddleware 統一處理：
+/// - EntityNotFoundException → 404 Not Found
+/// - AccessDeniedException → 403 Forbidden
+/// - BusinessRuleException → 400 Bad Request
+/// </remarks>
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
@@ -22,17 +28,11 @@ public class CurrencyLedgersController(
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<CurrencyLedgerSummaryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IEnumerable<CurrencyLedgerSummaryDto>>> GetAll(CancellationToken cancellationToken)
     {
-        try
-        {
-            var ledgers = await getSummaryUseCase.GetAllForUserAsync(cancellationToken);
-            return Ok(ledgers);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var ledgers = await getSummaryUseCase.GetAllForUserAsync(cancellationToken);
+        return Ok(ledgers);
     }
 
     /// <summary>
@@ -41,19 +41,11 @@ public class CurrencyLedgersController(
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyLedgerSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CurrencyLedgerSummaryDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            var summary = await getSummaryUseCase.ExecuteAsync(id, cancellationToken);
-            if (summary == null)
-                return NotFound();
-            return Ok(summary);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var summary = await getSummaryUseCase.ExecuteAsync(id, cancellationToken);
+        return Ok(summary);
     }
 
     /// <summary>
@@ -62,23 +54,13 @@ public class CurrencyLedgersController(
     [HttpPost]
     [ProducesResponseType(typeof(CurrencyLedgerDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CurrencyLedgerDto>> Create(
         [FromBody] CreateCurrencyLedgerRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var ledger = await createUseCase.ExecuteAsync(request, cancellationToken);
-            return CreatedAtAction(nameof(GetById), new { id = ledger.Id }, ledger);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var ledger = await createUseCase.ExecuteAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = ledger.Id }, ledger);
     }
 
     /// <summary>
@@ -87,22 +69,14 @@ public class CurrencyLedgersController(
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CurrencyLedgerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<CurrencyLedgerDto>> Update(
         Guid id,
         [FromBody] UpdateCurrencyLedgerRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var ledger = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
-            if (ledger == null)
-                return NotFound();
-            return Ok(ledger);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var ledger = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(ledger);
     }
 
     /// <summary>
@@ -111,18 +85,10 @@ public class CurrencyLedgersController(
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            var deleted = await deleteUseCase.ExecuteAsync(id, cancellationToken);
-            if (!deleted)
-                return NotFound();
-            return NoContent();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        await deleteUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }

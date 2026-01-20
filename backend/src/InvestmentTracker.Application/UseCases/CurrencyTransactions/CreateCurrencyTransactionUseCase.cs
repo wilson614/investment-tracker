@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
@@ -20,10 +21,10 @@ public class CreateCurrencyTransactionUseCase(
         // Verify ledger exists and belongs to current user
         var ledger = await ledgerRepository.GetByIdWithTransactionsAsync(
             request.CurrencyLedgerId, cancellationToken)
-            ?? throw new InvalidOperationException($"Currency ledger {request.CurrencyLedgerId} not found");
+            ?? throw new EntityNotFoundException("CurrencyLedger", request.CurrencyLedgerId);
 
         if (ledger.UserId != currentUserService.UserId)
-            throw new UnauthorizedAccessException("You do not have access to this currency ledger");
+            throw new AccessDeniedException();
 
         // 備註：Spend 與 ExchangeSell 可能導致帳本餘額為負
         // IB 等券商支援融資/槓桿交易

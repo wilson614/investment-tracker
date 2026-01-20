@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
 namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
@@ -11,17 +12,16 @@ public class UpdateCurrencyLedgerUseCase(
     ICurrencyLedgerRepository ledgerRepository,
     ICurrentUserService currentUserService)
 {
-    public async Task<CurrencyLedgerDto?> ExecuteAsync(
+    public async Task<CurrencyLedgerDto> ExecuteAsync(
         Guid ledgerId,
         UpdateCurrencyLedgerRequest request,
         CancellationToken cancellationToken = default)
     {
-        var ledger = await ledgerRepository.GetByIdAsync(ledgerId, cancellationToken);
-        if (ledger == null)
-            return null;
+        var ledger = await ledgerRepository.GetByIdAsync(ledgerId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyLedger", ledgerId);
 
         if (ledger.UserId != currentUserService.UserId)
-            throw new UnauthorizedAccessException("You do not have access to this currency ledger");
+            throw new AccessDeniedException();
 
         ledger.SetName(request.Name);
 
