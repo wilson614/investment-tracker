@@ -261,7 +261,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
     .WithName("HealthCheck")
     .WithOpenApi();
 
-// Auto-migrate database on startup
+// Auto-migrate database on startup (skip for Testing environment)
+if (!app.Environment.IsEnvironment("Testing"))
+{
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -326,6 +328,7 @@ using (var scope = app.Services.CreateScope())
         throw; // Re-throw to prevent app from starting with broken database
     }
 }
+} // End of Testing environment check
 
     app.Run();
 }
@@ -337,3 +340,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// Required for WebApplicationFactory in integration tests
+public partial class Program { }
