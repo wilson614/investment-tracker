@@ -92,7 +92,7 @@ public class HistoricalPerformanceService(
         var allTransactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
 
         // Filter to valid transactions only
-        var validTransactions = allTransactions.Where(t => !t.IsDeleted && t.HasExchangeRate).ToList();
+        var validTransactions = allTransactions.Where(t => t is { IsDeleted: false, HasExchangeRate: true }).ToList();
 
         // Transactions up to year end (for year-end positions)
         var transactionsUpToYearEnd = validTransactions
@@ -228,7 +228,7 @@ public class HistoricalPerformanceService(
         // Build a lookup of USD→TWD rates from non-Taiwan stock transactions (for converting Taiwan stock amounts to USD)
         // Key: transaction date, Value: exchange rate from that day's non-Taiwan stock transaction
         var dailyUsdToTwdRates = yearTransactions
-            .Where(t => !t.IsTaiwanStock && t.ExchangeRate.HasValue && t.ExchangeRate.Value > 0)
+            .Where(t => t is { IsTaiwanStock: false, ExchangeRate: > 0 })
             .GroupBy(t => t.TransactionDate.Date)
             .ToDictionary(g => g.Key, g => g.First().ExchangeRate!.Value);
 

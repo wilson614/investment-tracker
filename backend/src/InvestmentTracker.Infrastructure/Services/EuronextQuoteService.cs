@@ -40,7 +40,7 @@ public class EuronextQuoteService(
             if (!forceRefresh)
             {
                 var cached = await cacheRepository.GetByIsinAndMicAsync(isin, mic, cancellationToken);
-                if (cached != null && !cached.IsStale && !IsCacheExpired(cached))
+                if (cached is { IsStale: false } && !IsCacheExpired(cached))
                 {
                     logger.LogDebug("Using cached quote for {Isin}-{Mic}", isin, mic);
 

@@ -251,7 +251,7 @@ public class MarketDataController(
 
         // 對於已結束的年度，使用 12/31 作為年終價格查詢日期。
         // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫 Stooq。
-        if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
+        if (targetDate is { Month: 12, Day: 31 } && targetDate.Year < DateTime.UtcNow.Year)
         {
             var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
                 normalizedTicker,
@@ -308,8 +308,7 @@ public class MarketDataController(
         Dictionary<string, HistoricalPriceResponse> results = [];
 
         var isCompletedYearEndLookup =
-            targetDate.Month == 12 &&
-            targetDate.Day == 31 &&
+            targetDate is { Month: 12, Day: 31 } &&
             targetDate.Year < DateTime.UtcNow.Year;
 
         // Process tickers sequentially to avoid DbContext threading issues
@@ -393,7 +392,7 @@ public class MarketDataController(
 
         // 對於已結束的年度，使用 12/31 作為年終匯率查詢日期。
         // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫 Stooq。
-        if (targetDate.Month == 12 && targetDate.Day == 31 && targetDate.Year < DateTime.UtcNow.Year)
+        if (targetDate is { Month: 12, Day: 31 } && targetDate.Year < DateTime.UtcNow.Year)
         {
             var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
                 normalizedFrom,

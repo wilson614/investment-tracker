@@ -278,7 +278,7 @@ public class HistoricalYearEndDataService(
         // 台股通常是 4 位數（例如 2330、0050、2454）
         // 可能帶有 ".TW" 等後綴，這裡會先去除
         var baseTicker = ticker.Split('.')[0];
-        return baseTicker.Length >= 4 && baseTicker.Length <= 6 && baseTicker.All(char.IsDigit);
+        return baseTicker.Length is >= 4 and <= 6 && baseTicker.All(char.IsDigit);
     }
 
     /// <summary>

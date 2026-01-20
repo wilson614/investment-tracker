@@ -64,7 +64,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
         if (DirectPairs.Contains(inversePair))
         {
             var inverseResult = await FetchRateAsync(inversePair, to, from, cancellationToken);
-            if (inverseResult != null && inverseResult.Rate > 0)
+            if (inverseResult is { Rate: > 0 })
             {
                 return new ExchangeRateResponse
                 {
@@ -110,7 +110,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
             if (!DirectPairs.Contains(usdFromPair)) return null;
 
             var inverseResult = await FetchRateAsync(usdFromPair, "USD", from, cancellationToken);
-            if (inverseResult == null || inverseResult.Rate <= 0) return null;
+            if (inverseResult is not { Rate: > 0 }) return null;
             fromToUsd = 1m / inverseResult.Rate;
         }
 
@@ -198,8 +198,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
         }
 
         // 優先使用 current/latest（index 3），失敗則回退使用 bid（index 1）
-        decimal rate = 0;
-        if (!decimal.TryParse(fields[3], NumberStyles.Any, CultureInfo.InvariantCulture, out rate) || rate <= 0)
+        if (!decimal.TryParse(fields[3], NumberStyles.Any, CultureInfo.InvariantCulture, out var rate) || rate <= 0)
         {
             if (!decimal.TryParse(fields[1], NumberStyles.Any, CultureInfo.InvariantCulture, out rate) || rate <= 0)
             {

@@ -80,7 +80,7 @@ public class CurrencyLedgerService
     public decimal CalculateTotalSpentOnStocks(IEnumerable<CurrencyTransaction> transactions)
     {
         return transactions
-            .Where(t => !t.IsDeleted && t.TransactionType == CurrencyTransactionType.Spend)
+            .Where(t => t is { IsDeleted: false, TransactionType: CurrencyTransactionType.Spend })
             .Sum(t => t.ForeignAmount);
     }
 
@@ -90,7 +90,7 @@ public class CurrencyLedgerService
     public decimal CalculateTotalInterest(IEnumerable<CurrencyTransaction> transactions)
     {
         return transactions
-            .Where(t => !t.IsDeleted && t.TransactionType == CurrencyTransactionType.Interest)
+            .Where(t => t is { IsDeleted: false, TransactionType: CurrencyTransactionType.Interest })
             .Sum(t => t.ForeignAmount);
     }
 

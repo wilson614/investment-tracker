@@ -37,7 +37,7 @@ public class CreateStockTransactionUseCase(
         Domain.Entities.CurrencyLedger? currencyLedger = null;
         decimal? requiredAmount = null;
 
-        if (request.FundSource == FundSource.CurrencyLedger && request.CurrencyLedgerId.HasValue)
+        if (request is { FundSource: FundSource.CurrencyLedger, CurrencyLedgerId: not null })
         {
             currencyLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
                 request.CurrencyLedgerId.Value, cancellationToken)
@@ -64,7 +64,7 @@ public class CreateStockTransactionUseCase(
 
             // 若未提供匯率，則以近期換匯交易推算（LIFO）
             // 僅考慮實際換匯交易，不包含利息/紅利
-            if (!exchangeRate.HasValue || exchangeRate.Value <= 0)
+            if (exchangeRate is not > 0)
             {
                 var calculatedRate = currencyLedgerService.CalculateExchangeRateForPurchase(
                     currencyTransactions, request.TransactionDate, requiredAmount.Value);
@@ -78,7 +78,7 @@ public class CreateStockTransactionUseCase(
                 exchangeRate = calculatedRate;
             }
         }
-        else if (exchangeRate.HasValue && exchangeRate.Value <= 0)
+        else if (exchangeRate is <= 0)
         {
             throw new InvalidOperationException("Exchange rate must be greater than zero");
         }

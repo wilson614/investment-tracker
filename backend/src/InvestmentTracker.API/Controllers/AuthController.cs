@@ -92,7 +92,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
             .Include(rt => rt.User)
             .FirstOrDefaultAsync(rt => rt.Token == tokenHash);
 
-        if (storedToken == null || !storedToken.IsActive || !storedToken.User.IsActive)
+        if (storedToken is not { IsActive: true } || !storedToken.User.IsActive)
         {
             return Unauthorized(new { message = "Invalid or expired refresh token" });
         }

@@ -29,11 +29,7 @@ public class TwseStockPriceProvider(
         var normalizedSymbol = symbol.Trim();
 
         // Try TSE (上市) first, then OTC (上櫃)
-        var quote = await TryFetchQuoteAsync(normalizedSymbol, "tse", cancellationToken);
-        if (quote == null)
-        {
-            quote = await TryFetchQuoteAsync(normalizedSymbol, "otc", cancellationToken);
-        }
+        var quote = await TryFetchQuoteAsync(normalizedSymbol, "tse", cancellationToken) ?? await TryFetchQuoteAsync(normalizedSymbol, "otc", cancellationToken);
 
         return quote;
     }

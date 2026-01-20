@@ -73,7 +73,7 @@ public class StockSplit : BaseEntity
 
     public void SetDescription(string? description)
     {
-        if (description != null && description.Length > 100)
+        if (description is { Length: > 100 })
             throw new ArgumentException("Description cannot exceed 100 characters", nameof(description));
 
         Description = description?.Trim();

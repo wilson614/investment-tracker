@@ -82,7 +82,7 @@ public class CalculateXirrUseCase(
         }
 
         // 將目前投資組合市值作為最後一筆現金流
-        if (request.CurrentPrices != null && request.CurrentPrices.Count > 0)
+        if (request.CurrentPrices is { Count: > 0 })
         {
             logger.LogDebug("XIRR: Received {Count} current prices", request.CurrentPrices.Count);
 

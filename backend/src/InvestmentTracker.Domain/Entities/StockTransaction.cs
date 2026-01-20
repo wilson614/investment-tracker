@@ -129,7 +129,7 @@ public class StockTransaction : BaseEntity
 
     public void SetExchangeRate(decimal? rate)
     {
-        if (rate.HasValue && rate.Value <= 0)
+        if (rate is <= 0)
             throw new ArgumentException("Exchange rate must be positive", nameof(rate));
 
         ExchangeRate = rate.HasValue ? Math.Round(rate.Value, 6) : null;

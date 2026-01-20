@@ -197,7 +197,7 @@ public class MarketYtdService(
         {
             try
             {
-                decimal? yearEndPrice = null;
+                decimal? yearEndPrice;
 
                 if (marketKey == "Taiwan 0050")
                 {
