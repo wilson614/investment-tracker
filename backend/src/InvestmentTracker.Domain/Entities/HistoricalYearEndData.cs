@@ -49,7 +49,7 @@ public class HistoricalYearEndData
     {
         if (string.IsNullOrWhiteSpace(ticker))
             throw new ArgumentException("Ticker is required", nameof(ticker));
-        if (year < 2000 || year > 2100)
+        if (year is < 2000 or > 2100)
             throw new ArgumentException("Year must be between 2000 and 2100", nameof(year));
         if (value <= 0)
             throw new ArgumentException("Value must be positive", nameof(value));

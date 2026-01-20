@@ -16,7 +16,7 @@ public class CurrencyLedger : BaseEntity
     // 導覽屬性
     public User User { get; private set; } = null!;
 
-    private readonly List<CurrencyTransaction> _transactions = new();
+    private readonly List<CurrencyTransaction> _transactions = [];
     public IReadOnlyCollection<CurrencyTransaction> Transactions => _transactions.AsReadOnly();
 
     // EF Core 必要的無參數建構子
@@ -65,8 +65,7 @@ public class CurrencyLedger : BaseEntity
 
     public void AddTransaction(CurrencyTransaction transaction)
     {
-        if (transaction == null)
-            throw new ArgumentNullException(nameof(transaction));
+        ArgumentNullException.ThrowIfNull(transaction);
 
         _transactions.Add(transaction);
     }

@@ -31,7 +31,7 @@ public class IndexPriceService(
         "China",                    // HCHA - HSBC MSCI China
         "Developed Markets Large",  // VHVE - Vanguard FTSE Developed World
         "Developed Markets Small",  // WSML - iShares MSCI World Small Cap
-        "Dev ex US Large",          // EXUS - Vanguard FTSE Developed ex US
+        "Dev ex US Large" // EXUS - Vanguard FTSE Developed ex US
     ];
 
     public async Task<IndexPriceData?> GetIndexPricesAsync(

@@ -21,10 +21,6 @@ public class CalculateXirrUseCaseTests
     private readonly Mock<IStockTransactionRepository> _transactionRepoMock;
     private readonly Mock<IStockSplitRepository> _stockSplitRepoMock;
     private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock;
-    private readonly Mock<ICurrentUserService> _currentUserServiceMock;
-    private readonly Mock<ILogger<CalculateXirrUseCase>> _loggerMock;
-    private readonly PortfolioCalculator _portfolioCalculator;
-    private readonly StockSplitAdjustmentService _splitAdjustmentService;
     private readonly CalculateXirrUseCase _useCase;
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -36,22 +32,22 @@ public class CalculateXirrUseCaseTests
         _transactionRepoMock = new Mock<IStockTransactionRepository>();
         _stockSplitRepoMock = new Mock<IStockSplitRepository>();
         _txDateFxServiceMock = new Mock<ITransactionDateExchangeRateService>();
-        _currentUserServiceMock = new Mock<ICurrentUserService>();
-        _loggerMock = new Mock<ILogger<CalculateXirrUseCase>>();
-        _portfolioCalculator = new PortfolioCalculator();
-        _splitAdjustmentService = new StockSplitAdjustmentService();
+        var currentUserServiceMock = new Mock<ICurrentUserService>();
+        var loggerMock = new Mock<ILogger<CalculateXirrUseCase>>();
+        var portfolioCalculator = new PortfolioCalculator();
+        var splitAdjustmentService = new StockSplitAdjustmentService();
 
-        _currentUserServiceMock.Setup(x => x.UserId).Returns(_userId);
+        currentUserServiceMock.Setup(x => x.UserId).Returns(_userId);
 
         _useCase = new CalculateXirrUseCase(
             _portfolioRepoMock.Object,
             _transactionRepoMock.Object,
             _stockSplitRepoMock.Object,
-            _portfolioCalculator,
-            _splitAdjustmentService,
+            portfolioCalculator,
+            splitAdjustmentService,
             _txDateFxServiceMock.Object,
-            _currentUserServiceMock.Object,
-            _loggerMock.Object);
+            currentUserServiceMock.Object,
+            loggerMock.Object);
     }
 
     [Fact]

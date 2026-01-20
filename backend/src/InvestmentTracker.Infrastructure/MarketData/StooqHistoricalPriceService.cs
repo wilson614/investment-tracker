@@ -23,7 +23,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         ["Emerging Markets"] = "vfem.uk",          // Vanguard FTSE Emerging Markets UCITS ETF (Acc)
         ["Europe"] = "veua.uk",                    // Vanguard FTSE Developed Europe UCITS ETF (Acc)
         ["Japan"] = "vjpa.uk",                     // Vanguard FTSE Japan UCITS ETF (Acc)
-        ["China"] = "hcha.uk",                     // HSBC MSCI China A UCITS ETF (Acc)
+        ["China"] = "hcha.uk" // HSBC MSCI China A UCITS ETF (Acc)
     };
 
     public static IReadOnlyCollection<string> SupportedMarkets => StooqSymbols.Keys;
@@ -166,7 +166,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         if (upperTicker.Contains('.'))
         {
             var suffix = "." + upperTicker.Split('.')[^1].ToLowerInvariant();
-            return new[] { suffix };
+            return [suffix];
         }
 
         // 英國掛牌 ETF（常見代號）
@@ -174,17 +174,17 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             "VEVE" or "VJPA" or "VEUA" or "WSML" or "XRSU" or "EXUS" or "HCHA" or
             "SWDA" or "IWDA" or "EIMI" or "EMIM" or "CSPX")
         {
-            return new[] { StooqMarkets.UK };
+            return [StooqMarkets.UK];
         }
 
         // Euronext（阿姆斯特丹、巴黎）常見代號
         if (upperTicker.StartsWith("VWCE") || upperTicker.StartsWith("V3AA"))
         {
-            return new[] { StooqMarkets.DE, StooqMarkets.NL };
+            return [StooqMarkets.DE, StooqMarkets.NL];
         }
 
         // 預設：先嘗試美股，再嘗試英股
-        return new[] { StooqMarkets.US, StooqMarkets.UK };
+        return [StooqMarkets.US, StooqMarkets.UK];
     }
 
     /// <summary>
@@ -328,7 +328,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             // HSBC China
             "HCHA",
             // iShares World Small Cap
-            "WSML",
+            "WSML"
         };
 
         if (usdDenominatedEtfs.Contains(baseTicker))

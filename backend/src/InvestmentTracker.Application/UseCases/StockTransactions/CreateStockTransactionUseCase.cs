@@ -51,7 +51,7 @@ public class CreateStockTransactionUseCase(
                 currencyLedger.Id, cancellationToken);
 
             // 計算所需外幣金額（以原始幣別計算的總成本）
-            requiredAmount = (request.Shares * request.PricePerShare) + request.Fees;
+            requiredAmount = request.Shares * request.PricePerShare + request.Fees;
 
             // 在建立任何交易前先確認餘額足夠
             if (!currencyLedgerService.ValidateSpend(currencyTransactions, requiredAmount.Value))

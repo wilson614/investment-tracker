@@ -536,7 +536,7 @@ public class MarketDataController(
                     }
                 }
 
-                var returnPercent = ((endPrice - startPrice) / startPrice) * 100;
+                var returnPercent = (endPrice - startPrice) / startPrice * 100;
                 returns[marketKey] = Math.Round(returnPercent, 2);
             }
             else

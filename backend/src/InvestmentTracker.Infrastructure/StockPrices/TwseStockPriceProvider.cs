@@ -94,7 +94,7 @@ public class TwseStockPriceProvider(
             // z 可能為 "-"（尚未成交）；此時回退使用昨收價
             if (string.IsNullOrEmpty(priceStr) || priceStr == "-")
             {
-                if (yesterdayClose is null || yesterdayClose <= 0)
+                if (yesterdayClose is null or <= 0)
                 {
                     logger.LogDebug("No trade price available for {Symbol}", symbol);
                     return null;
@@ -115,13 +115,22 @@ public class TwseStockPriceProvider(
             decimal? change = null;
             string? changePercent = null;
 
-            if (yesterdayClose is not null && yesterdayClose > 0)
-            {
-                change = price - yesterdayClose;
-                var pctValue = (change.Value / yesterdayClose.Value) * 100;
-                var sign = pctValue >= 0 ? "+" : "";
-                changePercent = $"{sign}{pctValue:F2}%";
-            }
+            if (yesterdayClose is null || !(yesterdayClose > 0))
+                return new StockQuoteResponse
+                {
+                    Symbol = symbol.ToUpperInvariant(),
+                    Name = name ?? symbol,
+                    Price = price,
+                    Change = change,
+                    ChangePercent = changePercent,
+                    Market = StockMarket.TW,
+                    Source = exchange == "tse" ? "TWSE" : "TPEx",
+                    FetchedAt = DateTime.UtcNow
+                };
+            change = price - yesterdayClose;
+            var pctValue = change.Value / yesterdayClose.Value * 100;
+            var sign = pctValue >= 0 ? "+" : "";
+            changePercent = $"{sign}{pctValue:F2}%";
 
             return new StockQuoteResponse
             {

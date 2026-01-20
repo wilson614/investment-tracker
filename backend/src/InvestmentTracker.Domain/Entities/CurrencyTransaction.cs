@@ -69,9 +69,9 @@ public class CurrencyTransaction : BaseEntity
         {
             case CurrencyTransactionType.ExchangeBuy:
             case CurrencyTransactionType.ExchangeSell:
-                if (!homeAmount.HasValue || homeAmount <= 0)
+                if (homeAmount is null or <= 0)
                     throw new ArgumentException("Home amount is required for exchange transactions", nameof(homeAmount));
-                if (!exchangeRate.HasValue || exchangeRate <= 0)
+                if (exchangeRate is null or <= 0)
                     throw new ArgumentException("Exchange rate is required for exchange transactions", nameof(exchangeRate));
                 break;
 

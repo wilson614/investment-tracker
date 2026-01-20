@@ -102,7 +102,7 @@ public class PortfolioCalculator
         var currentValueHome = position.TotalShares * currentPriceSource * currentExchangeRate;
         var unrealizedPnlHome = currentValueHome - position.TotalCostHome;
         var percentage = position.TotalCostHome > 0
-            ? (unrealizedPnlHome / position.TotalCostHome) * 100
+            ? unrealizedPnlHome / position.TotalCostHome * 100
             : 0m;
 
         return new UnrealizedPnl(currentValueHome, unrealizedPnlHome, percentage);

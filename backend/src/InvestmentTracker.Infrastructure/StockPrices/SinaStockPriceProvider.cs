@@ -131,7 +131,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
             {
                 // 依昨收計算漲跌
                 change = price - yesterdayClose;
-                var pctValue = (change.Value / yesterdayClose) * 100;
+                var pctValue = change.Value / yesterdayClose * 100;
                 var sign = pctValue >= 0 ? "+" : "";
                 changePercent = $"{sign}{pctValue:F2}%";
             }

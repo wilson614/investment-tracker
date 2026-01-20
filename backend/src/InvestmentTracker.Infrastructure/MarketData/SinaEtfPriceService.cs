@@ -25,7 +25,7 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
         ["Developed Markets Large"] = "lse_vhve",  // Vanguard FTSE Developed World UCITS ETF (Acc)
         ["Developed Markets Small"] = "lse_wsml",  // iShares MSCI World Small Cap UCITS ETF (Acc)
         ["Dev ex US Large"] = "lse_exus",         // Vanguard FTSE Developed ex US UCITS ETF (Acc)
-        ["China"] = "lse_hcha",                   // HSBC MSCI China UCITS ETF (Acc)
+        ["China"] = "lse_hcha" // HSBC MSCI China UCITS ETF (Acc)
     };
 
     static SinaEtfPriceService()

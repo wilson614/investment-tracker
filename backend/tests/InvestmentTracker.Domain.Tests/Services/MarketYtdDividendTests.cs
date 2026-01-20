@@ -114,7 +114,7 @@ public class MarketYtdDividendTests
     /// </summary>
     private static decimal CalculatePriceReturn(decimal yearEndPrice, decimal currentPrice)
     {
-        return ((currentPrice - yearEndPrice) / yearEndPrice) * 100;
+        return (currentPrice - yearEndPrice) / yearEndPrice * 100;
     }
 
     /// <summary>
@@ -123,6 +123,6 @@ public class MarketYtdDividendTests
     /// </summary>
     private static decimal CalculateTotalReturn(decimal yearEndPrice, decimal currentPrice, decimal dividendsPaid)
     {
-        return ((currentPrice + dividendsPaid - yearEndPrice) / yearEndPrice) * 100;
+        return (currentPrice + dividendsPaid - yearEndPrice) / yearEndPrice * 100;
     }
 }

@@ -25,7 +25,7 @@ public class StockPriceService(
     {
         [StockMarket.TW] = "TWD",
         [StockMarket.US] = "USD",
-        [StockMarket.UK] = "USD",
+        [StockMarket.UK] = "USD"
     };
 
     public async Task<StockQuoteResponse?> GetQuoteAsync(StockMarket market, string symbol, CancellationToken cancellationToken = default)

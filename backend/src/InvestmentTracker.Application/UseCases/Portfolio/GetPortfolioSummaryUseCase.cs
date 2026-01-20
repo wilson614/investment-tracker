@@ -61,7 +61,7 @@ public class GetPortfolioSummaryUseCase(
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
                 t.HasExchangeRate &&
-                (t.TransactionType == TransactionType.Buy || t.TransactionType == TransactionType.Adjustment));
+                t.TransactionType is TransactionType.Buy or TransactionType.Adjustment);
 
             StockPositionDto dto;
 
@@ -104,7 +104,7 @@ public class GetPortfolioSummaryUseCase(
                     var currentValueSource = position.TotalShares * priceInfo.Price;
                     var unrealizedPnlSource = currentValueSource - position.TotalCostSource;
                     var unrealizedPnlPercentage = position.TotalCostSource > 0
-                        ? (unrealizedPnlSource / position.TotalCostSource) * 100
+                        ? unrealizedPnlSource / position.TotalCostSource * 100
                         : null as decimal?;
 
                     dto = dto with
@@ -189,7 +189,7 @@ public class GetPortfolioSummaryUseCase(
             TotalValueHome = totalValueHome,
             TotalUnrealizedPnlHome = totalUnrealizedPnl,
             TotalUnrealizedPnlPercentage = totalCostHome > 0 && totalUnrealizedPnl.HasValue
-                ? (totalUnrealizedPnl.Value / totalCostHome) * 100
+                ? totalUnrealizedPnl.Value / totalCostHome * 100
                 : null
         };
     }

@@ -43,7 +43,7 @@ public class MarketYtdService(
         ["Europe"] = ("VEUA", "Vanguard FTSE Developed Europe", StockMarket.UK),
         ["Japan"] = ("VJPA", "Vanguard FTSE Japan", StockMarket.UK),
         ["China"] = ("HCHA", "HSBC MSCI China UCITS", StockMarket.UK),
-        ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW),
+        ["Taiwan 0050"] = ("0050", "元大台灣50", StockMarket.TW)
     };
 
     public static IReadOnlyDictionary<string, (string Symbol, string Name, StockMarket Market)> SupportedBenchmarks => Benchmarks;
@@ -147,10 +147,10 @@ public class MarketYtdService(
             if (hasYearEndPrice && yearEndPrice > 0)
             {
                 // Price return = ((Current - YearEnd) / YearEnd) * 100
-                ytdPriceReturn = ((quote.Price - yearEndPrice) / yearEndPrice) * 100;
+                ytdPriceReturn = (quote.Price - yearEndPrice) / yearEndPrice * 100;
 
                 // Total return = ((Current + Dividends - YearEnd) / YearEnd) * 100
-                ytdTotalReturn = ((quote.Price + dividendsPaid - yearEndPrice) / yearEndPrice) * 100;
+                ytdTotalReturn = (quote.Price + dividendsPaid - yearEndPrice) / yearEndPrice * 100;
             }
 
             return new MarketYtdReturnDto

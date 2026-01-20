@@ -24,7 +24,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
     private static readonly HashSet<string> DirectPairs =
     [
         "usdtwd", "usdcny", "usdjpy", "usdchf", "usdcad", "usdhkd", "usdsgd",
-        "gbpusd", "eurusd", "audusd", "nzdusd",
+        "gbpusd", "eurusd", "audusd", "nzdusd"
     ];
 
     static SinaExchangeRateProvider()

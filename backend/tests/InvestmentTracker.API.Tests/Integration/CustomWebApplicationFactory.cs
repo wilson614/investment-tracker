@@ -43,7 +43,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             var databaseName = $"InvestmentTrackerTest_{Guid.NewGuid()}";
 
             // Add in-memory database for testing
-            services.AddDbContext<AppDbContext>((sp, options) =>
+            services.AddDbContext<AppDbContext>((_, options) =>
             {
                 options.UseInMemoryDatabase(databaseName);
             });

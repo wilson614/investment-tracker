@@ -34,8 +34,7 @@ public class CurrencyLedgerService
 
         foreach (var tx in transactions.Where(t => !t.IsDeleted))
         {
-            if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
-                tx.TransactionType == CurrencyTransactionType.InitialBalance)
+            if (tx.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance)
             {
                 totalHomeCost += tx.HomeAmount ?? 0m;
                 totalForeignAmount += tx.ForeignAmount;
@@ -60,8 +59,7 @@ public class CurrencyLedgerService
 
         foreach (var tx in transactions.Where(t => !t.IsDeleted))
         {
-            if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
-                tx.TransactionType == CurrencyTransactionType.InitialBalance)
+            if (tx.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance)
             {
                 buyTotal += tx.HomeAmount ?? 0m;
             }
@@ -278,10 +276,7 @@ public class CurrencyLedgerService
         var incomeTransactions = currencyTransactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
-                       (t.TransactionType == CurrencyTransactionType.ExchangeBuy ||
-                        t.TransactionType == CurrencyTransactionType.InitialBalance ||
-                        t.TransactionType == CurrencyTransactionType.Interest ||
-                        t.TransactionType == CurrencyTransactionType.OtherIncome))
+                       t.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance or CurrencyTransactionType.Interest or CurrencyTransactionType.OtherIncome)
             .OrderByDescending(t => t.TransactionDate)
             .ThenByDescending(t => t.CreatedAt)
             .ToList();
@@ -290,13 +285,10 @@ public class CurrencyLedgerService
         var expenseTransactions = currencyTransactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
-                       (t.TransactionType == CurrencyTransactionType.ExchangeSell ||
-                        t.TransactionType == CurrencyTransactionType.Spend ||
-                        t.TransactionType == CurrencyTransactionType.OtherExpense))
+                       t.TransactionType is CurrencyTransactionType.ExchangeSell or CurrencyTransactionType.Spend or CurrencyTransactionType.OtherExpense)
             // 排除買入日當天的 Spend（因為這筆就是正在計算的買股）
             .Where(t => !(t.TransactionDate.Date == purchaseDate.Date &&
-                         (t.TransactionType == CurrencyTransactionType.Spend ||
-                          t.TransactionType == CurrencyTransactionType.OtherExpense)))
+                         t.TransactionType is CurrencyTransactionType.Spend or CurrencyTransactionType.OtherExpense))
             .ToList();
 
         // 計算需從收入中扣除的支出總額（LIFO）
@@ -342,8 +334,7 @@ public class CurrencyLedgerService
             remaining -= take;
 
             // 只有 ExchangeBuy/InitialBalance 會納入匯率計算
-            if (tx.TransactionType == CurrencyTransactionType.ExchangeBuy ||
-                tx.TransactionType == CurrencyTransactionType.InitialBalance)
+            if (tx.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance)
             {
                 var ratio = take / tx.ForeignAmount;
                 totalExchangeCost += (tx.HomeAmount ?? 0m) * ratio;

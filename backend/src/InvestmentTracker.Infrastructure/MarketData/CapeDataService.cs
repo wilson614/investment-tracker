@@ -152,7 +152,7 @@ public class CapeDataService(
         }
 
         // 資料為上月：每天最多檢查一次
-        return (now - lastFetchedAt) > TimeSpan.FromDays(1);
+        return now - lastFetchedAt > TimeSpan.FromDays(1);
     }
 
     public async Task<CapeDataResponse?> RefreshCapeDataAsync(CancellationToken cancellationToken = default)

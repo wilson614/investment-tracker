@@ -13,13 +13,13 @@ public class User : BaseEntity
     public bool IsActive { get; private set; } = true;
 
     // 導覽屬性
-    private readonly List<Portfolio> _portfolios = new();
+    private readonly List<Portfolio> _portfolios = [];
     public IReadOnlyCollection<Portfolio> Portfolios => _portfolios.AsReadOnly();
 
-    private readonly List<CurrencyLedger> _currencyLedgers = new();
+    private readonly List<CurrencyLedger> _currencyLedgers = [];
     public IReadOnlyCollection<CurrencyLedger> CurrencyLedgers => _currencyLedgers.AsReadOnly();
 
-    private readonly List<RefreshToken> _refreshTokens = new();
+    private readonly List<RefreshToken> _refreshTokens = [];
     public IReadOnlyCollection<RefreshToken> RefreshTokens => _refreshTokens.AsReadOnly();
 
     // EF Core 必要的無參數建構子
@@ -69,24 +69,21 @@ public class User : BaseEntity
 
     public void AddPortfolio(Portfolio portfolio)
     {
-        if (portfolio == null)
-            throw new ArgumentNullException(nameof(portfolio));
+        ArgumentNullException.ThrowIfNull(portfolio);
 
         _portfolios.Add(portfolio);
     }
 
     public void AddCurrencyLedger(CurrencyLedger ledger)
     {
-        if (ledger == null)
-            throw new ArgumentNullException(nameof(ledger));
+        ArgumentNullException.ThrowIfNull(ledger);
 
         _currencyLedgers.Add(ledger);
     }
 
     public void AddRefreshToken(RefreshToken token)
     {
-        if (token == null)
-            throw new ArgumentNullException(nameof(token));
+        ArgumentNullException.ThrowIfNull(token);
 
         _refreshTokens.Add(token);
     }

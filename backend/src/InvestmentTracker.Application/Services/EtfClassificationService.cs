@@ -10,7 +10,7 @@ public enum EtfType
 {
     Unknown = 0,
     Accumulating = 1,
-    Distributing = 2,
+    Distributing = 2
 }
 
 /// <summary>
@@ -39,13 +39,13 @@ public class EtfClassificationService(ILogger<EtfClassificationService> logger)
         // Xtrackers
         "XRSU", "EXUS",
         // Euronext USD ETFs
-        "AGAC",
+        "AGAC"
     };
 
     // 已知的台股/台灣 ETF（需要股息調整）
     private static readonly HashSet<string> KnownTaiwanDistributing = new(StringComparer.OrdinalIgnoreCase)
     {
-        "0050", "0056", "006208", "00878", "00919",
+        "0050", "0056", "006208", "00878", "00919"
     };
 
     /// <summary>

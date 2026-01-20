@@ -272,7 +272,7 @@ public class HistoricalPerformanceService(
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                var proceeds = (tx.Shares * tx.PricePerShare) - tx.Fees;
+                var proceeds = tx.Shares * tx.PricePerShare - tx.Fees;
                 decimal proceedsInSource;
                 if (tx.IsTaiwanStock)
                 {
@@ -330,7 +330,7 @@ public class HistoricalPerformanceService(
                                          .Where(t => t.TransactionType == TransactionType.Sell)
                                          .Sum(t =>
                                          {
-                                             var proceeds = (t.Shares * t.PricePerShare) - t.Fees;
+                                             var proceeds = t.Shares * t.PricePerShare - t.Fees;
                                              return t.IsTaiwanStock ? proceeds / GetUsdToTwdRateForDate(t.TransactionDate) : proceeds;
                                          });
 
@@ -385,7 +385,7 @@ public class HistoricalPerformanceService(
             }
             else if (tx.TransactionType == TransactionType.Sell)
             {
-                var proceeds = (tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value) - (tx.Fees * tx.ExchangeRate!.Value);
+                var proceeds = tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value - tx.Fees * tx.ExchangeRate!.Value;
                 cashFlowsHome.Add(new CashFlow(proceeds, tx.TransactionDate));
             }
         }
@@ -411,7 +411,7 @@ public class HistoricalPerformanceService(
                                        .Sum(t => t.TotalCostHome ?? 0)
                                    - yearTransactions
                                        .Where(t => t.TransactionType == TransactionType.Sell)
-                                       .Sum(t => (t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1)) - (t.Fees * (t.ExchangeRate ?? 1)));
+                                       .Sum(t => t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1) - t.Fees * (t.ExchangeRate ?? 1));
 
         // Calculate home currency XIRR
         double? xirrHome = null;

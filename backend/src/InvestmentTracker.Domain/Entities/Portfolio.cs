@@ -27,7 +27,7 @@ public class Portfolio : BaseEntity
     // 導覽屬性
     public User User { get; private set; } = null!;
 
-    private readonly List<StockTransaction> _transactions = new();
+    private readonly List<StockTransaction> _transactions = [];
     public IReadOnlyCollection<StockTransaction> Transactions => _transactions.AsReadOnly();
 
     // EF Core 必要的無參數建構子
@@ -77,8 +77,7 @@ public class Portfolio : BaseEntity
 
     public void AddTransaction(StockTransaction transaction)
     {
-        if (transaction == null)
-            throw new ArgumentNullException(nameof(transaction));
+        ArgumentNullException.ThrowIfNull(transaction);
 
         _transactions.Add(transaction);
     }
