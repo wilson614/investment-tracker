@@ -263,7 +263,7 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<AppDbContext>();
 
         var pendingMigrations = context.Database.GetPendingMigrations().ToList();
-        if (pendingMigrations.Any())
+        if (pendingMigrations.Count != 0)
         {
             Console.WriteLine($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
             Console.WriteLine("Applying database migrations...");

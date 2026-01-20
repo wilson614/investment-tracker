@@ -9,14 +9,8 @@ namespace InvestmentTracker.Domain.Tests.Services;
 /// </summary>
 public class PortfolioCalculatorTests
 {
-    private readonly PortfolioCalculator _calculator;
-    private readonly Guid _portfolioId;
-
-    public PortfolioCalculatorTests()
-    {
-        _calculator = new PortfolioCalculator();
-        _portfolioId = Guid.NewGuid();
-    }
+    private readonly PortfolioCalculator _calculator = new();
+    private readonly Guid _portfolioId = Guid.NewGuid();
 
     #region CalculatePosition Tests
 
@@ -154,8 +148,8 @@ public class PortfolioCalculatorTests
             CreateBuyTransaction("VWRA", 10m, 100m, 31.5m, 0m)
         };
         var position = _calculator.CalculatePosition("VWRA", transactions);
-        decimal currentPrice = 120m;
-        decimal currentExchangeRate = 32m;
+        var currentPrice = 120m;
+        var currentExchangeRate = 32m;
 
         // Act
         var pnl = _calculator.CalculateUnrealizedPnl(position, currentPrice, currentExchangeRate);
@@ -177,8 +171,8 @@ public class PortfolioCalculatorTests
             CreateBuyTransaction("VWRA", 10m, 100m, 31.5m, 0m)
         };
         var position = _calculator.CalculatePosition("VWRA", transactions);
-        decimal currentPrice = 80m;
-        decimal currentExchangeRate = 30m;
+        var currentPrice = 80m;
+        var currentExchangeRate = 30m;
 
         // Act
         var pnl = _calculator.CalculateUnrealizedPnl(position, currentPrice, currentExchangeRate);

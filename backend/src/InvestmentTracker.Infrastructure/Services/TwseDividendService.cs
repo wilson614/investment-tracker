@@ -47,7 +47,6 @@ public class TwseDividendService(
             await rateLimiter.WaitForSlotAsync(cancellationToken);
 
             // TWSE 使用民國年：西元年需減 1911
-            var rocYear = year - 1911;
             var startDate = $"{year}0101";
             var endDate = $"{year}1231";
 

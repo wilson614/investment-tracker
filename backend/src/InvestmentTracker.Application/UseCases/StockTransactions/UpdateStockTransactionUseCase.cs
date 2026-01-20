@@ -10,44 +10,30 @@ namespace InvestmentTracker.Application.UseCases.StockTransactions;
 /// <summary>
 /// 更新股票交易的 Use Case。
 /// </summary>
-public class UpdateStockTransactionUseCase
+public class UpdateStockTransactionUseCase(
+    IStockTransactionRepository transactionRepository,
+    IPortfolioRepository portfolioRepository,
+    ICurrentUserService currentUserService,
+    PortfolioCalculator portfolioCalculator)
 {
-    private readonly IStockTransactionRepository _transactionRepository;
-    private readonly IPortfolioRepository _portfolioRepository;
-    private readonly ICurrentUserService _currentUserService;
-    private readonly PortfolioCalculator _portfolioCalculator;
-
-    public UpdateStockTransactionUseCase(
-        IStockTransactionRepository transactionRepository,
-        IPortfolioRepository portfolioRepository,
-        ICurrentUserService currentUserService,
-        PortfolioCalculator portfolioCalculator)
-    {
-        _transactionRepository = transactionRepository;
-        _portfolioRepository = portfolioRepository;
-        _currentUserService = currentUserService;
-        _portfolioCalculator = portfolioCalculator;
-    }
-
     public async Task<StockTransactionDto> ExecuteAsync(
         Guid transactionId,
         UpdateStockTransactionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var transaction = await _transactionRepository.GetByIdAsync(transactionId, cancellationToken)
+        var transaction = await transactionRepository.GetByIdAsync(transactionId, cancellationToken)
             ?? throw new InvalidOperationException($"Transaction {transactionId} not found");
 
         // 透過投資組合確認存取權限
-        var portfolio = await _portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
+        var portfolio = await portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {transaction.PortfolioId} not found");
 
-        if (portfolio.UserId != _currentUserService.UserId)
+        if (portfolio.UserId != currentUserService.UserId)
         {
             throw new UnauthorizedAccessException("You do not have access to this transaction");
         }
 
         // 保留原始值供後續計算使用
-        var originalTicker = transaction.Ticker;
         var originalType = transaction.TransactionType;
 
         // 更新交易屬性（包含 ticker 與交易類型）
@@ -65,7 +51,7 @@ public class UpdateStockTransactionUseCase
         if (transaction.TransactionType == TransactionType.Sell)
         {
             // 取得此投資組合的所有交易
-            var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(
+            var allTransactions = await transactionRepository.GetByPortfolioIdAsync(
                 transaction.PortfolioId, cancellationToken);
 
             // 只使用較早的交易，計算此賣出交易發生前的持倉
@@ -75,7 +61,7 @@ public class UpdateStockTransactionUseCase
                            (t.TransactionDate == transaction.TransactionDate && t.CreatedAt < transaction.CreatedAt))
                 .ToList();
 
-            var positionBeforeSell = _portfolioCalculator.CalculatePosition(
+            var positionBeforeSell = portfolioCalculator.CalculatePosition(
                 transaction.Ticker, transactionsBeforeSell);
 
             // 確認持股足夠
@@ -96,7 +82,7 @@ public class UpdateStockTransactionUseCase
                 request.ExchangeRate ?? 1.0m,
                 request.Fees);
 
-            var realizedPnl = _portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
+            var realizedPnl = portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
             transaction.SetRealizedPnl(realizedPnl);
         }
         else if (originalType == TransactionType.Sell)
@@ -105,7 +91,7 @@ public class UpdateStockTransactionUseCase
             transaction.SetRealizedPnl(null);
         }
 
-        await _transactionRepository.UpdateAsync(transaction, cancellationToken);
+        await transactionRepository.UpdateAsync(transaction, cancellationToken);
 
         return new StockTransactionDto
         {

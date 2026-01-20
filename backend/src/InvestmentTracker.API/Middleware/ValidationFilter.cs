@@ -2,15 +2,9 @@ using FluentValidation;
 
 namespace InvestmentTracker.API.Middleware;
 
-public class ValidationFilter<T> : IEndpointFilter where T : class
+public class ValidationFilter<T>(IValidator<T> validator) : IEndpointFilter
+    where T : class
 {
-    private readonly IValidator<T> _validator;
-
-    public ValidationFilter(IValidator<T> validator)
-    {
-        _validator = validator;
-    }
-
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var argument = context.Arguments.OfType<T>().FirstOrDefault();
@@ -20,7 +14,7 @@ public class ValidationFilter<T> : IEndpointFilter where T : class
             return await next(context);
         }
 
-        var validationResult = await _validator.ValidateAsync(argument);
+        var validationResult = await validator.ValidateAsync(argument);
 
         if (!validationResult.IsValid)
         {

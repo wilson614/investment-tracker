@@ -6,26 +6,19 @@ namespace InvestmentTracker.Application.UseCases.StockSplits;
 /// <summary>
 /// 更新拆股（Stock Split）資料的 Use Case。
 /// </summary>
-public class UpdateStockSplitUseCase
+public class UpdateStockSplitUseCase(IStockSplitRepository repository)
 {
-    private readonly IStockSplitRepository _repository;
-
-    public UpdateStockSplitUseCase(IStockSplitRepository repository)
-    {
-        _repository = repository;
-    }
-
     public async Task<StockSplitDto> ExecuteAsync(
         Guid id,
         UpdateStockSplitRequest request,
         CancellationToken cancellationToken = default)
     {
-        var split = await _repository.GetByIdAsync(id, cancellationToken)
+        var split = await repository.GetByIdAsync(id, cancellationToken)
             ?? throw new InvalidOperationException($"Stock split {id} not found");
 
         split.Update(request.SplitDate, request.SplitRatio, request.Description);
 
-        await _repository.UpdateAsync(split, cancellationToken);
+        await repository.UpdateAsync(split, cancellationToken);
 
         return new StockSplitDto
         {

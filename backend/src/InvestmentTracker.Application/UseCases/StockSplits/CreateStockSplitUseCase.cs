@@ -7,21 +7,14 @@ namespace InvestmentTracker.Application.UseCases.StockSplits;
 /// <summary>
 /// 建立拆股（Stock Split）資料的 Use Case。
 /// </summary>
-public class CreateStockSplitUseCase
+public class CreateStockSplitUseCase(IStockSplitRepository repository)
 {
-    private readonly IStockSplitRepository _repository;
-
-    public CreateStockSplitUseCase(IStockSplitRepository repository)
-    {
-        _repository = repository;
-    }
-
     public async Task<StockSplitDto> ExecuteAsync(
         CreateStockSplitRequest request,
         CancellationToken cancellationToken = default)
     {
         // 檢查是否重複建立
-        var exists = await _repository.ExistsAsync(
+        var exists = await repository.ExistsAsync(
             request.Symbol,
             request.Market,
             request.SplitDate,
@@ -40,7 +33,7 @@ public class CreateStockSplitUseCase
             request.SplitRatio,
             request.Description);
 
-        await _repository.AddAsync(split, cancellationToken);
+        await repository.AddAsync(split, cancellationToken);
 
         return new StockSplitDto
         {

@@ -250,8 +250,8 @@ public class IndexPriceService(
         // PostgreSQL unique constraint violation: 23505
         // SQLite constraint violation: 19 (SQLITE_CONSTRAINT)
         // 以錯誤訊息字串判斷；若底層 provider 變更，可能需要更新此判斷邏輯
-        return ex.InnerException?.Message?.Contains("23505") == true ||
-               ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true;
+        return ex.InnerException?.Message.Contains("23505") == true ||
+               ex.InnerException?.Message.Contains("UNIQUE constraint failed") == true;
     }
 
     /// <summary>

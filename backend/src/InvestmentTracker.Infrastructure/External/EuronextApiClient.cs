@@ -8,11 +8,8 @@ namespace InvestmentTracker.Infrastructure.External;
 /// HTTP client for fetching quotes from Euronext exchange.
 /// Uses the live.euronext.com API endpoint which returns HTML content.
 /// </summary>
-public class EuronextApiClient : IEuronextApiClient
+public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient> logger) : IEuronextApiClient
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<EuronextApiClient> _logger;
-
     // Regex patterns to extract data from HTML response
     private static readonly Regex PriceRegex = new(
         @"id=""header-instrument-price""[^>]*>([0-9.,]+)</span>",
@@ -41,12 +38,6 @@ public class EuronextApiClient : IEuronextApiClient
         @"Since Previous Close.*?data-24[^>]*>\s*([+-]?[0-9.,]+)\s*</span>",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-    public EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
-
     public async Task<EuronextQuoteResult?> GetQuoteAsync(string isin, string mic, CancellationToken cancellationToken = default)
     {
         try
@@ -54,17 +45,17 @@ public class EuronextApiClient : IEuronextApiClient
             // Euronext API format: /en/ajax/getDetailedQuote/{ISIN}-{MIC}
             var url = $"https://live.euronext.com/en/ajax/getDetailedQuote/{isin}-{mic}";
 
-            _logger.LogDebug("Fetching Euronext quote from {Url}", url);
+            logger.LogDebug("Fetching Euronext quote from {Url}", url);
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Accept", "text/html");
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Euronext API returned {StatusCode} for {Isin}-{Mic}",
+                logger.LogWarning("Euronext API returned {StatusCode} for {Isin}-{Mic}",
                     response.StatusCode, isin, mic);
                 return null;
             }
@@ -73,14 +64,14 @@ public class EuronextApiClient : IEuronextApiClient
 
             if (string.IsNullOrWhiteSpace(html))
             {
-                _logger.LogWarning("Euronext API returned empty content for {Isin}-{Mic}", isin, mic);
+                logger.LogWarning("Euronext API returned empty content for {Isin}-{Mic}", isin, mic);
                 return null;
             }
 
             // Check for "unknown instrument" error
             if (html.Contains("This instrument is unknown", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning("Euronext API: instrument unknown for {Isin}-{Mic}", isin, mic);
+                logger.LogWarning("Euronext API: instrument unknown for {Isin}-{Mic}", isin, mic);
                 return null;
             }
 
@@ -88,7 +79,7 @@ public class EuronextApiClient : IEuronextApiClient
             var priceMatch = PriceRegex.Match(html);
             if (!priceMatch.Success)
             {
-                _logger.LogWarning("Could not find price in Euronext HTML for {Isin}-{Mic}", isin, mic);
+                logger.LogWarning("Could not find price in Euronext HTML for {Isin}-{Mic}", isin, mic);
                 return null;
             }
 
@@ -96,7 +87,7 @@ public class EuronextApiClient : IEuronextApiClient
             if (!decimal.TryParse(priceStr, System.Globalization.NumberStyles.Number,
                 System.Globalization.CultureInfo.InvariantCulture, out var price))
             {
-                _logger.LogWarning("Could not parse price '{Price}' for {Isin}-{Mic}", priceStr, isin, mic);
+                logger.LogWarning("Could not parse price '{Price}' for {Isin}-{Mic}", priceStr, isin, mic);
                 return null;
             }
 
@@ -160,7 +151,7 @@ public class EuronextApiClient : IEuronextApiClient
                 }
             }
 
-            _logger.LogDebug("Parsed Euronext quote: {Name} {Price} {Currency} Change: {ChangePercent}", name, price, currency, changePercent);
+            logger.LogDebug("Parsed Euronext quote: {Name} {Price} {Currency} Change: {ChangePercent}", name, price, currency, changePercent);
 
             return new EuronextQuoteResult
             {
@@ -174,12 +165,12 @@ public class EuronextApiClient : IEuronextApiClient
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "HTTP error fetching Euronext quote for {Isin}-{Mic}", isin, mic);
+            logger.LogError(ex, "HTTP error fetching Euronext quote for {Isin}-{Mic}", isin, mic);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error fetching Euronext quote for {Isin}-{Mic}", isin, mic);
+            logger.LogError(ex, "Unexpected error fetching Euronext quote for {Isin}-{Mic}", isin, mic);
             return null;
         }
     }

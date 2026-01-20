@@ -455,15 +455,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
     }
 }
 
-public sealed class StooqDailyHitsLimitExceededException : Exception
+public sealed class StooqDailyHitsLimitExceededException(string symbol)
+    : Exception($"Stooq daily hits limit exceeded (symbol={symbol})")
 {
-    public StooqDailyHitsLimitExceededException(string symbol)
-        : base($"Stooq daily hits limit exceeded (symbol={symbol})")
-    {
-        Symbol = symbol;
-    }
-
-    public string Symbol { get; }
+    public string Symbol { get; } = symbol;
 }
 
 public interface IStooqHistoricalPriceService

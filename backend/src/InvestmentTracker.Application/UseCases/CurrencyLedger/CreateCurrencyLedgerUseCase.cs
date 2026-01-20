@@ -7,28 +7,19 @@ namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
 /// <summary>
 /// 建立外幣帳本（Currency Ledger）的 Use Case。
 /// </summary>
-public class CreateCurrencyLedgerUseCase
+public class CreateCurrencyLedgerUseCase(
+    ICurrencyLedgerRepository ledgerRepository,
+    ICurrentUserService currentUserService)
 {
-    private readonly ICurrencyLedgerRepository _ledgerRepository;
-    private readonly ICurrentUserService _currentUserService;
-
-    public CreateCurrencyLedgerUseCase(
-        ICurrencyLedgerRepository ledgerRepository,
-        ICurrentUserService currentUserService)
-    {
-        _ledgerRepository = ledgerRepository;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<CurrencyLedgerDto> ExecuteAsync(
         CreateCurrencyLedgerRequest request,
         CancellationToken cancellationToken = default)
     {
-        var userId = _currentUserService.UserId
+        var userId = currentUserService.UserId
             ?? throw new UnauthorizedAccessException("User not authenticated");
 
         // Check if ledger with same currency already exists
-        if (await _ledgerRepository.ExistsByCurrencyCodeAsync(userId, request.CurrencyCode, cancellationToken))
+        if (await ledgerRepository.ExistsByCurrencyCodeAsync(userId, request.CurrencyCode, cancellationToken))
         {
             throw new InvalidOperationException($"A currency ledger for {request.CurrencyCode} already exists");
         }
@@ -39,7 +30,7 @@ public class CreateCurrencyLedgerUseCase
             request.Name,
             request.HomeCurrency);
 
-        await _ledgerRepository.AddAsync(ledger, cancellationToken);
+        await ledgerRepository.AddAsync(ledger, cancellationToken);
 
         return new CurrencyLedgerDto
         {

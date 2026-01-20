@@ -11,34 +11,14 @@ namespace InvestmentTracker.Application.Services;
 /// 歷史年度績效計算服務。
 /// 計算任一年度（2020+）的 XIRR 與總報酬。
 /// </summary>
-public class HistoricalPerformanceService : IHistoricalPerformanceService
+public class HistoricalPerformanceService(
+    IPortfolioRepository portfolioRepository,
+    IStockTransactionRepository transactionRepository,
+    PortfolioCalculator portfolioCalculator,
+    ICurrentUserService currentUserService,
+    ILogger<HistoricalPerformanceService> logger)
+    : IHistoricalPerformanceService
 {
-    private readonly IPortfolioRepository _portfolioRepository;
-    private readonly IStockTransactionRepository _transactionRepository;
-    private readonly IStockSplitRepository _stockSplitRepository;
-    private readonly PortfolioCalculator _portfolioCalculator;
-    private readonly StockSplitAdjustmentService _splitAdjustmentService;
-    private readonly ICurrentUserService _currentUserService;
-    private readonly ILogger<HistoricalPerformanceService> _logger;
-
-    public HistoricalPerformanceService(
-        IPortfolioRepository portfolioRepository,
-        IStockTransactionRepository transactionRepository,
-        IStockSplitRepository stockSplitRepository,
-        PortfolioCalculator portfolioCalculator,
-        StockSplitAdjustmentService splitAdjustmentService,
-        ICurrentUserService currentUserService,
-        ILogger<HistoricalPerformanceService> logger)
-    {
-        _portfolioRepository = portfolioRepository;
-        _transactionRepository = transactionRepository;
-        _stockSplitRepository = stockSplitRepository;
-        _portfolioCalculator = portfolioCalculator;
-        _splitAdjustmentService = splitAdjustmentService;
-        _currentUserService = currentUserService;
-        _logger = logger;
-    }
-
     /// <summary>
     /// 取得可計算績效的年份清單。
     /// </summary>
@@ -46,15 +26,15 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         Guid portfolioId,
         CancellationToken cancellationToken = default)
     {
-        var portfolio = await _portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
+        var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
 
-        if (portfolio.UserId != _currentUserService.UserId)
+        if (portfolio.UserId != currentUserService.UserId)
         {
             throw new UnauthorizedAccessException("You do not have access to this portfolio");
         }
 
-        var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var validTransactions = transactions.Where(t => !t.IsDeleted).ToList();
 
         if (validTransactions.Count == 0)
@@ -91,10 +71,10 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         CalculateYearPerformanceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var portfolio = await _portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
+        var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
 
-        if (portfolio.UserId != _currentUserService.UserId)
+        if (portfolio.UserId != currentUserService.UserId)
         {
             throw new UnauthorizedAccessException("You do not have access to this portfolio");
         }
@@ -107,9 +87,9 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // For asking user prices, use previous year end (Dec 31 of year-1)
         var priceReferenceDate = new DateTime(year - 1, 12, 31);
 
-        _logger.LogInformation("Calculating performance for portfolio {PortfolioId}, year {Year}", portfolioId, year);
+        logger.LogInformation("Calculating performance for portfolio {PortfolioId}, year {Year}", portfolioId, year);
 
-        var allTransactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var allTransactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
 
         // Filter to valid transactions only
         var validTransactions = allTransactions.Where(t => !t.IsDeleted && t.HasExchangeRate).ToList();
@@ -134,12 +114,12 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // Historical prices from APIs are already in their original (pre-split) values,
         // so we need to use the actual share counts at that time, not split-adjusted counts.
         // Filter out positions with 0 shares (stocks that were completely sold)
-        var yearEndPositions = _portfolioCalculator.RecalculateAllPositions(transactionsUpToYearEnd)
+        var yearEndPositions = portfolioCalculator.RecalculateAllPositions(transactionsUpToYearEnd)
             .Where(p => p.TotalShares > 0)
             .ToList();
 
         // Calculate positions at year start (NO split adjustment)
-        var yearStartPositions = _portfolioCalculator.RecalculateAllPositions(transactionsUpToYearStart)
+        var yearStartPositions = portfolioCalculator.RecalculateAllPositions(transactionsUpToYearStart)
             .Where(p => p.TotalShares > 0)
             .ToList();
 
@@ -185,7 +165,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // If missing prices, return partial result
         if (missingPrices.Count > 0)
         {
-            _logger.LogWarning("Missing {Count} prices for year {Year} performance calculation", missingPrices.Count, year);
+            logger.LogWarning("Missing {Count} prices for year {Year} performance calculation", missingPrices.Count, year);
 
             return new YearPerformanceDto
             {
@@ -205,26 +185,26 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // Year-start rate: try yearStartPrices first, fall back to yearEndPrices if only Taiwan stocks at year-start
         var usdToTwdRateStart = GetUsdToTwdRate(yearStartPrices, usdToTwdRateEnd);
 
-        _logger.LogInformation("=== Year {Year} Performance Calculation Debug ===", year);
-        _logger.LogInformation("USD/TWD Rate Start: {RateStart}, End: {RateEnd}", usdToTwdRateStart, usdToTwdRateEnd);
-        _logger.LogInformation("Year Start Positions: {Count}, Year End Positions: {Count2}", yearStartPositions.Count, yearEndPositions.Count);
+        logger.LogInformation("=== Year {Year} Performance Calculation Debug ===", year);
+        logger.LogInformation("USD/TWD Rate Start: {RateStart}, End: {RateEnd}", usdToTwdRateStart, usdToTwdRateEnd);
+        logger.LogInformation("Year Start Positions: {Count}, Year End Positions: {Count2}", yearStartPositions.Count, yearEndPositions.Count);
 
         foreach (var pos in yearStartPositions)
         {
             var hasPrice = yearStartPrices.TryGetValue(pos.Ticker, out var priceInfo);
-            _logger.LogInformation("  YearStart Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
+            logger.LogInformation("  YearStart Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
                 pos.Ticker, pos.TotalShares, priceInfo?.Price ?? 0, priceInfo?.ExchangeRate ?? 0, hasPrice);
         }
 
         foreach (var pos in yearEndPositions)
         {
             var hasPrice = yearEndPrices.TryGetValue(pos.Ticker, out var priceInfo);
-            _logger.LogInformation("  YearEnd Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
+            logger.LogInformation("  YearEnd Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
                 pos.Ticker, pos.TotalShares, priceInfo?.Price ?? 0, priceInfo?.ExchangeRate ?? 0, hasPrice);
         }
 
         // Year-start portfolio value in source currency
-        decimal startValueSource = 0m;
+        var startValueSource = 0m;
         foreach (var position in yearStartPositions)
         {
             if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
@@ -237,12 +217,12 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             }
         }
 
-        _logger.LogInformation("  Total startValueSource (USD): {StartValue}", startValueSource);
+        logger.LogInformation("  Total startValueSource (USD): {StartValue}", startValueSource);
 
         if (startValueSource > 0)
         {
             cashFlowsSource.Add(new CashFlow(-startValueSource, yearStart));
-            _logger.LogInformation("  Added year-start cash flow: {Amount} on {Date}", -startValueSource, yearStart);
+            logger.LogInformation("  Added year-start cash flow: {Amount} on {Date}", -startValueSource, yearStart);
         }
 
         // Build a lookup of USD→TWD rates from non-Taiwan stock transactions (for converting Taiwan stock amounts to USD)
@@ -270,7 +250,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         }
 
         // Transactions in source currency
-        _logger.LogInformation("  Processing {Count} transactions in year:", yearTransactions.Count);
+        logger.LogInformation("  Processing {Count} transactions in year:", yearTransactions.Count);
         foreach (var tx in yearTransactions)
         {
             if (tx.TransactionType == TransactionType.Buy)
@@ -281,14 +261,14 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
                     // Taiwan stocks: TotalCostSource is in TWD, convert to USD using rate from that date
                     var rateForDate = GetUsdToTwdRateForDate(tx.TransactionDate);
                     costInSource = tx.TotalCostSource / rateForDate;
-                    _logger.LogInformation("    BUY {Ticker}: {Shares} shares @ {Price} TWD, TotalCostTWD={TotalCost}, RateUsed={Rate}, CostInUSD={CostUSD}, Date={Date}",
+                    logger.LogInformation("    BUY {Ticker}: {Shares} shares @ {Price} TWD, TotalCostTWD={TotalCost}, RateUsed={Rate}, CostInUSD={CostUSD}, Date={Date}",
                         tx.Ticker, tx.Shares, tx.PricePerShare, tx.TotalCostSource, rateForDate, costInSource, tx.TransactionDate);
                 }
                 else
                 {
                     // Non-Taiwan stocks: TotalCostSource is already in USD
                     costInSource = tx.TotalCostSource;
-                    _logger.LogInformation("    BUY {Ticker}: {Shares} shares @ {Price} USD, TotalCostUSD={TotalCost}, TxExRate={ExRate}, Date={Date}",
+                    logger.LogInformation("    BUY {Ticker}: {Shares} shares @ {Price} USD, TotalCostUSD={TotalCost}, TxExRate={ExRate}, Date={Date}",
                         tx.Ticker, tx.Shares, tx.PricePerShare, tx.TotalCostSource, tx.ExchangeRate, tx.TransactionDate);
                 }
                 cashFlowsSource.Add(new CashFlow(-costInSource, tx.TransactionDate));
@@ -302,14 +282,14 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
                     // Taiwan stocks: proceeds are in TWD, convert to USD using rate from that date
                     var rateForDate = GetUsdToTwdRateForDate(tx.TransactionDate);
                     proceedsInSource = proceeds / rateForDate;
-                    _logger.LogInformation("    SELL {Ticker}: {Shares} shares @ {Price} TWD, ProceedsTWD={Proceeds}, RateUsed={Rate}, ProceedsInUSD={ProceedsUSD}, Date={Date}",
+                    logger.LogInformation("    SELL {Ticker}: {Shares} shares @ {Price} TWD, ProceedsTWD={Proceeds}, RateUsed={Rate}, ProceedsInUSD={ProceedsUSD}, Date={Date}",
                         tx.Ticker, tx.Shares, tx.PricePerShare, proceeds, rateForDate, proceedsInSource, tx.TransactionDate);
                 }
                 else
                 {
                     // Non-Taiwan stocks: proceeds are already in USD
                     proceedsInSource = proceeds;
-                    _logger.LogInformation("    SELL {Ticker}: {Shares} shares @ {Price} USD, ProceedsUSD={Proceeds}, TxExRate={ExRate}, Date={Date}",
+                    logger.LogInformation("    SELL {Ticker}: {Shares} shares @ {Price} USD, ProceedsUSD={Proceeds}, TxExRate={ExRate}, Date={Date}",
                         tx.Ticker, tx.Shares, tx.PricePerShare, proceeds, tx.ExchangeRate, tx.TransactionDate);
                 }
                 cashFlowsSource.Add(new CashFlow(proceedsInSource, tx.TransactionDate));
@@ -317,7 +297,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         }
 
         // Year-end portfolio value in source currency
-        decimal endValueSource = 0m;
+        var endValueSource = 0m;
         foreach (var position in yearEndPositions)
         {
             if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
@@ -330,38 +310,38 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             }
         }
 
-        _logger.LogInformation("  Total endValueSource (USD): {EndValue}", endValueSource);
+        logger.LogInformation("  Total endValueSource (USD): {EndValue}", endValueSource);
 
         if (endValueSource > 0)
         {
             cashFlowsSource.Add(new CashFlow(endValueSource, yearEnd));
-            _logger.LogInformation("  Added year-end cash flow: {Amount} on {Date}", endValueSource, yearEnd);
+            logger.LogInformation("  Added year-end cash flow: {Amount} on {Date}", endValueSource, yearEnd);
         }
 
         // Log all cash flows before XIRR calculation
-        _logger.LogInformation("  === All Source Currency Cash Flows ({Count} total) ===", cashFlowsSource.Count);
+        logger.LogInformation("  === All Source Currency Cash Flows ({Count} total) ===", cashFlowsSource.Count);
         foreach (var cf in cashFlowsSource.OrderBy(c => c.Date))
         {
-            _logger.LogInformation("    {Date}: {Amount:N2} USD", cf.Date.ToString("yyyy-MM-dd"), cf.Amount);
+            logger.LogInformation("    {Date}: {Amount:N2} USD", cf.Date.ToString("yyyy-MM-dd"), cf.Amount);
         }
 
         // Net contributions in source currency (using transaction-date rates for Taiwan stocks)
-        decimal netContributionsSource = yearTransactions
-            .Where(t => t.TransactionType == TransactionType.Buy)
-            .Sum(t => t.IsTaiwanStock ? t.TotalCostSource / GetUsdToTwdRateForDate(t.TransactionDate) : t.TotalCostSource)
-            - yearTransactions
-            .Where(t => t.TransactionType == TransactionType.Sell)
-            .Sum(t =>
-            {
-                var proceeds = (t.Shares * t.PricePerShare) - t.Fees;
-                return t.IsTaiwanStock ? proceeds / GetUsdToTwdRateForDate(t.TransactionDate) : proceeds;
-            });
+        var netContributionsSource = yearTransactions
+                                         .Where(t => t.TransactionType == TransactionType.Buy)
+                                         .Sum(t => t.IsTaiwanStock ? t.TotalCostSource / GetUsdToTwdRateForDate(t.TransactionDate) : t.TotalCostSource)
+                                     - yearTransactions
+                                         .Where(t => t.TransactionType == TransactionType.Sell)
+                                         .Sum(t =>
+                                         {
+                                             var proceeds = (t.Shares * t.PricePerShare) - t.Fees;
+                                             return t.IsTaiwanStock ? proceeds / GetUsdToTwdRateForDate(t.TransactionDate) : proceeds;
+                                         });
 
         // Calculate source currency XIRR
         double? xirrSource = null;
         if (cashFlowsSource.Count >= 2)
         {
-            xirrSource = _portfolioCalculator.CalculateXirr(cashFlowsSource);
+            xirrSource = portfolioCalculator.CalculateXirr(cashFlowsSource);
         }
 
         // Calculate source currency total return
@@ -378,21 +358,21 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         // ===== Calculate Home Currency (e.g., TWD) Performance =====
         var cashFlowsHome = new List<CashFlow>();
 
-        _logger.LogInformation("  === Home Currency Calculation ===");
+        logger.LogInformation("  === Home Currency Calculation ===");
 
         // Year-start portfolio value in home currency
-        decimal startValueHome = 0m;
+        var startValueHome = 0m;
         foreach (var position in yearStartPositions)
         {
             if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
             {
                 var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
-                _logger.LogInformation("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} TWD",
+                logger.LogInformation("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} TWD",
                     position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
                 startValueHome += positionValue;
             }
         }
-        _logger.LogInformation("  Total startValueHome: {Value} TWD", startValueHome);
+        logger.LogInformation("  Total startValueHome: {Value} TWD", startValueHome);
 
         if (startValueHome > 0)
         {
@@ -414,7 +394,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         }
 
         // Year-end portfolio value in home currency
-        decimal endValueHome = 0m;
+        var endValueHome = 0m;
         foreach (var position in yearEndPositions)
         {
             if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
@@ -429,18 +409,18 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
         }
 
         // Net contributions in home currency
-        decimal netContributionsHome = yearTransactions
-            .Where(t => t.TransactionType == TransactionType.Buy)
-            .Sum(t => t.TotalCostHome ?? 0)
-            - yearTransactions
-            .Where(t => t.TransactionType == TransactionType.Sell)
-            .Sum(t => (t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1)) - (t.Fees * (t.ExchangeRate ?? 1)));
+        var netContributionsHome = yearTransactions
+                                       .Where(t => t.TransactionType == TransactionType.Buy)
+                                       .Sum(t => t.TotalCostHome ?? 0)
+                                   - yearTransactions
+                                       .Where(t => t.TransactionType == TransactionType.Sell)
+                                       .Sum(t => (t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1)) - (t.Fees * (t.ExchangeRate ?? 1)));
 
         // Calculate home currency XIRR
         double? xirrHome = null;
         if (cashFlowsHome.Count >= 2)
         {
-            xirrHome = _portfolioCalculator.CalculateXirr(cashFlowsHome);
+            xirrHome = portfolioCalculator.CalculateXirr(cashFlowsHome);
         }
 
         // Calculate home currency total return
@@ -454,7 +434,7 @@ public class HistoricalPerformanceService : IHistoricalPerformanceService
             totalReturnHome = (double)((endValueHome - netContributionsHome) / netContributionsHome) * 100;
         }
 
-        _logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
+        logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
             year, xirrSource.HasValue ? xirrSource.Value * 100 : null, xirrHome.HasValue ? xirrHome.Value * 100 : null);
 
         return new YearPerformanceDto

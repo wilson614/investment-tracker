@@ -6,22 +6,13 @@ namespace InvestmentTracker.API.Middleware;
 /// <summary>
 /// Global exception handling middleware for consistent error responses.
 /// </summary>
-public class ExceptionHandlingMiddleware
+public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
 {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
-
-    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
-    {
-        _next = next;
-        _logger = logger;
-    }
-
     public async Task InvokeAsync(HttpContext context)
     {
         try
         {
-            await _next(context);
+            await next(context);
         }
         catch (Exception ex)
         {
@@ -42,7 +33,7 @@ public class ExceptionHandlingMiddleware
             _ => (HttpStatusCode.InternalServerError, "An unexpected error occurred")
         };
 
-        _logger.LogError(exception, "Unhandled exception: {Message}", exception.Message);
+        logger.LogError(exception, "Unhandled exception: {Message}", exception.Message);
 
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
@@ -65,8 +56,8 @@ public class ExceptionHandlingMiddleware
 
 public static class ExceptionHandlingMiddlewareExtensions
 {
-    public static IApplicationBuilder UseExceptionHandling(this IApplicationBuilder builder)
+    public static void UseExceptionHandling(this IApplicationBuilder builder)
     {
-        return builder.UseMiddleware<ExceptionHandlingMiddleware>();
+        builder.UseMiddleware<ExceptionHandlingMiddleware>();
     }
 }

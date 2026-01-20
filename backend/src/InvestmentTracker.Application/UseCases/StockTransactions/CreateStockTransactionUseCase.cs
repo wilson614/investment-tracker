@@ -10,73 +10,54 @@ namespace InvestmentTracker.Application.UseCases.StockTransactions;
 /// <summary>
 /// 建立股票交易的 Use Case。
 /// </summary>
-public class CreateStockTransactionUseCase
+public class CreateStockTransactionUseCase(
+    IStockTransactionRepository transactionRepository,
+    IPortfolioRepository portfolioRepository,
+    ICurrencyLedgerRepository currencyLedgerRepository,
+    ICurrencyTransactionRepository currencyTransactionRepository,
+    PortfolioCalculator portfolioCalculator,
+    CurrencyLedgerService currencyLedgerService,
+    ICurrentUserService currentUserService)
 {
-    private readonly IStockTransactionRepository _transactionRepository;
-    private readonly IPortfolioRepository _portfolioRepository;
-    private readonly ICurrencyLedgerRepository _currencyLedgerRepository;
-    private readonly ICurrencyTransactionRepository _currencyTransactionRepository;
-    private readonly PortfolioCalculator _portfolioCalculator;
-    private readonly CurrencyLedgerService _currencyLedgerService;
-    private readonly ICurrentUserService _currentUserService;
-
-    public CreateStockTransactionUseCase(
-        IStockTransactionRepository transactionRepository,
-        IPortfolioRepository portfolioRepository,
-        ICurrencyLedgerRepository currencyLedgerRepository,
-        ICurrencyTransactionRepository currencyTransactionRepository,
-        PortfolioCalculator portfolioCalculator,
-        CurrencyLedgerService currencyLedgerService,
-        ICurrentUserService currentUserService)
-    {
-        _transactionRepository = transactionRepository;
-        _portfolioRepository = portfolioRepository;
-        _currencyLedgerRepository = currencyLedgerRepository;
-        _currencyTransactionRepository = currencyTransactionRepository;
-        _portfolioCalculator = portfolioCalculator;
-        _currencyLedgerService = currencyLedgerService;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<StockTransactionDto> ExecuteAsync(
         CreateStockTransactionRequest request,
         CancellationToken cancellationToken = default)
     {
         // 確認投資組合存在，且屬於目前使用者
-        var portfolio = await _portfolioRepository.GetByIdAsync(request.PortfolioId, cancellationToken)
+        var portfolio = await portfolioRepository.GetByIdAsync(request.PortfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {request.PortfolioId} not found");
 
-        if (portfolio.UserId != _currentUserService.UserId)
+        if (portfolio.UserId != currentUserService.UserId)
         {
             throw new UnauthorizedAccessException("You do not have access to this portfolio");
         }
 
         // 取得匯率：若未提供，且資金來源為外幣帳本時，會自動由帳本推算
-        decimal? exchangeRate = request.ExchangeRate;
+        var exchangeRate = request.ExchangeRate;
         Domain.Entities.CurrencyLedger? currencyLedger = null;
         decimal? requiredAmount = null;
 
         if (request.FundSource == FundSource.CurrencyLedger && request.CurrencyLedgerId.HasValue)
         {
-            currencyLedger = await _currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            currencyLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
                 request.CurrencyLedgerId.Value, cancellationToken)
                 ?? throw new InvalidOperationException($"Currency ledger {request.CurrencyLedgerId} not found");
 
             // 確認外幣帳本屬於目前使用者
-            if (currencyLedger.UserId != _currentUserService.UserId)
+            if (currencyLedger.UserId != currentUserService.UserId)
             {
                 throw new UnauthorizedAccessException("You do not have access to this currency ledger");
             }
 
             // 取得既有外幣交易
-            var currencyTransactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+            var currencyTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                 currencyLedger.Id, cancellationToken);
 
             // 計算所需外幣金額（以原始幣別計算的總成本）
             requiredAmount = (request.Shares * request.PricePerShare) + request.Fees;
 
             // 在建立任何交易前先確認餘額足夠
-            if (!_currencyLedgerService.ValidateSpend(currencyTransactions, requiredAmount.Value))
+            if (!currencyLedgerService.ValidateSpend(currencyTransactions, requiredAmount.Value))
             {
                 throw new InvalidOperationException("Insufficient balance");
             }
@@ -85,7 +66,7 @@ public class CreateStockTransactionUseCase
             // 僅考慮實際換匯交易，不包含利息/紅利
             if (!exchangeRate.HasValue || exchangeRate.Value <= 0)
             {
-                var calculatedRate = _currencyLedgerService.CalculateExchangeRateForPurchase(
+                var calculatedRate = currencyLedgerService.CalculateExchangeRateForPurchase(
                     currencyTransactions, request.TransactionDate, requiredAmount.Value);
 
                 if (calculatedRate <= 0)
@@ -107,11 +88,11 @@ public class CreateStockTransactionUseCase
         if (request.TransactionType == TransactionType.Sell)
         {
             // 取得此投資組合的所有交易
-            var existingTransactions = await _transactionRepository.GetByPortfolioIdAsync(
+            var existingTransactions = await transactionRepository.GetByPortfolioIdAsync(
                 request.PortfolioId, cancellationToken);
 
             // 計算此 ticker 的目前持倉
-            var currentPosition = _portfolioCalculator.CalculatePosition(
+            var currentPosition = portfolioCalculator.CalculatePosition(
                 request.Ticker, existingTransactions);
 
             // 確認持股足夠
@@ -135,7 +116,7 @@ public class CreateStockTransactionUseCase
                 request.CurrencyLedgerId,
                 request.Notes);
 
-            realizedPnlHome = _portfolioCalculator.CalculateRealizedPnl(currentPosition, tempSellTransaction);
+            realizedPnlHome = portfolioCalculator.CalculateRealizedPnl(currentPosition, tempSellTransaction);
         }
 
         // 建立股票交易
@@ -158,7 +139,7 @@ public class CreateStockTransactionUseCase
             transaction.SetRealizedPnl(realizedPnlHome.Value);
         }
 
-        await _transactionRepository.AddAsync(transaction, cancellationToken);
+        await transactionRepository.AddAsync(transaction, cancellationToken);
 
         // 股票交易建立後（取得 ID），再建立連動的外幣交易
         if (currencyLedger != null && requiredAmount.HasValue)
@@ -171,7 +152,7 @@ public class CreateStockTransactionUseCase
                 relatedStockTransactionId: transaction.Id,
                 notes: $"買入 {request.Ticker} × {request.Shares}");
 
-            await _currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+            await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
         }
 
         return MapToDto(transaction);

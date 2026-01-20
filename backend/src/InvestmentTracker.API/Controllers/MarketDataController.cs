@@ -113,7 +113,7 @@ public class MarketDataController(
         }
         else
         {
-            existing = new()
+            existing = new IndexPriceSnapshot
             {
                 MarketKey = request.MarketKey,
                 YearMonth = request.YearMonth,
@@ -517,7 +517,7 @@ public class MarketDataController(
                 startPrice > 0)
             {
                 // 台灣 0050：若年度中發生股票分割，需以分割比例調整起始價格
-                if (marketKey == "Taiwan 0050" && taiwanSplits.Any())
+                if (marketKey == "Taiwan 0050" && taiwanSplits.Count != 0)
                 {
                     // 計算 year-1/12/31 之後、year/12/31（含）之前的累積分割比例
                     var startDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
@@ -527,7 +527,7 @@ public class MarketDataController(
                         .Where(s => s.SplitDate > startDate && s.SplitDate <= endDate)
                         .ToList();
 
-                    if (splitsDuringYear.Any())
+                    if (splitsDuringYear.Count != 0)
                     {
                         var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
                         // 將起始價格調整到分割後的等值
@@ -593,7 +593,7 @@ public class MarketDataController(
                 if (price != null)
                 {
                     // 快取有效價格
-                    dbContext.IndexPriceSnapshots.Add(new()
+                    dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,
@@ -610,7 +610,7 @@ public class MarketDataController(
                 else
                 {
                     // 保存 NotAvailable 標記（負向快取）
-                    dbContext.IndexPriceSnapshots.Add(new()
+                    dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,
@@ -849,7 +849,7 @@ public class MarketDataController(
                 }
 
                 decimal? price;
-                string source = "Stooq";
+                var source = "Stooq";
 
                 // 依市場選擇抓取來源
                 if (marketKey == "Taiwan 0050")
@@ -869,7 +869,7 @@ public class MarketDataController(
                 if (price != null)
                 {
                     // 寫入 DB
-                    dbContext.IndexPriceSnapshots.Add(new()
+                    dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                     {
                         MarketKey = marketKey,
                         YearMonth = yearMonth,

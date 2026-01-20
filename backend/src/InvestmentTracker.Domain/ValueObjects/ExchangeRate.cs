@@ -17,10 +17,7 @@ public sealed record ExchangeRate(string FromCurrency, string ToCurrency, decima
 
     private static string NormalizeCurrencyOrThrow(string currency, string paramName)
     {
-        if (string.IsNullOrWhiteSpace(currency))
-            throw new ArgumentException("Currency is required", paramName);
-
-        return currency.ToUpperInvariant();
+        return string.IsNullOrWhiteSpace(currency) ? throw new ArgumentException("Currency is required", paramName) : currency.ToUpperInvariant();
     }
 
     private static decimal ValidateRateOrThrow(decimal rate, string paramName)

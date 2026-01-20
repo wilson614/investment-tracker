@@ -31,7 +31,7 @@ public class StockSplitAdjustmentService
             .OrderBy(s => s.SplitDate)
             .ToList();
 
-        if (!applicableSplits.Any())
+        if (applicableSplits.Count == 0)
             return 1.0m;
 
         return applicableSplits.Aggregate(1.0m, (acc, split) => acc * split.SplitRatio);

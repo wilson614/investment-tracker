@@ -10,50 +10,33 @@ namespace InvestmentTracker.Application.UseCases.Portfolio;
 /// 取得投資組合摘要（包含計算後的持倉）的 Use Case。
 /// 會在計算持倉時套用拆股調整，以確保與現價比較一致。
 /// </summary>
-public class GetPortfolioSummaryUseCase
+public class GetPortfolioSummaryUseCase(
+    IPortfolioRepository portfolioRepository,
+    IStockTransactionRepository transactionRepository,
+    IStockSplitRepository stockSplitRepository,
+    PortfolioCalculator portfolioCalculator,
+    StockSplitAdjustmentService splitAdjustmentService,
+    ICurrentUserService currentUserService)
 {
-    private readonly IPortfolioRepository _portfolioRepository;
-    private readonly IStockTransactionRepository _transactionRepository;
-    private readonly IStockSplitRepository _stockSplitRepository;
-    private readonly PortfolioCalculator _portfolioCalculator;
-    private readonly StockSplitAdjustmentService _splitAdjustmentService;
-    private readonly ICurrentUserService _currentUserService;
-
-    public GetPortfolioSummaryUseCase(
-        IPortfolioRepository portfolioRepository,
-        IStockTransactionRepository transactionRepository,
-        IStockSplitRepository stockSplitRepository,
-        PortfolioCalculator portfolioCalculator,
-        StockSplitAdjustmentService splitAdjustmentService,
-        ICurrentUserService currentUserService)
-    {
-        _portfolioRepository = portfolioRepository;
-        _transactionRepository = transactionRepository;
-        _stockSplitRepository = stockSplitRepository;
-        _portfolioCalculator = portfolioCalculator;
-        _splitAdjustmentService = splitAdjustmentService;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<PortfolioSummaryDto> ExecuteAsync(
         Guid portfolioId,
         CalculatePerformanceRequest? performanceRequest = null,
         CancellationToken cancellationToken = default)
     {
-        var portfolio = await _portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
+        var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
             ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
 
-        if (portfolio.UserId != _currentUserService.UserId)
+        if (portfolio.UserId != currentUserService.UserId)
         {
             throw new UnauthorizedAccessException("You do not have access to this portfolio");
         }
 
-        var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
-        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
+        var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
 
         // 使用拆股調整後的持倉，確保與現價比較一致（FR-052）
-        var positions = _portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
-            transactions, stockSplits, _splitAdjustmentService);
+        var positions = portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
+            transactions, stockSplits, splitAdjustmentService);
 
         // 轉為不分大小寫的 dictionary，避免 ticker 比對失敗
         var currentPrices = performanceRequest?.CurrentPrices != null
@@ -66,13 +49,12 @@ public class GetPortfolioSummaryUseCase
 
         var positionDtos = new List<StockPositionDto>();
         // totalCostHome：僅包含有報價的持倉（避免損益百分比失真）
-        decimal totalCostHome = 0m;
+        var totalCostHome = 0m;
         decimal? totalValueHome = null;
         decimal? totalUnrealizedPnl = null;
 
         foreach (var position in positions.Where(p => p.TotalShares > 0))
         {
-            var hasHomeCost = position.TotalCostHome > 0;
             // 僅在至少一筆交易具有 ExchangeRate 時，才視為可提供本位幣指標
             // ForeignCurrency 投資組合永遠使用原始幣別，為一致性視為「有匯率」
             var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
@@ -140,7 +122,7 @@ public class GetPortfolioSummaryUseCase
                 }
                 else if (hasAnyExchangeRate)
                 {
-                    var pnl = _portfolioCalculator.CalculateUnrealizedPnl(
+                    var pnl = portfolioCalculator.CalculateUnrealizedPnl(
                         position, priceInfo.Price, priceInfo.ExchangeRate);
 
                     dto = dto with

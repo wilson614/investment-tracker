@@ -26,10 +26,8 @@ public record EtfClassificationResult(
 /// ETF 類型分類服務（accumulating vs distributing）。
 /// 用於判斷 YTD 計算是否需要做股息調整。
 /// </summary>
-public class EtfClassificationService
+public class EtfClassificationService(ILogger<EtfClassificationService> logger)
 {
-    private readonly ILogger<EtfClassificationService> _logger;
-
     // 已知的 accumulating ETF（不需要股息調整）
     private static readonly HashSet<string> KnownAccumulatingEtfs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -48,11 +46,6 @@ public class EtfClassificationService
     {
         "0050", "0056", "006208", "00878", "00919",
     };
-
-    public EtfClassificationService(ILogger<EtfClassificationService> logger)
-    {
-        _logger = logger;
-    }
 
     /// <summary>
     /// 依 ticker 對 ETF 做分類。
@@ -74,7 +67,7 @@ public class EtfClassificationService
         // 台股代號樣式（數字，可能帶字母後綴）
         if (System.Text.RegularExpressions.Regex.IsMatch(ticker, @"^\d+[A-Za-z]*$"))
         {
-            _logger.LogDebug("Ticker {Ticker} appears to be Taiwan stock, assuming distributing", ticker);
+            logger.LogDebug("Ticker {Ticker} appears to be Taiwan stock, assuming distributing", ticker);
             return new EtfClassificationResult(ticker, EtfType.Distributing, false, "Pattern Match");
         }
 
@@ -85,7 +78,7 @@ public class EtfClassificationService
         }
 
         // 預設回傳 unknown
-        _logger.LogDebug("Unable to classify ticker {Ticker}, returning unknown", ticker);
+        logger.LogDebug("Unable to classify ticker {Ticker}, returning unknown", ticker);
         return new EtfClassificationResult(ticker, EtfType.Unknown, false, null);
     }
 

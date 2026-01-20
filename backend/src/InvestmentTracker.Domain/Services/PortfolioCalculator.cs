@@ -24,14 +24,14 @@ public class PortfolioCalculator
             .ThenBy(t => t.CreatedAt)
             .ToList();
 
-        if (!tickerTransactions.Any())
+        if (tickerTransactions.Count == 0)
         {
             return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m);
         }
 
-        decimal totalShares = 0m;
-        decimal totalCostHome = 0m;
-        decimal totalCostSource = 0m;
+        var totalShares = 0m;
+        var totalCostHome = 0m;
+        var totalCostSource = 0m;
 
         foreach (var transaction in tickerTransactions)
         {
@@ -170,7 +170,7 @@ public class PortfolioCalculator
     public StockPosition CalculatePositionWithSplitAdjustments(
         string ticker,
         IEnumerable<StockTransaction> transactions,
-        IEnumerable<StockSplit> splits,
+        IReadOnlyList<StockSplit> splits,
         StockSplitAdjustmentService splitService)
     {
         var tickerTransactions = transactions
@@ -179,14 +179,14 @@ public class PortfolioCalculator
             .ThenBy(t => t.CreatedAt)
             .ToList();
 
-        if (!tickerTransactions.Any())
+        if (tickerTransactions.Count == 0)
         {
             return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m);
         }
 
-        decimal totalShares = 0m;
-        decimal totalCostHome = 0m;
-        decimal totalCostSource = 0m;
+        var totalShares = 0m;
+        var totalCostHome = 0m;
+        var totalCostSource = 0m;
 
         foreach (var transaction in tickerTransactions)
         {
@@ -272,10 +272,10 @@ public class PortfolioCalculator
         var amounts = flows.Select(cf => (double)cf.Amount).ToList();
 
         // Initial guess
-        double rate = 0.1;
+        var rate = 0.1;
 
         // Newton-Raphson iteration
-        for (int i = 0; i < maxIterations; i++)
+        for (var i = 0; i < maxIterations; i++)
         {
             var npv = CalculateNpv(amounts, yearFractions, rate);
             var derivative = CalculateNpvDerivative(amounts, yearFractions, rate);
@@ -301,10 +301,12 @@ public class PortfolioCalculator
                 break;
             }
 
-            if (newRate < -0.999)
-                newRate = -0.999;
-            else if (newRate > 1_000_000)
-                newRate = 1_000_000;
+            newRate = newRate switch
+            {
+                < -0.999 => -0.999,
+                > 1_000_000 => 1_000_000,
+                _ => newRate
+            };
 
             rate = newRate;
         }
@@ -316,7 +318,7 @@ public class PortfolioCalculator
     private static double CalculateNpv(List<double> amounts, List<double> yearFractions, double rate)
     {
         double npv = 0;
-        for (int i = 0; i < amounts.Count; i++)
+        for (var i = 0; i < amounts.Count; i++)
         {
             npv += amounts[i] / Math.Pow(1 + rate, yearFractions[i]);
         }
@@ -326,7 +328,7 @@ public class PortfolioCalculator
     private static double CalculateNpvDerivative(List<double> amounts, List<double> yearFractions, double rate)
     {
         double derivative = 0;
-        for (int i = 0; i < amounts.Count; i++)
+        for (var i = 0; i < amounts.Count; i++)
         {
             derivative -= yearFractions[i] * amounts[i] / Math.Pow(1 + rate, yearFractions[i] + 1);
         }
@@ -338,8 +340,8 @@ public class PortfolioCalculator
         static bool SameSign(double a, double b) =>
             (a > 0 && b > 0) || (a < 0 && b < 0);
 
-        double low = -0.999;
-        double high = 10.0;
+        var low = -0.999;
+        var high = 10.0;
         const double maxHigh = 1_000_000;
 
         var npvLow = CalculateNpv(amounts, yearFractions, low);
@@ -365,9 +367,9 @@ public class PortfolioCalculator
         if (SameSign(npvLow, npvHigh))
             return null;
 
-        for (int i = 0; i < maxIterations; i++)
+        for (var i = 0; i < maxIterations; i++)
         {
-            double mid = (low + high) / 2;
+            var mid = (low + high) / 2;
             var npvMid = CalculateNpv(amounts, yearFractions, mid);
 
             if (Math.Abs(npvMid) < 1e-7)
@@ -381,7 +383,6 @@ public class PortfolioCalculator
             else
             {
                 high = mid;
-                npvHigh = npvMid;
             }
         }
 

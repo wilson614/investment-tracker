@@ -8,34 +8,23 @@ namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 /// <summary>
 /// 更新外幣交易（Currency Transaction）的 Use Case。
 /// </summary>
-public class UpdateCurrencyTransactionUseCase
+public class UpdateCurrencyTransactionUseCase(
+    ICurrencyTransactionRepository transactionRepository,
+    ICurrencyLedgerRepository ledgerRepository,
+    ICurrentUserService currentUserService)
 {
-    private readonly ICurrencyTransactionRepository _transactionRepository;
-    private readonly ICurrencyLedgerRepository _ledgerRepository;
-    private readonly ICurrentUserService _currentUserService;
-
-    public UpdateCurrencyTransactionUseCase(
-        ICurrencyTransactionRepository transactionRepository,
-        ICurrencyLedgerRepository ledgerRepository,
-        ICurrentUserService currentUserService)
-    {
-        _transactionRepository = transactionRepository;
-        _ledgerRepository = ledgerRepository;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<CurrencyTransactionDto?> ExecuteAsync(
         Guid transactionId,
         UpdateCurrencyTransactionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var transaction = await _transactionRepository.GetByIdAsync(transactionId, cancellationToken);
+        var transaction = await transactionRepository.GetByIdAsync(transactionId, cancellationToken);
         if (transaction == null)
             return null;
 
         // Verify ledger belongs to current user
-        var ledger = await _ledgerRepository.GetByIdAsync(transaction.CurrencyLedgerId, cancellationToken);
-        if (ledger == null || ledger.UserId != _currentUserService.UserId)
+        var ledger = await ledgerRepository.GetByIdAsync(transaction.CurrencyLedgerId, cancellationToken);
+        if (ledger == null || ledger.UserId != currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this transaction");
 
         // Prevent editing transactions linked to stock purchases
@@ -50,7 +39,7 @@ public class UpdateCurrencyTransactionUseCase
             request.ExchangeRate);
         transaction.SetNotes(request.Notes);
 
-        await _transactionRepository.UpdateAsync(transaction, cancellationToken);
+        await transactionRepository.UpdateAsync(transaction, cancellationToken);
 
         return MapToDto(transaction);
     }

@@ -29,7 +29,7 @@ public sealed record Money
         if (rate <= 0)
             throw new ArgumentException("Exchange rate must be positive", nameof(rate));
 
-        return new(Amount * rate, targetCurrency);
+        return new Money(Amount * rate, targetCurrency);
     }
 
     public static Money Zero(string currencyCode) => new(0m, currencyCode);

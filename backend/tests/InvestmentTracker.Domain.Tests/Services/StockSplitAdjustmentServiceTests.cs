@@ -9,12 +9,7 @@ namespace InvestmentTracker.Domain.Tests.Services;
 /// </summary>
 public class StockSplitAdjustmentServiceTests
 {
-    private readonly StockSplitAdjustmentService _service;
-
-    public StockSplitAdjustmentServiceTests()
-    {
-        _service = new StockSplitAdjustmentService();
-    }
+    private readonly StockSplitAdjustmentService _service = new();
 
     #region GetCumulativeSplitRatio Tests
 

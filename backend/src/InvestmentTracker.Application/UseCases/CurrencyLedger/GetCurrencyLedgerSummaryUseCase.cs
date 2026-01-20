@@ -9,42 +9,31 @@ namespace InvestmentTracker.Application.UseCases.CurrencyLedger;
 /// <summary>
 /// 取得外幣帳本摘要（包含餘額、平均匯率、損益等計算欄位）的 Use Case。
 /// </summary>
-public class GetCurrencyLedgerSummaryUseCase
+public class GetCurrencyLedgerSummaryUseCase(
+    ICurrencyLedgerRepository ledgerRepository,
+    CurrencyLedgerService currencyLedgerService,
+    ICurrentUserService currentUserService)
 {
-    private readonly ICurrencyLedgerRepository _ledgerRepository;
-    private readonly CurrencyLedgerService _currencyLedgerService;
-    private readonly ICurrentUserService _currentUserService;
-
-    public GetCurrencyLedgerSummaryUseCase(
-        ICurrencyLedgerRepository ledgerRepository,
-        CurrencyLedgerService currencyLedgerService,
-        ICurrentUserService currentUserService)
-    {
-        _ledgerRepository = ledgerRepository;
-        _currencyLedgerService = currencyLedgerService;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<CurrencyLedgerSummaryDto?> ExecuteAsync(
         Guid ledgerId,
         CancellationToken cancellationToken = default)
     {
-        var ledger = await _ledgerRepository.GetByIdWithTransactionsAsync(ledgerId, cancellationToken);
+        var ledger = await ledgerRepository.GetByIdWithTransactionsAsync(ledgerId, cancellationToken);
         if (ledger == null)
             return null;
 
-        if (ledger.UserId != _currentUserService.UserId)
+        if (ledger.UserId != currentUserService.UserId)
             throw new UnauthorizedAccessException("You do not have access to this currency ledger");
 
         var transactions = ledger.Transactions.ToList();
 
-        var balance = _currencyLedgerService.CalculateBalance(transactions);
-        var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
-        var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
-        var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
-        var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
-        var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
-        var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+        var balance = currencyLedgerService.CalculateBalance(transactions);
+        var avgExchangeRate = currencyLedgerService.CalculateAverageExchangeRate(transactions);
+        var totalExchanged = currencyLedgerService.CalculateTotalExchanged(transactions);
+        var totalSpentOnStocks = currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
+        var totalInterest = currencyLedgerService.CalculateTotalInterest(transactions);
+        var totalCost = currencyLedgerService.CalculateTotalCost(transactions);
+        var realizedPnl = currencyLedgerService.CalculateRealizedPnl(transactions);
 
         var recentTransactions = transactions
             .OrderByDescending(t => t.TransactionDate)
@@ -74,26 +63,26 @@ public class GetCurrencyLedgerSummaryUseCase
     public async Task<IReadOnlyList<CurrencyLedgerSummaryDto>> GetAllForUserAsync(
         CancellationToken cancellationToken = default)
     {
-        var userId = _currentUserService.UserId
+        var userId = currentUserService.UserId
             ?? throw new UnauthorizedAccessException("User not authenticated");
-        var ledgers = await _ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
+        var ledgers = await ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
 
         var results = new List<CurrencyLedgerSummaryDto>();
 
         foreach (var ledger in ledgers)
         {
-            var fullLedger = await _ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken);
+            var fullLedger = await ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken);
             if (fullLedger == null)
                 continue;
 
             var transactions = fullLedger.Transactions.ToList();
-            var balance = _currencyLedgerService.CalculateBalance(transactions);
-            var avgExchangeRate = _currencyLedgerService.CalculateAverageExchangeRate(transactions);
-            var totalExchanged = _currencyLedgerService.CalculateTotalExchanged(transactions);
-            var totalSpentOnStocks = _currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
-            var totalInterest = _currencyLedgerService.CalculateTotalInterest(transactions);
-            var totalCost = _currencyLedgerService.CalculateTotalCost(transactions);
-            var realizedPnl = _currencyLedgerService.CalculateRealizedPnl(transactions);
+            var balance = currencyLedgerService.CalculateBalance(transactions);
+            var avgExchangeRate = currencyLedgerService.CalculateAverageExchangeRate(transactions);
+            var totalExchanged = currencyLedgerService.CalculateTotalExchanged(transactions);
+            var totalSpentOnStocks = currencyLedgerService.CalculateTotalSpentOnStocks(transactions);
+            var totalInterest = currencyLedgerService.CalculateTotalInterest(transactions);
+            var totalCost = currencyLedgerService.CalculateTotalCost(transactions);
+            var realizedPnl = currencyLedgerService.CalculateRealizedPnl(transactions);
 
             results.Add(new CurrencyLedgerSummaryDto
             {
