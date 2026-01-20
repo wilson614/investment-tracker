@@ -2,8 +2,6 @@ using FluentAssertions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Moq;
 
 namespace InvestmentTracker.API.Tests;
 

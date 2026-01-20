@@ -12,12 +12,8 @@ namespace InvestmentTracker.API.Controllers;
 [Route("api/portfolios/{portfolioId:guid}/performance")]
 [Authorize]
 public class PerformanceController(
-    IHistoricalPerformanceService performanceService,
-    ILogger<PerformanceController> logger) : ControllerBase
+    IHistoricalPerformanceService performanceService) : ControllerBase
 {
-    private readonly IHistoricalPerformanceService _performanceService = performanceService;
-    private readonly ILogger<PerformanceController> _logger = logger;
-
     /// <summary>
     /// 取得可用於績效計算的年度清單（有交易資料的年份）。
     /// </summary>
@@ -30,7 +26,7 @@ public class PerformanceController(
     {
         try
         {
-            var result = await _performanceService.GetAvailableYearsAsync(portfolioId, cancellationToken);
+            var result = await performanceService.GetAvailableYearsAsync(portfolioId, cancellationToken);
             return Ok(result);
         }
         catch (InvalidOperationException)
@@ -56,7 +52,7 @@ public class PerformanceController(
     {
         try
         {
-            var result = await _performanceService.CalculateYearPerformanceAsync(
+            var result = await performanceService.CalculateYearPerformanceAsync(
                 portfolioId, request, cancellationToken);
             return Ok(result);
         }

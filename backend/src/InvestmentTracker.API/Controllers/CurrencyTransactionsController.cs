@@ -18,11 +18,6 @@ public class CurrencyTransactionsController(
     DeleteCurrencyTransactionUseCase deleteUseCase,
     ICurrencyTransactionRepository transactionRepository) : ControllerBase
 {
-    private readonly CreateCurrencyTransactionUseCase _createUseCase = createUseCase;
-    private readonly UpdateCurrencyTransactionUseCase _updateUseCase = updateUseCase;
-    private readonly DeleteCurrencyTransactionUseCase _deleteUseCase = deleteUseCase;
-    private readonly ICurrencyTransactionRepository _transactionRepository = transactionRepository;
-
     /// <summary>
     /// 取得指定外幣帳本的所有交易。
     /// </summary>
@@ -32,7 +27,7 @@ public class CurrencyTransactionsController(
         Guid ledgerId,
         CancellationToken cancellationToken)
     {
-        var transactions = await _transactionRepository.GetByLedgerIdOrderedAsync(ledgerId, cancellationToken);
+        var transactions = await transactionRepository.GetByLedgerIdOrderedAsync(ledgerId, cancellationToken);
 
         return Ok(transactions.Select(t => new CurrencyTransactionDto
         {
@@ -62,7 +57,7 @@ public class CurrencyTransactionsController(
     {
         try
         {
-            var transaction = await _createUseCase.ExecuteAsync(request, cancellationToken);
+            var transaction = await createUseCase.ExecuteAsync(request, cancellationToken);
             return CreatedAtAction(
                 nameof(GetByLedger),
                 new { ledgerId = transaction.CurrencyLedgerId },
@@ -91,7 +86,7 @@ public class CurrencyTransactionsController(
     {
         try
         {
-            var transaction = await _updateUseCase.ExecuteAsync(id, request, cancellationToken);
+            var transaction = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
             if (transaction == null)
                 return NotFound();
             return Ok(transaction);
@@ -112,7 +107,7 @@ public class CurrencyTransactionsController(
     {
         try
         {
-            var deleted = await _deleteUseCase.ExecuteAsync(id, cancellationToken);
+            var deleted = await deleteUseCase.ExecuteAsync(id, cancellationToken);
             if (!deleted)
                 return NotFound();
             return NoContent();

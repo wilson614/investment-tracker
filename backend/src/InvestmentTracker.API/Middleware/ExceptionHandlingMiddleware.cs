@@ -33,7 +33,7 @@ public class ExceptionHandlingMiddleware
     {
         var (statusCode, message) = exception switch
         {
-            InvestmentTracker.Infrastructure.MarketData.StooqDailyHitsLimitExceededException =>
+            Infrastructure.MarketData.StooqDailyHitsLimitExceededException =>
                 (HttpStatusCode.TooManyRequests, "Stooq daily hits limit exceeded"),
             InvalidOperationException => (HttpStatusCode.BadRequest, exception.Message),
             UnauthorizedAccessException => (HttpStatusCode.Forbidden, "Access denied"),

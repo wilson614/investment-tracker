@@ -11,12 +11,8 @@ namespace InvestmentTracker.API.Controllers;
 [Route("api/etf-classification")]
 [Authorize]
 public class EtfClassificationController(
-    EtfClassificationService classificationService,
-    ILogger<EtfClassificationController> logger) : ControllerBase
+    EtfClassificationService classificationService) : ControllerBase
 {
-    private readonly EtfClassificationService _classificationService = classificationService;
-    private readonly ILogger<EtfClassificationController> _logger = logger;
-
     /// <summary>
     /// 取得指定 ticker 的 ETF 分類結果。
     /// </summary>
@@ -24,7 +20,7 @@ public class EtfClassificationController(
     [ProducesResponseType(typeof(EtfClassificationResult), StatusCodes.Status200OK)]
     public ActionResult<EtfClassificationResult> GetClassification(string ticker)
     {
-        var result = _classificationService.ClassifyEtf(ticker);
+        var result = classificationService.ClassifyEtf(ticker);
         return Ok(result);
     }
 
@@ -35,7 +31,7 @@ public class EtfClassificationController(
     [ProducesResponseType(typeof(IReadOnlyList<EtfClassificationResult>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<EtfClassificationResult>> GetAllClassifications()
     {
-        var results = _classificationService.GetKnownClassifications();
+        var results = classificationService.GetKnownClassifications();
         return Ok(results);
     }
 
@@ -46,7 +42,7 @@ public class EtfClassificationController(
     [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
     public ActionResult<bool> NeedsDividendAdjustment(string ticker)
     {
-        var result = _classificationService.NeedsDividendAdjustment(ticker);
+        var result = classificationService.NeedsDividendAdjustment(ticker);
         return Ok(result);
     }
 }

@@ -18,12 +18,6 @@ public class IndexPriceService(
     AppDbContext dbContext,
     ILogger<IndexPriceService> logger) : IIndexPriceService
 {
-    private readonly ISinaEtfPriceService _sinaEtfPriceService = sinaEtfPriceService;
-    private readonly IStooqHistoricalPriceService _stooqHistoricalPriceService = stooqHistoricalPriceService;
-    private readonly ITwseIndexPriceService _twseIndexPriceService = twseIndexPriceService;
-    private readonly AppDbContext _dbContext = dbContext;
-    private readonly ILogger<IndexPriceService> _logger = logger;
-
     // CAPE 調整所支援的所有市場（marketKey）
     public static readonly IReadOnlyCollection<string> SupportedMarkets =
     [
@@ -48,7 +42,7 @@ public class IndexPriceService(
         // 確認 marketKey 是否受支援
         if (!SupportedMarkets.Contains(marketKey))
         {
-            _logger.LogDebug("Market {Market} is not supported for CAPE adjustment", marketKey);
+            logger.LogDebug("Market {Market} is not supported for CAPE adjustment", marketKey);
             return null;
         }
 
@@ -62,31 +56,31 @@ public class IndexPriceService(
             {
                 // 台灣同時使用 TWSE 取得即時與歷史價格
                 // 使用 fallback 版本：即時價失敗時會嘗試改抓歷史資料
-                currentPrice = await _twseIndexPriceService.GetCurrentPriceWithFallbackAsync(cancellationToken);
+                currentPrice = await twseIndexPriceService.GetCurrentPriceWithFallbackAsync(cancellationToken);
                 referencePrice = await GetTaiwanReferencePriceAsync(referenceDate, referenceYearMonth, cancellationToken);
             }
             else
             {
                 // 美股／全球市場使用 Sina + Stooq
-                currentPrice = await _sinaEtfPriceService.GetCurrentPriceAsync(marketKey, cancellationToken);
+                currentPrice = await sinaEtfPriceService.GetCurrentPriceAsync(marketKey, cancellationToken);
                 referencePrice = await GetReferencePriceAsync(marketKey, referenceDate, referenceYearMonth, cancellationToken);
             }
 
             if (currentPrice == null)
             {
-                _logger.LogWarning("Failed to get current price for {Market}", marketKey);
+                logger.LogWarning("Failed to get current price for {Market}", marketKey);
                 return null;
             }
 
             if (referencePrice == null)
             {
-                _logger.LogWarning(
+                logger.LogWarning(
                     "No reference price found for {Market} at {YearMonth}.",
                     marketKey, referenceYearMonth);
                 return null;
             }
 
-            _logger.LogDebug(
+            logger.LogDebug(
                 "Got prices for {Market}: current={Current}, reference={Reference} ({YearMonth})",
                 marketKey, currentPrice, referencePrice, referenceYearMonth);
 
@@ -101,7 +95,7 @@ public class IndexPriceService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching index prices for {Market}", marketKey);
+            logger.LogError(ex, "Error fetching index prices for {Market}", marketKey);
             return null;
         }
     }
@@ -127,7 +121,7 @@ public class IndexPriceService(
         }
 
         // 嘗試從 TWSE 抓取
-        var twsePrice = await _twseIndexPriceService.GetMonthEndPriceAsync(
+        var twsePrice = await twseIndexPriceService.GetMonthEndPriceAsync(
             referenceDate.Year,
             referenceDate.Month,
             cancellationToken);
@@ -153,7 +147,7 @@ public class IndexPriceService(
         CancellationToken cancellationToken)
     {
         // 先查資料庫是否已有快取（包含 NotAvailable 標記）
-        var snapshot = await _dbContext.IndexPriceSnapshots
+        var snapshot = await dbContext.IndexPriceSnapshots
             .FirstOrDefaultAsync(
                 s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
                 cancellationToken);
@@ -163,14 +157,14 @@ public class IndexPriceService(
             // 若標記為 NotAvailable，直接回傳 null（略過外部 API 呼叫）
             if (snapshot.IsNotAvailable)
             {
-                _logger.LogDebug("Negative cache hit for {Market}/{YearMonth} - marked NotAvailable", marketKey, yearMonth);
+                logger.LogDebug("Negative cache hit for {Market}/{YearMonth} - marked NotAvailable", marketKey, yearMonth);
                 return null;
             }
             return snapshot.Price;
         }
 
         // 嘗試從 Stooq 抓取
-        var stooqPrice = await _stooqHistoricalPriceService.GetMonthEndPriceAsync(
+        var stooqPrice = await stooqHistoricalPriceService.GetMonthEndPriceAsync(
             marketKey,
             referenceDate.Year,
             referenceDate.Month,
@@ -200,7 +194,7 @@ public class IndexPriceService(
         string yearMonth,
         CancellationToken cancellationToken)
     {
-        var snapshot = await _dbContext.IndexPriceSnapshots
+        var snapshot = await dbContext.IndexPriceSnapshots
             .FirstOrDefaultAsync(
                 s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
                 cancellationToken);
@@ -216,7 +210,7 @@ public class IndexPriceService(
     {
         try
         {
-            var existing = await _dbContext.IndexPriceSnapshots
+            var existing = await dbContext.IndexPriceSnapshots
                 .FirstOrDefaultAsync(
                     s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
                     cancellationToken);
@@ -228,7 +222,7 @@ public class IndexPriceService(
             }
             else
             {
-                _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                 {
                     MarketKey = marketKey,
                     YearMonth = yearMonth,
@@ -237,17 +231,17 @@ public class IndexPriceService(
                 });
             }
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Cached reference price {Price} for {Market} {YearMonth}", price, marketKey, yearMonth);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Cached reference price {Price} for {Market} {YearMonth}", price, marketKey, yearMonth);
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
             // 可能已被其他並發請求寫入；可忽略
-            _logger.LogDebug("Duplicate key ignored for {Market} {YearMonth} - already exists", marketKey, yearMonth);
+            logger.LogDebug("Duplicate key ignored for {Market} {YearMonth} - already exists", marketKey, yearMonth);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to cache reference price for {Market} {YearMonth}", marketKey, yearMonth);
+            logger.LogWarning(ex, "Failed to cache reference price for {Market} {YearMonth}", marketKey, yearMonth);
         }
     }
 
@@ -271,7 +265,7 @@ public class IndexPriceService(
     {
         try
         {
-            var existing = await _dbContext.IndexPriceSnapshots
+            var existing = await dbContext.IndexPriceSnapshots
                 .FirstOrDefaultAsync(
                     s => s.MarketKey == marketKey && s.YearMonth == yearMonth,
                     cancellationToken);
@@ -282,7 +276,7 @@ public class IndexPriceService(
                 return;
             }
 
-            _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+            dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
             {
                 MarketKey = marketKey,
                 YearMonth = yearMonth,
@@ -291,16 +285,16 @@ public class IndexPriceService(
                 RecordedAt = DateTime.UtcNow
             });
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Saved NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Saved NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            _logger.LogDebug("Duplicate key ignored for NotAvailable marker {Market}/{YearMonth}", marketKey, yearMonth);
+            logger.LogDebug("Duplicate key ignored for NotAvailable marker {Market}/{YearMonth}", marketKey, yearMonth);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
+            logger.LogWarning(ex, "Failed to save NotAvailable marker for {Market}/{YearMonth}", marketKey, yearMonth);
         }
     }
 }

@@ -15,9 +15,6 @@ namespace InvestmentTracker.API.Controllers;
 [Route("api/[controller]")]
 public class AuthController(AppDbContext context, IJwtTokenService jwtTokenService) : ControllerBase
 {
-    private readonly AppDbContext _context = context;
-    private readonly IJwtTokenService _jwtTokenService = jwtTokenService;
-
     /// <summary>
     /// 註冊新使用者帳號。
     /// </summary>
@@ -30,7 +27,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
         // 檢查 Email 是否已註冊
-        var existingUser = await _context.Users
+        var existingUser = await context.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
 
@@ -40,16 +37,16 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
         }
 
         // 建立使用者
-        var passwordHash = _jwtTokenService.HashPassword(request.Password);
+        var passwordHash = jwtTokenService.HashPassword(request.Password);
         var user = new User(normalizedEmail, passwordHash, request.DisplayName.Trim());
 
-        _context.Users.Add(user);
+        context.Users.Add(user);
 
         // 為新使用者建立預設投資組合
-        var portfolio = new Portfolio(user.Id, "USD", "TWD");
-        _context.Portfolios.Add(portfolio);
+        var portfolio = new Portfolio(user.Id);
+        context.Portfolios.Add(portfolio);
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         // 產生 Token
         var authResponse = await CreateAuthResponse(user);
@@ -67,11 +64,11 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        var user = await _context.Users
+        var user = await context.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == normalizedEmail && u.IsActive);
 
-        if (user == null || !_jwtTokenService.VerifyPassword(request.Password, user.PasswordHash))
+        if (user == null || !jwtTokenService.VerifyPassword(request.Password, user.PasswordHash))
         {
             return Unauthorized(new { message = "Invalid email or password" });
         }
@@ -89,9 +86,9 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest request)
     {
-        var tokenHash = _jwtTokenService.HashToken(request.RefreshToken);
+        var tokenHash = jwtTokenService.HashToken(request.RefreshToken);
 
-        var storedToken = await _context.RefreshTokens
+        var storedToken = await context.RefreshTokens
             .Include(rt => rt.User)
             .FirstOrDefaultAsync(rt => rt.Token == tokenHash);
 
@@ -122,15 +119,15 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
             return NoContent();
         }
 
-        var tokenHash = _jwtTokenService.HashToken(request.RefreshToken);
+        var tokenHash = jwtTokenService.HashToken(request.RefreshToken);
 
-        var storedToken = await _context.RefreshTokens
+        var storedToken = await context.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == tokenHash);
 
         if (storedToken != null)
         {
             storedToken.Revoke();
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
         }
 
         return NoContent();
@@ -145,7 +142,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
     public async Task<IActionResult> GetCurrentUser()
     {
         var userId = GetCurrentUserId();
-        var user = await _context.Users.FindAsync(userId);
+        var user = await context.Users.FindAsync(userId);
 
         if (user == null)
             return NotFound();
@@ -169,7 +166,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateUserProfileRequest request)
     {
         var userId = GetCurrentUserId();
-        var user = await _context.Users.FindAsync(userId);
+        var user = await context.Users.FindAsync(userId);
 
         if (user == null)
             return NotFound();
@@ -180,7 +177,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
             if (normalizedEmail != user.Email)
             {
-                var existingUser = await _context.Users
+                var existingUser = await context.Users
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(u => u.Email == normalizedEmail && u.Id != userId);
 
@@ -197,7 +194,7 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
             user.UpdateDisplayName(request.DisplayName.Trim());
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return Ok(new UserDto
         {
@@ -217,18 +214,18 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
         var userId = GetCurrentUserId();
-        var user = await _context.Users.FindAsync(userId);
+        var user = await context.Users.FindAsync(userId);
 
         if (user == null)
             return NotFound();
 
-        if (!_jwtTokenService.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        if (!jwtTokenService.VerifyPassword(request.CurrentPassword, user.PasswordHash))
             return BadRequest(new { message = "Current password is incorrect" });
 
-        var newPasswordHash = _jwtTokenService.HashPassword(request.NewPassword);
+        var newPasswordHash = jwtTokenService.HashPassword(request.NewPassword);
         user.UpdatePassword(newPasswordHash);
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return NoContent();
     }
@@ -241,29 +238,29 @@ public class AuthController(AppDbContext context, IJwtTokenService jwtTokenServi
 
     private async Task<AuthResponse> CreateAuthResponse(User user, Guid? replacedTokenId = null)
     {
-        var accessToken = _jwtTokenService.GenerateAccessToken(user);
-        var refreshTokenValue = _jwtTokenService.GenerateRefreshToken();
-        var refreshTokenHash = _jwtTokenService.HashToken(refreshTokenValue);
+        var accessToken = jwtTokenService.GenerateAccessToken(user);
+        var refreshTokenValue = jwtTokenService.GenerateRefreshToken();
+        var refreshTokenHash = jwtTokenService.HashToken(refreshTokenValue);
 
         var refreshToken = new RefreshToken(
             user.Id,
             refreshTokenHash,
-            DateTime.UtcNow.AddDays(_jwtTokenService.RefreshTokenExpirationDays));
+            DateTime.UtcNow.AddDays(jwtTokenService.RefreshTokenExpirationDays));
 
         if (replacedTokenId.HasValue)
         {
-            var oldToken = await _context.RefreshTokens.FindAsync(replacedTokenId.Value);
+            var oldToken = await context.RefreshTokens.FindAsync(replacedTokenId.Value);
             oldToken?.Revoke(refreshToken.Id);
         }
 
-        _context.RefreshTokens.Add(refreshToken);
-        await _context.SaveChangesAsync();
+        context.RefreshTokens.Add(refreshToken);
+        await context.SaveChangesAsync();
 
         return new AuthResponse
         {
             AccessToken = accessToken,
             RefreshToken = refreshTokenValue,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtTokenService.AccessTokenExpirationMinutes),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(jwtTokenService.AccessTokenExpirationMinutes),
             User = new UserDto
             {
                 Id = user.Id,

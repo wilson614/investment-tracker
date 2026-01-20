@@ -15,10 +15,6 @@ public class TransactionDateExchangeRateService(
     IStooqHistoricalPriceService stooqService,
     ILogger<TransactionDateExchangeRateService> logger) : ITransactionDateExchangeRateService
 {
-    private readonly IHistoricalExchangeRateCacheRepository _repository = repository;
-    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
-    private readonly ILogger<TransactionDateExchangeRateService> _logger = logger;
-
     public async Task<TransactionDateExchangeRateResult?> GetOrFetchAsync(
         string fromCurrency,
         string toCurrency,
@@ -29,10 +25,10 @@ public class TransactionDateExchangeRateService(
         var dateOnly = transactionDate.Date;
 
         // 先查快取
-        var cached = await _repository.GetAsync(currencyPair, dateOnly, cancellationToken);
+        var cached = await repository.GetAsync(currencyPair, dateOnly, cancellationToken);
         if (cached != null)
         {
-            _logger.LogDebug("Cache hit for {CurrencyPair}/{Date}: {Rate}", 
+            logger.LogDebug("Cache hit for {CurrencyPair}/{Date}: {Rate}", 
                 currencyPair, dateOnly.ToString("yyyy-MM-dd"), cached.Rate);
             return new TransactionDateExchangeRateResult
             {
@@ -46,7 +42,7 @@ public class TransactionDateExchangeRateService(
         }
 
         // 從 Stooq API 抓取
-        _logger.LogInformation("Cache miss for {CurrencyPair}/{Date}, fetching from Stooq...", 
+        logger.LogInformation("Cache miss for {CurrencyPair}/{Date}, fetching from Stooq...", 
             currencyPair, dateOnly.ToString("yyyy-MM-dd"));
         
         var apiResult = await FetchFromStooqAsync(fromCurrency, toCurrency, dateOnly, cancellationToken);
@@ -64,15 +60,15 @@ public class TransactionDateExchangeRateService(
                     apiResult.ActualDate,
                     apiResult.Source);
 
-                await _repository.AddAsync(cacheEntry, cancellationToken);
+                await repository.AddAsync(cacheEntry, cancellationToken);
                 apiResult.FromCache = false;
-                _logger.LogInformation("Cached exchange rate for {CurrencyPair}/{Date}: {Rate}",
+                logger.LogInformation("Cached exchange rate for {CurrencyPair}/{Date}: {Rate}",
                     currencyPair, dateOnly.ToString("yyyy-MM-dd"), apiResult.Rate);
             }
             catch (InvalidOperationException ex)
             {
                 // 可能已被其他並發請求寫入；可忽略
-                _logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Date}", 
+                logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Date}", 
                     currencyPair, dateOnly.ToString("yyyy-MM-dd"));
             }
         }
@@ -91,7 +87,7 @@ public class TransactionDateExchangeRateService(
         var dateOnly = transactionDate.Date;
 
         // 確認是否已存在快取資料
-        if (await _repository.ExistsAsync(currencyPair, dateOnly, cancellationToken))
+        if (await repository.ExistsAsync(currencyPair, dateOnly, cancellationToken))
         {
             throw new InvalidOperationException(
                 $"Cache entry already exists for {currencyPair}/{dateOnly:yyyy-MM-dd}. " +
@@ -104,8 +100,8 @@ public class TransactionDateExchangeRateService(
             dateOnly,
             rate);
 
-        await _repository.AddAsync(cacheEntry, cancellationToken);
-        _logger.LogInformation("Manually cached exchange rate for {CurrencyPair}/{Date}: {Rate}",
+        await repository.AddAsync(cacheEntry, cancellationToken);
+        logger.LogInformation("Manually cached exchange rate for {CurrencyPair}/{Date}: {Rate}",
             currencyPair, dateOnly.ToString("yyyy-MM-dd"), rate);
 
         return new TransactionDateExchangeRateResult
@@ -126,7 +122,7 @@ public class TransactionDateExchangeRateService(
         CancellationToken cancellationToken = default)
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
-        return await _repository.ExistsAsync(currencyPair, transactionDate.Date, cancellationToken);
+        return await repository.ExistsAsync(currencyPair, transactionDate.Date, cancellationToken);
     }
 
     private async Task<TransactionDateExchangeRateResult?> FetchFromStooqAsync(
@@ -138,12 +134,12 @@ public class TransactionDateExchangeRateService(
         try
         {
             var targetDate = DateOnly.FromDateTime(transactionDate);
-            var result = await _stooqService.GetExchangeRateAsync(
+            var result = await stooqService.GetExchangeRateAsync(
                 fromCurrency, toCurrency, targetDate, cancellationToken);
 
             if (result == null)
             {
-                _logger.LogWarning("Could not fetch exchange rate for {From}/{To}/{Date} from Stooq",
+                logger.LogWarning("Could not fetch exchange rate for {From}/{To}/{Date} from Stooq",
                     fromCurrency, toCurrency, transactionDate.ToString("yyyy-MM-dd"));
                 return null;
             }
@@ -164,7 +160,7 @@ public class TransactionDateExchangeRateService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error fetching exchange rate for {From}/{To}/{Date}",
+            logger.LogWarning(ex, "Error fetching exchange rate for {From}/{To}/{Date}",
                 fromCurrency, toCurrency, transactionDate.ToString("yyyy-MM-dd"));
             return null;
         }

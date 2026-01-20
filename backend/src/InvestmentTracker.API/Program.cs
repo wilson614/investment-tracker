@@ -198,7 +198,7 @@ builder.Services.AddHttpClient<ITwseDividendService, TwseDividendService>();
 builder.Services.AddHttpClient<IMarketYtdService, MarketYtdService>();
 
 // Euronext Quote Service
-builder.Services.AddScoped<InvestmentTracker.Infrastructure.Services.EuronextQuoteService>();
+builder.Services.AddScoped<EuronextQuoteService>();
 
 // Historical Performance Service
 builder.Services.AddScoped<IHistoricalPerformanceService, HistoricalPerformanceService>();

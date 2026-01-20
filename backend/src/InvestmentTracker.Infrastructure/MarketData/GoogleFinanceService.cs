@@ -11,9 +11,6 @@ public partial class GoogleFinanceService(
     HttpClient httpClient,
     ILogger<GoogleFinanceService> logger) : IGoogleFinanceService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<GoogleFinanceService> _logger = logger;
-
     // Google Finance symbol 格式：SYMBOL:EXCHANGE
     private static readonly Dictionary<string, string> GoogleFinanceSymbols = new()
     {
@@ -26,7 +23,7 @@ public partial class GoogleFinanceService(
     {
         if (!GoogleFinanceSymbols.TryGetValue(marketKey, out var symbol))
         {
-            _logger.LogDebug("No Google Finance symbol mapping for {Market}", marketKey);
+            logger.LogDebug("No Google Finance symbol mapping for {Market}", marketKey);
             return null;
         }
 
@@ -36,10 +33,10 @@ public partial class GoogleFinanceService(
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Google Finance returned {Status} for {Symbol}", response.StatusCode, symbol);
+                logger.LogWarning("Google Finance returned {Status} for {Symbol}", response.StatusCode, symbol);
                 return null;
             }
 
@@ -49,16 +46,16 @@ public partial class GoogleFinanceService(
             var match = DataLastPriceRegex().Match(html);
             if (match.Success && decimal.TryParse(match.Groups[1].Value, out var price))
             {
-                _logger.LogDebug("Got price {Price} for {Market} from Google Finance", price, marketKey);
+                logger.LogDebug("Got price {Price} for {Market} from Google Finance", price, marketKey);
                 return price;
             }
 
-            _logger.LogWarning("Could not parse price from Google Finance for {Symbol}", symbol);
+            logger.LogWarning("Could not parse price from Google Finance for {Symbol}", symbol);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching price from Google Finance for {Market}", marketKey);
+            logger.LogError(ex, "Error fetching price from Google Finance for {Market}", marketKey);
             return null;
         }
     }

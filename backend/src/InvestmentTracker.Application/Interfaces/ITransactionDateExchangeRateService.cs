@@ -1,5 +1,3 @@
-using InvestmentTracker.Domain.Entities;
-
 namespace InvestmentTracker.Application.Interfaces;
 
 /// <summary>

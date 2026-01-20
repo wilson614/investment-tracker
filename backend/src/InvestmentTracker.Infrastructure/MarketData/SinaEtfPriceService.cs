@@ -10,9 +10,6 @@ namespace InvestmentTracker.Infrastructure.MarketData;
 /// </summary>
 public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceService> logger) : ISinaEtfPriceService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<SinaEtfPriceService> _logger = logger;
-
     private const string BaseUrl = "https://hq.sinajs.cn/list=";
     private const string Referer = "http://vip.stock.finance.sina.com.cn";
 
@@ -42,7 +39,7 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
     {
         if (!SinaSymbols.TryGetValue(marketKey, out var symbol))
         {
-            _logger.LogDebug("No Sina symbol mapping for {Market}", marketKey);
+            logger.LogDebug("No Sina symbol mapping for {Market}", marketKey);
             return null;
         }
 
@@ -52,10 +49,10 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Referer", Referer);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Sina returned {Status} for {Symbol}", response.StatusCode, symbol);
+                logger.LogWarning("Sina returned {Status} for {Symbol}", response.StatusCode, symbol);
                 return null;
             }
 
@@ -66,7 +63,7 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching ETF price from Sina for {Market}", marketKey);
+            logger.LogError(ex, "Error fetching ETF price from Sina for {Market}", marketKey);
             return null;
         }
     }
@@ -84,21 +81,21 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
 
         if (startIdx < 0 || endIdx <= startIdx)
         {
-            _logger.LogWarning("Invalid Sina response format for {Market}", marketKey);
+            logger.LogWarning("Invalid Sina response format for {Market}", marketKey);
             return null;
         }
 
         var data = content.Substring(startIdx + 1, endIdx - startIdx - 1);
         if (string.IsNullOrEmpty(data))
         {
-            _logger.LogWarning("Empty data from Sina for {Market}", marketKey);
+            logger.LogWarning("Empty data from Sina for {Market}", marketKey);
             return null;
         }
 
         var parts = data.Split(',');
         if (parts.Length < 2)
         {
-            _logger.LogWarning("Insufficient data fields from Sina for {Market}", marketKey);
+            logger.LogWarning("Insufficient data fields from Sina for {Market}", marketKey);
             return null;
         }
 
@@ -110,18 +107,18 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
                 decimal.TryParse(parts[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var yesterdayClose) &&
                 yesterdayClose > 0)
             {
-                _logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Market} (current price is 0)", yesterdayClose, marketKey);
+                logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Market} (current price is 0)", yesterdayClose, marketKey);
                 return yesterdayClose;
             }
 
             if (price > 0)
             {
-                _logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
+                logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
                 return price;
             }
         }
 
-        _logger.LogWarning("Could not parse price from Sina for {Market}: {Data}", marketKey, parts[1]);
+        logger.LogWarning("Could not parse price from Sina for {Market}: {Data}", marketKey, parts[1]);
         return null;
     }
 }

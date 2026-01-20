@@ -15,11 +15,6 @@ public class EuronextQuoteService(
     IExchangeRateProvider exchangeRateProvider,
     ILogger<EuronextQuoteService> logger)
 {
-    private readonly IEuronextApiClient _apiClient = apiClient;
-    private readonly IEuronextQuoteCacheRepository _cacheRepository = cacheRepository;
-    private readonly IExchangeRateProvider _exchangeRateProvider = exchangeRateProvider;
-    private readonly ILogger<EuronextQuoteService> _logger = logger;
-
     // 快取有效期間（分鐘）（交易時段預設 15 分鐘）
     private const int CacheMinutes = 15;
 
@@ -44,10 +39,10 @@ public class EuronextQuoteService(
             // 優先嘗試從快取取得
             if (!forceRefresh)
             {
-                var cached = await _cacheRepository.GetByIsinAndMicAsync(isin, mic, cancellationToken);
+                var cached = await cacheRepository.GetByIsinAndMicAsync(isin, mic, cancellationToken);
                 if (cached != null && !cached.IsStale && !IsCacheExpired(cached))
                 {
-                    _logger.LogDebug("Using cached quote for {Isin}-{Mic}", isin, mic);
+                    logger.LogDebug("Using cached quote for {Isin}-{Mic}", isin, mic);
 
                     // 取得快取資料對應的匯率
                     var rate = await GetExchangeRateAsync(cached.Currency, homeCurrency, cancellationToken);
@@ -65,12 +60,12 @@ public class EuronextQuoteService(
             }
 
             // 抓取最新報價
-            _logger.LogInformation("Fetching fresh quote for {Isin}-{Mic}", isin, mic);
-            var quote = await _apiClient.GetQuoteAsync(isin, mic, cancellationToken);
+            logger.LogInformation("Fetching fresh quote for {Isin}-{Mic}", isin, mic);
+            var quote = await apiClient.GetQuoteAsync(isin, mic, cancellationToken);
 
             if (quote == null)
             {
-                _logger.LogWarning("No quote returned for {Isin}-{Mic}", isin, mic);
+                logger.LogWarning("No quote returned for {Isin}-{Mic}", isin, mic);
                 return null;
             }
 
@@ -84,7 +79,7 @@ public class EuronextQuoteService(
                 quote.ChangePercent,
                 quote.Change);
 
-            await _cacheRepository.UpsertAsync(cacheEntry, cancellationToken);
+            await cacheRepository.UpsertAsync(cacheEntry, cancellationToken);
 
             // 取得匯率
             var exchangeRate = await GetExchangeRateAsync(quote.Currency, homeCurrency, cancellationToken);
@@ -101,7 +96,7 @@ public class EuronextQuoteService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting quote for {Isin}-{Mic}", isin, mic);
+            logger.LogError(ex, "Error getting quote for {Isin}-{Mic}", isin, mic);
             return null;
         }
     }
@@ -124,12 +119,12 @@ public class EuronextQuoteService(
 
         try
         {
-            var response = await _exchangeRateProvider.GetExchangeRateAsync(fromCurrency, toCurrency, cancellationToken);
+            var response = await exchangeRateProvider.GetExchangeRateAsync(fromCurrency, toCurrency, cancellationToken);
             return response?.Rate;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to get exchange rate from {From} to {To}", fromCurrency, toCurrency);
+            logger.LogWarning(ex, "Failed to get exchange rate from {From} to {To}", fromCurrency, toCurrency);
             return null;
         }
     }

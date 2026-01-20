@@ -27,15 +27,6 @@ public class MarketYtdService(
     HttpClient httpClient,
     ILogger<MarketYtdService> logger) : IMarketYtdService
 {
-    private readonly AppDbContext _dbContext = dbContext;
-    private readonly IStockPriceService _stockPriceService = stockPriceService;
-    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
-    private readonly ITwseDividendService _dividendService = dividendService;
-    private readonly EtfClassificationService _etfClassificationService = etfClassificationService;
-    private readonly ITwseRateLimiter _twseRateLimiter = twseRateLimiter;
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<MarketYtdService> _logger = logger;
-
     // 基準定義：MarketKey -> (Symbol, Name, Market)
     // 注意：「Taiwan 0050」與「Taiwan」（用於 CAPE 的 TWII 指數）不同
     private static readonly Dictionary<string, (string Symbol, string Name, StockMarket Market)> Benchmarks = new()
@@ -64,7 +55,7 @@ public class MarketYtdService(
         // 從資料庫載入年末基準價（例如：2026 的 YTD 會用 202512）
         // 使用 GroupBy 處理可能的重複 key（並發寫入導致的 race condition）
         // 排除 NotAvailable，並僅取有實際價格的快照
-        var yearEndPrices = (await _dbContext.IndexPriceSnapshots
+        var yearEndPrices = (await dbContext.IndexPriceSnapshots
             .Where(s => s.YearMonth == yearEndYearMonth && Benchmarks.Keys.Contains(s.MarketKey) && !s.IsNotAvailable && s.Price.HasValue)
             .ToListAsync(cancellationToken))
             .GroupBy(s => s.MarketKey)
@@ -74,7 +65,7 @@ public class MarketYtdService(
         var missingMarkets = Benchmarks.Keys.Where(k => !yearEndPrices.ContainsKey(k)).ToList();
         if (missingMarkets.Count > 0)
         {
-            _logger.LogInformation("Missing {Year}/12 year-end prices for {Markets}, fetching from external sources...", previousYear, string.Join(", ", missingMarkets));
+            logger.LogInformation("Missing {Year}/12 year-end prices for {Markets}, fetching from external sources...", previousYear, string.Join(", ", missingMarkets));
             await PopulateMissingYearEndPricesAsync(previousYear, missingMarkets, yearEndPrices, cancellationToken);
         }
 
@@ -112,7 +103,7 @@ public class MarketYtdService(
 
         try
         {
-            var quote = await _stockPriceService.GetQuoteAsync(benchmark.Market, benchmark.Symbol, cancellationToken);
+            var quote = await stockPriceService.GetQuoteAsync(benchmark.Market, benchmark.Symbol, cancellationToken);
 
             if (quote == null)
             {
@@ -131,10 +122,10 @@ public class MarketYtdService(
             // 配息型 ETF 的股利調整（目前僅支援台股）
             decimal dividendsPaid = 0;
             var needsDividendAdjustment = benchmark.Market == StockMarket.TW &&
-                _etfClassificationService.NeedsDividendAdjustment(benchmark.Symbol);
+                etfClassificationService.NeedsDividendAdjustment(benchmark.Symbol);
             if (needsDividendAdjustment)
             {
-                var dividends = await _dividendService.GetDividendsAsync(benchmark.Symbol, year, cancellationToken);
+                var dividends = await dividendService.GetDividendsAsync(benchmark.Symbol, year, cancellationToken);
                 // Only count dividends that have already been paid (ex-date <= today)
                 var today = DateTime.UtcNow.Date;
                 dividendsPaid = dividends
@@ -143,7 +134,7 @@ public class MarketYtdService(
 
                 if (dividendsPaid > 0)
                 {
-                    _logger.LogDebug("Found {Count} dividends for {Symbol} in {Year}, total: {Amount}",
+                    logger.LogDebug("Found {Count} dividends for {Symbol} in {Year}, total: {Amount}",
                         dividends.Count, benchmark.Symbol, year, dividendsPaid);
                 }
             }
@@ -176,7 +167,7 @@ public class MarketYtdService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get YTD for {MarketKey} ({Symbol})", marketKey, benchmark.Symbol);
+            logger.LogError(ex, "Failed to get YTD for {MarketKey} ({Symbol})", marketKey, benchmark.Symbol);
             return new MarketYtdReturnDto
             {
                 MarketKey = marketKey,
@@ -216,25 +207,25 @@ public class MarketYtdService(
                 else
                 {
                     // 從 Stooq 抓取英國掛牌 ETF 的年末價格
-                    yearEndPrice = await _stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
+                    yearEndPrice = await stooqService.GetMonthEndPriceAsync(marketKey, year, 12, cancellationToken);
                 }
 
                 if (yearEndPrice.HasValue)
                 {
                     // 確認是否已存在（避免並發請求造成重複寫入）
-                    var exists = await _dbContext.IndexPriceSnapshots
+                    var exists = await dbContext.IndexPriceSnapshots
                         .AnyAsync(s => s.MarketKey == marketKey && s.YearMonth == yearMonth, cancellationToken);
 
                     if (!exists)
                     {
-                        _dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
+                        dbContext.IndexPriceSnapshots.Add(new IndexPriceSnapshot
                         {
                             MarketKey = marketKey,
                             YearMonth = yearMonth,
                             Price = yearEndPrice.Value,
                             RecordedAt = DateTime.UtcNow
                         });
-                        _logger.LogInformation("Fetched and stored {Year}/12 year-end price for {MarketKey}: {Price}",
+                        logger.LogInformation("Fetched and stored {Year}/12 year-end price for {MarketKey}: {Price}",
                             year, marketKey, yearEndPrice.Value);
                     }
 
@@ -242,18 +233,18 @@ public class MarketYtdService(
                 }
                 else
                 {
-                    _logger.LogWarning("Could not fetch year-end price for {MarketKey}", marketKey);
+                    logger.LogWarning("Could not fetch year-end price for {MarketKey}", marketKey);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch year-end price for {MarketKey}", marketKey);
+                logger.LogError(ex, "Failed to fetch year-end price for {MarketKey}", marketKey);
             }
         }
 
         if (yearEndPrices.Count > 0)
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 
@@ -265,7 +256,7 @@ public class MarketYtdService(
         try
         {
             // 發送請求前先等待 rate limit 的可用額度
-            await _twseRateLimiter.WaitForSlotAsync(cancellationToken);
+            await twseRateLimiter.WaitForSlotAsync(cancellationToken);
 
             // TWSE 個股歷史資料 API
             var url = $"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={year}1201&stockNo=0050";
@@ -273,10 +264,10 @@ public class MarketYtdService(
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TWSE returned {Status} for 0050 historical data", response.StatusCode);
+                logger.LogWarning("TWSE returned {Status} for 0050 historical data", response.StatusCode);
                 return null;
             }
 
@@ -286,7 +277,7 @@ public class MarketYtdService(
             if (!json.RootElement.TryGetProperty("data", out var dataArray) ||
                 dataArray.GetArrayLength() == 0)
             {
-                _logger.LogWarning("No 0050 historical data from TWSE for {Year}/12", year);
+                logger.LogWarning("No 0050 historical data from TWSE for {Year}/12", year);
                 return null;
             }
 
@@ -301,7 +292,7 @@ public class MarketYtdService(
                 if (decimal.TryParse(closeStr, System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var price))
                 {
-                    _logger.LogDebug("Got 0050 year-end price {Price} for {Year}/12 from TWSE", price, year);
+                    logger.LogDebug("Got 0050 year-end price {Price} for {Year}/12 from TWSE", price, year);
                     return price;
                 }
             }
@@ -310,7 +301,7 @@ public class MarketYtdService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching 0050 year-end price from TWSE for {Year}", year);
+            logger.LogError(ex, "Error fetching 0050 year-end price from TWSE for {Year}", year);
             return null;
         }
     }

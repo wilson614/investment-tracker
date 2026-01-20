@@ -17,17 +17,12 @@ public class CapeDataService(
     IIndexPriceService indexPriceService,
     ILogger<CapeDataService> logger) : ICapeDataService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly AppDbContext _dbContext = dbContext;
-    private readonly IIndexPriceService _indexPriceService = indexPriceService;
-    private readonly ILogger<CapeDataService> _logger = logger;
-
     private const string BaseUrl = "https://interactive.researchaffiliates.com/asset-allocation-data";
 
     public async Task<CapeDataResponse?> GetCapeDataAsync(CancellationToken cancellationToken = default)
     {
         // 從資料庫取得最新快照
-        var snapshot = await _dbContext.CapeDataSnapshots
+        var snapshot = await dbContext.CapeDataSnapshots
             .OrderByDescending(s => s.DataDate)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -109,14 +104,14 @@ public class CapeDataService(
 
         try
         {
-            var indexPrices = await _indexPriceService.GetIndexPricesAsync(
+            var indexPrices = await indexPriceService.GetIndexPricesAsync(
                 marketKey,
                 referenceDate,
                 cancellationToken);
 
             if (indexPrices == null || indexPrices.CurrentPrice == 0 || indexPrices.ReferencePrice == 0)
             {
-                _logger.LogDebug("Could not get index prices for {Market}", marketKey);
+                logger.LogDebug("Could not get index prices for {Market}", marketKey);
                 return null;
             }
 
@@ -124,7 +119,7 @@ public class CapeDataService(
             var adjustmentRatio = indexPrices.CurrentPrice / indexPrices.ReferencePrice;
             var adjustedValue = originalValue * adjustmentRatio;
 
-            _logger.LogDebug(
+            logger.LogDebug(
                 "Adjusted {Market} CAPE: {Original} × ({Current}/{Reference}) = {Adjusted}",
                 marketKey, originalValue, indexPrices.CurrentPrice, indexPrices.ReferencePrice, adjustedValue);
 
@@ -132,7 +127,7 @@ public class CapeDataService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to calculate adjusted CAPE for {Market}", marketKey);
+            logger.LogWarning(ex, "Failed to calculate adjusted CAPE for {Market}", marketKey);
             return null;
         }
     }
@@ -183,12 +178,12 @@ public class CapeDataService(
         }
 
         // 更新 FetchedAt，避免短時間內重複檢查
-        var snapshot = await _dbContext.CapeDataSnapshots
+        var snapshot = await dbContext.CapeDataSnapshots
             .FirstOrDefaultAsync(s => s.DataDate == currentDataDate, cancellationToken);
         if (snapshot != null)
         {
             snapshot.FetchedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         return null;
@@ -199,7 +194,7 @@ public class CapeDataService(
         var result = await DiscoverLatestCapeDataAsync(cancellationToken);
         if (result == null)
         {
-            _logger.LogWarning("Failed to discover CAPE data"); // 無法探索到 CAPE 資料
+            logger.LogWarning("Failed to discover CAPE data"); // 無法探索到 CAPE 資料
             return null;
         }
 
@@ -212,7 +207,7 @@ public class CapeDataService(
         try
         {
             // 確認是否已存在同日期快照
-            var existing = await _dbContext.CapeDataSnapshots
+            var existing = await dbContext.CapeDataSnapshots
                 .FirstOrDefaultAsync(s => s.DataDate == data.Date, cancellationToken);
 
             // 儲存不含 AdjustedValue 的 items（AdjustedValue 會即時計算）
@@ -235,16 +230,16 @@ public class CapeDataService(
                     FetchedAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow
                 };
-                _dbContext.CapeDataSnapshots.Add(snapshot);
+                dbContext.CapeDataSnapshots.Add(snapshot);
             }
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date); // 已儲存 CAPE 快照
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Saved CAPE data snapshot for date {Date}", data.Date); // 已儲存 CAPE 快照
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
             // 可能已被其他並發請求寫入；可忽略
-            _logger.LogDebug("Duplicate CAPE snapshot ignored for {Date} - already exists", data.Date);
+            logger.LogDebug("Duplicate CAPE snapshot ignored for {Date} - already exists", data.Date);
         }
     }
 
@@ -287,7 +282,7 @@ public class CapeDataService(
                 if (items != null)
                 {
                     var date = $"{year}-{month:D2}-{day:D2}";
-                    _logger.LogInformation("Found CAPE data for {Date}", date); // 找到可用的 CAPE 資料
+                    logger.LogInformation("Found CAPE data for {Date}", date); // 找到可用的 CAPE 資料
                     return new CapeDataResponse(date, items, DateTime.UtcNow);
                 }
             }
@@ -314,7 +309,7 @@ public class CapeDataService(
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
@@ -343,7 +338,7 @@ public class CapeDataService(
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to fetch CAPE data for {Year}-{Month:D2}-{Day:D2}", year, month, day);
+            logger.LogDebug(ex, "Failed to fetch CAPE data for {Year}-{Month:D2}-{Day:D2}", year, month, day);
             return null;
         }
     }

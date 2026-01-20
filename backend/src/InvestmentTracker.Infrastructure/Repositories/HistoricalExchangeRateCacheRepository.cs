@@ -11,8 +11,6 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// </summary>
 public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHistoricalExchangeRateCacheRepository
 {
-    private readonly AppDbContext _context = context;
-
     public async Task<HistoricalExchangeRateCache?> GetAsync(
         string currencyPair,
         DateTime requestedDate,
@@ -21,7 +19,7 @@ public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHist
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
         var dateOnly = requestedDate.Date;
 
-        return await _context.HistoricalExchangeRateCaches
+        return await context.HistoricalExchangeRateCaches
             .FirstOrDefaultAsync(
                 d => d.CurrencyPair == normalizedPair && d.RequestedDate == dateOnly,
                 cancellationToken);
@@ -43,7 +41,7 @@ public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHist
     {
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
 
-        return await _context.HistoricalExchangeRateCaches
+        return await context.HistoricalExchangeRateCaches
             .Where(d => d.CurrencyPair == normalizedPair)
             .OrderByDescending(d => d.RequestedDate)
             .ToListAsync(cancellationToken);
@@ -62,8 +60,8 @@ public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHist
                 "Historical cache is immutable - entries cannot be overwritten.");
         }
 
-        await _context.HistoricalExchangeRateCaches.AddAsync(data, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.HistoricalExchangeRateCaches.AddAsync(data, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return data;
     }
 
@@ -75,7 +73,7 @@ public class HistoricalExchangeRateCacheRepository(AppDbContext context) : IHist
         var normalizedPair = currencyPair.Trim().ToUpperInvariant();
         var dateOnly = requestedDate.Date;
 
-        return await _context.HistoricalExchangeRateCaches
+        return await context.HistoricalExchangeRateCaches
             .AnyAsync(
                 d => d.CurrencyPair == normalizedPair && d.RequestedDate == dateOnly,
                 cancellationToken);

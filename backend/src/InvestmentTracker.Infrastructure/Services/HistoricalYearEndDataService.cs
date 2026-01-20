@@ -18,11 +18,6 @@ public class HistoricalYearEndDataService(
     ITwseStockHistoricalPriceService twseStockService,
     ILogger<HistoricalYearEndDataService> logger) : IHistoricalYearEndDataService
 {
-    private readonly IHistoricalYearEndDataRepository _repository = repository;
-    private readonly IStooqHistoricalPriceService _stooqService = stooqService;
-    private readonly ITwseStockHistoricalPriceService _twseStockService = twseStockService;
-    private readonly ILogger<HistoricalYearEndDataService> _logger = logger;
-
     /// <summary>
     /// Gets year-end stock price from cache, or fetches from API and caches it.
     /// Returns null if price cannot be obtained (requires manual entry).
@@ -36,15 +31,15 @@ public class HistoricalYearEndDataService(
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
-            _logger.LogDebug("Year {Year} is current year or future - not caching", year);
+            logger.LogDebug("Year {Year} is current year or future - not caching", year);
             return await FetchPriceFromApiAsync(ticker, year, cancellationToken);
         }
 
         // 先查快取
-        var cached = await _repository.GetStockPriceAsync(ticker, year, cancellationToken);
+        var cached = await repository.GetStockPriceAsync(ticker, year, cancellationToken);
         if (cached != null)
         {
-            _logger.LogDebug("Cache hit for {Ticker}/{Year}: {Value}", ticker, year, cached.Value);
+            logger.LogDebug("Cache hit for {Ticker}/{Year}: {Value}", ticker, year, cached.Value);
             return new YearEndPriceResult
             {
                 Price = cached.Value,
@@ -56,7 +51,7 @@ public class HistoricalYearEndDataService(
         }
 
         // 從 API 抓取
-        _logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", ticker, year);
+        logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", ticker, year);
         var apiResult = await FetchPriceFromApiAsync(ticker, year, cancellationToken);
 
         if (apiResult != null)
@@ -72,15 +67,15 @@ public class HistoricalYearEndDataService(
                     apiResult.ActualDate,
                     apiResult.Source);
 
-                await _repository.AddAsync(cacheEntry, cancellationToken);
+                await repository.AddAsync(cacheEntry, cancellationToken);
                 apiResult.FromCache = false;
-                _logger.LogInformation("Cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
+                logger.LogInformation("Cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
                     ticker, year, apiResult.Price, apiResult.Currency);
             }
             catch (InvalidOperationException ex)
             {
                 // 可能已被其他並發請求寫入；可忽略
-                _logger.LogDebug(ex, "Cache entry already exists for {Ticker}/{Year}", ticker, year);
+                logger.LogDebug(ex, "Cache entry already exists for {Ticker}/{Year}", ticker, year);
             }
         }
 
@@ -103,15 +98,15 @@ public class HistoricalYearEndDataService(
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
-            _logger.LogDebug("Year {Year} is current year or future - not caching exchange rate", year);
+            logger.LogDebug("Year {Year} is current year or future - not caching exchange rate", year);
             return await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
         }
 
         // 先查快取
-        var cached = await _repository.GetExchangeRateAsync(currencyPair, year, cancellationToken);
+        var cached = await repository.GetExchangeRateAsync(currencyPair, year, cancellationToken);
         if (cached != null)
         {
-            _logger.LogDebug("Cache hit for exchange rate {CurrencyPair}/{Year}: {Value}", currencyPair, year, cached.Value);
+            logger.LogDebug("Cache hit for exchange rate {CurrencyPair}/{Year}: {Value}", currencyPair, year, cached.Value);
             return new YearEndExchangeRateResult
             {
                 Rate = cached.Value,
@@ -123,7 +118,7 @@ public class HistoricalYearEndDataService(
         }
 
         // 從 API 抓取
-        _logger.LogInformation("Cache miss for exchange rate {CurrencyPair}/{Year}, fetching from API...", currencyPair, year);
+        logger.LogInformation("Cache miss for exchange rate {CurrencyPair}/{Year}, fetching from API...", currencyPair, year);
         var apiResult = await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
 
         if (apiResult != null)
@@ -138,14 +133,14 @@ public class HistoricalYearEndDataService(
                     apiResult.ActualDate,
                     apiResult.Source);
 
-                await _repository.AddAsync(cacheEntry, cancellationToken);
+                await repository.AddAsync(cacheEntry, cancellationToken);
                 apiResult.FromCache = false;
-                _logger.LogInformation("Cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
+                logger.LogInformation("Cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
                     currencyPair, year, apiResult.Rate);
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Year}", currencyPair, year);
+                logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Year}", currencyPair, year);
             }
         }
 
@@ -164,7 +159,7 @@ public class HistoricalYearEndDataService(
         CancellationToken cancellationToken = default)
     {
         // Check if entry already exists
-        if (await _repository.ExistsAsync(HistoricalDataType.StockPrice, ticker, year, cancellationToken))
+        if (await repository.ExistsAsync(HistoricalDataType.StockPrice, ticker, year, cancellationToken))
         {
             throw new InvalidOperationException(
                 $"Cache entry already exists for {ticker}/{year}. Manual entry only allowed for empty cache entries.");
@@ -178,8 +173,8 @@ public class HistoricalYearEndDataService(
             DateTime.SpecifyKind(actualDate, DateTimeKind.Utc),
             "Manual");
 
-        await _repository.AddAsync(cacheEntry, cancellationToken);
-        _logger.LogInformation("Manually cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
+        await repository.AddAsync(cacheEntry, cancellationToken);
+        logger.LogInformation("Manually cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
             ticker, year, price, currency);
 
         return new YearEndPriceResult
@@ -205,7 +200,7 @@ public class HistoricalYearEndDataService(
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
 
-        if (await _repository.ExistsAsync(HistoricalDataType.ExchangeRate, currencyPair, year, cancellationToken))
+        if (await repository.ExistsAsync(HistoricalDataType.ExchangeRate, currencyPair, year, cancellationToken))
         {
             throw new InvalidOperationException(
                 $"Cache entry already exists for {currencyPair}/{year}. Manual entry only allowed for empty cache entries.");
@@ -218,8 +213,8 @@ public class HistoricalYearEndDataService(
             DateTime.SpecifyKind(actualDate, DateTimeKind.Utc),
             "Manual");
 
-        await _repository.AddAsync(cacheEntry, cancellationToken);
-        _logger.LogInformation("Manually cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
+        await repository.AddAsync(cacheEntry, cancellationToken);
+        logger.LogInformation("Manually cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
             currencyPair, year, rate);
 
         return new YearEndExchangeRateResult
@@ -247,11 +242,11 @@ public class HistoricalYearEndDataService(
 
             // 以 12/31 作為目標日期（Stooq 會回傳最近的交易日）
             var targetDate = new DateOnly(year, 12, 31);
-            var result = await _stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
+            var result = await stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
 
             if (result == null)
             {
-                _logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from Stooq", ticker, year);
+                logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from Stooq", ticker, year);
                 return null;
             }
 
@@ -270,7 +265,7 @@ public class HistoricalYearEndDataService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error fetching year-end price for {Ticker}/{Year}", ticker, year);
+            logger.LogWarning(ex, "Error fetching year-end price for {Ticker}/{Year}", ticker, year);
             return null;
         }
     }
@@ -295,11 +290,11 @@ public class HistoricalYearEndDataService(
         CancellationToken cancellationToken)
     {
         var stockNo = ticker.Split('.')[0]; // 去除 ".TW" 等後綴
-        var result = await _twseStockService.GetYearEndPriceAsync(stockNo, year, cancellationToken);
+        var result = await twseStockService.GetYearEndPriceAsync(stockNo, year, cancellationToken);
 
         if (result == null)
         {
-            _logger.LogWarning("Could not fetch year-end price for Taiwan stock {Ticker}/{Year} from TWSE", ticker, year);
+            logger.LogWarning("Could not fetch year-end price for Taiwan stock {Ticker}/{Year} from TWSE", ticker, year);
             return null;
         }
 
@@ -322,11 +317,11 @@ public class HistoricalYearEndDataService(
         try
         {
             var targetDate = new DateOnly(year, 12, 31);
-            var result = await _stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, targetDate, cancellationToken);
+            var result = await stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, targetDate, cancellationToken);
 
             if (result == null)
             {
-                _logger.LogWarning("Could not fetch year-end exchange rate for {From}/{To}/{Year} from Stooq",
+                logger.LogWarning("Could not fetch year-end exchange rate for {From}/{To}/{Year} from Stooq",
                     fromCurrency, toCurrency, year);
                 return null;
             }
@@ -346,7 +341,7 @@ public class HistoricalYearEndDataService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error fetching year-end exchange rate for {From}/{To}/{Year}",
+            logger.LogWarning(ex, "Error fetching year-end exchange rate for {From}/{To}/{Year}",
                 fromCurrency, toCurrency, year);
             return null;
         }

@@ -9,9 +9,6 @@ namespace InvestmentTracker.Infrastructure.MarketData;
 /// </summary>
 public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHistoricalPriceService> logger) : IStooqHistoricalPriceService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<StooqHistoricalPriceService> _logger = logger;
-
     private const string BaseUrl = "https://stooq.com/q/d/l/";
 
     // Stooq 的 ETF symbol 對應（英國掛牌，部分以 USD 計價）
@@ -42,7 +39,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
     {
         if (!StooqSymbols.TryGetValue(marketKey, out var symbol))
         {
-            _logger.LogDebug("No Stooq symbol mapping for {Market}", marketKey);
+            logger.LogDebug("No Stooq symbol mapping for {Market}", marketKey);
             return null;
         }
 
@@ -58,10 +55,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Stooq returned {Status} for {Symbol}", response.StatusCode, symbol);
+                logger.LogWarning("Stooq returned {Status} for {Symbol}", response.StatusCode, symbol);
                 return null;
             }
 
@@ -81,7 +78,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching historical price from Stooq for {Market}", marketKey);
+            logger.LogError(ex, "Error fetching historical price from Stooq for {Market}", marketKey);
             return null;
         }
     }
@@ -96,7 +93,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
 
         if (lines.Length < 2)
         {
-            _logger.LogWarning("No data returned from Stooq for {Market}", marketKey);
+            logger.LogWarning("No data returned from Stooq for {Market}", marketKey);
             return null;
         }
 
@@ -115,14 +112,14 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         var parts = lastLine.Split(',');
         if (parts.Length < 5)
         {
-            _logger.LogWarning("Invalid Stooq data format for {Market}: {Line}", marketKey, lastLine);
+            logger.LogWarning("Invalid Stooq data format for {Market}: {Line}", marketKey, lastLine);
             return null;
         }
 
         // 第 4 欄為 Close（0-indexed）
         if (decimal.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out var closePrice))
         {
-            _logger.LogDebug("Got historical price {Price} for {Market} from Stooq", closePrice, marketKey);
+            logger.LogDebug("Got historical price {Price} for {Market} from Stooq", closePrice, marketKey);
             return closePrice;
         }
 
@@ -154,7 +151,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             }
         }
 
-        _logger.LogWarning("Could not find historical price for {Ticker} on {Date} from Stooq", ticker, date);
+        logger.LogWarning("Could not find historical price for {Ticker} on {Date} from Stooq", ticker, date);
         return null;
     }
 
@@ -209,10 +206,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("Stooq returned {Status} for {Symbol}", response.StatusCode, symbol);
+                logger.LogDebug("Stooq returned {Status} for {Symbol}", response.StatusCode, symbol);
                 return null;
             }
 
@@ -232,7 +229,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Error fetching {Symbol} from Stooq", symbol);
+            logger.LogDebug(ex, "Error fetching {Symbol} from Stooq", symbol);
             return null;
         }
     }
@@ -291,7 +288,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
 
         if (bestMatch != null)
         {
-            _logger.LogDebug("Got historical price {Price} {Currency} for {Symbol} on {Date} from Stooq",
+            logger.LogDebug("Got historical price {Price} {Currency} for {Symbol} on {Date} from Stooq",
                 bestMatch.Price, bestMatch.Currency, symbol, bestMatch.ActualDate);
         }
 
@@ -375,10 +372,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("Stooq returned {Status} for exchange rate {Symbol}", response.StatusCode, symbol);
+                logger.LogDebug("Stooq returned {Status} for exchange rate {Symbol}", response.StatusCode, symbol);
                 return null;
             }
 
@@ -398,7 +395,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching exchange rate {From}/{To} from Stooq", fromCurrency, toCurrency);
+            logger.LogError(ex, "Error fetching exchange rate {From}/{To} from Stooq", fromCurrency, toCurrency);
             return null;
         }
     }
@@ -450,7 +447,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
 
         if (bestMatch != null)
         {
-            _logger.LogDebug("Got historical exchange rate {Rate} for {From}/{To} on {Date} from Stooq",
+            logger.LogDebug("Got historical exchange rate {Rate} for {From}/{To} on {Date} from Stooq",
                 bestMatch.Rate, fromCurrency, toCurrency, bestMatch.ActualDate);
         }
 

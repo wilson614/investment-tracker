@@ -18,11 +18,6 @@ public class StockSplitsController(
     UpdateStockSplitUseCase updateStockSplitUseCase,
     DeleteStockSplitUseCase deleteStockSplitUseCase) : ControllerBase
 {
-    private readonly GetStockSplitsUseCase _getStockSplitsUseCase = getStockSplitsUseCase;
-    private readonly CreateStockSplitUseCase _createStockSplitUseCase = createStockSplitUseCase;
-    private readonly UpdateStockSplitUseCase _updateStockSplitUseCase = updateStockSplitUseCase;
-    private readonly DeleteStockSplitUseCase _deleteStockSplitUseCase = deleteStockSplitUseCase;
-
     /// <summary>
     /// 取得所有股票分割資料。
     /// </summary>
@@ -30,7 +25,7 @@ public class StockSplitsController(
     [ProducesResponseType(typeof(IEnumerable<StockSplitDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<StockSplitDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var splits = await _getStockSplitsUseCase.GetAllAsync(cancellationToken);
+        var splits = await getStockSplitsUseCase.GetAllAsync(cancellationToken);
         return Ok(splits);
     }
 
@@ -42,7 +37,7 @@ public class StockSplitsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockSplitDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var split = await _getStockSplitsUseCase.GetByIdAsync(id, cancellationToken);
+        var split = await getStockSplitsUseCase.GetByIdAsync(id, cancellationToken);
         if (split == null)
             return NotFound();
 
@@ -59,7 +54,7 @@ public class StockSplitsController(
         [FromQuery] StockMarket market,
         CancellationToken cancellationToken)
     {
-        var splits = await _getStockSplitsUseCase.GetBySymbolAsync(symbol, market, cancellationToken);
+        var splits = await getStockSplitsUseCase.GetBySymbolAsync(symbol, market, cancellationToken);
         return Ok(splits);
     }
 
@@ -75,7 +70,7 @@ public class StockSplitsController(
     {
         try
         {
-            var split = await _createStockSplitUseCase.ExecuteAsync(request, cancellationToken);
+            var split = await createStockSplitUseCase.ExecuteAsync(request, cancellationToken);
             return CreatedAtAction(nameof(GetById), new { id = split.Id }, split);
         }
         catch (InvalidOperationException ex)
@@ -98,7 +93,7 @@ public class StockSplitsController(
     {
         try
         {
-            var split = await _updateStockSplitUseCase.ExecuteAsync(id, request, cancellationToken);
+            var split = await updateStockSplitUseCase.ExecuteAsync(id, request, cancellationToken);
             return Ok(split);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -121,7 +116,7 @@ public class StockSplitsController(
     {
         try
         {
-            await _deleteStockSplitUseCase.ExecuteAsync(id, cancellationToken);
+            await deleteStockSplitUseCase.ExecuteAsync(id, cancellationToken);
             return NoContent();
         }
         catch (InvalidOperationException ex)

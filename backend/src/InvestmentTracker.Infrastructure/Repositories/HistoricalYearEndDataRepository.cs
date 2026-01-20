@@ -12,8 +12,6 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// </summary>
 public class HistoricalYearEndDataRepository(AppDbContext context) : IHistoricalYearEndDataRepository
 {
-    private readonly AppDbContext _context = context;
-
     public async Task<HistoricalYearEndData?> GetAsync(
         HistoricalDataType dataType,
         string ticker,
@@ -21,7 +19,7 @@ public class HistoricalYearEndDataRepository(AppDbContext context) : IHistorical
         CancellationToken cancellationToken = default)
     {
         var normalizedTicker = ticker.Trim().ToUpperInvariant();
-        return await _context.HistoricalYearEndData
+        return await context.HistoricalYearEndData
             .FirstOrDefaultAsync(
                 d => d.DataType == dataType && d.Ticker == normalizedTicker && d.Year == year,
                 cancellationToken);
@@ -47,7 +45,7 @@ public class HistoricalYearEndDataRepository(AppDbContext context) : IHistorical
         int year,
         CancellationToken cancellationToken = default)
     {
-        return await _context.HistoricalYearEndData
+        return await context.HistoricalYearEndData
             .Where(d => d.Year == year)
             .OrderBy(d => d.DataType)
             .ThenBy(d => d.Ticker)
@@ -67,8 +65,8 @@ public class HistoricalYearEndDataRepository(AppDbContext context) : IHistorical
                 "Historical cache is immutable - entries cannot be overwritten.");
         }
 
-        await _context.HistoricalYearEndData.AddAsync(data, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.HistoricalYearEndData.AddAsync(data, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return data;
     }
 
@@ -79,7 +77,7 @@ public class HistoricalYearEndDataRepository(AppDbContext context) : IHistorical
         CancellationToken cancellationToken = default)
     {
         var normalizedTicker = ticker.Trim().ToUpperInvariant();
-        return await _context.HistoricalYearEndData
+        return await context.HistoricalYearEndData
             .AnyAsync(
                 d => d.DataType == dataType && d.Ticker == normalizedTicker && d.Year == year,
                 cancellationToken);

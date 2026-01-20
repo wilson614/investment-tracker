@@ -15,9 +15,6 @@ public class TwseStockPriceProvider(
     ITwseRateLimiter rateLimiter,
     ILogger<TwseStockPriceProvider> logger) : IStockPriceProvider
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
-    private readonly ILogger<TwseStockPriceProvider> _logger = logger;
     private const string BaseUrl = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp";
 
     public bool SupportsMarket(StockMarket market) => market == StockMarket.TW;
@@ -49,12 +46,12 @@ public class TwseStockPriceProvider(
         try
         {
             // 發送請求前先等待 rate limit 的可用額度
-            await _rateLimiter.WaitForSlotAsync(cancellationToken);
+            await rateLimiter.WaitForSlotAsync(cancellationToken);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -62,7 +59,7 @@ public class TwseStockPriceProvider(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch stock price from TWSE for {Exchange}:{Symbol}", exchange, symbol);
+            logger.LogError(ex, "Failed to fetch stock price from TWSE for {Exchange}:{Symbol}", exchange, symbol);
             return null;
         }
     }
@@ -76,7 +73,7 @@ public class TwseStockPriceProvider(
 
             if (!root.TryGetProperty("msgArray", out var msgArray) || msgArray.GetArrayLength() == 0)
             {
-                _logger.LogDebug("No data found for {Exchange}:{Symbol}", exchange, symbol);
+                logger.LogDebug("No data found for {Exchange}:{Symbol}", exchange, symbol);
                 return null;
             }
 
@@ -103,19 +100,19 @@ public class TwseStockPriceProvider(
             {
                 if (yesterdayClose is null || yesterdayClose <= 0)
                 {
-                    _logger.LogDebug("No trade price available for {Symbol}", symbol);
+                    logger.LogDebug("No trade price available for {Symbol}", symbol);
                     return null;
                 }
 
                 price = yesterdayClose.Value;
-                _logger.LogDebug(
+                logger.LogDebug(
                     "No trade price available for {Symbol}, using previous close {Price} as fallback",
                     symbol,
                     price);
             }
             else if (!decimal.TryParse(priceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out price))
             {
-                _logger.LogWarning("Invalid price format for {Symbol}: {Price}", symbol, priceStr);
+                logger.LogWarning("Invalid price format for {Symbol}: {Price}", symbol, priceStr);
                 return null;
             }
 
@@ -144,7 +141,7 @@ public class TwseStockPriceProvider(
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to parse TWSE response for {Symbol}", symbol);
+            logger.LogError(ex, "Failed to parse TWSE response for {Symbol}", symbol);
             return null;
         }
     }

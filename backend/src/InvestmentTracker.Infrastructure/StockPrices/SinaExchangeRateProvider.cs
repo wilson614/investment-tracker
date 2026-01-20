@@ -17,8 +17,6 @@ public interface IExchangeRateProvider
 
 public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchangeRateProvider> logger) : IExchangeRateProvider
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<SinaExchangeRateProvider> _logger = logger;
     private const string BaseUrl = "http://hq.sinajs.cn/list=";
     private const string Referer = "http://vip.stock.finance.sina.com.cn";
 
@@ -86,7 +84,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
             if (toUsd != null) return toUsd;
         }
 
-        _logger.LogWarning("Could not determine exchange rate for {From}/{To}", from, to);
+        logger.LogWarning("Could not determine exchange rate for {From}/{To}", from, to);
         return null;
     }
 
@@ -140,26 +138,26 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
     {
         var sinaSymbol = $"fx_s{pair}";
         var url = $"{BaseUrl}{sinaSymbol}";
-        _logger.LogInformation("Fetching exchange rate from Sina: {Url}", url);
+        logger.LogInformation("Fetching exchange rate from Sina: {Url}", url);
 
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Referer", Referer);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             var gbkEncoding = Encoding.GetEncoding("GBK");
             var content = gbkEncoding.GetString(bytes);
-            _logger.LogDebug("Sina response for {Pair}: {Content}", pair, content);
+            logger.LogDebug("Sina response for {Pair}: {Content}", pair, content);
 
             return ParseExchangeRateResponse(content, from, to);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch exchange rate from Sina for {Pair}", pair);
+            logger.LogError(ex, "Failed to fetch exchange rate from Sina for {Pair}", pair);
             return null;
         }
     }
@@ -169,7 +167,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
         // 回應格式：var hq_str_fx_susdtwd="30.5234,30.5678,..."
         if (string.IsNullOrWhiteSpace(content))
         {
-            _logger.LogWarning("Empty response from Sina for {From}/{To}", fromCurrency, toCurrency);
+            logger.LogWarning("Empty response from Sina for {From}/{To}", fromCurrency, toCurrency);
             return null;
         }
 
@@ -178,14 +176,14 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
 
         if (startIndex < 0 || endIndex <= startIndex)
         {
-            _logger.LogWarning("Invalid response format from Sina: {Content}", content);
+            logger.LogWarning("Invalid response format from Sina: {Content}", content);
             return null;
         }
 
         var data = content.Substring(startIndex + 1, endIndex - startIndex - 1);
         if (string.IsNullOrWhiteSpace(data))
         {
-            _logger.LogWarning("No data found for {From}/{To}", fromCurrency, toCurrency);
+            logger.LogWarning("No data found for {From}/{To}", fromCurrency, toCurrency);
             return null;
         }
 
@@ -195,7 +193,7 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
         // 目前匯率通常為 index 3（latest），但實務上 index 1（bid）更穩定
         if (fields.Length < 4)
         {
-            _logger.LogWarning("Insufficient fields in Sina response for {From}/{To}: {Data}", fromCurrency, toCurrency, data);
+            logger.LogWarning("Insufficient fields in Sina response for {From}/{To}: {Data}", fromCurrency, toCurrency, data);
             return null;
         }
 
@@ -205,12 +203,12 @@ public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchang
         {
             if (!decimal.TryParse(fields[1], NumberStyles.Any, CultureInfo.InvariantCulture, out rate) || rate <= 0)
             {
-                _logger.LogWarning("Invalid rate in Sina response for {From}/{To}: {Data}", fromCurrency, toCurrency, data);
+                logger.LogWarning("Invalid rate in Sina response for {From}/{To}: {Data}", fromCurrency, toCurrency, data);
                 return null;
             }
         }
 
-        _logger.LogInformation("Successfully parsed exchange rate {From}/{To}: {Rate}", fromCurrency, toCurrency, rate);
+        logger.LogInformation("Successfully parsed exchange rate {From}/{To}: {Rate}", fromCurrency, toCurrency, rate);
         return new ExchangeRateResponse
         {
             FromCurrency = fromCurrency.ToUpperInvariant(),

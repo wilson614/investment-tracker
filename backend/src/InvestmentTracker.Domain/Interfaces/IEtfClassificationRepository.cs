@@ -1,5 +1,4 @@
 using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Interfaces;
 

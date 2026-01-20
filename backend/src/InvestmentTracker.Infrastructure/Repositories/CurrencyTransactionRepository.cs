@@ -10,30 +10,28 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// </summary>
 public class CurrencyTransactionRepository(AppDbContext context) : ICurrencyTransactionRepository
 {
-    private readonly AppDbContext _context = context;
-
     public async Task<CurrencyTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.CurrencyTransactions
+        return await context.CurrencyTransactions
             .FirstOrDefaultAsync(ct => ct.Id == id, cancellationToken);
     }
 
     public async Task<CurrencyTransaction?> GetByStockTransactionIdAsync(Guid stockTransactionId, CancellationToken cancellationToken = default)
     {
-        return await _context.CurrencyTransactions
+        return await context.CurrencyTransactions
             .FirstOrDefaultAsync(ct => ct.RelatedStockTransactionId == stockTransactionId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdAsync(Guid ledgerId, CancellationToken cancellationToken = default)
     {
-        return await _context.CurrencyTransactions
+        return await context.CurrencyTransactions
             .Where(ct => ct.CurrencyLedgerId == ledgerId)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdOrderedAsync(Guid ledgerId, CancellationToken cancellationToken = default)
     {
-        return await _context.CurrencyTransactions
+        return await context.CurrencyTransactions
             .Where(ct => ct.CurrencyLedgerId == ledgerId)
             .OrderBy(ct => ct.TransactionDate)
             .ThenBy(ct => ct.CreatedAt)
@@ -42,32 +40,32 @@ public class CurrencyTransactionRepository(AppDbContext context) : ICurrencyTran
 
     public async Task<CurrencyTransaction> AddAsync(CurrencyTransaction transaction, CancellationToken cancellationToken = default)
     {
-        await _context.CurrencyTransactions.AddAsync(transaction, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.CurrencyTransactions.AddAsync(transaction, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return transaction;
     }
 
     public async Task UpdateAsync(CurrencyTransaction transaction, CancellationToken cancellationToken = default)
     {
-        _context.CurrencyTransactions.Update(transaction);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.CurrencyTransactions.Update(transaction);
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var transaction = await _context.CurrencyTransactions
+        var transaction = await context.CurrencyTransactions
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(ct => ct.Id == id, cancellationToken);
 
         if (transaction != null)
         {
             transaction.MarkAsDeleted();
-            await _context.SaveChangesAsync(cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
     }
 
     public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.CurrencyTransactions.AnyAsync(ct => ct.Id == id, cancellationToken);
+        return await context.CurrencyTransactions.AnyAsync(ct => ct.Id == id, cancellationToken);
     }
 }

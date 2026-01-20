@@ -47,10 +47,10 @@ public class MultiTenancyTests : IDisposable
         context.Users.AddRange(user1, user2);
 
         // Create portfolios for each user
-        var portfolio1 = new Portfolio(_user1Id, "USD", "TWD");
+        var portfolio1 = new Portfolio(_user1Id);
         portfolio1.SetDescription("User1 Portfolio");
 
-        var portfolio2 = new Portfolio(_user2Id, "USD", "TWD");
+        var portfolio2 = new Portfolio(_user2Id);
         portfolio2.SetDescription("User2 Portfolio");
 
         context.Portfolios.AddRange(portfolio1, portfolio2);

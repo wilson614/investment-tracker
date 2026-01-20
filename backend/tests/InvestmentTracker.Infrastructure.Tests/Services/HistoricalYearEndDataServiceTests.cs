@@ -1,8 +1,6 @@
 using FluentAssertions;
-using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Services;

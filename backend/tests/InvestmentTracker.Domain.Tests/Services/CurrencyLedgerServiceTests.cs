@@ -97,7 +97,7 @@ public class CurrencyLedgerServiceTests
     {
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m)
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m)
         };
 
         var result = _service.CalculateWeightedAverageCost(transactions);
@@ -114,7 +114,7 @@ public class CurrencyLedgerServiceTests
         // Weighted average: 47500 / 1500 = 31.6667
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateTransaction(CurrencyTransactionType.ExchangeBuy, 500m, 15500m, 31m)
         };
 
@@ -131,8 +131,8 @@ public class CurrencyLedgerServiceTests
         // Average cost should still be 32
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
-            CreateTransaction(CurrencyTransactionType.ExchangeSell, 500m, 16000m, 32m)
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
+            CreateTransaction(CurrencyTransactionType.ExchangeSell, 500m, 16000m)
         };
 
         var result = _service.CalculateWeightedAverageCost(transactions);
@@ -149,7 +149,7 @@ public class CurrencyLedgerServiceTests
         // Weighted average: 32000 / 1100 = 29.0909
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateInterestTransaction(100m)
         };
 
@@ -163,7 +163,7 @@ public class CurrencyLedgerServiceTests
     {
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateSpendTransaction(1000m)
         };
 
@@ -195,7 +195,7 @@ public class CurrencyLedgerServiceTests
         // Remaining cost basis = 500 * 32 = 16000
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateTransaction(CurrencyTransactionType.ExchangeSell, 500m, 16500m, 33m)
         };
 
@@ -213,7 +213,7 @@ public class CurrencyLedgerServiceTests
     {
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m)
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m)
         };
 
         var result = _service.CalculateRealizedPnl(transactions);
@@ -230,7 +230,7 @@ public class CurrencyLedgerServiceTests
         // Realized PnL: 16500 - 16000 = 500
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateTransaction(CurrencyTransactionType.ExchangeSell, 500m, 16500m, 33m)
         };
 
@@ -248,7 +248,7 @@ public class CurrencyLedgerServiceTests
         // Realized PnL: 15000 - 16000 = -1000
         var transactions = new[]
         {
-            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m, 32000m, 32m),
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
             CreateTransaction(CurrencyTransactionType.ExchangeSell, 500m, 15000m, 30m)
         };
 

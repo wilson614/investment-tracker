@@ -14,13 +14,12 @@ namespace InvestmentTracker.API.Controllers;
 [Authorize]
 public class StockPricesController(IStockPriceService stockPriceService) : ControllerBase
 {
-    private readonly IStockPriceService _stockPriceService = stockPriceService;
-
     /// <summary>
     /// 取得即時股價報價（基本資訊）。
     /// </summary>
     /// <param name="market">市場：1=TW、2=US、3=UK</param>
     /// <param name="symbol">股票代號（例如：2330、AAPL、VOD）</param>
+    /// <param name="cancellationToken"></param>
     [HttpGet]
     [ProducesResponseType(typeof(StockQuoteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -40,7 +39,7 @@ public class StockPricesController(IStockPriceService stockPriceService) : Contr
             return BadRequest("Invalid market. Valid values: 1 (TW), 2 (US), 3 (UK)");
         }
 
-        var quote = await _stockPriceService.GetQuoteAsync(market, symbol.Trim(), cancellationToken);
+        var quote = await stockPriceService.GetQuoteAsync(market, symbol.Trim(), cancellationToken);
 
         if (quote == null)
         {
@@ -56,6 +55,7 @@ public class StockPricesController(IStockPriceService stockPriceService) : Contr
     /// <param name="market">市場：1=TW、2=US、3=UK</param>
     /// <param name="symbol">股票代號（例如：2330、AAPL、VOD）</param>
     /// <param name="homeCurrency">換算匯率使用的本位幣（例如：TWD）</param>
+    /// <param name="cancellationToken"></param>
     [HttpGet("with-rate")]
     [ProducesResponseType(typeof(StockQuoteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -81,7 +81,7 @@ public class StockPricesController(IStockPriceService stockPriceService) : Contr
             return BadRequest("Invalid market. Valid values: 1 (TW), 2 (US), 3 (UK)");
         }
 
-        var quote = await _stockPriceService.GetQuoteWithExchangeRateAsync(
+        var quote = await stockPriceService.GetQuoteWithExchangeRateAsync(
             market, symbol.Trim(), homeCurrency.Trim().ToUpperInvariant(), cancellationToken);
 
         if (quote == null)
@@ -97,6 +97,7 @@ public class StockPricesController(IStockPriceService stockPriceService) : Contr
     /// </summary>
     /// <param name="from">來源幣別（例如：USD）</param>
     /// <param name="to">目標幣別（例如：TWD）</param>
+    /// <param name="cancellationToken"></param>
     [HttpGet("exchange-rate")]
     [ProducesResponseType(typeof(ExchangeRateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -111,7 +112,7 @@ public class StockPricesController(IStockPriceService stockPriceService) : Contr
             return BadRequest("Both 'from' and 'to' currencies are required");
         }
 
-        var rate = await _stockPriceService.GetExchangeRateAsync(
+        var rate = await stockPriceService.GetExchangeRateAsync(
             from.Trim().ToUpperInvariant(),
             to.Trim().ToUpperInvariant(),
             cancellationToken);

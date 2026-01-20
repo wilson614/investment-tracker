@@ -21,13 +21,6 @@ public class StockTransactionsController(
     UpdateStockTransactionUseCase updateUseCase,
     DeleteStockTransactionUseCase deleteUseCase) : ControllerBase
 {
-    private readonly IStockTransactionRepository _transactionRepository = transactionRepository;
-    private readonly IStockSplitRepository _stockSplitRepository = stockSplitRepository;
-    private readonly StockSplitAdjustmentService _splitAdjustmentService = splitAdjustmentService;
-    private readonly CreateStockTransactionUseCase _createUseCase = createUseCase;
-    private readonly UpdateStockTransactionUseCase _updateUseCase = updateUseCase;
-    private readonly DeleteStockTransactionUseCase _deleteUseCase = deleteUseCase;
-
     /// <summary>
     /// 取得指定投資組合的所有交易。
     /// 包含分割調整後的欄位，便於追蹤（FR-052a）。
@@ -38,13 +31,13 @@ public class StockTransactionsController(
         [FromQuery] Guid portfolioId,
         CancellationToken cancellationToken)
     {
-        var transactions = await _transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
-        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
+        var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
+        var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
         var splitList = stockSplits.ToList();
 
         return Ok(transactions.Select(t =>
         {
-            var adjusted = _splitAdjustmentService.GetAdjustedValues(t, splitList);
+            var adjusted = splitAdjustmentService.GetAdjustedValues(t, splitList);
             return new StockTransactionDto
             {
                 Id = t.Id,
@@ -82,13 +75,13 @@ public class StockTransactionsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockTransactionDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var transaction = await _transactionRepository.GetByIdAsync(id, cancellationToken);
+        var transaction = await transactionRepository.GetByIdAsync(id, cancellationToken);
 
         if (transaction == null)
             return NotFound();
 
-        var stockSplits = await _stockSplitRepository.GetAllAsync(cancellationToken);
-        var adjusted = _splitAdjustmentService.GetAdjustedValues(transaction, stockSplits);
+        var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
+        var adjusted = splitAdjustmentService.GetAdjustedValues(transaction, stockSplits);
 
         return Ok(new StockTransactionDto
         {
@@ -129,7 +122,7 @@ public class StockTransactionsController(
     {
         try
         {
-            var result = await _createUseCase.ExecuteAsync(request, cancellationToken);
+            var result = await createUseCase.ExecuteAsync(request, cancellationToken);
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
         catch (InvalidOperationException ex)
@@ -156,11 +149,11 @@ public class StockTransactionsController(
     {
         try
         {
-            var result = await _updateUseCase.ExecuteAsync(id, request, cancellationToken);
+            var result = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
             return Ok(result);
         }
         catch (InvalidOperationException ex) when (
-            ex.Message.Contains("not found", System.StringComparison.OrdinalIgnoreCase))
+            ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound(new { error = ex.Message });
         }
@@ -184,7 +177,7 @@ public class StockTransactionsController(
     {
         try
         {
-            await _deleteUseCase.ExecuteAsync(id, cancellationToken);
+            await deleteUseCase.ExecuteAsync(id, cancellationToken);
             return NoContent();
         }
         catch (InvalidOperationException)

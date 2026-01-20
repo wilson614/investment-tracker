@@ -10,8 +10,6 @@ namespace InvestmentTracker.Infrastructure.StockPrices;
 /// </summary>
 public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPriceProvider> logger) : IStockPriceProvider
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<SinaStockPriceProvider> _logger = logger;
     private const string BaseUrl = "http://hq.sinajs.cn/list=";
     private const string Referer = "http://vip.stock.finance.sina.com.cn";
 
@@ -38,7 +36,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Referer", Referer);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
@@ -49,7 +47,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch stock price from Sina for {Market}:{Symbol}", market, symbol);
+            logger.LogError(ex, "Failed to fetch stock price from Sina for {Market}:{Symbol}", market, symbol);
             return null;
         }
     }
@@ -72,7 +70,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
 
         if (string.IsNullOrWhiteSpace(content))
         {
-            _logger.LogWarning("Empty response from Sina for {Symbol}", symbol);
+            logger.LogWarning("Empty response from Sina for {Symbol}", symbol);
             return null;
         }
 
@@ -81,26 +79,26 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
 
         if (startIndex < 0 || endIndex <= startIndex)
         {
-            _logger.LogWarning("Invalid response format from Sina: {Content}", content);
+            logger.LogWarning("Invalid response format from Sina: {Content}", content);
             return null;
         }
 
         var data = content.Substring(startIndex + 1, endIndex - startIndex - 1);
         if (string.IsNullOrWhiteSpace(data))
         {
-            _logger.LogWarning("No data found for symbol {Symbol}", symbol);
+            logger.LogWarning("No data found for symbol {Symbol}", symbol);
             return null;
         }
 
         var fields = data.Split(',');
 
         // 記錄實際欄位內容以利除錯
-        _logger.LogDebug("Sina API response for {Symbol}: field count={Count}, fields={Fields}",
+        logger.LogDebug("Sina API response for {Symbol}: field count={Count}, fields={Fields}",
             symbol, fields.Length, string.Join("|", fields.Take(15)));
 
         if (fields.Length < 5)
         {
-            _logger.LogWarning("Insufficient fields in Sina response for {Symbol}: {FieldCount}", symbol, fields.Length);
+            logger.LogWarning("Insufficient fields in Sina response for {Symbol}: {FieldCount}", symbol, fields.Length);
             return null;
         }
 
@@ -125,7 +123,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
             // 若目前價格為 0，回退使用昨收
             if (price <= 0 && yesterdayClose > 0)
             {
-                _logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Symbol} (current price is 0)", yesterdayClose, symbol);
+                logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Symbol} (current price is 0)", yesterdayClose, symbol);
                 price = yesterdayClose;
                 // 使用回退價格時，沒有可用的漲跌資訊
             }
@@ -160,7 +158,7 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
         // 最終驗證：價格必須為正數
         if (price <= 0)
         {
-            _logger.LogWarning("Invalid price in Sina response for {Symbol}: {Price}", symbol, fields[1]);
+            logger.LogWarning("Invalid price in Sina response for {Symbol}: {Price}", symbol, fields[1]);
             return null;
         }
 

@@ -17,11 +17,6 @@ public class CurrencyLedgersController(
     UpdateCurrencyLedgerUseCase updateUseCase,
     DeleteCurrencyLedgerUseCase deleteUseCase) : ControllerBase
 {
-    private readonly GetCurrencyLedgerSummaryUseCase _getSummaryUseCase = getSummaryUseCase;
-    private readonly CreateCurrencyLedgerUseCase _createUseCase = createUseCase;
-    private readonly UpdateCurrencyLedgerUseCase _updateUseCase = updateUseCase;
-    private readonly DeleteCurrencyLedgerUseCase _deleteUseCase = deleteUseCase;
-
     /// <summary>
     /// 取得目前使用者的所有外幣帳本。
     /// </summary>
@@ -31,7 +26,7 @@ public class CurrencyLedgersController(
     {
         try
         {
-            var ledgers = await _getSummaryUseCase.GetAllForUserAsync(cancellationToken);
+            var ledgers = await getSummaryUseCase.GetAllForUserAsync(cancellationToken);
             return Ok(ledgers);
         }
         catch (UnauthorizedAccessException)
@@ -50,7 +45,7 @@ public class CurrencyLedgersController(
     {
         try
         {
-            var summary = await _getSummaryUseCase.ExecuteAsync(id, cancellationToken);
+            var summary = await getSummaryUseCase.ExecuteAsync(id, cancellationToken);
             if (summary == null)
                 return NotFound();
             return Ok(summary);
@@ -73,7 +68,7 @@ public class CurrencyLedgersController(
     {
         try
         {
-            var ledger = await _createUseCase.ExecuteAsync(request, cancellationToken);
+            var ledger = await createUseCase.ExecuteAsync(request, cancellationToken);
             return CreatedAtAction(nameof(GetById), new { id = ledger.Id }, ledger);
         }
         catch (InvalidOperationException ex)
@@ -99,7 +94,7 @@ public class CurrencyLedgersController(
     {
         try
         {
-            var ledger = await _updateUseCase.ExecuteAsync(id, request, cancellationToken);
+            var ledger = await updateUseCase.ExecuteAsync(id, request, cancellationToken);
             if (ledger == null)
                 return NotFound();
             return Ok(ledger);
@@ -120,7 +115,7 @@ public class CurrencyLedgersController(
     {
         try
         {
-            var deleted = await _deleteUseCase.ExecuteAsync(id, cancellationToken);
+            var deleted = await deleteUseCase.ExecuteAsync(id, cancellationToken);
             if (!deleted)
                 return NotFound();
             return NoContent();

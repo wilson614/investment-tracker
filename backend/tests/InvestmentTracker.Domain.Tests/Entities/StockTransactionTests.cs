@@ -298,7 +298,7 @@ public class StockTransactionTests
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() =>
-            transaction.SetFundSource(FundSource.CurrencyLedger, null));
+            transaction.SetFundSource(FundSource.CurrencyLedger));
 
         Assert.Contains("Currency ledger ID is required", exception.Message);
     }
@@ -467,8 +467,7 @@ public class StockTransactionTests
             TransactionType.Buy,
             3m,
             27.25m,
-            1m,  // ExchangeRate = 1 for TWD
-            0m); // No fees
+            1m); // No fees
 
         // Act & Assert
         Assert.Equal(81m, transaction.TotalCostSource);
@@ -503,8 +502,7 @@ public class StockTransactionTests
             TransactionType.Buy,
             3m,
             27.25m,
-            30m,
-            0m);
+            30m);
 
         // Act & Assert
         Assert.Equal(81.75m, transaction.TotalCostSource);

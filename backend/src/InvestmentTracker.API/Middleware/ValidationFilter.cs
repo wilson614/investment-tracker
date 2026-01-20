@@ -1,6 +1,4 @@
 using FluentValidation;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 
 namespace InvestmentTracker.API.Middleware;
 

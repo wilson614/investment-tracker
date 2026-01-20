@@ -9,18 +9,16 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// </summary>
 public class StockTransactionRepository(Persistence.AppDbContext context) : IStockTransactionRepository
 {
-    private readonly Persistence.AppDbContext _context = context;
-
     public async Task<StockTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.StockTransactions
+        return await context.StockTransactions
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
     }
 
     public async Task<IReadOnlyList<StockTransaction>> GetByPortfolioIdAsync(
         Guid portfolioId, CancellationToken cancellationToken = default)
     {
-        return await _context.StockTransactions
+        return await context.StockTransactions
             .Where(t => t.PortfolioId == portfolioId)
             .OrderByDescending(t => t.TransactionDate)
             .ThenByDescending(t => t.CreatedAt)
@@ -30,7 +28,7 @@ public class StockTransactionRepository(Persistence.AppDbContext context) : ISto
     public async Task<IReadOnlyList<StockTransaction>> GetByTickerAsync(
         Guid portfolioId, string ticker, CancellationToken cancellationToken = default)
     {
-        return await _context.StockTransactions
+        return await context.StockTransactions
             .Where(t => t.PortfolioId == portfolioId && t.Ticker == ticker)
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.CreatedAt)
@@ -39,32 +37,32 @@ public class StockTransactionRepository(Persistence.AppDbContext context) : ISto
 
     public async Task<StockTransaction> AddAsync(StockTransaction transaction, CancellationToken cancellationToken = default)
     {
-        await _context.StockTransactions.AddAsync(transaction, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.StockTransactions.AddAsync(transaction, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return transaction;
     }
 
     public async Task UpdateAsync(StockTransaction transaction, CancellationToken cancellationToken = default)
     {
-        _context.StockTransactions.Update(transaction);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.StockTransactions.Update(transaction);
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var transaction = await _context.StockTransactions
+        var transaction = await context.StockTransactions
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
 
         if (transaction != null)
         {
             transaction.MarkAsDeleted();
-            await _context.SaveChangesAsync(cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
     }
 
     public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.StockTransactions.AnyAsync(t => t.Id == id, cancellationToken);
+        return await context.StockTransactions.AnyAsync(t => t.Id == id, cancellationToken);
     }
 }

@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using InvestmentTracker.Application.Interfaces;
-using InvestmentTracker.Infrastructure.Services;
 using InvestmentTracker.Infrastructure.StockPrices;
 using Microsoft.Extensions.Logging;
 
@@ -17,10 +16,6 @@ public class TwseStockHistoricalPriceService(
     ITwseRateLimiter rateLimiter,
     ILogger<TwseStockHistoricalPriceService> logger) : ITwseStockHistoricalPriceService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
-    private readonly ILogger<TwseStockHistoricalPriceService> _logger = logger;
-
     // TWSE 個股日資料 API
     private const string StockDayUrl = "https://www.twse.com.tw/exchangeReport/STOCK_DAY";
 
@@ -31,7 +26,7 @@ public class TwseStockHistoricalPriceService(
     {
         try
         {
-            await _rateLimiter.WaitForSlotAsync(cancellationToken);
+            await rateLimiter.WaitForSlotAsync(cancellationToken);
 
             // TWSE API 需要日期格式：YYYYMM01（該月第一天）
             var dateParam = $"{date.Year}{date.Month:D2}01";
@@ -40,10 +35,10 @@ public class TwseStockHistoricalPriceService(
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TWSE STOCK_DAY returned {Status} for {StockNo}", response.StatusCode, stockNo);
+                logger.LogWarning("TWSE STOCK_DAY returned {Status} for {StockNo}", response.StatusCode, stockNo);
                 return null;
             }
 
@@ -52,7 +47,7 @@ public class TwseStockHistoricalPriceService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching TWSE stock price for {StockNo} on {Date}", stockNo, date);
+            logger.LogError(ex, "Error fetching TWSE stock price for {StockNo} on {Date}", stockNo, date);
             return null;
         }
     }
@@ -70,7 +65,7 @@ public class TwseStockHistoricalPriceService(
         }
 
         // 若 12 月失敗（例如尚未上市），改嘗試更早月份
-        _logger.LogDebug("No December data for {StockNo}/{Year}, trying November", stockNo, year);
+        logger.LogDebug("No December data for {StockNo}/{Year}, trying November", stockNo, year);
         return await GetStockPriceAsync(stockNo, new DateOnly(year, 11, 30), cancellationToken);
     }
 
@@ -85,13 +80,13 @@ public class TwseStockHistoricalPriceService(
             if (!root.TryGetProperty("stat", out var stat) || stat.GetString() != "OK")
             {
                 var statValue = stat.ValueKind == JsonValueKind.String ? stat.GetString() : "unknown";
-                _logger.LogDebug("TWSE response stat: {Stat} for {StockNo}", statValue, stockNo);
+                logger.LogDebug("TWSE response stat: {Stat} for {StockNo}", statValue, stockNo);
                 return null;
             }
 
             if (!root.TryGetProperty("data", out var data) || data.GetArrayLength() == 0)
             {
-                _logger.LogDebug("No data in TWSE response for {StockNo}", stockNo);
+                logger.LogDebug("No data in TWSE response for {StockNo}", stockNo);
                 return null;
             }
 
@@ -143,7 +138,7 @@ public class TwseStockHistoricalPriceService(
 
             if (bestResult != null)
             {
-                _logger.LogDebug("Found TWSE price for {StockNo}: {Price} on {Date}",
+                logger.LogDebug("Found TWSE price for {StockNo}: {Price} on {Date}",
                     stockNo, bestResult.Price, bestResult.ActualDate);
             }
 
@@ -151,7 +146,7 @@ public class TwseStockHistoricalPriceService(
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to parse TWSE response for {StockNo}", stockNo);
+            logger.LogError(ex, "Failed to parse TWSE response for {StockNo}", stockNo);
             return null;
         }
     }

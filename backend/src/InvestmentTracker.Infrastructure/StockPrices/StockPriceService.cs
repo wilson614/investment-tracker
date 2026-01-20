@@ -19,10 +19,6 @@ public class StockPriceService(
     IExchangeRateProvider exchangeRateProvider,
     ILogger<StockPriceService> logger) : IStockPriceService
 {
-    private readonly IEnumerable<IStockPriceProvider> _providers = providers;
-    private readonly IExchangeRateProvider _exchangeRateProvider = exchangeRateProvider;
-    private readonly ILogger<StockPriceService> _logger = logger;
-
     // 市場對應的基準幣別
     // 注意：英國市場多數 ETF（如 VWRA、VUSA）以 USD 計價，因此此處也以 USD 作為基準幣別
     private static readonly Dictionary<StockMarket, string> MarketCurrencies = new()
@@ -34,11 +30,11 @@ public class StockPriceService(
 
     public async Task<StockQuoteResponse?> GetQuoteAsync(StockMarket market, string symbol, CancellationToken cancellationToken = default)
     {
-        var provider = _providers.FirstOrDefault(p => p.SupportsMarket(market));
+        var provider = providers.FirstOrDefault(p => p.SupportsMarket(market));
 
         if (provider == null)
         {
-            _logger.LogWarning("No provider found for market {Market}", market);
+            logger.LogWarning("No provider found for market {Market}", market);
             return null;
         }
 
@@ -67,10 +63,10 @@ public class StockPriceService(
         }
 
         // Fetch exchange rate
-        var exchangeRate = await _exchangeRateProvider.GetExchangeRateAsync(baseCurrency, homeCurrency, cancellationToken);
+        var exchangeRate = await exchangeRateProvider.GetExchangeRateAsync(baseCurrency, homeCurrency, cancellationToken);
         if (exchangeRate == null)
         {
-            _logger.LogWarning("Failed to get exchange rate for {Base}/{Home}", baseCurrency, homeCurrency);
+            logger.LogWarning("Failed to get exchange rate for {Base}/{Home}", baseCurrency, homeCurrency);
             return quote; // Return quote without exchange rate
         }
 
@@ -86,6 +82,6 @@ public class StockPriceService(
         string toCurrency,
         CancellationToken cancellationToken = default)
     {
-        return await _exchangeRateProvider.GetExchangeRateAsync(fromCurrency, toCurrency, cancellationToken);
+        return await exchangeRateProvider.GetExchangeRateAsync(fromCurrency, toCurrency, cancellationToken);
     }
 }

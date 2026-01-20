@@ -35,10 +35,6 @@ public class TwseDividendService(
     ITwseRateLimiter rateLimiter,
     ILogger<TwseDividendService> logger) : ITwseDividendService
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ITwseRateLimiter _rateLimiter = rateLimiter;
-    private readonly ILogger<TwseDividendService> _logger = logger;
-
     public async Task<List<DividendRecord>> GetDividendsAsync(
         string stockNo,
         int year,
@@ -48,7 +44,7 @@ public class TwseDividendService(
 
         try
         {
-            await _rateLimiter.WaitForSlotAsync(cancellationToken);
+            await rateLimiter.WaitForSlotAsync(cancellationToken);
 
             // TWSE 使用民國年：西元年需減 1911
             var rocYear = year - 1911;
@@ -61,10 +57,10 @@ public class TwseDividendService(
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TWSE dividend API returned {Status}", response.StatusCode);
+                logger.LogWarning("TWSE dividend API returned {Status}", response.StatusCode);
                 return results;
             }
 
@@ -73,7 +69,7 @@ public class TwseDividendService(
 
             if (!json.RootElement.TryGetProperty("data", out var dataArray))
             {
-                _logger.LogDebug("No dividend data for {StockNo} in {Year}", stockNo, year);
+                logger.LogDebug("No dividend data for {StockNo} in {Year}", stockNo, year);
                 return results;
             }
 
@@ -96,13 +92,13 @@ public class TwseDividendService(
 
                 if (!TryParseRocDate(dateStr, out var exDate))
                 {
-                    _logger.LogWarning("Failed to parse date: {Date}", dateStr);
+                    logger.LogWarning("Failed to parse date: {Date}", dateStr);
                     continue;
                 }
 
                 if (!decimal.TryParse(dividendStr, out var dividendAmount))
                 {
-                    _logger.LogWarning("Failed to parse dividend amount: {Amount}", dividendStr);
+                    logger.LogWarning("Failed to parse dividend amount: {Amount}", dividendStr);
                     continue;
                 }
 
@@ -114,13 +110,13 @@ public class TwseDividendService(
                     dividendType
                 ));
 
-                _logger.LogDebug("Found dividend for {StockNo}: {Date} = {Amount}",
+                logger.LogDebug("Found dividend for {StockNo}: {Date} = {Amount}",
                     stockNo, exDate.ToString("yyyy-MM-dd"), dividendAmount);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching dividends for {StockNo} in {Year}", stockNo, year);
+            logger.LogError(ex, "Error fetching dividends for {StockNo} in {Year}", stockNo, year);
         }
 
         return results;

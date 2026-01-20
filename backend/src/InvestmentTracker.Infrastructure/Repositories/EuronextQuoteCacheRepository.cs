@@ -10,11 +10,9 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// </summary>
 public class EuronextQuoteCacheRepository(AppDbContext context) : IEuronextQuoteCacheRepository
 {
-    private readonly AppDbContext _context = context;
-
     public async Task<EuronextQuoteCache?> GetByIsinAndMicAsync(string isin, string mic, CancellationToken cancellationToken = default)
     {
-        return await _context.EuronextQuoteCaches
+        return await context.EuronextQuoteCaches
             .FirstOrDefaultAsync(q => q.Isin == isin && q.Mic == mic, cancellationToken);
     }
 
@@ -24,14 +22,14 @@ public class EuronextQuoteCacheRepository(AppDbContext context) : IEuronextQuote
 
         if (existing == null)
         {
-            await _context.EuronextQuoteCaches.AddAsync(quoteCache, cancellationToken);
+            await context.EuronextQuoteCaches.AddAsync(quoteCache, cancellationToken);
         }
         else
         {
             existing.UpdateQuote(quoteCache.Price, quoteCache.Currency, quoteCache.MarketTime, quoteCache.ChangePercent, quoteCache.Change);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task MarkAsStaleAsync(string isin, string mic, CancellationToken cancellationToken = default)
@@ -41,7 +39,7 @@ public class EuronextQuoteCacheRepository(AppDbContext context) : IEuronextQuote
         if (existing != null)
         {
             existing.MarkAsStale();
-            await _context.SaveChangesAsync(cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
     }
 }
