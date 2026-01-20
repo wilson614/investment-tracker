@@ -1,5 +1,6 @@
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvestmentTracker.Infrastructure.Repositories;
@@ -7,7 +8,7 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// <summary>
 /// Portfolio aggregate 的 Repository 實作。
 /// </summary>
-public class PortfolioRepository(Persistence.AppDbContext context) : IPortfolioRepository
+public class PortfolioRepository(AppDbContext context) : IPortfolioRepository
 {
     public async Task<Portfolio?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

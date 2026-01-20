@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -41,7 +42,7 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
 
         builder.Property(t => t.FundSource)
             .IsRequired()
-            .HasDefaultValue(Domain.Enums.FundSource.None);
+            .HasDefaultValue(FundSource.None);
 
         builder.Property(t => t.Notes)
             .HasMaxLength(500);

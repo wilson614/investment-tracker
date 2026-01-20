@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.Services;
@@ -272,7 +274,7 @@ public class MarketYtdService(
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var json = System.Text.Json.JsonDocument.Parse(content);
+            var json = JsonDocument.Parse(content);
 
             if (!json.RootElement.TryGetProperty("data", out var dataArray) ||
                 dataArray.GetArrayLength() == 0)
@@ -289,8 +291,8 @@ public class MarketYtdService(
             if (!string.IsNullOrEmpty(closeStr))
             {
                 closeStr = closeStr.Replace(",", "");
-                if (decimal.TryParse(closeStr, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var price))
+                if (decimal.TryParse(closeStr, NumberStyles.Any,
+                    CultureInfo.InvariantCulture, out var price))
                 {
                     logger.LogDebug("Got 0050 year-end price {Price} for {Year}/12 from TWSE", price, year);
                     return price;

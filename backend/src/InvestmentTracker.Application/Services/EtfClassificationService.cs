@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.Services;
@@ -65,7 +66,7 @@ public class EtfClassificationService(ILogger<EtfClassificationService> logger)
         }
 
         // 台股代號樣式（數字，可能帶字母後綴）
-        if (System.Text.RegularExpressions.Regex.IsMatch(ticker, @"^\d+[A-Za-z]*$"))
+        if (Regex.IsMatch(ticker, @"^\d+[A-Za-z]*$"))
         {
             logger.LogDebug("Ticker {Ticker} appears to be Taiwan stock, assuming distributing", ticker);
             return new EtfClassificationResult(ticker, EtfType.Distributing, false, "Pattern Match");

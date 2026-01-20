@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 
@@ -30,7 +31,7 @@ public class GetStockSplitsUseCase(IStockSplitRepository repository)
         return splits.Select(MapToDto).ToList();
     }
 
-    private static StockSplitDto MapToDto(Domain.Entities.StockSplit split)
+    private static StockSplitDto MapToDto(StockSplit split)
     {
         return new StockSplitDto
         {

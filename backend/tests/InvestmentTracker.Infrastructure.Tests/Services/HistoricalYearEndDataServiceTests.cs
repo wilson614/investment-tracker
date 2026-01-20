@@ -111,10 +111,9 @@ public class HistoricalYearEndDataServiceTests
                 callCount++;
                 if (callCount == 1)
                     return null; // First call: cache miss
-                else
-                    return HistoricalYearEndData.CreateStockPrice(
-                        ticker, year, 105.25m, "USD",
-                        new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc), "Stooq");
+                return HistoricalYearEndData.CreateStockPrice(
+                    ticker, year, 105.25m, "USD",
+                    new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc), "Stooq");
             });
 
         _stooqServiceMock

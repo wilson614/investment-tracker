@@ -1,5 +1,6 @@
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvestmentTracker.Infrastructure.Repositories;
@@ -7,7 +8,7 @@ namespace InvestmentTracker.Infrastructure.Repositories;
 /// <summary>
 /// StockTransaction entity 的 Repository 實作。
 /// </summary>
-public class StockTransactionRepository(Persistence.AppDbContext context) : IStockTransactionRepository
+public class StockTransactionRepository(AppDbContext context) : IStockTransactionRepository
 {
     public async Task<StockTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using InvestmentTracker.Infrastructure.MarketData;
 
 namespace InvestmentTracker.API.Middleware;
 
@@ -24,7 +25,7 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
     {
         var (statusCode, message) = exception switch
         {
-            Infrastructure.MarketData.StooqDailyHitsLimitExceededException =>
+            StooqDailyHitsLimitExceededException =>
                 (HttpStatusCode.TooManyRequests, "Stooq daily hits limit exceeded"),
             InvalidOperationException => (HttpStatusCode.BadRequest, exception.Message),
             UnauthorizedAccessException => (HttpStatusCode.Forbidden, "Access denied"),

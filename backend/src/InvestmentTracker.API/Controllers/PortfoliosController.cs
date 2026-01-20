@@ -1,8 +1,5 @@
 using InvestmentTracker.Application.DTOs;
-using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.Portfolio;
-using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,10 +12,12 @@ namespace InvestmentTracker.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 public class PortfoliosController(
-    IPortfolioRepository portfolioRepository,
+    GetPortfoliosUseCase getPortfoliosUseCase,
     GetPortfolioSummaryUseCase getPortfolioSummaryUseCase,
     CalculateXirrUseCase calculateXirrUseCase,
-    ICurrentUserService currentUserService) : ControllerBase
+    CreatePortfolioUseCase createPortfolioUseCase,
+    UpdatePortfolioUseCase updatePortfolioUseCase,
+    DeletePortfolioUseCase deletePortfolioUseCase) : ControllerBase
 {
     /// <summary>
     /// 取得目前使用者的所有投資組合。
@@ -27,21 +26,8 @@ public class PortfoliosController(
     [ProducesResponseType(typeof(IEnumerable<PortfolioDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<PortfolioDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var portfolios = await portfolioRepository.GetByUserIdAsync(
-            currentUserService.UserId!.Value, cancellationToken);
-
-        return Ok(portfolios.Select(p => new PortfolioDto
-        {
-            Id = p.Id,
-            Description = p.Description,
-            BaseCurrency = p.BaseCurrency,
-            HomeCurrency = p.HomeCurrency,
-            IsActive = p.IsActive,
-            PortfolioType = p.PortfolioType,
-            DisplayName = p.DisplayName,
-            CreatedAt = p.CreatedAt,
-            UpdatedAt = p.UpdatedAt
-        }));
+        var portfolios = await getPortfoliosUseCase.GetAllAsync(cancellationToken);
+        return Ok(portfolios);
     }
 
     /// <summary>
@@ -52,26 +38,19 @@ public class PortfoliosController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PortfolioDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var portfolio = await portfolioRepository.GetByIdAsync(id, cancellationToken);
-
-        if (portfolio == null)
-            return NotFound();
-
-        if (portfolio.UserId != currentUserService.UserId)
-            return Forbid();
-
-        return Ok(new PortfolioDto
+        try
         {
-            Id = portfolio.Id,
-            Description = portfolio.Description,
-            BaseCurrency = portfolio.BaseCurrency,
-            HomeCurrency = portfolio.HomeCurrency,
-            IsActive = portfolio.IsActive,
-            PortfolioType = portfolio.PortfolioType,
-            DisplayName = portfolio.DisplayName,
-            CreatedAt = portfolio.CreatedAt,
-            UpdatedAt = portfolio.UpdatedAt
-        });
+            var portfolio = await getPortfoliosUseCase.GetByIdAsync(id, cancellationToken);
+            return Ok(portfolio);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -188,34 +167,8 @@ public class PortfoliosController(
         [FromBody] CreatePortfolioRequest request,
         CancellationToken cancellationToken)
     {
-        var portfolio = new Portfolio(
-            currentUserService.UserId!.Value,
-            request.BaseCurrency,
-            request.HomeCurrency,
-            request.PortfolioType,
-            request.DisplayName);
-
-        if (!string.IsNullOrWhiteSpace(request.Description))
-        {
-            portfolio.SetDescription(request.Description);
-        }
-
-        await portfolioRepository.AddAsync(portfolio, cancellationToken);
-
-        var dto = new PortfolioDto
-        {
-            Id = portfolio.Id,
-            Description = portfolio.Description,
-            BaseCurrency = portfolio.BaseCurrency,
-            HomeCurrency = portfolio.HomeCurrency,
-            IsActive = portfolio.IsActive,
-            PortfolioType = portfolio.PortfolioType,
-            DisplayName = portfolio.DisplayName,
-            CreatedAt = portfolio.CreatedAt,
-            UpdatedAt = portfolio.UpdatedAt
-        };
-
-        return CreatedAtAction(nameof(GetById), new { id = portfolio.Id }, dto);
+        var dto = await createPortfolioUseCase.ExecuteAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
     }
 
     /// <summary>
@@ -229,30 +182,19 @@ public class PortfoliosController(
         [FromBody] UpdatePortfolioRequest request,
         CancellationToken cancellationToken)
     {
-        var portfolio = await portfolioRepository.GetByIdAsync(id, cancellationToken);
-
-        if (portfolio == null)
-            return NotFound();
-
-        if (portfolio.UserId != currentUserService.UserId)
-            return Forbid();
-
-        portfolio.SetDescription(request.Description);
-
-        await portfolioRepository.UpdateAsync(portfolio, cancellationToken);
-
-        return Ok(new PortfolioDto
+        try
         {
-            Id = portfolio.Id,
-            Description = portfolio.Description,
-            BaseCurrency = portfolio.BaseCurrency,
-            HomeCurrency = portfolio.HomeCurrency,
-            IsActive = portfolio.IsActive,
-            PortfolioType = portfolio.PortfolioType,
-            DisplayName = portfolio.DisplayName,
-            CreatedAt = portfolio.CreatedAt,
-            UpdatedAt = portfolio.UpdatedAt
-        });
+            var dto = await updatePortfolioUseCase.ExecuteAsync(id, request, cancellationToken);
+            return Ok(dto);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -263,16 +205,18 @@ public class PortfoliosController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var portfolio = await portfolioRepository.GetByIdAsync(id, cancellationToken);
-
-        if (portfolio == null)
+        try
+        {
+            await deletePortfolioUseCase.ExecuteAsync(id, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException)
+        {
             return NotFound();
-
-        if (portfolio.UserId != currentUserService.UserId)
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Forbid();
-
-        await portfolioRepository.DeleteAsync(id, cancellationToken);
-
-        return NoContent();
+        }
     }
 }

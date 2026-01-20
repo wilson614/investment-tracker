@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using InvestmentTracker.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -84,8 +85,8 @@ public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient>
             }
 
             var priceStr = priceMatch.Groups[1].Value.Replace(",", ".");
-            if (!decimal.TryParse(priceStr, System.Globalization.NumberStyles.Number,
-                System.Globalization.CultureInfo.InvariantCulture, out var price))
+            if (!decimal.TryParse(priceStr, NumberStyles.Number,
+                CultureInfo.InvariantCulture, out var price))
             {
                 logger.LogWarning("Could not parse price '{Price}' for {Isin}-{Mic}", priceStr, isin, mic);
                 return null;
@@ -116,8 +117,8 @@ public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient>
                 var timeStr = dateTimeMatch.Groups[2].Value; // HH:mm
 
                 if (DateTime.TryParseExact($"{dateStr} {timeStr}", "dd/MM/yyyy HH:mm",
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.AssumeLocal, out var parsed))
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeLocal, out var parsed))
                 {
                     marketTime = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
                 }
@@ -130,8 +131,8 @@ public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient>
             {
                 var rawValue = changePercentMatch.Groups[1].Value.Replace(",", ".").Trim();
                 // Format as "+X.XX%" or "-X.XX%"
-                if (decimal.TryParse(rawValue, System.Globalization.NumberStyles.Number,
-                    System.Globalization.CultureInfo.InvariantCulture, out var percentValue))
+                if (decimal.TryParse(rawValue, NumberStyles.Number,
+                    CultureInfo.InvariantCulture, out var percentValue))
                 {
                     var sign = percentValue >= 0 ? "+" : "";
                     changePercent = $"{sign}{percentValue:0.00}%";
@@ -144,8 +145,8 @@ public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient>
             if (changeAbsoluteMatch.Success)
             {
                 var rawValue = changeAbsoluteMatch.Groups[1].Value.Replace(",", ".").Trim();
-                if (decimal.TryParse(rawValue, System.Globalization.NumberStyles.Number,
-                    System.Globalization.CultureInfo.InvariantCulture, out var changeValue))
+                if (decimal.TryParse(rawValue, NumberStyles.Number,
+                    CultureInfo.InvariantCulture, out var changeValue))
                 {
                     change = changeValue;
                 }

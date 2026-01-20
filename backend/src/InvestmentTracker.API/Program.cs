@@ -11,23 +11,25 @@ using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using InvestmentTracker.Infrastructure.External;
+using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Repositories;
 using InvestmentTracker.Infrastructure.Services;
 using InvestmentTracker.Infrastructure.StockPrices;
-using InvestmentTracker.Infrastructure.MarketData;
-using InvestmentTracker.Infrastructure.External;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 using Serilog;
+using Serilog.Events;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Application", "InvestmentTracker")
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
@@ -91,7 +93,7 @@ builder.Services.AddSwaggerGen(c =>
 
 // Configure Database (SQLite for development, PostgreSQL for production)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-var useSqlite = builder.Configuration.GetValue<bool>("UseSqlite", false);
+var useSqlite = builder.Configuration.GetValue("UseSqlite", false);
 
 if (useSqlite || string.IsNullOrEmpty(connectionString))
 {
@@ -144,6 +146,8 @@ builder.Services.AddScoped<IEuronextQuoteCacheRepository, EuronextQuoteCacheRepo
 builder.Services.AddScoped<IEtfClassificationRepository, EtfClassificationRepository>();
 builder.Services.AddScoped<IHistoricalYearEndDataRepository, HistoricalYearEndDataRepository>();
 builder.Services.AddScoped<IHistoricalExchangeRateCacheRepository, HistoricalExchangeRateCacheRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
@@ -157,7 +161,11 @@ builder.Services.AddScoped<StockSplitAdjustmentService>();
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
 builder.Services.AddScoped<UpdateStockTransactionUseCase>();
 builder.Services.AddScoped<DeleteStockTransactionUseCase>();
+builder.Services.AddScoped<GetPortfoliosUseCase>();
 builder.Services.AddScoped<GetPortfolioSummaryUseCase>();
+builder.Services.AddScoped<CreatePortfolioUseCase>();
+builder.Services.AddScoped<UpdatePortfolioUseCase>();
+builder.Services.AddScoped<DeletePortfolioUseCase>();
 builder.Services.AddScoped<CalculateXirrUseCase>();
 builder.Services.AddScoped<GetCurrencyLedgerSummaryUseCase>();
 builder.Services.AddScoped<CreateCurrencyLedgerUseCase>();
@@ -275,11 +283,11 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("No pending migrations found.");
         }
     }
-    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P07")
+    catch (PostgresException ex) when (ex.SqlState == "42P07")
     {
         // Table already exists - this happens when database was created with EnsureCreated()
         // but no migration history exists. We need to mark migrations as applied.
-        Console.WriteLine($"Database tables already exist (likely from EnsureCreated). Attempting to sync migration history...");
+        Console.WriteLine("Database tables already exist (likely from EnsureCreated). Attempting to sync migration history...");
 
         var context = services.GetRequiredService<AppDbContext>();
         try
