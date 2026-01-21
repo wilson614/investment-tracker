@@ -38,6 +38,15 @@ public class GetPortfolioSummaryUseCase(
         var positions = portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
             transactions, stockSplits, splitAdjustmentService);
 
+        // 建立 ticker -> market 對照表（從最新的交易紀錄取得市場資訊）
+        var tickerMarketLookup = transactions
+            .Where(t => !t.IsDeleted)
+            .GroupBy(t => t.Ticker, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(t => t.TransactionDate).First().Market,
+                StringComparer.OrdinalIgnoreCase);
+
         // 轉為不分大小寫的 dictionary，避免 ticker 比對失敗
         var currentPrices = performanceRequest?.CurrentPrices != null
             ? new Dictionary<string, CurrentPriceInfo>(
@@ -64,6 +73,9 @@ public class GetPortfolioSummaryUseCase(
 
             StockPositionDto dto;
 
+            // 取得此 ticker 的市場資訊
+            tickerMarketLookup.TryGetValue(position.Ticker, out var market);
+
             if (isForeignCurrencyPortfolio)
             {
                 // ForeignCurrency 投資組合：所有指標以原始幣別計算
@@ -75,7 +87,8 @@ public class GetPortfolioSummaryUseCase(
                     TotalCostHome = position.TotalCostSource,
                     TotalCostSource = position.TotalCostSource,
                     AverageCostPerShareHome = position.AverageCostPerShareSource,
-                    AverageCostPerShareSource = position.AverageCostPerShareSource
+                    AverageCostPerShareSource = position.AverageCostPerShareSource,
+                    Market = market
                 };
             }
             else
@@ -87,7 +100,8 @@ public class GetPortfolioSummaryUseCase(
                     TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
                     TotalCostSource = position.TotalCostSource,
                     AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
-                    AverageCostPerShareSource = position.AverageCostPerShareSource
+                    AverageCostPerShareSource = position.AverageCostPerShareSource,
+                    Market = market
                 };
             }
 

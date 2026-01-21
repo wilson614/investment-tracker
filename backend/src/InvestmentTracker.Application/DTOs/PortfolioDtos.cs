@@ -79,6 +79,7 @@ public record StockPositionDto
     public decimal? CurrentValueHome { get; init; }
     public decimal? UnrealizedPnlHome { get; init; }
     public decimal? UnrealizedPnlPercentage { get; init; }
+    public StockMarket? Market { get; init; }
 }
 
 /// <summary>
