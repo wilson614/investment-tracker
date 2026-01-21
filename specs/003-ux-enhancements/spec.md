@@ -2,8 +2,8 @@
 
 **Feature Branch**: `003-ux-enhancements`
 **Created**: 2026-01-21
-**Status**: Implemented (Phase 1-10 Complete)
-**Input**: Stock split UI, Benchmark custom stocks, default login page, dashboard historical chart, Taiwan timezone, date input optimization, fee default value, transaction Market field
+**Status**: Implemented (Phase 1-10 Complete), Phase 2 In Progress (US9-US17)
+**Input**: Stock split UI, Benchmark custom stocks, default login page, dashboard historical chart, Taiwan timezone, date input optimization, fee default value, transaction Market field, **[NEW]** transaction currency, XIRR for current year, logout cache cleanup, dashboard layout stability, multi-market same-ticker support, quote fallback logic, ticker prediction trigger, CSV import market/currency, Yahoo historical price fallback
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -141,6 +141,161 @@ Transaction form fee field defaults to empty instead of auto-filling 0.
 - When Benchmark custom stock stops trading, should display last available quote
 - When non-numeric characters entered in year field, should not trigger auto-tab
 
+---
+
+## Phase 2: New User Stories (US9-US17)
+
+### User Story 9 - Transaction Currency Field (Priority: P1)
+
+Users can input and edit the denomination currency (計價幣別) for each transaction. Auto-detection: Taiwan stocks default to TWD, others default to USD. Users can manually override.
+
+**Why this priority**: Currency is fundamental to accurate cost and performance calculations across multiple markets.
+
+**Independent Test**: Create a transaction for Taiwan stock, verify currency defaults to TWD. Create a US stock transaction, verify currency defaults to USD.
+
+**Acceptance Scenarios**:
+
+1. **Given** user enters Taiwan stock ticker (e.g., 2330), **When** form auto-detects, **Then** currency field defaults to TWD
+2. **Given** user enters non-Taiwan stock ticker (e.g., VTI), **When** form auto-detects, **Then** currency field defaults to USD
+3. **Given** user manually selects GBP for UK stock, **When** transaction is saved, **Then** currency persists as GBP
+4. **Given** user edits existing transaction, **When** form loads, **Then** currency field shows stored value
+
+---
+
+### User Story 10 - XIRR Current Year Handling (Priority: P2)
+
+Current year (2026) XIRR calculation may be misleading at the start of the year due to extreme amplification. System should provide appropriate handling or warning.
+
+**Why this priority**: Misleading XIRR values can cause user confusion and poor decision-making.
+
+**Independent Test**: View XIRR for portfolio with transactions only in current year, verify appropriate handling.
+
+**Acceptance Scenarios**:
+
+1. **Given** portfolio only has current year transactions, **When** viewing XIRR, **Then** system displays warning about limited data reliability
+2. **Given** XIRR calculation period is less than 3 months, **When** displaying result, **Then** add visual indicator that value may be volatile
+3. **Given** user hovers over warning, **When** tooltip appears, **Then** explain why short-term XIRR can be misleading
+
+---
+
+### User Story 11 - Logout Cache Cleanup (Priority: P1)
+
+After logout, all user-specific cached data must be cleared to prevent data leakage when switching accounts. Some preferences should be stored in database rather than localStorage.
+
+**Why this priority**: Security concern - cached data from previous user should not be visible to next user.
+
+**Independent Test**: Login as User A, view portfolio data. Logout. Login as User B, verify no User A data is visible.
+
+**Acceptance Scenarios**:
+
+1. **Given** user logs out, **When** logout completes, **Then** all localStorage quote caches are cleared
+2. **Given** user logs out, **When** logout completes, **Then** all user-specific React Query caches are invalidated
+3. **Given** user preferences (e.g., selected portfolio, benchmark settings), **When** stored, **Then** save to database rather than localStorage
+4. **Given** new user logs in after logout, **When** viewing dashboard, **Then** no previous user's cached prices or preferences are shown
+
+---
+
+### User Story 12 - Dashboard Layout Stability (Priority: P2)
+
+Dashboard sections should maintain consistent height during loading to prevent layout shifts. This includes the historical chart section (should not hide when no data) and CAPE section.
+
+**Why this priority**: Layout shifts during loading create poor user experience and visual instability.
+
+**Independent Test**: View Dashboard with slow network, verify sections don't jump around during load.
+
+**Acceptance Scenarios**:
+
+1. **Given** historical chart section has no data, **When** Dashboard loads, **Then** section displays placeholder with same height as data state
+2. **Given** CAPE section is loading, **When** initial render, **Then** section height matches post-load height
+3. **Given** any dashboard section is loading, **When** data arrives, **Then** no visible layout shift occurs
+
+---
+
+### User Story 13 - Multi-Market Same-Ticker Support (Priority: P1)
+
+When user holds same ticker in different markets (e.g., WSML.L in UK and WSML in US), system must treat them as separate positions and display correct market for each.
+
+**Why this priority**: Core data integrity issue - conflating different securities leads to incorrect calculations.
+
+**Independent Test**: Create transactions for WSML (US) and WSML.L (UK), verify they appear as separate positions with correct markets.
+
+**Acceptance Scenarios**:
+
+1. **Given** user has WSML transactions with market=US, **When** viewing positions, **Then** displays as US market position
+2. **Given** user has WSML.L transactions with market=UK, **When** viewing positions, **Then** displays as UK market position (separate from US)
+3. **Given** same base ticker in different markets, **When** calculating totals, **Then** calculate as separate positions with separate quotes
+
+---
+
+### User Story 14 - Quote Fetching Market Enforcement (Priority: P1)
+
+Position card quote fetching must strictly use the market from transaction records. No fallback to other markets for position cards. Only ticker input prediction during form entry may use market fallback.
+
+**Why this priority**: Fallback logic causes incorrect quotes when user has intentionally set a specific market.
+
+**Independent Test**: Create UK market transaction, verify quote is fetched from UK API only (no US fallback).
+
+**Acceptance Scenarios**:
+
+1. **Given** position has market=UK in transactions, **When** fetching quote, **Then** only use UK market API (no fallback)
+2. **Given** UK market API fails to return quote, **When** position card displays, **Then** show error/no quote instead of wrong US quote
+3. **Given** user is typing ticker in transaction form, **When** system auto-detects market, **Then** may try fallback (US→UK) for detection only
+4. **Given** position card quote fetch fails, **When** displaying, **Then** use last cached value if available, otherwise show "無報價"
+
+---
+
+### User Story 15 - Ticker Prediction Trigger Optimization (Priority: P3)
+
+Ticker input prediction should trigger after 4th character is typed, not only when moving to next field.
+
+**Why this priority**: Improves responsiveness and user experience during data entry.
+
+**Independent Test**: Type 4 characters in ticker field, verify prediction triggers immediately without leaving field.
+
+**Acceptance Scenarios**:
+
+1. **Given** user types "VWRA" in ticker field, **When** 4th character entered, **Then** market detection triggers immediately
+2. **Given** user types "VT" (only 2 chars), **When** typing stops, **Then** no prediction triggered yet
+3. **Given** user types Taiwan stock "2330", **When** 4th character entered, **Then** prediction triggers (TW market detected)
+4. **Given** prediction is running, **When** user continues typing, **Then** previous prediction is cancelled and new one starts
+
+---
+
+### User Story 16 - CSV Import Market and Currency Fields (Priority: P2)
+
+CSV import must include Market (required) and Currency (required) columns for proper transaction import.
+
+**Why this priority**: Without market and currency, imported transactions cannot be properly processed.
+
+**Independent Test**: Import CSV with market and currency columns, verify all values are correctly stored.
+
+**Acceptance Scenarios**:
+
+1. **Given** CSV with Market column, **When** importing, **Then** market values are correctly mapped (TW/US/UK/EU)
+2. **Given** CSV with Currency column, **When** importing, **Then** currency values are correctly stored (TWD/USD/GBP/EUR)
+3. **Given** CSV missing Market column, **When** attempting import, **Then** validation error displayed
+4. **Given** CSV missing Currency column, **When** attempting import, **Then** validation error displayed
+5. **Given** CSV template download, **When** user downloads, **Then** template includes Market and Currency columns with examples
+
+---
+
+### User Story 17 - Yahoo Historical Price Fallback (Priority: P2)
+
+Implement Yahoo Finance as fallback for historical price fetching when Stooq is unavailable or rate-limited. Evaluate whether Yahoo should become primary source.
+
+**Why this priority**: Stooq has rate limits and occasional availability issues; having fallback improves reliability.
+
+**Independent Test**: Block Stooq API, verify system successfully fetches historical prices from Yahoo.
+
+**Acceptance Scenarios**:
+
+1. **Given** Stooq returns rate limit error, **When** fetching historical price, **Then** automatically fallback to Yahoo
+2. **Given** Stooq timeout or error, **When** fetching, **Then** retry with Yahoo as fallback
+3. **Given** Yahoo is configured as primary, **When** Yahoo fails, **Then** fallback to Stooq
+4. **Given** both sources fail, **When** displaying, **Then** show appropriate error message
+
+---
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -182,12 +337,65 @@ Transaction form fee field defaults to empty instead of auto-filling 0.
 - **FR-320**: New transaction form fee field MUST default to empty
 - **FR-321**: Empty fee MUST be treated as 0 on submission
 
+#### [NEW] Transaction Currency (US9)
+- **FR-322**: System MUST add Currency field to StockTransaction table
+- **FR-323**: Transaction form MUST include currency dropdown (TWD/USD/GBP/EUR)
+- **FR-324**: System MUST auto-detect currency: Taiwan stocks → TWD, all others → USD (user can manually override to GBP/EUR)
+- **FR-325**: User MUST be able to manually override detected currency
+- **FR-326**: Database migration MUST populate existing transactions based on market
+
+#### [NEW] XIRR Current Year Handling (US10)
+- **FR-327**: System MUST display warning when XIRR calculation period < 3 months
+- **FR-328**: Short-period XIRR MUST have visual indicator of volatility
+- **FR-329**: Warning tooltip MUST explain short-term XIRR limitations
+
+#### [NEW] Logout Cache Cleanup (US11)
+- **FR-330**: Logout MUST clear all localStorage keys with `user_` prefix (quote caches, user-specific state)
+- **FR-331**: Logout MUST invalidate all React Query caches
+- **FR-332**: Critical user preferences (selected portfolio, last viewed position) MUST be stored in database, not localStorage
+- **FR-333**: localStorage keys MUST use `user_` prefix for user-specific data; shared settings (theme) use different prefix or no prefix
+
+#### [NEW] Dashboard Layout Stability (US12)
+- **FR-334**: Historical chart section MUST maintain consistent height (show placeholder when empty)
+- **FR-335**: CAPE section MUST have fixed minimum height during loading
+- **FR-336**: All dashboard sections MUST avoid layout shift on data load
+
+#### [NEW] Multi-Market Same-Ticker Support (US13)
+- **FR-337**: Position grouping MUST use (ticker, market) composite key, not ticker alone
+- **FR-338**: Same ticker in different markets MUST be treated as separate positions
+- **FR-339**: Quote fetching MUST use position's specific market
+
+#### [NEW] Quote Fetching Market Enforcement (US14)
+- **FR-340**: Position card quote fetching MUST NOT fallback to other markets
+- **FR-341**: Quote fetch failure MUST display "無報價" or cached value
+- **FR-342**: Ticker input prediction MAY use market fallback for detection
+- **FR-343**: Fallback behavior MUST be clearly separated (prediction vs display)
+
+#### [NEW] Ticker Prediction Trigger (US15)
+- **FR-344**: Market detection MUST trigger on 4th character typed
+- **FR-345**: Previous detection request MUST be cancelled when new input arrives
+- **FR-346**: Loading indicator MUST be shown during detection
+
+#### [NEW] CSV Import Market and Currency (US16)
+- **FR-347**: CSV import MUST require Market column
+- **FR-348**: CSV import MUST require Currency column
+- **FR-349**: Validation MUST fail if Market or Currency columns are missing
+- **FR-350**: CSV template MUST include Market and Currency columns with examples
+
+#### [NEW] Yahoo Historical Price Fallback (US17)
+- **FR-351**: System MUST implement Yahoo Finance as PRIMARY historical price source
+- **FR-352**: Yahoo failure MUST trigger Stooq fallback automatically
+- **FR-353**: Stooq serves as secondary/fallback source only
+- **FR-354**: Both sources failing MUST display appropriate error message
+
 ### Key Entities
 
 - **StockTransaction.Market**: Market type for transaction (TW/US/UK/EU), new field
 - **StockSplit**: Stock split record containing ticker, split date, split ratio (shared across all users)
 - **UserBenchmark**: User's custom Benchmark stocks containing user ID, ticker, market, added date (per-user storage)
 - **PortfolioValueHistory**: Portfolio year-end value snapshots for line chart display
+- **[NEW] StockTransaction.Currency**: Denomination currency for transaction (TWD/USD/GBP/EUR)
+- **[NEW] UserPreferences**: User-specific preferences stored in database (selected portfolio, settings)
 
 ## Success Criteria *(mandatory)*
 
@@ -199,6 +407,15 @@ Transaction form fee field defaults to empty instead of auto-filling 0.
 - **SC-304**: Stock split record changes trigger position recalculation within 2 seconds
 - **SC-305**: 100% of time displays use Taiwan timezone
 - **SC-306**: Date input efficiency improved, users can complete full date input within 5 seconds
+- **[NEW] SC-307**: Currency selection persists correctly after page refresh
+- **[NEW] SC-308**: XIRR warning appears for portfolios with < 3 months history
+- **[NEW] SC-309**: Zero user-specific data leakage after logout (verified by cache inspection)
+- **[NEW] SC-310**: Dashboard layout shift < 5px during loading
+- **[NEW] SC-311**: Same-ticker different-market positions display as separate entries
+- **[NEW] SC-312**: Position card never shows quote from wrong market
+- **[NEW] SC-313**: Ticker prediction triggers within 100ms of 4th character
+- **[NEW] SC-314**: CSV import validates Market/Currency columns before processing
+- **[NEW] SC-315**: Historical price fallback success rate > 99% when primary source fails
 
 ## Clarifications
 
@@ -208,6 +425,9 @@ Transaction form fee field defaults to empty instead of auto-filling 0.
 - Q: How to initialize Market field for existing transactions? → A: Migration auto-populates based on ticker format, users can edit transactions to correct
 - Q: Where should Stock Split UI be located? → A: Sub-section in Settings page
 - Q: Should Benchmark custom stocks be per-user or global? → A: Per-user storage (personalized Benchmark), historical prices shared, real-time prices fetched on demand
+- Q: Yahoo/Stooq historical price source priority? → A: Yahoo as primary source, Stooq as fallback (prioritizing stability)
+- Q: Default currency for UK/EU stocks? → A: All non-Taiwan stocks default to USD; user can manually change to GBP/EUR
+- Q: localStorage cleanup strategy on logout? → A: Use `user_` prefix for user-specific keys, clear only these on logout; critical preferences (selected portfolio) should be stored in DB
 
 ## Assumptions
 
