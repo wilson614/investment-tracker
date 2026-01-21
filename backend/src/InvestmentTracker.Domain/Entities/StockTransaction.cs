@@ -21,6 +21,7 @@ public class StockTransaction : BaseEntity
     public string? Notes { get; private set; }
     public bool IsDeleted { get; private set; }
     public decimal? RealizedPnlHome { get; private set; }
+    public StockMarket Market { get; private set; }
 
     // 導覽屬性
     public Portfolio Portfolio { get; private set; } = null!;
@@ -73,7 +74,8 @@ public class StockTransaction : BaseEntity
         decimal fees = 0m,
         FundSource fundSource = FundSource.None,
         Guid? currencyLedgerId = null,
-        string? notes = null)
+        string? notes = null,
+        StockMarket? market = null)
     {
         if (portfolioId == Guid.Empty)
             throw new ArgumentException("Portfolio ID is required", nameof(portfolioId));
@@ -88,6 +90,7 @@ public class StockTransaction : BaseEntity
         SetFees(fees);
         SetFundSource(fundSource, currencyLedgerId);
         SetNotes(notes);
+        SetMarket(market ?? GuessMarketFromTicker(ticker));
     }
 
     public void SetTransactionDate(DateTime date)
@@ -174,5 +177,38 @@ public class StockTransaction : BaseEntity
     public void SetTransactionType(TransactionType transactionType)
     {
         TransactionType = transactionType;
+    }
+
+    public void SetMarket(StockMarket market)
+    {
+        if (!Enum.IsDefined(typeof(StockMarket), market))
+            throw new ArgumentException("Invalid market", nameof(market));
+
+        Market = market;
+    }
+
+    /// <summary>
+    /// 根據股票代號推測市場
+    /// - 數字開頭：台股 (TW)
+    /// - .L 結尾：英股 (UK)
+    /// - 其他：美股 (US)
+    /// </summary>
+    public static StockMarket GuessMarketFromTicker(string ticker)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+            return StockMarket.US;
+
+        ticker = ticker.Trim().ToUpperInvariant();
+
+        // 台股：數字開頭（如 0050、2330、6547R）
+        if (char.IsDigit(ticker[0]))
+            return StockMarket.TW;
+
+        // 英股：.L 結尾
+        if (ticker.EndsWith(".L", StringComparison.OrdinalIgnoreCase))
+            return StockMarket.UK;
+
+        // 預設美股
+        return StockMarket.US;
     }
 }

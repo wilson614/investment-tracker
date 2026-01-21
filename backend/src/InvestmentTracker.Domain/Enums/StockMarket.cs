@@ -12,5 +12,8 @@ public enum StockMarket
     US = 2,
 
     /// <summary>英國／倫敦證券交易所（透過 Sina）</summary>
-    UK = 3
+    UK = 3,
+
+    /// <summary>歐洲市場（Euronext 等）</summary>
+    EU = 4
 }

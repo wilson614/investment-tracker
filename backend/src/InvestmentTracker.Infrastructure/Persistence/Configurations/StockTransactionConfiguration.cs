@@ -47,6 +47,10 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
         builder.Property(t => t.Notes)
             .HasMaxLength(500);
 
+        builder.Property(t => t.Market)
+            .IsRequired()
+            .HasDefaultValue(StockMarket.US);
+
         builder.Property(t => t.IsDeleted)
             .IsRequired()
             .HasDefaultValue(false);
