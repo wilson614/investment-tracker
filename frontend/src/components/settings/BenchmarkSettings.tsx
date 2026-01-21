@@ -4,11 +4,12 @@
  * 讓使用者管理自訂基準標的（UserBenchmark）。
  * 可新增任意 ticker/market 組合，用於 Performance 頁面的績效比較。
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
-import { userBenchmarkApi, etfClassificationApi } from '../../services/api';
+import { userBenchmarkApi, etfClassificationApi, stockPriceApi } from '../../services/api';
 import { StockMarket as StockMarketEnum } from '../../types';
 import type { UserBenchmark, StockMarket, CreateUserBenchmarkRequest } from '../../types';
+import { isEuronextSymbol } from '../../constants';
 
 const MARKET_LABELS: Record<StockMarket, string> = {
   [StockMarketEnum.TW]: '台股',
@@ -42,9 +43,9 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
   // Add form state
   const [newTicker, setNewTicker] = useState('');
   const [newMarket, setNewMarket] = useState<StockMarket>(StockMarketEnum.US);
-  const [newDisplayName, setNewDisplayName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [isDetectingMarket, setIsDetectingMarket] = useState(false);
 
   // ETF type warnings
   const [etfWarnings, setEtfWarnings] = useState<Record<string, string>>({});
@@ -86,10 +87,63 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
     setEtfWarnings(warnings);
   };
 
+  /**
+   * 自動偵測市場：先嘗試 US，找不到再嘗試 UK。
+   */
+  const detectMarket = useCallback(async (ticker: string): Promise<StockMarket | null> => {
+    if (!ticker.trim()) return null;
+    const trimmed = ticker.trim().toUpperCase();
+
+    // 台股：數字開頭
+    if (/^\d/.test(trimmed)) return StockMarketEnum.TW;
+
+    // .L 結尾直接判定為英股
+    if (trimmed.endsWith('.L')) return StockMarketEnum.UK;
+
+    // Euronext 股票
+    if (isEuronextSymbol(trimmed)) return StockMarketEnum.EU;
+
+    // 對於其他 ticker，先嘗試查詢 US 市場
+    try {
+      const usQuote = await stockPriceApi.getQuote(StockMarketEnum.US, trimmed);
+      if (usQuote) return StockMarketEnum.US;
+    } catch {
+      // US 查詢失敗
+    }
+
+    // 嘗試 UK 市場
+    try {
+      const ukQuote = await stockPriceApi.getQuote(StockMarketEnum.UK, trimmed);
+      if (ukQuote) return StockMarketEnum.UK;
+    } catch {
+      // UK 也找不到
+    }
+
+    return StockMarketEnum.US;
+  }, []);
+
   const handleTickerChange = (value: string) => {
     setNewTicker(value.toUpperCase());
-    // Auto-detect market
+    // Just set initial guess, real detection happens on blur
     setNewMarket(guessMarketFromTicker(value));
+  };
+
+  const handleTickerBlur = async () => {
+    const ticker = newTicker.trim();
+    if (!ticker) return;
+
+    // Skip detection for Taiwan stocks
+    if (/^\d/.test(ticker)) return;
+
+    setIsDetectingMarket(true);
+    try {
+      const detectedMarket = await detectMarket(ticker);
+      if (detectedMarket !== null) {
+        setNewMarket(detectedMarket);
+      }
+    } finally {
+      setIsDetectingMarket(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -105,7 +159,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
       const request: CreateUserBenchmarkRequest = {
         ticker: newTicker.trim().toUpperCase(),
         market: newMarket,
-        displayName: newDisplayName.trim() || undefined,
       };
       await userBenchmarkApi.create(request);
       // Reload list
@@ -113,7 +166,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
       // Reset form
       setNewTicker('');
       setNewMarket(StockMarketEnum.US);
-      setNewDisplayName('');
       onUpdate?.();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : '新增失敗');
@@ -151,25 +203,29 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
       {/* Add Form */}
       <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
         <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">新增自訂基準</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-[var(--text-muted)] mb-1">股票代號</label>
             <input
               type="text"
               value={newTicker}
               onChange={(e) => handleTickerChange(e.target.value)}
+              onBlur={handleTickerBlur}
               placeholder="如 VWRA.L"
               className="input-dark w-full"
               disabled={isAdding}
             />
           </div>
           <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">市場</label>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">
+              市場
+              {isDetectingMarket && <span className="ml-1 text-[var(--text-muted)]">偵測中...</span>}
+            </label>
             <select
               value={newMarket}
               onChange={(e) => setNewMarket(Number(e.target.value) as StockMarket)}
               className="input-dark w-full"
-              disabled={isAdding}
+              disabled={isAdding || isDetectingMarket}
             >
               {Object.entries(MARKET_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -177,17 +233,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">顯示名稱（選填）</label>
-            <input
-              type="text"
-              value={newDisplayName}
-              onChange={(e) => setNewDisplayName(e.target.value)}
-              placeholder="如 全球股票"
-              className="input-dark w-full"
-              disabled={isAdding}
-            />
           </div>
           <div className="flex items-end">
             <button
@@ -229,11 +274,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
                 <span className="text-xs px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
                   {MARKET_LABELS[b.market]}
                 </span>
-                {b.displayName && (
-                  <span className="text-sm text-[var(--text-secondary)]">
-                    {b.displayName}
-                  </span>
-                )}
                 {etfWarnings[b.id] && (
                   <span className="flex items-center gap-1 text-xs text-[var(--color-warning)]">
                     <AlertCircle className="w-3 h-3" />

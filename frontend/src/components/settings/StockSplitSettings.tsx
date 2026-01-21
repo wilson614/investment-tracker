@@ -51,16 +51,16 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
   const [newSymbol, setNewSymbol] = useState('');
   const [newMarket, setNewMarket] = useState<StockMarket>(StockMarketEnum.US);
   const [newSplitDate, setNewSplitDate] = useState('');
-  const [newSplitRatio, setNewSplitRatio] = useState('');
-  const [newDescription, setNewDescription] = useState('');
+  const [newFromShares, setNewFromShares] = useState('1');
+  const [newToShares, setNewToShares] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSplitDate, setEditSplitDate] = useState('');
-  const [editSplitRatio, setEditSplitRatio] = useState('');
-  const [editDescription, setEditDescription] = useState('');
+  const [editFromShares, setEditFromShares] = useState('1');
+  const [editToShares, setEditToShares] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Fetch splits on mount
@@ -100,11 +100,13 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       setAddError('請輸入生效日期');
       return;
     }
-    const ratio = parseFloat(newSplitRatio);
-    if (isNaN(ratio) || ratio <= 0) {
-      setAddError('請輸入有效的分割比例');
+    const fromShares = parseFloat(newFromShares);
+    const toShares = parseFloat(newToShares);
+    if (isNaN(fromShares) || fromShares <= 0 || isNaN(toShares) || toShares <= 0) {
+      setAddError('請輸入有效的股數');
       return;
     }
+    const ratio = toShares / fromShares;
 
     setIsAdding(true);
     setAddError(null);
@@ -115,7 +117,6 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
         market: newMarket,
         splitDate: new Date(newSplitDate).toISOString(),
         splitRatio: ratio,
-        description: newDescription.trim() || undefined,
       };
       await stockSplitApi.create(request);
       // Reload list
@@ -124,8 +125,8 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       setNewSymbol('');
       setNewMarket(StockMarketEnum.US);
       setNewSplitDate('');
-      setNewSplitRatio('');
-      setNewDescription('');
+      setNewFromShares('1');
+      setNewToShares('');
       onUpdate?.();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : '新增失敗');
@@ -137,23 +138,26 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
   const startEdit = (split: StockSplit) => {
     setEditingId(split.id);
     setEditSplitDate(formatDate(split.splitDate));
-    setEditSplitRatio(split.splitRatio.toString());
-    setEditDescription(split.description || '');
+    // Convert ratio back to from/to format (assume from=1)
+    setEditFromShares('1');
+    setEditToShares(split.splitRatio.toString());
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditSplitDate('');
-    setEditSplitRatio('');
-    setEditDescription('');
+    setEditFromShares('1');
+    setEditToShares('');
   };
 
   const handleUpdate = async (id: string) => {
-    const ratio = parseFloat(editSplitRatio);
-    if (isNaN(ratio) || ratio <= 0) {
-      setError('請輸入有效的分割比例');
+    const fromShares = parseFloat(editFromShares);
+    const toShares = parseFloat(editToShares);
+    if (isNaN(fromShares) || fromShares <= 0 || isNaN(toShares) || toShares <= 0) {
+      setError('請輸入有效的股數');
       return;
     }
+    const ratio = toShares / fromShares;
 
     setIsUpdating(true);
     setError(null);
@@ -162,7 +166,6 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       await stockSplitApi.update(id, {
         splitDate: new Date(editSplitDate).toISOString(),
         splitRatio: ratio,
-        description: editDescription.trim() || undefined,
       });
       await loadSplits();
       cancelEdit();
@@ -203,7 +206,7 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       {/* Add Form */}
       <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
         <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">新增股票分割</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs text-[var(--text-muted)] mb-1">股票代號</label>
             <input
@@ -241,37 +244,35 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
             />
           </div>
           <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">
-              分割比例
-              <span className="ml-1 text-[var(--text-muted)]" title="1拆4填4，2併1填0.5">(股數乘數)</span>
-            </label>
-            <input
-              type="number"
-              step="0.001"
-              min="0.001"
-              value={newSplitRatio}
-              onChange={(e) => setNewSplitRatio(e.target.value)}
-              placeholder="如 4"
-              className="input-dark w-full"
-              disabled={isAdding}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">描述（選填）</label>
-            <input
-              type="text"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="如 1拆4"
-              className="input-dark w-full"
-              disabled={isAdding}
-            />
+            <label className="block text-xs text-[var(--text-muted)] mb-1">分割比例</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={newFromShares}
+                onChange={(e) => setNewFromShares(e.target.value)}
+                className="input-dark w-12 text-center"
+                disabled={isAdding}
+              />
+              <span className="text-[var(--text-muted)]">拆</span>
+              <input
+                type="number"
+                step="0.001"
+                min="0.001"
+                value={newToShares}
+                onChange={(e) => setNewToShares(e.target.value)}
+                placeholder="4"
+                className="input-dark w-16 text-center"
+                disabled={isAdding}
+              />
+            </div>
           </div>
           <div className="flex items-end">
             <button
               type="button"
               onClick={handleAdd}
-              disabled={isAdding || !newSymbol.trim() || !newSplitDate || !newSplitRatio}
+              disabled={isAdding || !newSymbol.trim() || !newSplitDate || !newToShares}
               className="btn-accent w-full py-2 flex items-center justify-center gap-2"
             >
               {isAdding ? (
@@ -299,7 +300,7 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
             <div key={s.id} className="py-3">
               {editingId === s.id ? (
                 // Edit mode
-                <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-[var(--text-primary)]">{s.symbol}</span>
                     <span className="text-xs px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
@@ -316,25 +317,27 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
                     />
                   </div>
                   <div>
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0.001"
-                      value={editSplitRatio}
-                      onChange={(e) => setEditSplitRatio(e.target.value)}
-                      className="input-dark w-full text-sm"
-                      disabled={isUpdating}
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      placeholder="描述"
-                      className="input-dark w-full text-sm"
-                      disabled={isUpdating}
-                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={editFromShares}
+                        onChange={(e) => setEditFromShares(e.target.value)}
+                        className="input-dark w-12 text-center text-sm"
+                        disabled={isUpdating}
+                      />
+                      <span className="text-[var(--text-muted)]">拆</span>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0.001"
+                        value={editToShares}
+                        onChange={(e) => setEditToShares(e.target.value)}
+                        className="input-dark w-16 text-center text-sm"
+                        disabled={isUpdating}
+                      />
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 sm:col-span-2 justify-end">
                     <button
@@ -373,13 +376,8 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
                       {formatDate(s.splitDate)}
                     </span>
                     <span className="text-sm font-mono text-[var(--accent-peach)]">
-                      ×{s.splitRatio}
+                      1拆{s.splitRatio}
                     </span>
-                    {s.description && (
-                      <span className="text-sm text-[var(--text-muted)]">
-                        ({s.description})
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
