@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Services;
@@ -24,6 +25,7 @@ public class MarketDataController(
     IStooqHistoricalPriceService stooqService,
     ITwseStockHistoricalPriceService twseService,
     IHistoricalYearEndDataService historicalYearEndDataService,
+    IHistoricalYearEndDataRepository historicalYearEndDataRepository,
     ITransactionDateExchangeRateService txDateFxService,
     AppDbContext dbContext,
     ILogger<MarketDataController> logger) : ControllerBase
@@ -256,6 +258,7 @@ public class MarketDataController(
             var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
                 normalizedTicker,
                 targetDate.Year,
+                market: null,
                 cancellationToken);
 
             if (cachedResult == null)
@@ -324,6 +327,7 @@ public class MarketDataController(
                     var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
                         normalizedTicker,
                         targetDate.Year,
+                        market: null,
                         cancellationToken);
 
                     if (cachedResult != null)
@@ -906,6 +910,50 @@ public class MarketDataController(
             results,
             successCount,
             results.Count - successCount));
+    }
+
+    /// <summary>
+    /// 刪除指定 ticker 的年末價格緩存。
+    /// 用於清除因貨幣判斷錯誤而緩存的錯誤數據。
+    /// </summary>
+    [HttpDelete("year-end-price/{ticker}/{year:int}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> DeleteYearEndPriceCache(
+        string ticker,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        var deleted = await historicalYearEndDataRepository.DeleteAsync(
+            HistoricalDataType.StockPrice,
+            ticker,
+            year,
+            cancellationToken);
+
+        if (!deleted)
+        {
+            return NotFound($"No cache entry found for {ticker}/{year}");
+        }
+
+        logger.LogInformation("Deleted year-end price cache for {Ticker}/{Year}", ticker, year);
+        return Ok(new { message = $"Cache entry for {ticker}/{year} deleted successfully" });
+    }
+
+    /// <summary>
+    /// 刪除指定 ticker 的所有年度緩存（價格和匯率）。
+    /// </summary>
+    [HttpDelete("year-end-cache/{ticker}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> DeleteAllYearEndCache(
+        string ticker,
+        CancellationToken cancellationToken = default)
+    {
+        var deletedCount = await historicalYearEndDataRepository.DeleteByTickerAsync(
+            ticker,
+            cancellationToken);
+
+        logger.LogInformation("Deleted {Count} cache entries for {Ticker}", deletedCount, ticker);
+        return Ok(new { message = $"Deleted {deletedCount} cache entries for {ticker}" });
     }
 }
 

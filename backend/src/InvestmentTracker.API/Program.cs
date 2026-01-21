@@ -199,6 +199,7 @@ builder.Services.AddHttpClient<ISinaEtfPriceService, SinaEtfPriceService>();
 builder.Services.AddHttpClient<IStooqHistoricalPriceService, StooqHistoricalPriceService>();
 builder.Services.AddHttpClient<ITwseIndexPriceService, TwseIndexPriceService>();
 builder.Services.AddHttpClient<ITwseStockHistoricalPriceService, TwseStockHistoricalPriceService>();
+builder.Services.AddHttpClient<IYahooHistoricalPriceService, YahooHistoricalPriceService>();
 builder.Services.AddScoped<IIndexPriceService, IndexPriceService>();
 
 // CAPE Data Service

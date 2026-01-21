@@ -56,4 +56,20 @@ public interface IHistoricalYearEndDataRepository
         string ticker,
         int year,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 刪除指定條件的快取資料。
+    /// </summary>
+    Task<bool> DeleteAsync(
+        HistoricalDataType dataType,
+        string ticker,
+        int year,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 刪除指定 ticker 的所有年度快取資料。
+    /// </summary>
+    Task<int> DeleteByTickerAsync(
+        string ticker,
+        CancellationToken cancellationToken = default);
 }

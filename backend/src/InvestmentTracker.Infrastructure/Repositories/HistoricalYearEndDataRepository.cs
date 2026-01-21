@@ -82,4 +82,41 @@ public class HistoricalYearEndDataRepository(AppDbContext context) : IHistorical
                 d => d.DataType == dataType && d.Ticker == normalizedTicker && d.Year == year,
                 cancellationToken);
     }
+
+    public async Task<bool> DeleteAsync(
+        HistoricalDataType dataType,
+        string ticker,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+        var entity = await context.HistoricalYearEndData
+            .FirstOrDefaultAsync(
+                d => d.DataType == dataType && d.Ticker == normalizedTicker && d.Year == year,
+                cancellationToken);
+
+        if (entity == null)
+            return false;
+
+        context.HistoricalYearEndData.Remove(entity);
+        await context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<int> DeleteByTickerAsync(
+        string ticker,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+        var entities = await context.HistoricalYearEndData
+            .Where(d => d.Ticker == normalizedTicker)
+            .ToListAsync(cancellationToken);
+
+        if (entities.Count == 0)
+            return 0;
+
+        context.HistoricalYearEndData.RemoveRange(entities);
+        await context.SaveChangesAsync(cancellationToken);
+        return entities.Count;
+    }
 }
