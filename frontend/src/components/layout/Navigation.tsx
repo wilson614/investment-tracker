@@ -10,8 +10,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { authApi, portfolioApi } from '../../services/api';
-import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3 } from 'lucide-react';
+import { authApi } from '../../services/api';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // App version - update this when releasing new versions
@@ -84,7 +84,6 @@ export function Navigation() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Profile form state
@@ -134,50 +133,12 @@ export function Navigation() {
     }
   }, [showPasswordModal]);
 
-  // 預先載入 portfolioId：點擊「投資組合」時可直接導頁。
-  useEffect(() => {
-    const loadPortfolioId = async () => {
-      try {
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length > 0) {
-          setPortfolioId(portfolios[0].id);
-        }
-      } catch {
-        // Ignore errors
-      }
-    };
-    loadPortfolioId();
-  }, []);
-
   /**
-   * 導覽列「投資組合」點擊處理：確保有 portfolioId 後再導頁。
-   *
-   * 若使用者尚未建立 portfolio，會導回首頁 `/`。
+   * 導覽列「投資組合」點擊處理：直接導向 /portfolio 頁面。
    */
-  const handlePortfolioClick = async (e: React.MouseEvent) => {
+  const handlePortfolioClick = (e: React.MouseEvent) => {
     e.preventDefault();
-
-    let targetId = portfolioId;
-
-    if (!targetId) {
-      try {
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length > 0) {
-          targetId = portfolios[0].id;
-          setPortfolioId(targetId);
-        } else {
-          navigate('/');
-          closeMobileMenu();
-          return;
-        }
-      } catch {
-        navigate('/');
-        closeMobileMenu();
-        return;
-      }
-    }
-
-    navigate(`/portfolio/${targetId}`);
+    navigate('/portfolio');
     closeMobileMenu();
   };
 
@@ -339,6 +300,14 @@ export function Navigation() {
                     <Lock className="w-4 h-4 text-[var(--text-muted)]" />
                     變更密碼
                   </button>
+                  <Link
+                    to="/settings"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 w-full px-4 py-2.5 text-base text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-[var(--text-muted)]" />
+                    設定
+                  </Link>
                   <div className="border-t border-[var(--border-color)] my-1" />
                   <button
                     onClick={handleLogout}
@@ -428,6 +397,14 @@ export function Navigation() {
                 <Lock className="w-4 h-4 text-[var(--text-muted)]" />
                 變更密碼
               </button>
+              <Link
+                to="/settings"
+                onClick={closeMobileMenu}
+                className="flex items-center gap-2 px-3 py-2 text-base text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
+              >
+                <Settings className="w-4 h-4 text-[var(--text-muted)]" />
+                設定
+              </Link>
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-3 py-2 text-base font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] rounded-lg transition-colors"
