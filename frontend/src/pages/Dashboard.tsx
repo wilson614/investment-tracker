@@ -259,7 +259,7 @@ export function DashboardPage() {
       const homeCurrency = portfolio.homeCurrency;
       const fetchPromises = summary.positions.map(async (position) => {
         try {
-          const market = guessMarket(position.ticker);
+          const market = position.market ?? guessMarket(position.ticker);
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
           let finalMarket = market;
 
@@ -282,7 +282,8 @@ export function DashboardPage() {
           return null;
         } catch {
           // 如果一開始推測為 US，失敗後再嘗試 UK（與上方 !quote 分支互補）。
-          if (guessMarket(position.ticker) === StockMarket.US) {
+          const market = position.market ?? guessMarket(position.ticker);
+          if (market === StockMarket.US) {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
               if (ukQuote?.exchangeRate) {

@@ -4,12 +4,15 @@
  * 年初至今報酬（YTD）卡片：顯示多個 benchmark 的 YTD 報酬率，並提供排序與「最多 10 個」的選擇設定。
  *
  * 設定會寫入 localStorage（與 Performance 頁面的 benchmark 選擇相互呼應）。
+ * 也支援用戶自訂基準（從 UserBenchmark API 載入）。
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Loader2, Info, Settings, X, Check } from 'lucide-react';
 import { useMarketYtdData } from '../../hooks/useMarketYtdData';
-import type { MarketYtdReturn } from '../../types';
+import { userBenchmarkApi, stockPriceApi, marketDataApi } from '../../services/api';
+import type { MarketYtdReturn, UserBenchmark } from '../../types';
+import { getEuronextSymbol } from '../../constants';
 
 type YtdSortKey = 'ytd-desc' | 'ytd-asc' | 'name-asc' | 'name-desc';
 
@@ -24,6 +27,7 @@ const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 
 /**
  * 英文 key → 中文顯示名稱（需與 backend `MarketYtdService.Benchmarks` 一致）。
+ * 共 11 個系統內建 benchmark。
  */
 const BENCHMARK_LABELS: Record<string, string> = {
   'All Country': '全球',
@@ -39,7 +43,16 @@ const BENCHMARK_LABELS: Record<string, string> = {
   'Taiwan 0050': '台灣 0050',
 };
 
-// Default selected benchmarks (using English keys to match API)
+/**
+ * 系統內建 benchmark 列表（完整 11 個，與後端 MarketYtdService.Benchmarks 一致）。
+ * 用於確保 availableBenchmarks 一定包含所有系統 benchmark（即使 API 暫時抓取失敗）。
+ */
+const SYSTEM_BENCHMARKS = [
+  'All Country', 'US Large', 'US Small', 'Developed Markets Large', 'Developed Markets Small',
+  'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
+];
+
+// Default selected benchmarks (using English keys to match API) - 預設選中 10 個
 const DEFAULT_BENCHMARKS = [
   'All Country', 'US Large', 'Developed Markets Large', 'Developed Markets Small',
   'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
@@ -77,18 +90,22 @@ function saveSelectedBenchmarks(benchmarks: string[]): void {
 }
 
 interface YtdCardProps {
-  item: MarketYtdReturn;
+  item: MarketYtdReturn & { isCustom?: boolean };
 }
 
 function YtdCard({ item }: YtdCardProps) {
   const hasYtd = item.ytdReturnPercent != null;
   const isPositive = hasYtd && item.ytdReturnPercent! >= 0;
-  const displayLabel = BENCHMARK_LABELS[item.marketKey] || item.marketKey;
+  // For custom benchmarks, use the symbol as the label
+  const displayLabel = item.isCustom
+    ? item.symbol
+    : (BENCHMARK_LABELS[item.marketKey] || item.marketKey);
 
   return (
-    <div className="bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center">
+    <div className={`bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center ${item.isCustom ? 'border border-[var(--accent-peach)]/30' : ''}`}>
       <div className="text-sm text-[var(--text-primary)] truncate mb-1" title={displayLabel}>
         {displayLabel}
+        {item.isCustom && <span className="ml-1 text-[10px] text-[var(--accent-peach)]">自訂</span>}
       </div>
       {item.error ? (
         <div className="text-base text-[var(--color-warning)] my-1">N/A</div>
@@ -115,10 +132,94 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [tempSelected, setTempSelected] = useState<string[]>(selectedBenchmarks);
 
+  // Custom user benchmarks
+  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
+  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>({});
+  const [isLoadingCustom, setIsLoadingCustom] = useState(false);
+
+  // Load user's custom benchmarks
+  useEffect(() => {
+    const loadCustomBenchmarks = async () => {
+      try {
+        const benchmarks = await userBenchmarkApi.getAll();
+        setCustomBenchmarks(benchmarks);
+      } catch (err) {
+        console.error('Failed to load custom benchmarks:', err);
+      }
+    };
+    loadCustomBenchmarks();
+  }, []);
+
+  // Calculate YTD returns for custom benchmarks
+  useEffect(() => {
+    const calculateCustomReturns = async () => {
+      if (customBenchmarks.length === 0) {
+        setCustomBenchmarkReturns({});
+        return;
+      }
+
+      setIsLoadingCustom(true);
+      const currentYear = new Date().getFullYear();
+      const yearStartDate = `${currentYear - 1}-12-31`;
+      const newReturns: Record<string, number | null> = {};
+
+      await Promise.all(
+        customBenchmarks.map(async (benchmark) => {
+          try {
+            // Get year-start price
+            const startPriceData = await marketDataApi.getHistoricalPrices(
+              [benchmark.ticker],
+              yearStartDate
+            );
+            const startPrice = startPriceData[benchmark.ticker]?.price;
+
+            if (!startPrice) {
+              newReturns[benchmark.id] = null;
+              return;
+            }
+
+            // Get current price
+            let endPrice: number | undefined;
+            try {
+              const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
+              endPrice = quote?.price;
+            } catch {
+              // Try Euronext for UK ETFs
+              const euronextInfo = getEuronextSymbol(benchmark.ticker);
+              if (euronextInfo) {
+                const euronextQuote = await marketDataApi.getEuronextQuote(
+                  euronextInfo.isin,
+                  euronextInfo.mic,
+                  'TWD'
+                );
+                endPrice = euronextQuote?.price;
+              }
+            }
+
+            if (endPrice && startPrice > 0) {
+              newReturns[benchmark.id] = ((endPrice - startPrice) / startPrice) * 100;
+            } else {
+              newReturns[benchmark.id] = null;
+            }
+          } catch (err) {
+            console.error(`Failed to calculate return for ${benchmark.ticker}:`, err);
+            newReturns[benchmark.id] = null;
+          }
+        })
+      );
+
+      setCustomBenchmarkReturns(newReturns);
+      setIsLoadingCustom(false);
+    };
+
+    calculateCustomReturns();
+  }, [customBenchmarks]);
+
   const availableBenchmarks = useMemo(() => {
-    if (!data?.benchmarks) return [];
-    return data.benchmarks.map(b => b.marketKey);
-  }, [data?.benchmarks]);
+    // 使用靜態定義的 SYSTEM_BENCHMARKS 確保所有系統 benchmark 都可選
+    // 這樣即使 API 暫時抓取失敗，也不會少掉任何選項
+    return SYSTEM_BENCHMARKS;
+  }, []);
 
   const filteredAndSorted = useMemo(() => {
     if (!data?.benchmarks) return null;
@@ -143,6 +244,47 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
     });
   }, [data?.benchmarks, selectedBenchmarks, sortKey]);
 
+  // Combine system benchmarks with custom benchmarks for display
+  const allDisplayItems = useMemo(() => {
+    const items: MarketYtdReturn[] = [];
+
+    // Add system benchmarks
+    if (filteredAndSorted) {
+      items.push(...filteredAndSorted);
+    }
+
+    // Add custom benchmarks with calculated returns (only if selected)
+    customBenchmarks.forEach(b => {
+      const customKey = `custom_${b.id}`;
+      // 只顯示被選中的自訂基準
+      if (!selectedBenchmarks.includes(customKey)) return;
+
+      const returnValue = customBenchmarkReturns[b.id];
+      items.push({
+        marketKey: customKey,
+        symbol: b.ticker,
+        ytdReturnPercent: returnValue ?? undefined,
+        isCustom: true,
+      } as MarketYtdReturn & { isCustom?: boolean });
+    });
+
+    // Sort the combined list
+    return items.sort((a, b) => {
+      switch (sortKey) {
+        case 'ytd-asc':
+          return (a.ytdReturnPercent ?? -Infinity) - (b.ytdReturnPercent ?? -Infinity);
+        case 'ytd-desc':
+          return (b.ytdReturnPercent ?? -Infinity) - (a.ytdReturnPercent ?? -Infinity);
+        case 'name-asc':
+          return a.marketKey.localeCompare(b.marketKey);
+        case 'name-desc':
+          return b.marketKey.localeCompare(a.marketKey);
+        default:
+          return 0;
+      }
+    });
+  }, [filteredAndSorted, customBenchmarks, customBenchmarkReturns, sortKey, selectedBenchmarks]);
+
   const handleOpenSettings = () => {
     setTempSelected(selectedBenchmarks);
     setShowSettings(true);
@@ -166,6 +308,10 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
       if (prev.length >= 10) return prev;
       return [...prev, key];
     });
+  };
+
+  const handleResetToDefault = () => {
+    setTempSelected([...DEFAULT_BENCHMARKS]);
   };
 
   return (
@@ -220,54 +366,101 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
                   已達上限（最多 10 個）
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                {availableBenchmarks.map((key) => {
-                  const isSelected = tempSelected.includes(key);
-                  const isAtLimit = tempSelected.length >= 10;
-                  const isDisabled = !isSelected && isAtLimit;
+              {/* 系統內建基準 */}
+              <div className="mb-4">
+                <h4 className="text-xs text-[var(--text-muted)] mb-2">系統內建基準</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableBenchmarks.map((key) => {
+                    const isSelected = tempSelected.includes(key);
+                    const isAtLimit = tempSelected.length >= 10;
+                    const isDisabled = !isSelected && isAtLimit;
 
-                  return (
-                  <button
-                    key={key}
-                    onClick={() => toggleBenchmark(key)}
-                    disabled={isDisabled}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
-                      isSelected
-                        ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
-                        : isDisabled
-                          ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
-                          : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                      isSelected
-                        ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
-                        : 'border-[var(--text-muted)]'
-                    }`}>
-                      {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
-                    </div>
-                    <span className="text-sm truncate">{BENCHMARK_LABELS[key] || key}</span>
-                  </button>
-                );
-                })}
+                    return (
+                    <button
+                      key={key}
+                      onClick={() => toggleBenchmark(key)}
+                      disabled={isDisabled}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                        isSelected
+                          ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
+                          : isDisabled
+                            ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                            : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
+                          : 'border-[var(--text-muted)]'
+                      }`}>
+                        {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                      </div>
+                      <span className="text-sm truncate">{BENCHMARK_LABELS[key] || key}</span>
+                    </button>
+                  );
+                  })}
+                </div>
               </div>
+              {/* 自訂基準 */}
+              {customBenchmarks.length > 0 && (
+                <div>
+                  <h4 className="text-xs text-[var(--text-muted)] mb-2">自訂基準</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {customBenchmarks.map((b) => {
+                      const customKey = `custom_${b.id}`;
+                      const isSelected = tempSelected.includes(customKey);
+                      const isAtLimit = tempSelected.length >= 10;
+                      const isDisabled = !isSelected && isAtLimit;
+
+                      return (
+                        <button
+                          key={customKey}
+                          onClick={() => toggleBenchmark(customKey)}
+                          disabled={isDisabled}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                            isSelected
+                              ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
+                              : isDisabled
+                                ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                                : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
+                              : 'border-[var(--text-muted)]'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                          </div>
+                          <span className="text-sm truncate">{b.ticker}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">
-              <button onClick={() => setShowSettings(false)} className="btn-dark px-4 py-2">取消</button>
-              <button onClick={handleSaveSettings} className="btn-accent px-4 py-2">儲存</button>
+            <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-between">
+              <button onClick={handleResetToDefault} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                重置為預設
+              </button>
+              <div className="flex gap-3">
+                <button onClick={() => setShowSettings(false)} className="btn-dark px-4 py-2">取消</button>
+                <button onClick={handleSaveSettings} className="btn-accent px-4 py-2">儲存</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       <div className="p-5">
-        {isLoading && !data ? (
+        {(isLoading || isLoadingCustom) && !data ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
           </div>
-        ) : filteredAndSorted && filteredAndSorted.length > 0 ? (
+        ) : allDisplayItems.length > 0 ? (
           <div className="grid grid-cols-5 gap-2">
-            {filteredAndSorted.map((item) => (
+            {allDisplayItems.map((item) => (
               <YtdCard key={item.marketKey} item={item} />
             ))}
           </div>
