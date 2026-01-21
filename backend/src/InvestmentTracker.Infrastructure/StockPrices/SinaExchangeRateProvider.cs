@@ -6,15 +6,21 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.StockPrices;
 
 /// <summary>
+/// 匯率提供者接口。
+/// </summary>
+public interface IExchangeRateProvider
+{
+    Task<ExchangeRateResponse?> GetExchangeRateAsync(
+        string fromCurrency,
+        string toCurrency,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// 使用 Sina Finance API 的匯率提供者。
 /// 支援常見幣別對（例如 USD/TWD、GBP/USD 等）。
 /// 對於 GBP/TWD 這類 cross rate，會以 USD 作為中介（GBP/USD * USD/TWD）。
 /// </summary>
-public interface IExchangeRateProvider
-{
-    Task<ExchangeRateResponse?> GetExchangeRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
-}
-
 public class SinaExchangeRateProvider(HttpClient httpClient, ILogger<SinaExchangeRateProvider> logger) : IExchangeRateProvider
 {
     private const string BaseUrl = "http://hq.sinajs.cn/list=";

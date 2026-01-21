@@ -18,7 +18,8 @@ public class CreateStockTransactionUseCase(
     ICurrencyTransactionRepository currencyTransactionRepository,
     PortfolioCalculator portfolioCalculator,
     CurrencyLedgerService currencyLedgerService,
-    ICurrentUserService currentUserService)
+    ICurrentUserService currentUserService,
+    ITransactionDateExchangeRateService txDateFxService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         CreateStockTransactionRequest request,
@@ -71,8 +72,27 @@ public class CreateStockTransactionUseCase(
                 exchangeRate = calculatedRate;
             }
         }
-        else if (exchangeRate is <= 0)
-            throw new BusinessRuleException("Exchange rate must be greater than zero");
+        else if (exchangeRate is not > 0)
+        {
+            // 未使用外幣帳本且未提供匯率，需自動取得
+            // 台股以數字開頭（如 0050、2330），匯率為 1.0
+            if (!string.IsNullOrEmpty(request.Ticker) && char.IsDigit(request.Ticker[0]))
+            {
+                exchangeRate = 1.0m;
+            }
+            else
+            {
+                // 非台股，自動抓取交易日當天的歷史匯率
+                var fxResult = await txDateFxService.GetOrFetchAsync(
+                    portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+
+                if (fxResult == null)
+                    throw new BusinessRuleException(
+                        $"無法取得 {portfolio.BaseCurrency}/{portfolio.HomeCurrency} 於 {request.TransactionDate:yyyy-MM-dd} 的匯率，請手動輸入匯率");
+
+                exchangeRate = fxResult.Rate;
+            }
+        }
 
         // 若為賣出交易：檢查持股是否足夠，並計算已實現損益
         decimal? realizedPnlHome = null;

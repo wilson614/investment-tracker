@@ -22,7 +22,8 @@ public class TransactionDateExchangeRateService(
         CancellationToken cancellationToken = default)
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
-        var dateOnly = transactionDate.Date;
+        // 確保日期為 UTC Kind，以相容 PostgreSQL
+        var dateOnly = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc);
 
         // 先查快取
         var cached = await repository.GetAsync(currencyPair, dateOnly, cancellationToken);
