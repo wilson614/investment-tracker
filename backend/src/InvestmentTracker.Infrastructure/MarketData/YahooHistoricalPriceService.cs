@@ -1,0 +1,196 @@
+using System.Globalization;
+using System.Text.Json;
+using InvestmentTracker.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
+
+namespace InvestmentTracker.Infrastructure.MarketData;
+
+/// <summary>
+/// 從 Yahoo Finance 取得歷史價格的服務實作。
+/// 用於 Euronext 等 Stooq 不支援的市場。
+/// </summary>
+public class YahooHistoricalPriceService(
+    HttpClient httpClient,
+    ILogger<YahooHistoricalPriceService> logger) : IYahooHistoricalPriceService
+{
+    /// <summary>
+    /// Euronext ticker 到 Yahoo Finance symbol 的對應表。
+    /// Yahoo Finance 使用 .AS (Amsterdam) 後綴。
+    /// </summary>
+    private static readonly Dictionary<string, string> EuronextToYahooSymbol = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "AGAC", "AGAC.AS" },
+        { "SSAC", "SSAC.AS" },
+    };
+
+    public async Task<YahooHistoricalPriceResult?> GetHistoricalPriceAsync(
+        string symbol,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // 轉換 Euronext ticker 到 Yahoo Finance symbol
+            var yahooSymbol = EuronextToYahooSymbol.TryGetValue(symbol.ToUpperInvariant(), out var mapped)
+                ? mapped
+                : symbol;
+
+            // 計算時間範圍：目標日期前後各 7 天，確保能找到交易日
+            var startDate = date.AddDays(-7);
+            var endDate = date.AddDays(1);
+
+            var period1 = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+            var period2 = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+            var url = $"https://query2.finance.yahoo.com/v8/finance/chart/{yahooSymbol}?period1={period1}&period2={period2}&interval=1d";
+
+            logger.LogDebug("Fetching Yahoo Finance historical price from {Url}", url);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var response = await httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Yahoo Finance API returned {StatusCode} for {Symbol}", response.StatusCode, yahooSymbol);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = ParseYahooResponse(json, date, yahooSymbol);
+
+            if (result != null)
+            {
+                logger.LogInformation("Yahoo Finance: {Symbol} on {Date} = {Price} {Currency}",
+                    yahooSymbol, result.ActualDate, result.Price, result.Currency);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error fetching Yahoo Finance historical price for {Symbol}/{Date}", symbol, date);
+            return null;
+        }
+    }
+
+    private YahooHistoricalPriceResult? ParseYahooResponse(string json, DateOnly targetDate, string symbol)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Check for errors
+            if (root.TryGetProperty("chart", out var chart) &&
+                chart.TryGetProperty("error", out var error) &&
+                error.ValueKind != JsonValueKind.Null)
+            {
+                logger.LogWarning("Yahoo Finance API error: {Error}", error.GetRawText());
+                return null;
+            }
+
+            if (!chart.TryGetProperty("result", out var results) ||
+                results.GetArrayLength() == 0)
+            {
+                logger.LogWarning("Yahoo Finance: No results for {Symbol}", symbol);
+                return null;
+            }
+
+            var firstResult = results[0];
+
+            // Get currency from meta
+            var currency = "USD";
+            if (firstResult.TryGetProperty("meta", out var meta) &&
+                meta.TryGetProperty("currency", out var currencyElement))
+            {
+                currency = currencyElement.GetString() ?? "USD";
+            }
+
+            // Get timestamps and close prices
+            if (!firstResult.TryGetProperty("timestamp", out var timestamps) ||
+                !firstResult.TryGetProperty("indicators", out var indicators) ||
+                !indicators.TryGetProperty("quote", out var quotes) ||
+                quotes.GetArrayLength() == 0)
+            {
+                logger.LogWarning("Yahoo Finance: Missing price data for {Symbol}", symbol);
+                return null;
+            }
+
+            var quote = quotes[0];
+            if (!quote.TryGetProperty("close", out var closes))
+            {
+                logger.LogWarning("Yahoo Finance: Missing close prices for {Symbol}", symbol);
+                return null;
+            }
+
+            // Find the price closest to target date (prefer same day or earlier)
+            var timestampArray = timestamps.EnumerateArray().ToList();
+            var closeArray = closes.EnumerateArray().ToList();
+
+            if (timestampArray.Count == 0 || closeArray.Count == 0)
+            {
+                return null;
+            }
+
+            // Convert target date to Unix timestamp for comparison
+            var targetTimestamp = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+            // Find the last trading day on or before target date
+            int? bestIndex = null;
+            long bestTimestamp = 0;
+
+            for (int i = 0; i < timestampArray.Count && i < closeArray.Count; i++)
+            {
+                var ts = timestampArray[i].GetInt64();
+                var closeValue = closeArray[i];
+
+                // Skip null values
+                if (closeValue.ValueKind == JsonValueKind.Null)
+                    continue;
+
+                // Find latest date on or before target
+                if (ts <= targetTimestamp && ts > bestTimestamp)
+                {
+                    bestIndex = i;
+                    bestTimestamp = ts;
+                }
+            }
+
+            if (bestIndex == null)
+            {
+                // If no date before target, use the first available
+                for (int i = 0; i < timestampArray.Count && i < closeArray.Count; i++)
+                {
+                    if (closeArray[i].ValueKind != JsonValueKind.Null)
+                    {
+                        bestIndex = i;
+                        bestTimestamp = timestampArray[i].GetInt64();
+                        break;
+                    }
+                }
+            }
+
+            if (bestIndex == null)
+            {
+                return null;
+            }
+
+            var price = closeArray[bestIndex.Value].GetDecimal();
+            var actualDate = DateTimeOffset.FromUnixTimeSeconds(bestTimestamp).DateTime;
+
+            return new YahooHistoricalPriceResult
+            {
+                Price = Math.Round(price, 4),
+                ActualDate = DateOnly.FromDateTime(actualDate),
+                Currency = currency
+            };
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Failed to parse Yahoo Finance response for {Symbol}", symbol);
+            return null;
+        }
+    }
+}
