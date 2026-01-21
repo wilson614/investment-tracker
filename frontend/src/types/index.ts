@@ -417,3 +417,29 @@ export interface CreateUserBenchmarkRequest {
   market: StockMarket;
   displayName?: string;
 }
+
+// Stock Split Types
+export interface StockSplit {
+  id: string;
+  symbol: string;
+  market: StockMarket;
+  splitDate: string;
+  splitRatio: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStockSplitRequest {
+  symbol: string;
+  market: StockMarket;
+  splitDate: string;
+  splitRatio: number;
+  description?: string;
+}
+
+export interface UpdateStockSplitRequest {
+  splitDate: string;
+  splitRatio: number;
+  description?: string;
+}

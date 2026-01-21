@@ -9,10 +9,11 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Lock, Save, TrendingUp } from 'lucide-react';
+import { ArrowLeft, User, Mail, Lock, Save, TrendingUp, Scissors } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { BenchmarkSettings } from '../components/settings/BenchmarkSettings';
+import { StockSplitSettings } from '../components/settings/StockSplitSettings';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -198,6 +199,18 @@ export default function Settings() {
             新增自訂股票/ETF 作為績效比較基準。這些會顯示在「歷史績效」頁面的績效比較圖表中。
           </p>
           <BenchmarkSettings />
+        </div>
+
+        {/* Stock Split Settings Section */}
+        <div className="card-dark p-6 mb-6">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+            <Scissors className="w-5 h-5 text-[var(--accent-peach)]" />
+            股票分割
+          </h2>
+          <p className="text-sm text-[var(--text-muted)] mb-4">
+            記錄股票分割（拆股/合股）事件。系統會自動調整歷史交易的股數與成本計算。
+          </p>
+          <StockSplitSettings />
         </div>
 
         {/* Password Section */}

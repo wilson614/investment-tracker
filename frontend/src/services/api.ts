@@ -31,6 +31,9 @@ import type {
   EtfClassificationResult,
   UserBenchmark,
   CreateUserBenchmarkRequest,
+  StockSplit,
+  CreateStockSplitRequest,
+  UpdateStockSplitRequest,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -584,6 +587,40 @@ export const userBenchmarkApi = {
   /** 刪除基準標的 */
   delete: (id: string) =>
     fetchApi<void>(`/user-benchmarks/${id}`, { method: 'DELETE' }),
+};
+
+// ============================================================================
+// 股票分割 API
+// ============================================================================
+
+export const stockSplitApi = {
+  /** 取得所有股票分割資料 */
+  getAll: () => fetchApi<StockSplit[]>('/stock-splits'),
+
+  /** 取得特定股票分割 */
+  getById: (id: string) => fetchApi<StockSplit>(`/stock-splits/${id}`),
+
+  /** 依股票代號與市場查詢 */
+  getBySymbol: (symbol: string, market: StockMarket) =>
+    fetchApi<StockSplit[]>(`/stock-splits/by-symbol?symbol=${encodeURIComponent(symbol)}&market=${market}`),
+
+  /** 新增股票分割 */
+  create: (data: CreateStockSplitRequest) =>
+    fetchApi<StockSplit>('/stock-splits', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** 更新股票分割 */
+  update: (id: string, data: UpdateStockSplitRequest) =>
+    fetchApi<StockSplit>(`/stock-splits/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /** 刪除股票分割 */
+  delete: (id: string) =>
+    fetchApi<void>(`/stock-splits/${id}`, { method: 'DELETE' }),
 };
 
 export type { ApiErrorType };
