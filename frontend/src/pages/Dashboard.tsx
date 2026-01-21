@@ -10,7 +10,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
-import { MarketContext, MarketYtdSection } from '../components/dashboard';
+import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../components/dashboard';
 import { AssetAllocationPieChart } from '../components/charts';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
@@ -86,11 +86,18 @@ interface PositionWithPnl {
   weight?: number; // FR-131: position weight as % of total portfolio
 }
 
+interface HistoricalYearValue {
+  year: number;
+  value: number | null;
+  contributions: number;
+}
+
 export function DashboardPage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<StockTransaction[]>([]);
+  const [historicalData, setHistoricalData] = useState<HistoricalYearValue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +118,56 @@ export function DashboardPage() {
       handleFetchAllPrices();
     }
   }, [isLoading, portfolio, summary]);
+
+  // Load historical performance data for the chart
+  useEffect(() => {
+    if (!portfolio) return;
+
+    const loadHistoricalData = async () => {
+      try {
+        const availableYears = await portfolioApi.getAvailableYears(portfolio.id);
+        if (availableYears.years.length === 0) {
+          setHistoricalData([]);
+          return;
+        }
+
+        // Calculate cumulative contributions up to each year-end
+        const yearDataPromises = availableYears.years.map(async (year) => {
+          try {
+            const perf = await portfolioApi.calculateYearPerformance(portfolio.id, { year });
+            return {
+              year,
+              value: perf.endValueHome,
+              contributions: perf.netContributionsHome,
+            };
+          } catch {
+            return { year, value: null, contributions: 0 };
+          }
+        });
+
+        const results = await Promise.all(yearDataPromises);
+
+        // Calculate cumulative contributions
+        let cumulativeContributions = 0;
+        const sortedResults = results.sort((a, b) => a.year - b.year);
+        const historicalValues: HistoricalYearValue[] = sortedResults.map((r) => {
+          cumulativeContributions += r.contributions;
+          return {
+            year: r.year,
+            value: r.value,
+            contributions: cumulativeContributions,
+          };
+        });
+
+        setHistoricalData(historicalValues);
+      } catch {
+        // Silently fail - chart will show "no data" message
+        setHistoricalData([]);
+      }
+    };
+
+    loadHistoricalData();
+  }, [portfolio]);
 
   /**
    * 取得 Dashboard 需要的初始資料。
@@ -461,6 +518,18 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Historical Portfolio Value Chart */}
+        {historicalData.length > 0 && (
+          <div className="card-dark p-6 mb-6">
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷年淨值變化</h2>
+            <HistoricalValueChart
+              data={historicalData}
+              currency={portfolio.homeCurrency}
+              height={280}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Asset Allocation */}
