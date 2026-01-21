@@ -283,7 +283,7 @@ public class PortfolioCalculator
             if (Math.Abs(derivative) < 1e-10)
             {
                 // Derivative too small, try different starting point
-                rate = rate + 0.1;
+                rate += 0.1;
                 continue;
             }
 

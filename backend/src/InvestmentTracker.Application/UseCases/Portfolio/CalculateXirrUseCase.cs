@@ -67,17 +67,22 @@ public class CalculateXirrUseCase(
                 continue; // XIRR 計算中略過此交易
             }
 
-            if (tx.TransactionType == TransactionType.Buy)
+            switch (tx.TransactionType)
             {
-                // 使用本位幣成本（TotalCostSource × ExchangeRate）
-                var homeCost = tx.TotalCostSource * fxRate.Value;
-                cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
-            }
-            else if (tx.TransactionType == TransactionType.Sell)
-            {
-                // 使用本位幣賣出收入
-                var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
-                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                case TransactionType.Buy:
+                {
+                    // 使用本位幣成本（TotalCostSource × ExchangeRate）
+                    var homeCost = tx.TotalCostSource * fxRate.Value;
+                    cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
+                    break;
+                }
+                case TransactionType.Sell:
+                {
+                    // 使用本位幣賣出收入
+                    var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                    break;
+                }
             }
         }
 
@@ -135,7 +140,7 @@ public class CalculateXirrUseCase(
         return new XirrResultDto
         {
             Xirr = xirr,
-            XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
+            XirrPercentage = xirr * 100,
             CashFlowCount = cashFlows.Count,
             AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
             MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
@@ -198,15 +203,20 @@ public class CalculateXirrUseCase(
                 continue;
             }
 
-            if (tx.TransactionType == TransactionType.Buy)
+            switch (tx.TransactionType)
             {
-                var homeCost = tx.TotalCostSource * fxRate.Value;
-                cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
-            }
-            else if (tx.TransactionType == TransactionType.Sell)
-            {
-                var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
-                cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                case TransactionType.Buy:
+                {
+                    var homeCost = tx.TotalCostSource * fxRate.Value;
+                    cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
+                    break;
+                }
+                case TransactionType.Sell:
+                {
+                    var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
+                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
+                    break;
+                }
             }
         }
 
@@ -230,7 +240,7 @@ public class CalculateXirrUseCase(
         return new XirrResultDto
         {
             Xirr = xirr,
-            XirrPercentage = xirr.HasValue ? xirr.Value * 100 : null,
+            XirrPercentage = xirr * 100,
             CashFlowCount = cashFlows.Count,
             AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
             MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null

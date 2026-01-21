@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
-using System.Text;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Infrastructure.Persistence;
@@ -41,7 +40,7 @@ public abstract class IntegrationTestBase : IClassFixture<CustomWebApplicationFa
     protected static string GenerateTestToken(Guid userId)
     {
         var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes("your-256-bit-secret-key-here-minimum-32-chars"));
+            "your-256-bit-secret-key-here-minimum-32-chars"u8.ToArray());
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]

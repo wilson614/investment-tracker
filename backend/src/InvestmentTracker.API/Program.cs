@@ -264,8 +264,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
 // Auto-migrate database on startup (skip for Testing environment)
 if (!app.Environment.IsEnvironment("Testing"))
 {
-using (var scope = app.Services.CreateScope())
-{
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     try
     {
@@ -307,12 +306,12 @@ using (var scope = app.Services.CreateScope())
             foreach (var migration in allMigrations)
             {
                 // Migration names are safe (from EF Core internals), suppress SQL injection warning
-                #pragma warning disable EF1002
+#pragma warning disable EF1002
                 await context.Database.ExecuteSqlRawAsync($@"
                     INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
                     VALUES ('{migration}', '8.0.0')
                     ON CONFLICT DO NOTHING");
-                #pragma warning restore EF1002
+#pragma warning restore EF1002
             }
             Console.WriteLine("Migration history synchronized. Application will continue.");
         }
@@ -327,7 +326,6 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"An error occurred while migrating the database: {ex.Message}");
         throw; // Re-throw to prevent app from starting with broken database
     }
-}
 } // End of Testing environment check
 
     app.Run();

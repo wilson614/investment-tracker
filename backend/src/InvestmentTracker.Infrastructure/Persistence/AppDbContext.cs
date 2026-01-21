@@ -90,14 +90,15 @@ public class AppDbContext : DbContext
 
         foreach (var entry in ChangeTracker.Entries<IHasTimestamps>())
         {
-            if (entry.State == EntityState.Added)
+            switch (entry.State)
             {
-                entry.Entity.CreatedAt = now;
-                entry.Entity.UpdatedAt = now;
-            }
-            else if (entry.State == EntityState.Modified)
-            {
-                entry.Entity.UpdatedAt = now;
+                case EntityState.Added:
+                    entry.Entity.CreatedAt = now;
+                    entry.Entity.UpdatedAt = now;
+                    break;
+                case EntityState.Modified:
+                    entry.Entity.UpdatedAt = now;
+                    break;
             }
         }
     }

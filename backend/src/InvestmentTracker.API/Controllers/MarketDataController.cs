@@ -530,7 +530,7 @@ public class MarketDataController(
                     {
                         var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
                         // 將起始價格調整到分割後的等值
-                        startPrice = startPrice / cumulativeRatio;
+                        startPrice /= cumulativeRatio;
                         logger.LogDebug("Adjusted Taiwan 0050 start price by split ratio {Ratio}: {Original} -> {Adjusted}",
                             cumulativeRatio, startPrices[marketKey], startPrice);
                     }

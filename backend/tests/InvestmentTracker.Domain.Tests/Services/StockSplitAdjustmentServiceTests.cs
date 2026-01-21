@@ -32,7 +32,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange: 0050 had a 1:4 split on 2025-06-18
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
 
         // Transaction before split date
@@ -51,7 +51,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
 
         // Transaction after split date
@@ -70,8 +70,8 @@ public class StockSplitAdjustmentServiceTests
         // Arrange: Hypothetical stock with multiple splits
         var splits = new List<StockSplit>
         {
-            new StockSplit("TEST", StockMarket.US, new DateTime(2023, 6, 1), 2.0m, "1拆2"),
-            new StockSplit("TEST", StockMarket.US, new DateTime(2024, 6, 1), 3.0m, "1拆3")
+            new("TEST", StockMarket.US, new DateTime(2023, 6, 1), 2.0m, "1拆2"),
+            new("TEST", StockMarket.US, new DateTime(2024, 6, 1), 3.0m, "1拆3")
         };
 
         // Transaction before both splits
@@ -90,8 +90,8 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("TEST", StockMarket.US, new DateTime(2023, 6, 1), 2.0m, "1拆2"),
-            new StockSplit("TEST", StockMarket.US, new DateTime(2024, 6, 1), 3.0m, "1拆3")
+            new("TEST", StockMarket.US, new DateTime(2023, 6, 1), 2.0m, "1拆2"),
+            new("TEST", StockMarket.US, new DateTime(2024, 6, 1), 3.0m, "1拆3")
         };
 
         // Transaction between the two splits
@@ -110,7 +110,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
 
         // Different symbol
@@ -129,7 +129,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("AAPL", StockMarket.US, new DateTime(2020, 8, 31), 4.0m, "1拆4")
+            new("AAPL", StockMarket.US, new DateTime(2020, 8, 31), 4.0m, "1拆4")
         };
 
         // Same symbol but different market (hypothetical)
@@ -152,7 +152,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange: Original 10 shares of 0050, split 1:4
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var originalShares = 10m;
         var transactionDate = new DateTime(2024, 1, 15);
@@ -170,7 +170,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var originalShares = 10m;
         var transactionDate = new DateTime(2025, 7, 1);
@@ -192,7 +192,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange: Original price 160, split 1:4
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var originalPrice = 160m;
         var transactionDate = new DateTime(2024, 1, 15);
@@ -210,7 +210,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var originalPrice = 40m;
         var transactionDate = new DateTime(2025, 7, 1);
@@ -229,7 +229,7 @@ public class StockSplitAdjustmentServiceTests
         // Split adjustment preserves total cost: shares * price = adjusted_shares * adjusted_price
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var originalPrice = 163m;
         var transactionDate = new DateTime(2024, 1, 15);
@@ -247,7 +247,7 @@ public class StockSplitAdjustmentServiceTests
         // Arrange: Exact division case
         var splits = new List<StockSplit>
         {
-            new StockSplit("AAPL", StockMarket.US, new DateTime(2020, 8, 31), 4.0m, "1:4 split")
+            new("AAPL", StockMarket.US, new DateTime(2020, 8, 31), 4.0m, "1:4 split")
         };
         var originalPrice = 500m;
         var transactionDate = new DateTime(2020, 1, 15);
@@ -294,7 +294,7 @@ public class StockSplitAdjustmentServiceTests
 
         var splits = new List<StockSplit>
         {
-            new StockSplit("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
+            new("0050", StockMarket.TW, new DateTime(2025, 6, 18), 4.0m, "1拆4")
         };
         var transactionDate = new DateTime(2024, 1, 15);
 

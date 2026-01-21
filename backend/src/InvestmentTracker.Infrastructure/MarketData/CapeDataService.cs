@@ -143,7 +143,7 @@ public class CapeDataService(
         var currentYearMonth = $"{now.Year}-{now.Month:D2}";
 
         // 從 data date 抽出 year-month（格式："2026-01-02"）
-        var dataYearMonth = dataDate.Substring(0, 7);
+        var dataYearMonth = dataDate[..7];
 
         // 若已是當月資料，就不需要檢查
         if (dataYearMonth == currentYearMonth)

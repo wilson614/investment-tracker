@@ -102,19 +102,17 @@ public class SinaEtfPriceService(HttpClient httpClient, ILogger<SinaEtfPriceServ
         // 欄位 1：目前價格；欄位 5：昨收
         if (decimal.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
         {
-            // 若目前價格為 0，回退使用昨收
-            if (price <= 0 && parts.Length > 5 &&
-                decimal.TryParse(parts[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var yesterdayClose) &&
-                yesterdayClose > 0)
+            switch (price)
             {
-                logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Market} (current price is 0)", yesterdayClose, marketKey);
-                return yesterdayClose;
-            }
-
-            if (price > 0)
-            {
-                logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
-                return price;
+                // 若目前價格為 0，回退使用昨收
+                case <= 0 when parts.Length > 5 &&
+                               decimal.TryParse(parts[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var yesterdayClose) &&
+                               yesterdayClose > 0:
+                    logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Market} (current price is 0)", yesterdayClose, marketKey);
+                    return yesterdayClose;
+                case > 0:
+                    logger.LogDebug("Got ETF price {Price} USD for {Market} from Sina", price, marketKey);
+                    return price;
             }
         }
 

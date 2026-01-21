@@ -65,12 +65,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
-            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new StooqDailyHitsLimitExceededException(symbol);
-            }
-
-            return ParseLastClose(content, marketKey);
+            return content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase) ? throw new StooqDailyHitsLimitExceededException(symbol) : ParseLastClose(content, marketKey);
         }
         catch (StooqDailyHitsLimitExceededException)
         {
@@ -198,10 +193,9 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         try
         {
             // 抓取以指定日期結尾的 10 天區間，處理週末／假日
-            var endDate = date;
             var startDate = date.AddDays(-10);
 
-            var url = $"{BaseUrl}?s={symbol}&d1={startDate:yyyyMMdd}&d2={endDate:yyyyMMdd}&i=d";
+            var url = $"{BaseUrl}?s={symbol}&d1={startDate:yyyyMMdd}&d2={date:yyyyMMdd}&i=d";
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -216,12 +210,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
-            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new StooqDailyHitsLimitExceededException(symbol);
-            }
-
-            return ParseStockPrice(content, symbol, date);
+            return content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase) ? throw new StooqDailyHitsLimitExceededException(symbol) : ParseStockPrice(content, symbol, date);
         }
         catch (StooqDailyHitsLimitExceededException)
         {
@@ -340,11 +329,11 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         var lowerSymbol = fullSymbol.ToLowerInvariant();
         return lowerSymbol switch
         {
-            var s when s.EndsWith(".uk") => "GBP",
-            var s when s.EndsWith(".de") => "EUR",
-            var s when s.EndsWith(".fr") => "EUR",
-            var s when s.EndsWith(".nl") => "EUR",
-            var s when s.EndsWith(".jp") => "JPY",
+            _ when lowerSymbol.EndsWith(".uk") => "GBP",
+            _ when lowerSymbol.EndsWith(".de") => "EUR",
+            _ when lowerSymbol.EndsWith(".fr") => "EUR",
+            _ when lowerSymbol.EndsWith(".nl") => "EUR",
+            _ when lowerSymbol.EndsWith(".jp") => "JPY",
             _ => "USD"
         };
     }
@@ -364,10 +353,9 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var symbol = $"{fromCurrency.ToLowerInvariant()}{toCurrency.ToLowerInvariant()}";
 
             // 抓取以指定日期結尾的 10 天區間，處理週末／假日
-            var endDate = date;
             var startDate = date.AddDays(-10);
 
-            var url = $"{BaseUrl}?s={symbol}&d1={startDate:yyyyMMdd}&d2={endDate:yyyyMMdd}&i=d";
+            var url = $"{BaseUrl}?s={symbol}&d1={startDate:yyyyMMdd}&d2={date:yyyyMMdd}&i=d";
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -382,12 +370,7 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
-            if (content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new StooqDailyHitsLimitExceededException(symbol);
-            }
-
-            return ParseExchangeRate(content, fromCurrency.ToUpperInvariant(), toCurrency.ToUpperInvariant(), date);
+            return content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase) ? throw new StooqDailyHitsLimitExceededException(symbol) : ParseExchangeRate(content, fromCurrency.ToUpperInvariant(), toCurrency.ToUpperInvariant(), date);
         }
         catch (StooqDailyHitsLimitExceededException)
         {

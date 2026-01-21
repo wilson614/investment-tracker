@@ -66,7 +66,7 @@ public class CalculateXirrUseCaseTests
         {
             CurrentPrices = new Dictionary<string, CurrentPriceInfo>
             {
-                ["VT"] = new CurrentPriceInfo { Price = 110m, ExchangeRate = 32m }
+                ["VT"] = new() { Price = 110m, ExchangeRate = 32m }
             },
             AsOfDate = new DateTime(2024, 12, 31)
         };
@@ -101,7 +101,7 @@ public class CalculateXirrUseCaseTests
         {
             CurrentPrices = new Dictionary<string, CurrentPriceInfo>
             {
-                ["2330"] = new CurrentPriceInfo { Price = 550m, ExchangeRate = 1m }
+                ["2330"] = new() { Price = 550m, ExchangeRate = 1m }
             },
             AsOfDate = new DateTime(2024, 12, 31)
         };
@@ -150,7 +150,7 @@ public class CalculateXirrUseCaseTests
         {
             CurrentPrices = new Dictionary<string, CurrentPriceInfo>
             {
-                ["VT"] = new CurrentPriceInfo { Price = 110m, ExchangeRate = 32m }
+                ["VT"] = new() { Price = 110m, ExchangeRate = 32m }
             },
             AsOfDate = new DateTime(2024, 12, 31)
         };
@@ -191,7 +191,7 @@ public class CalculateXirrUseCaseTests
         {
             CurrentPrices = new Dictionary<string, CurrentPriceInfo>
             {
-                ["VT"] = new CurrentPriceInfo { Price = 110m, ExchangeRate = 32m }
+                ["VT"] = new() { Price = 110m, ExchangeRate = 32m }
             },
             AsOfDate = new DateTime(2024, 12, 31)
         };

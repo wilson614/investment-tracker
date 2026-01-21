@@ -59,13 +59,14 @@ public class CurrencyLedgerService
 
         foreach (var tx in transactions.Where(t => !t.IsDeleted))
         {
-            if (tx.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance)
+            switch (tx.TransactionType)
             {
-                buyTotal += tx.HomeAmount ?? 0m;
-            }
-            else if (tx.TransactionType == CurrencyTransactionType.ExchangeSell)
-            {
-                sellTotal += tx.HomeAmount ?? 0m;
+                case CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance:
+                    buyTotal += tx.HomeAmount ?? 0m;
+                    break;
+                case CurrencyTransactionType.ExchangeSell:
+                    sellTotal += tx.HomeAmount ?? 0m;
+                    break;
             }
         }
 

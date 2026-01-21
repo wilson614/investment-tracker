@@ -60,8 +60,7 @@ public class GetPortfolioSummaryUseCase(
             var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
-                t.HasExchangeRate &&
-                t.TransactionType is TransactionType.Buy or TransactionType.Adjustment);
+                t is { HasExchangeRate: true, TransactionType: TransactionType.Buy or TransactionType.Adjustment });
 
             StockPositionDto dto;
 

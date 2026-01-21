@@ -120,20 +120,23 @@ public class SinaStockPriceProvider(HttpClient httpClient, ILogger<SinaStockPric
                 decimal.TryParse(fields[5], out yesterdayClose);
             }
 
-            // 若目前價格為 0，回退使用昨收
-            if (price <= 0 && yesterdayClose > 0)
+            switch (price)
             {
-                logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Symbol} (current price is 0)", yesterdayClose, symbol);
-                price = yesterdayClose;
-                // 使用回退價格時，沒有可用的漲跌資訊
-            }
-            else if (price > 0 && yesterdayClose > 0)
-            {
-                // 依昨收計算漲跌
-                change = price - yesterdayClose;
-                var pctValue = change.Value / yesterdayClose * 100;
-                var sign = pctValue >= 0 ? "+" : "";
-                changePercent = $"{sign}{pctValue:F2}%";
+                // 若目前價格為 0，回退使用昨收
+                case <= 0 when yesterdayClose > 0:
+                    logger.LogInformation("Using yesterday's close {YesterdayClose} as fallback for {Symbol} (current price is 0)", yesterdayClose, symbol);
+                    price = yesterdayClose;
+                    // 使用回退價格時，沒有可用的漲跌資訊
+                    break;
+                case > 0 when yesterdayClose > 0:
+                {
+                    // 依昨收計算漲跌
+                    change = price - yesterdayClose;
+                    var pctValue = change.Value / yesterdayClose * 100;
+                    var sign = pctValue >= 0 ? "+" : "";
+                    changePercent = $"{sign}{pctValue:F2}%";
+                    break;
+                }
             }
         }
         else
