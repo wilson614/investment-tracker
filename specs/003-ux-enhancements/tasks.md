@@ -21,35 +21,35 @@
 
 ---
 
-## Phase 1: Setup
+## Phase 1: Setup ✅
 
 **Purpose**: Database migrations and shared infrastructure
 
-- [ ] T001 Create EF Core migration for Market field in StockTransaction in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
-- [ ] T002 Create EF Core migration for StockSplit table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
-- [ ] T003 Create EF Core migration for UserBenchmark table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
-- [ ] T004 Apply all migrations and verify database schema
+- [x] T001 Create EF Core migration for Market field in StockTransaction in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [x] T002 Create EF Core migration for StockSplit table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [x] T003 Create EF Core migration for UserBenchmark table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [x] T004 Apply all migrations and verify database schema
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## Phase 2: Foundational (Blocking Prerequisites) ✅
 
 **Purpose**: Core entities and enums that MUST be complete before ANY user story can be implemented
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 [P] Add StockMarket enum to `backend/src/InvestmentTracker.Domain/Enums/StockMarket.cs` (TW=0, US=1, UK=2, EU=3)
-- [ ] T006 [P] Add Market property to StockTransaction entity in `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`
-- [ ] T007 [P] Create StockSplit entity in `backend/src/InvestmentTracker.Domain/Entities/StockSplit.cs`
-- [ ] T008 [P] Create UserBenchmark entity in `backend/src/InvestmentTracker.Domain/Entities/UserBenchmark.cs`
-- [ ] T009 Update AppDbContext with new DbSets in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
-- [ ] T010 Add entity configurations for StockSplit and UserBenchmark in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/`
+- [x] T005 [P] Add StockMarket enum to `backend/src/InvestmentTracker.Domain/Enums/StockMarket.cs` (TW=0, US=1, UK=2, EU=3)
+- [x] T006 [P] Add Market property to StockTransaction entity in `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`
+- [x] T007 [P] Create StockSplit entity in `backend/src/InvestmentTracker.Domain/Entities/StockSplit.cs`
+- [x] T008 [P] Create UserBenchmark entity in `backend/src/InvestmentTracker.Domain/Entities/UserBenchmark.cs`
+- [x] T009 Update AppDbContext with new DbSets in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
+- [x] T010 Add entity configurations for StockSplit and UserBenchmark in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
 ---
 
-## Phase 3: User Story 1 - Transaction Market Selection (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Transaction Market Selection (Priority: P1) 🎯 MVP ✅
 
 **Goal**: Add Market field to transactions, allowing users to select market during creation with auto-prediction
 
@@ -57,24 +57,24 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Create GuessMarketService in `backend/src/InvestmentTracker.Domain/Services/GuessMarketService.cs`
-- [ ] T012 [P] [US1] Add unit tests for GuessMarketService in `backend/tests/InvestmentTracker.Domain.Tests/Services/GuessMarketServiceTests.cs`
-- [ ] T013 [US1] Update CreateStockTransactionUseCase to handle Market field in `backend/src/InvestmentTracker.Application/UseCases/Transactions/CreateStockTransactionUseCase.cs`
-- [ ] T014 [US1] Update UpdateStockTransactionUseCase to handle Market field in `backend/src/InvestmentTracker.Application/UseCases/Transactions/UpdateStockTransactionUseCase.cs`
-- [ ] T015 [US1] Update TransactionController DTOs to include Market in `backend/src/InvestmentTracker.API/Controllers/TransactionController.cs`
-- [ ] T016 [US1] Update GetPortfolioSummaryUseCase to include Market in position response in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
-- [ ] T017 [P] [US1] Add market dropdown to TransactionForm in `frontend/src/components/transactions/TransactionForm.tsx`
-- [ ] T018 [US1] Add guessMarket utility function in `frontend/src/utils/marketUtils.ts`
-- [ ] T019 [US1] Update PositionCard to display market label (read-only) in `frontend/src/components/portfolio/PositionCard.tsx`
-- [ ] T020 [US1] Update quote fetching logic to use transaction market in `frontend/src/pages/Portfolio.tsx`
-- [ ] T021 [US1] Update quote fetching logic in Dashboard to use transaction market in `frontend/src/pages/Dashboard.tsx`
-- [ ] T022 [US1] Add integration test for market selection persistence in `backend/tests/InvestmentTracker.API.Tests/Integration/MarketSelectionTests.cs`
+- [x] T011 [P] [US1] Create GuessMarketService in `backend/src/InvestmentTracker.Domain/Services/GuessMarketService.cs` (實作於 StockTransaction.GuessMarketFromTicker)
+- [x] T012 [P] [US1] Add unit tests for GuessMarketService in `backend/tests/InvestmentTracker.Domain.Tests/Services/GuessMarketServiceTests.cs`
+- [x] T013 [US1] Update CreateStockTransactionUseCase to handle Market field in `backend/src/InvestmentTracker.Application/UseCases/Transactions/CreateStockTransactionUseCase.cs`
+- [x] T014 [US1] Update UpdateStockTransactionUseCase to handle Market field in `backend/src/InvestmentTracker.Application/UseCases/Transactions/UpdateStockTransactionUseCase.cs`
+- [x] T015 [US1] Update TransactionController DTOs to include Market in `backend/src/InvestmentTracker.API/Controllers/TransactionController.cs`
+- [x] T016 [US1] Update GetPortfolioSummaryUseCase to include Market in position response in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+- [x] T017 [P] [US1] Add market dropdown to TransactionForm in `frontend/src/components/transactions/TransactionForm.tsx`
+- [x] T018 [US1] Add guessMarket utility function in `frontend/src/utils/marketUtils.ts` (實作於 TransactionForm.tsx 內)
+- [x] T019 [US1] Update PositionCard to display market label (read-only) in `frontend/src/components/portfolio/PositionCard.tsx`
+- [x] T020 [US1] Update quote fetching logic to use transaction market in `frontend/src/pages/Portfolio.tsx`
+- [x] T021 [US1] Update quote fetching logic in Dashboard to use transaction market in `frontend/src/pages/Dashboard.tsx`
+- [x] T022 [US1] Add integration test for market selection persistence in `backend/tests/InvestmentTracker.API.Tests/Integration/MarketSelectionTests.cs`
 
 **Checkpoint**: Transaction market selection is fully functional and testable independently
 
 ---
 
-## Phase 4: User Story 2 - Benchmark Custom Stocks (Priority: P1)
+## Phase 4: User Story 2 - Benchmark Custom Stocks (Priority: P1) ✅
 
 **Goal**: Allow users to add custom stocks as benchmark comparisons with dividend warning for non-accumulating ETFs
 
@@ -82,22 +82,22 @@
 
 ### Implementation for User Story 2
 
-- [ ] T023 [P] [US2] Create UserBenchmark repository interface in `backend/src/InvestmentTracker.Application/Interfaces/IUserBenchmarkRepository.cs`
-- [ ] T024 [P] [US2] Implement UserBenchmarkRepository in `backend/src/InvestmentTracker.Infrastructure/Persistence/Repositories/UserBenchmarkRepository.cs`
-- [ ] T025 [P] [US2] Create GetUserBenchmarksUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/GetUserBenchmarksUseCase.cs`
-- [ ] T026 [P] [US2] Create AddUserBenchmarkUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/AddUserBenchmarkUseCase.cs`
-- [ ] T027 [P] [US2] Create DeleteUserBenchmarkUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/DeleteUserBenchmarkUseCase.cs`
-- [ ] T028 [US2] Create UserBenchmarkController in `backend/src/InvestmentTracker.API/Controllers/UserBenchmarkController.cs`
-- [ ] T029 [P] [US2] Create BenchmarkSettings component in `frontend/src/components/settings/BenchmarkSettings.tsx`
-- [ ] T030 [US2] Add benchmark API service in `frontend/src/services/benchmarkApi.ts`
-- [ ] T031 [US2] Integrate custom benchmarks into Performance page in `frontend/src/pages/Performance.tsx`
-- [ ] T032 [US2] Add dividend warning display for distributing ETFs in Performance page
+- [x] T023 [P] [US2] Create UserBenchmark repository interface in `backend/src/InvestmentTracker.Application/Interfaces/IUserBenchmarkRepository.cs` (實作於 Domain)
+- [x] T024 [P] [US2] Implement UserBenchmarkRepository in `backend/src/InvestmentTracker.Infrastructure/Persistence/Repositories/UserBenchmarkRepository.cs`
+- [x] T025 [P] [US2] Create GetUserBenchmarksUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/GetUserBenchmarksUseCase.cs`
+- [x] T026 [P] [US2] Create AddUserBenchmarkUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/AddUserBenchmarkUseCase.cs`
+- [x] T027 [P] [US2] Create DeleteUserBenchmarkUseCase in `backend/src/InvestmentTracker.Application/UseCases/Benchmark/DeleteUserBenchmarkUseCase.cs`
+- [x] T028 [US2] Create UserBenchmarkController in `backend/src/InvestmentTracker.API/Controllers/UserBenchmarkController.cs`
+- [x] T029 [P] [US2] Create BenchmarkSettings component in `frontend/src/components/settings/BenchmarkSettings.tsx`
+- [x] T030 [US2] Add benchmark API service in `frontend/src/services/benchmarkApi.ts`
+- [x] T031 [US2] Integrate custom benchmarks into Performance page in `frontend/src/pages/Performance.tsx`
+- [x] T032 [US2] Add dividend warning display for distributing ETFs in Performance page
 
 **Checkpoint**: Benchmark custom stocks is fully functional and testable independently
 
 ---
 
-## Phase 5: User Story 3 - Dashboard Historical Value Chart (Priority: P2)
+## Phase 5: User Story 3 - Dashboard Historical Value Chart (Priority: P2) ✅
 
 **Goal**: Display line chart showing portfolio value changes over years on Dashboard
 
@@ -105,15 +105,15 @@
 
 ### Implementation for User Story 3
 
-- [ ] T033 [P] [US3] Create HistoricalValueChart component in `frontend/src/components/dashboard/HistoricalValueChart.tsx`
-- [ ] T034 [US3] Integrate HistoricalValueChart into Dashboard in `frontend/src/pages/Dashboard.tsx`
-- [ ] T035 [US3] Add year-end data API call to Dashboard (use existing performance API)
+- [x] T033 [P] [US3] Create HistoricalValueChart component in `frontend/src/components/dashboard/HistoricalValueChart.tsx`
+- [x] T034 [US3] Integrate HistoricalValueChart into Dashboard in `frontend/src/pages/Dashboard.tsx`
+- [x] T035 [US3] Add year-end data API call to Dashboard (use existing performance API)
 
 **Checkpoint**: Dashboard historical chart is fully functional and testable independently
 
 ---
 
-## Phase 6: User Story 4 - Stock Split Settings UI (Priority: P2)
+## Phase 6: User Story 4 - Stock Split Settings UI (Priority: P2) ✅
 
 **Goal**: CRUD interface in Settings page for shared stock split data with automatic position recalculation
 
@@ -121,25 +121,25 @@
 
 ### Implementation for User Story 4
 
-- [ ] T036 [P] [US4] Create StockSplit repository interface in `backend/src/InvestmentTracker.Application/Interfaces/IStockSplitRepository.cs`
-- [ ] T037 [P] [US4] Implement StockSplitRepository in `backend/src/InvestmentTracker.Infrastructure/Persistence/Repositories/StockSplitRepository.cs`
-- [ ] T038 [P] [US4] Create GetStockSplitsUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/GetStockSplitsUseCase.cs`
-- [ ] T039 [P] [US4] Create CreateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/CreateStockSplitUseCase.cs`
-- [ ] T040 [P] [US4] Create UpdateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/UpdateStockSplitUseCase.cs`
-- [ ] T041 [P] [US4] Create DeleteStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/DeleteStockSplitUseCase.cs`
-- [ ] T042 [US4] Create StockSplitController in `backend/src/InvestmentTracker.API/Controllers/StockSplitController.cs`
-- [ ] T043 [P] [US4] Create StockSplitAdjustmentService in `backend/src/InvestmentTracker.Domain/Services/StockSplitAdjustmentService.cs`
-- [ ] T044 [P] [US4] Add unit tests for StockSplitAdjustmentService in `backend/tests/InvestmentTracker.Domain.Tests/Services/StockSplitAdjustmentServiceTests.cs`
-- [ ] T045 [US4] Integrate split adjustment into GetPortfolioSummaryUseCase in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
-- [ ] T046 [P] [US4] Create StockSplitSettings component in `frontend/src/components/settings/StockSplitSettings.tsx`
-- [ ] T047 [US4] Add stock split API service in `frontend/src/services/stockSplitApi.ts`
-- [ ] T048 [US4] Add Stock Split section to Settings page in `frontend/src/pages/Settings.tsx`
+- [x] T036 [P] [US4] Create StockSplit repository interface in `backend/src/InvestmentTracker.Application/Interfaces/IStockSplitRepository.cs` (實作於 Domain)
+- [x] T037 [P] [US4] Implement StockSplitRepository in `backend/src/InvestmentTracker.Infrastructure/Persistence/Repositories/StockSplitRepository.cs`
+- [x] T038 [P] [US4] Create GetStockSplitsUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/GetStockSplitsUseCase.cs`
+- [x] T039 [P] [US4] Create CreateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/CreateStockSplitUseCase.cs`
+- [x] T040 [P] [US4] Create UpdateStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/UpdateStockSplitUseCase.cs`
+- [x] T041 [P] [US4] Create DeleteStockSplitUseCase in `backend/src/InvestmentTracker.Application/UseCases/StockSplit/DeleteStockSplitUseCase.cs`
+- [x] T042 [US4] Create StockSplitController in `backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs` (整合於 StockTransactionsController)
+- [x] T043 [P] [US4] Create StockSplitAdjustmentService in `backend/src/InvestmentTracker.Domain/Services/StockSplitAdjustmentService.cs`
+- [x] T044 [P] [US4] Add unit tests for StockSplitAdjustmentService in `backend/tests/InvestmentTracker.Domain.Tests/Services/StockSplitAdjustmentServiceTests.cs`
+- [x] T045 [US4] Integrate split adjustment into GetPortfolioSummaryUseCase in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+- [x] T046 [P] [US4] Create StockSplitSettings component in `frontend/src/components/settings/StockSplitSettings.tsx`
+- [x] T047 [US4] Add stock split API service in `frontend/src/services/stockSplitApi.ts`
+- [x] T048 [US4] Add Stock Split section to Settings page in `frontend/src/pages/Settings.tsx`
 
 **Checkpoint**: Stock split settings is fully functional and testable independently
 
 ---
 
-## Phase 7: User Story 5 - Default to Dashboard After Login (Priority: P3)
+## Phase 7: User Story 5 - Default to Dashboard After Login (Priority: P3) ✅
 
 **Goal**: Redirect users to Dashboard instead of Portfolio page after login
 
@@ -147,14 +147,14 @@
 
 ### Implementation for User Story 5
 
-- [ ] T049 [US5] Update root route redirect in `frontend/src/App.tsx` to navigate to /dashboard
-- [ ] T050 [US5] Verify login flow redirects correctly (no changes needed if using route-based redirect)
+- [x] T049 [US5] Update root route redirect in `frontend/src/App.tsx` to navigate to /dashboard
+- [x] T050 [US5] Verify login flow redirects correctly (no changes needed if using route-based redirect)
 
 **Checkpoint**: Login redirect is fully functional
 
 ---
 
-## Phase 8: User Story 6 - Taiwan Timezone Display (Priority: P3)
+## Phase 8: User Story 6 - Taiwan Timezone Display (Priority: P3) ✅
 
 **Goal**: Convert all time displays to Taiwan time (UTC+8)
 
@@ -162,16 +162,16 @@
 
 ### Implementation for User Story 6
 
-- [ ] T051 [P] [US6] Create formatToTaiwanTime utility in `frontend/src/utils/dateUtils.ts`
-- [ ] T052 [US6] Apply Taiwan timezone formatting to TransactionList in `frontend/src/components/transactions/TransactionList.tsx`
-- [ ] T053 [US6] Apply Taiwan timezone formatting to Dashboard in `frontend/src/pages/Dashboard.tsx`
-- [ ] T054 [US6] Apply Taiwan timezone formatting to PositionDetail in `frontend/src/pages/PositionDetail.tsx`
+- [x] T051 [P] [US6] Create formatToTaiwanTime utility in `frontend/src/utils/dateUtils.ts`
+- [x] T052 [US6] Apply Taiwan timezone formatting to TransactionList in `frontend/src/components/transactions/TransactionList.tsx`
+- [x] T053 [US6] Apply Taiwan timezone formatting to Dashboard in `frontend/src/pages/Dashboard.tsx`
+- [x] T054 [US6] Apply Taiwan timezone formatting to PositionDetail in `frontend/src/pages/PositionDetail.tsx`
 
 **Checkpoint**: All time displays use Taiwan timezone
 
 ---
 
-## Phase 9: User Story 7 - Date Input Auto-Tab Optimization (Priority: P3)
+## Phase 9: User Story 7 - Date Input Auto-Tab Optimization (Priority: P3) ✅
 
 **Goal**: Auto-tab to month field after 4-digit year input
 
@@ -179,14 +179,14 @@
 
 ### Implementation for User Story 7
 
-- [ ] T055 [US7] Add year auto-tab handler to DateInput component in `frontend/src/components/common/DateInput.tsx`
-- [ ] T056 [US7] Verify month auto-tab still works correctly (existing behavior)
+- [x] T055 [US7] Add year auto-tab handler to DateInput component in `frontend/src/components/common/DateInput.tsx` (使用原生 HTML5 date input，已具備此行為)
+- [x] T056 [US7] Verify month auto-tab still works correctly (existing behavior)
 
 **Checkpoint**: Date input auto-tab is fully functional
 
 ---
 
-## Phase 10: User Story 8 - Fee Field Default Value Adjustment (Priority: P3)
+## Phase 10: User Story 8 - Fee Field Default Value Adjustment (Priority: P3) ✅
 
 **Goal**: Fee field defaults to empty instead of 0
 
@@ -194,8 +194,8 @@
 
 ### Implementation for User Story 8
 
-- [ ] T057 [US8] Remove default value 0 from fee field in `frontend/src/components/transactions/TransactionForm.tsx`
-- [ ] T058 [US8] Update form submission to treat empty fee as 0
+- [x] T057 [US8] Remove default value 0 from fee field in `frontend/src/components/transactions/TransactionForm.tsx`
+- [x] T058 [US8] Update form submission to treat empty fee as 0
 
 **Checkpoint**: Fee field default is correct
 
