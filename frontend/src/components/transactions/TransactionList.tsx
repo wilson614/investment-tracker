@@ -8,7 +8,8 @@
  * - 當 `totalCostHome` 為 null 時，代表沒有匯率資料，改顯示 source currency 成本。
  */
 import { Pencil, Trash2, SplitSquareHorizontal } from 'lucide-react';
-import type { StockTransaction, TransactionType } from '../../types';
+import type { StockTransaction, TransactionType, StockMarket } from '../../types';
+import { StockMarket as StockMarketEnum } from '../../types';
 
 interface TransactionListProps {
   /** 要顯示的交易清單 */
@@ -31,6 +32,13 @@ const transactionTypeColors: Record<TransactionType, string> = {
   2: 'badge-danger',
   3: 'badge-cream',
   4: 'badge-butter',
+};
+
+const marketLabels: Record<StockMarket, string> = {
+  [StockMarketEnum.TW]: '台',
+  [StockMarketEnum.US]: '美',
+  [StockMarketEnum.UK]: '英',
+  [StockMarketEnum.EU]: '歐',
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
@@ -127,7 +135,12 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
               <td className="whitespace-nowrap">
                 {formatDate(tx.transactionDate)}
               </td>
-              <td className="font-medium text-[var(--accent-cream)]">{tx.ticker}</td>
+              <td className="font-medium text-[var(--accent-cream)]">
+                {tx.ticker}
+                <span className="ml-1 text-xs text-[var(--text-muted)]">
+                  ({marketLabels[tx.market] || '?'})
+                </span>
+              </td>
               <td>
                 <span className={`badge ${transactionTypeColors[tx.transactionType]}`}>
                   {transactionTypeLabels[tx.transactionType]}

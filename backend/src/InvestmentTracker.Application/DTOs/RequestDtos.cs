@@ -80,6 +80,11 @@ public record CreateStockTransactionRequest
 
     [StringLength(500)]
     public string? Notes { get; init; }
+
+    /// <summary>
+    /// 交易所屬市場。若未提供，會根據 Ticker 自動推測。
+    /// </summary>
+    public StockMarket? Market { get; init; }
 }
 
 /// <summary>
@@ -121,6 +126,11 @@ public record UpdateStockTransactionRequest
 
     [StringLength(500)]
     public string? Notes { get; init; }
+
+    /// <summary>
+    /// 交易所屬市場。
+    /// </summary>
+    public StockMarket? Market { get; init; }
 }
 
 /// <summary>

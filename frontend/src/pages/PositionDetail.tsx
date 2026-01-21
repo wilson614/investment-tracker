@@ -41,6 +41,7 @@ const MARKET_LABELS: Record<StockMarketType, string> = {
   [StockMarket.TW]: '台股',
   [StockMarket.US]: '美股',
   [StockMarket.UK]: '英股',
+  [StockMarket.EU]: '歐股',
 };
 
 /**

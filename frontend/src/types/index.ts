@@ -94,6 +94,7 @@ export interface StockTransaction {
   adjustedPricePerShare?: number;
   splitRatio: number;
   hasSplitAdjustment: boolean;
+  market: StockMarket;
 }
 
 export interface CreateStockTransactionRequest {
@@ -108,6 +109,7 @@ export interface CreateStockTransactionRequest {
   fundSource?: FundSource;
   currencyLedgerId?: string;
   notes?: string;
+  market?: StockMarket;
 }
 
 export interface UpdateStockTransactionRequest {
@@ -121,6 +123,7 @@ export interface UpdateStockTransactionRequest {
   fundSource?: FundSource;
   currencyLedgerId?: string;
   notes?: string;
+  market?: StockMarket;
 }
 
 export interface StockPosition {
@@ -251,6 +254,7 @@ export const StockMarket = {
   TW: 1,
   US: 2,
   UK: 3,
+  EU: 4,
 } as const;
 export type StockMarket = (typeof StockMarket)[keyof typeof StockMarket];
 

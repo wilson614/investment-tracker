@@ -58,6 +58,9 @@ public record StockTransactionDto
 
     /// <summary>此筆交易是否已套用拆股調整。</summary>
     public bool HasSplitAdjustment { get; init; }
+
+    /// <summary>交易所屬市場。</summary>
+    public StockMarket Market { get; init; }
 }
 
 /// <summary>

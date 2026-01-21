@@ -45,6 +45,8 @@ public class UpdateStockTransactionUseCase(
         transaction.SetFees(request.Fees);
         transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
         transaction.SetNotes(request.Notes);
+        if (request.Market.HasValue)
+            transaction.SetMarket(request.Market.Value);
 
         // 若為賣出交易：重新計算已實現損益（支援 Buy/Sell 互換）
         if (transaction.TransactionType == TransactionType.Sell)
@@ -108,6 +110,7 @@ public class UpdateStockTransactionUseCase(
             TotalCostHome = transaction.TotalCostHome,
             HasExchangeRate = transaction.HasExchangeRate,
             RealizedPnlHome = transaction.RealizedPnlHome,
+            Market = transaction.Market,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt
         };

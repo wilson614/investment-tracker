@@ -10,14 +10,28 @@
  */
 import { useState, useEffect } from 'react';
 import { currencyLedgerApi } from '../../services/api';
-import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary } from '../../types';
-import { FundSource as FundSourceEnum } from '../../types';
+import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket } from '../../types';
+import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum } from '../../types';
 
 /**
  * 判斷是否為台股 ticker（純數字或數字+英文字尾）。
  */
 const isTaiwanStock = (ticker: string): boolean => {
   return /^\d+[A-Za-z]*$/.test(ticker.trim());
+};
+
+/**
+ * 根據 ticker 推測市場
+ */
+const guessMarketFromTicker = (ticker: string): StockMarket => {
+  if (!ticker) return StockMarketEnum.US;
+  const trimmed = ticker.trim().toUpperCase();
+  // 台股：數字開頭
+  if (/^\d/.test(trimmed)) return StockMarketEnum.TW;
+  // 英股：.L 結尾
+  if (trimmed.endsWith('.L')) return StockMarketEnum.UK;
+  // 預設美股
+  return StockMarketEnum.US;
 };
 
 interface TransactionFormProps {
@@ -50,6 +64,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     fundSource: (initialData?.fundSource ?? FundSourceEnum.None) as FundSource,
     currencyLedgerId: initialData?.currencyLedgerId ?? '',
     notes: initialData?.notes ?? '',
+    market: (initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '')) as StockMarket,
   });
 
   // 載入外幣帳本清單，供資金來源選擇（CurrencyLedger）。
@@ -95,6 +110,10 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
       // Auto-set exchange rate to 1 for Taiwan stocks
       if (name === 'ticker' && isTaiwanStock(value) && !prev.exchangeRate) {
         newData.exchangeRate = '1';
+      }
+      // Auto-set market based on ticker
+      if (name === 'ticker') {
+        newData.market = guessMarketFromTicker(value);
       }
       return newData;
     });
@@ -170,6 +189,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         fundSource: formData.fundSource,
         currencyLedgerId: formData.currencyLedgerId || undefined,
         notes: formData.notes || undefined,
+        market: formData.market,
       };
 
       await onSubmit(request);
@@ -186,6 +206,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         fundSource: FundSourceEnum.None as FundSource,
         currencyLedgerId: '',
         notes: '',
+        market: StockMarketEnum.US as StockMarket,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create transaction');
@@ -244,6 +265,23 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
           >
             <option value={1}>買入</option>
             <option value={2}>賣出</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+            市場
+          </label>
+          <select
+            name="market"
+            value={formData.market}
+            onChange={(e) => setFormData(prev => ({ ...prev, market: Number(e.target.value) as StockMarket }))}
+            className="input-dark w-full"
+          >
+            <option value={StockMarketEnum.TW}>台股</option>
+            <option value={StockMarketEnum.US}>美股</option>
+            <option value={StockMarketEnum.UK}>英股</option>
+            <option value={StockMarketEnum.EU}>歐股</option>
           </select>
         </div>
 
