@@ -106,6 +106,25 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 - **不要跳過**：即使是「簡單的重構」也要先確認 spec.md
 - **不要隨意修改**：沒有經過 Speckit 流程確認，不得直接修改功能程式碼
 
+## 錯誤處理規範
+
+### Domain Exceptions
+專案使用 Domain Exceptions 進行錯誤處理，避免在 Controllers 中使用 try-catch：
+
+- `EntityNotFoundException` - 實體找不到時拋出
+- `AccessDeniedException` - 存取被拒絕時拋出
+- `BusinessRuleException` - 業務規則違反時拋出
+
+### ExceptionHandlingMiddleware
+所有例外由 `ExceptionHandlingMiddleware` 統一處理，自動轉換為對應的 HTTP 狀態碼：
+- `EntityNotFoundException` → 404 Not Found
+- `AccessDeniedException` → 403 Forbidden
+- `BusinessRuleException` → 400 Bad Request
+
+### 規則
+- Controllers 不應包含 try-catch（除非處理外部 API 錯誤）
+- Use Cases 應拋出 Domain Exceptions 而非回傳 null 或 bool
+
 ## 建置與測試規則
 
 ### 建置完成後必須停止進程
