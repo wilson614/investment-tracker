@@ -331,6 +331,7 @@ export function PortfolioPage() {
         fundSource: data.fundSource,
         currencyLedgerId: data.currencyLedgerId,
         notes: data.notes,
+        market: data.market,
       });
     } else {
       await transactionApi.create(data);
@@ -471,7 +472,7 @@ export function PortfolioPage() {
           }
 
           // Standard market handling
-          const market = guessMarket(position.ticker);
+          const market = position.market ?? guessMarket(position.ticker);
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
           let finalMarket = market;
 
@@ -498,7 +499,8 @@ export function PortfolioPage() {
             return null;
           }
 
-          if (guessMarket(position.ticker) === StockMarket.US) {
+          const market = position.market ?? guessMarket(position.ticker);
+          if (market === StockMarket.US) {
             try {
               const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
               if (ukQuote?.exchangeRate) {

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings2 } from 'lucide-react';
 import { stockPriceApi, marketDataApi, etfClassificationApi } from '../../services/api';
 import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse, EtfClassificationResult } from '../../types';
 import { StockMarket } from '../../types';
@@ -67,6 +66,9 @@ export function PositionCard({
 }: PositionCardProps) {
   // Load cached data on init
   const loadCachedQuote = (): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
+    // 優先使用 position.market（從後端交易資料取得）
+    const positionMarket = position.market ?? guessMarket(position.ticker);
+
     try {
       const cached = localStorage.getItem(getQuoteCacheKey(position.ticker));
       if (cached) {
@@ -74,13 +76,14 @@ export function PositionCard({
         return {
           quote: data.quote,
           updatedAt: new Date(data.updatedAt),
-          market: data.market,
+          // 使用 position.market 覆蓋快取中的市場（使用者可能已修改交易的市場）
+          market: positionMarket,
         };
       }
     } catch {
       // Ignore cache errors
     }
-    return { quote: null, updatedAt: null, market: guessMarket(position.ticker) };
+    return { quote: null, updatedAt: null, market: positionMarket };
   };
 
   const cachedData = loadCachedQuote();
@@ -91,7 +94,6 @@ export function PositionCard({
   const [lastQuote, setLastQuote] = useState<StockQuoteResponse | null>(cachedData.quote);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(cachedData.updatedAt);
   const [error, setError] = useState<string | null>(null);
-  const [showMarketSelector, setShowMarketSelector] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
   const [isStaleQuote, setIsStaleQuote] = useState(false);
   const [etfClassification, setEtfClassification] = useState<EtfClassificationResult | null>(null);
@@ -270,12 +272,6 @@ export function PositionCard({
     }
   };
 
-  const handleMarketChange = (market: StockMarketType) => {
-    setSelectedMarket(market);
-    setShowMarketSelector(false);
-    handleFetchQuote(market);
-  };
-
   const pnlColor = (position.unrealizedPnlHome ?? 0) >= 0
     ? 'number-positive'
     : 'number-negative';
@@ -293,14 +289,6 @@ export function PositionCard({
             <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded">
               {MARKET_LABELS[selectedMarket]}
             </span>
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowMarketSelector(!showMarketSelector); }}
-              className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors opacity-40 hover:opacity-100"
-              title="切換市場"
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-            </button>
           </div>
           <span className="text-sm text-[var(--text-muted)] number-display">
             {formatNumber(position.totalShares, 4)} 股
@@ -349,29 +337,6 @@ export function PositionCard({
           )}
         </div>
       </div>
-
-      {/* Market selector popup */}
-      {showMarketSelector && (
-        <div className="mb-3 p-2 rounded bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-          <div className="text-xs text-[var(--text-muted)] mb-2">選擇市場：</div>
-          <div className="flex gap-2">
-            {Object.entries(MARKET_LABELS).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMarketChange(Number(value) as StockMarketType); }}
-                className={`px-3 py-1 text-sm rounded transition-colors ${
-                  selectedMarket === Number(value)
-                    ? 'bg-[var(--accent-peach)] text-[var(--bg-primary)]'
-                    : 'bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:bg-[var(--bg-active)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="space-y-3 text-base">
         <div className="flex justify-between">

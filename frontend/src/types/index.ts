@@ -138,6 +138,7 @@ export interface StockPosition {
   currentValueHome?: number;
   unrealizedPnlHome?: number;
   unrealizedPnlPercentage?: number;
+  market?: StockMarket;
 }
 
 export interface PortfolioSummary {
