@@ -10,6 +10,7 @@
 import { Pencil, Trash2, SplitSquareHorizontal } from 'lucide-react';
 import type { StockTransaction, TransactionType, StockMarket } from '../../types';
 import { StockMarket as StockMarketEnum } from '../../types';
+import { formatFullDate } from '../../utils/dateUtils';
 
 interface TransactionListProps {
   /** 要顯示的交易清單 */
@@ -42,14 +43,6 @@ const marketLabels: Record<StockMarket, string> = {
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-  };
-
   const formatNumber = (value: number, decimals = 2) => {
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: decimals,
@@ -133,7 +126,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
           {transactions.map((tx) => (
             <tr key={tx.id}>
               <td className="whitespace-nowrap">
-                {formatDate(tx.transactionDate)}
+                {formatFullDate(tx.transactionDate)}
               </td>
               <td className="font-medium text-[var(--accent-cream)]">
                 {tx.ticker}

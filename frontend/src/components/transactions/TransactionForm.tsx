@@ -8,7 +8,7 @@
  * - 若資金來源為 CurrencyLedger 且不是台股，則匯率欄位可省略，交由 backend 依帳本推導。
  * - ForeignCurrency portfolio 也不使用匯率欄位。
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { currencyLedgerApi } from '../../services/api';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket } from '../../types';
 import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum } from '../../types';
@@ -52,6 +52,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
   const [selectedLedger, setSelectedLedger] = useState<CurrencyLedgerSummary | null>(null);
+  const sharesInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     ticker: initialData?.ticker ?? '',
@@ -60,7 +61,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     shares: initialData?.shares?.toString() ?? '',
     pricePerShare: initialData?.pricePerShare?.toString() ?? '',
     exchangeRate: initialData?.exchangeRate?.toString() ?? '',
-    fees: initialData?.fees?.toString() ?? '0',
+    fees: initialData?.fees?.toString() ?? '',
     fundSource: (initialData?.fundSource ?? FundSourceEnum.None) as FundSource,
     currencyLedgerId: initialData?.currencyLedgerId ?? '',
     notes: initialData?.notes ?? '',
@@ -202,7 +203,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         shares: '',
         pricePerShare: '',
         exchangeRate: '',
-        fees: '0',
+        fees: '',
         fundSource: FundSourceEnum.None as FundSource,
         currencyLedgerId: '',
         notes: '',
@@ -293,7 +294,15 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             type="date"
             name="transactionDate"
             value={formData.transactionDate}
-            onChange={handleChange}
+            onChange={(e) => {
+              handleChange(e);
+              // Auto-tab to shares input when date is complete (YYYY-MM-DD format)
+              const value = e.target.value;
+              if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                // Small delay to allow state update
+                setTimeout(() => sharesInputRef.current?.focus(), 0);
+              }
+            }}
             required
             className="input-dark w-full"
           />
@@ -304,6 +313,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             股數
           </label>
           <input
+            ref={sharesInputRef}
             type="number"
             name="shares"
             value={formData.shares}

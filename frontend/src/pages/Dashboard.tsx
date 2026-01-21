@@ -16,6 +16,7 @@ import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 import { refreshCapeData } from '../services/capeApi';
 import { refreshYtdData } from '../services/ytdApi';
+import { formatShortDate } from '../utils/dateUtils';
 
 interface CachedQuote {
   quote: StockQuoteResponse;
@@ -343,12 +344,6 @@ export function DashboardPage() {
     return `${sign}${value.toFixed(2)}%`;
   };
 
-  // Format date
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  };
-
   /**
    * 以 summary 為基礎，整理出 UI 需要的持倉績效欄位。
    *
@@ -589,7 +584,7 @@ export function DashboardPage() {
                     <span className="text-[var(--text-primary)] font-medium">{tx.ticker}</span>
                     <span className="text-sm text-[var(--text-muted)]">{tx.shares} 股</span>
                   </div>
-                  <span className="text-sm text-[var(--text-muted)]">{formatDate(tx.transactionDate)}</span>
+                  <span className="text-sm text-[var(--text-muted)]">{formatShortDate(tx.transactionDate)}</span>
                 </div>
               ))}
             </div>

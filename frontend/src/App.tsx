@@ -39,7 +39,7 @@ function AppRoutes() {
       />
       <Route
         path="/"
-        element={<Navigate to="/portfolio" replace />}
+        element={<Navigate to="/dashboard" replace />}
       />
       <Route
         path="/portfolio"
@@ -111,7 +111,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/portfolio" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
