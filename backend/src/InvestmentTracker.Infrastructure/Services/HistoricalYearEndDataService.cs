@@ -244,20 +244,97 @@ public class HistoricalYearEndDataService(
                 return await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
             }
 
-            // 歐股 (Euronext)：使用 Yahoo Finance API
-            if (market == StockMarket.EU)
+            // 歐股、美股、英股：使用 Yahoo Finance 為 primary，Stooq 為 fallback
+            var targetDate = new DateOnly(year, 12, 31);
+
+            // Try Yahoo first (primary source)
+            var yahooResult = await TryFetchFromYahooAsync(ticker, targetDate, market, cancellationToken);
+            if (yahooResult != null)
             {
-                return await FetchEuronextStockPriceAsync(ticker, year, cancellationToken);
+                logger.LogInformation("Fetched {Ticker}/{Year} from Yahoo (primary): {Price} {Currency}",
+                    ticker, year, yahooResult.Price, yahooResult.Currency);
+                return yahooResult;
             }
 
-            // 美股、英股：使用 Stooq API
-            // 以 12/31 作為目標日期（Stooq 會回傳最近的交易日）
-            var targetDate = new DateOnly(year, 12, 31);
+            // Fallback to Stooq (except for EU market which Yahoo should handle)
+            if (market != StockMarket.EU)
+            {
+                var stooqResult = await TryFetchFromStooqAsync(ticker, targetDate, cancellationToken);
+                if (stooqResult != null)
+                {
+                    logger.LogInformation("Fetched {Ticker}/{Year} from Stooq (fallback): {Price} {Currency}",
+                        ticker, year, stooqResult.Price, stooqResult.Currency);
+                    return stooqResult;
+                }
+            }
+
+            logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from any source (Yahoo and Stooq both failed)",
+                ticker, year);
+            return null;
+        }
+        catch (StooqDailyHitsLimitExceededException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error fetching year-end price for {Ticker}/{Year}", ticker, year);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Try to fetch price from Yahoo Finance.
+    /// </summary>
+    private async Task<YearEndPriceResult?> TryFetchFromYahooAsync(
+        string ticker,
+        DateOnly targetDate,
+        StockMarket? market,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Convert ticker to Yahoo format if needed
+            var yahooSymbol = ConvertToYahooSymbol(ticker, market);
+            var result = await yahooService.GetHistoricalPriceAsync(yahooSymbol, targetDate, cancellationToken);
+
+            if (result == null)
+            {
+                logger.LogDebug("Yahoo returned no data for {Ticker} on {Date}", yahooSymbol, targetDate);
+                return null;
+            }
+
+            return new YearEndPriceResult
+            {
+                Price = result.Price,
+                Currency = result.Currency,
+                ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Yahoo fetch failed for {Ticker}, will try fallback", ticker);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Try to fetch price from Stooq.
+    /// </summary>
+    private async Task<YearEndPriceResult?> TryFetchFromStooqAsync(
+        string ticker,
+        DateOnly targetDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             var result = await stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
 
             if (result == null)
             {
-                logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from Stooq", ticker, year);
+                logger.LogDebug("Stooq returned no data for {Ticker} on {Date}", ticker, targetDate);
                 return null;
             }
 
@@ -272,13 +349,32 @@ public class HistoricalYearEndDataService(
         }
         catch (StooqDailyHitsLimitExceededException)
         {
-            throw;
+            throw; // Re-throw rate limit exception
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Error fetching year-end price for {Ticker}/{Year}", ticker, year);
+            logger.LogDebug(ex, "Stooq fetch failed for {Ticker}", ticker);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Convert ticker to Yahoo Finance symbol format based on market.
+    /// </summary>
+    private static string ConvertToYahooSymbol(string ticker, StockMarket? market)
+    {
+        // Already has suffix, use as-is
+        if (ticker.Contains('.'))
+        {
+            return ticker;
+        }
+
+        return market switch
+        {
+            StockMarket.UK => $"{ticker}.L",      // London Stock Exchange
+            StockMarket.EU => $"{ticker}.AS",     // Euronext Amsterdam (default for EU)
+            _ => ticker                            // US stocks don't need suffix
+        };
     }
 
     /// <summary>
@@ -315,33 +411,6 @@ public class HistoricalYearEndDataService(
             Currency = "TWD", // 台股皆以 TWD 計價
             ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             Source = "TWSE",
-            FromCache = false
-        };
-    }
-
-    /// <summary>
-    /// 從 Yahoo Finance 取得 Euronext 歐股歷史價格。
-    /// </summary>
-    private async Task<YearEndPriceResult?> FetchEuronextStockPriceAsync(
-        string ticker,
-        int year,
-        CancellationToken cancellationToken)
-    {
-        var targetDate = new DateOnly(year, 12, 31);
-        var result = await yahooService.GetHistoricalPriceAsync(ticker, targetDate, cancellationToken);
-
-        if (result == null)
-        {
-            logger.LogWarning("Could not fetch year-end price for Euronext stock {Ticker}/{Year} from Yahoo Finance", ticker, year);
-            return null;
-        }
-
-        return new YearEndPriceResult
-        {
-            Price = result.Price,
-            Currency = result.Currency,
-            ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            Source = "Yahoo",
             FromCache = false
         };
     }

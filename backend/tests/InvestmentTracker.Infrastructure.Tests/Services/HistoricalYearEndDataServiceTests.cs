@@ -140,21 +140,17 @@ public class HistoricalYearEndDataServiceTests
     }
 
     [Fact]
-    public async Task GetOrFetchYearEndPriceAsync_CurrentYear_DoesNotCache()
+    public async Task GetOrFetchYearEndPriceAsync_CurrentYear_ReturnsNullForLivePrice()
     {
-        // Arrange
+        // Arrange - Current year should return null so frontend uses live price
         var ticker = "VT";
         var currentYear = DateTime.UtcNow.Year;
-
-        _stooqServiceMock
-            .Setup(x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new StooqPriceResult(110.00m, DateOnly.FromDateTime(DateTime.UtcNow), "USD"));
 
         // Act
         var result = await _service.GetOrFetchYearEndPriceAsync(ticker, currentYear, market: null, CancellationToken.None);
 
-        // Assert
-        result.Should().NotBeNull();
+        // Assert - Should return null (frontend should use live price for current year)
+        result.Should().BeNull();
 
         // Cache should NOT be checked or updated for current year
         _repositoryMock.Verify(
@@ -162,6 +158,14 @@ public class HistoricalYearEndDataServiceTests
             Times.Never);
         _repositoryMock.Verify(
             x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // API should NOT be called for current year
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -267,6 +271,185 @@ public class HistoricalYearEndDataServiceTests
                 d.Ticker == currencyPair && d.Year == year && d.Value == 31.25m),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    #endregion
+
+    #region Yahoo-Stooq Fallback Tests (T114)
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_USStock_TriesYahooFirst()
+    {
+        // Arrange
+        var ticker = "VT";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 105.25m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "USD"
+            });
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.US, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(105.25m);
+        result.Source.Should().Be("Yahoo");
+
+        // Verify Yahoo was called
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Verify Stooq was NOT called (Yahoo succeeded)
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_YahooFails_FallsBackToStooq()
+    {
+        // Arrange
+        var ticker = "VT";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        // Yahoo fails
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        // Stooq succeeds
+        _stooqServiceMock
+            .Setup(x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StooqPriceResult(105.25m, new DateOnly(2023, 12, 29), "USD"));
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.US, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(105.25m);
+        result.Source.Should().Be("Stooq");
+
+        // Verify both were called in order
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_BothSourcesFail_ReturnsNull()
+    {
+        // Arrange
+        var ticker = "VT";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        // Both sources fail
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        _stooqServiceMock
+            .Setup(x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StooqPriceResult?)null);
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.US, CancellationToken.None);
+
+        // Assert
+        result.Should().BeNull();
+
+        // Verify both sources were tried
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_UKStock_UsesCorrectYahooSymbol()
+    {
+        // Arrange
+        var ticker = "VWRL";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("VWRL.L", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 85.50m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "GBP"
+            });
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.UK, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(85.50m);
+        result.Currency.Should().Be("GBP");
+        result.Source.Should().Be("Yahoo");
+
+        // Verify Yahoo was called with .L suffix
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync("VWRL.L", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_EUStock_NoStooqFallback()
+    {
+        // Arrange - EU stocks should only use Yahoo, no Stooq fallback
+        var ticker = "AGAC";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        // Yahoo fails
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.EU, CancellationToken.None);
+
+        // Assert
+        result.Should().BeNull();
+
+        // Stooq should NOT be called for EU stocks
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     #endregion
