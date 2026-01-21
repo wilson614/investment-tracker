@@ -36,10 +36,18 @@ const transactionTypeColors: Record<TransactionType, string> = {
 };
 
 const marketLabels: Record<StockMarket, string> = {
-  [StockMarketEnum.TW]: '台',
-  [StockMarketEnum.US]: '美',
-  [StockMarketEnum.UK]: '英',
-  [StockMarketEnum.EU]: '歐',
+  [StockMarketEnum.TW]: 'TW',
+  [StockMarketEnum.US]: 'US',
+  [StockMarketEnum.UK]: 'UK',
+  [StockMarketEnum.EU]: 'EU',
+};
+
+// Market badge colors - distinct colors for quick visual identification
+const marketBadgeStyles: Record<StockMarket, string> = {
+  [StockMarketEnum.TW]: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+  [StockMarketEnum.US]: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  [StockMarketEnum.UK]: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  [StockMarketEnum.EU]: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
@@ -129,9 +137,11 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 {formatFullDate(tx.transactionDate)}
               </td>
               <td className="font-medium text-[var(--accent-cream)]">
-                {tx.ticker}
-                <span className="ml-1 text-xs text-[var(--text-muted)]">
-                  ({marketLabels[tx.market] || '?'})
+                <span className="flex items-center gap-2">
+                  {tx.ticker}
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${marketBadgeStyles[tx.market] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+                    {marketLabels[tx.market] || '?'}
+                  </span>
                 </span>
               </td>
               <td>

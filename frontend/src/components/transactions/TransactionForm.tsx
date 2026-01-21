@@ -8,10 +8,11 @@
  * - 若資金來源為 CurrencyLedger 且不是台股，則匯率欄位可省略，交由 backend 依帳本推導。
  * - ForeignCurrency portfolio 也不使用匯率欄位。
  */
-import { useState, useEffect, useRef } from 'react';
-import { currencyLedgerApi } from '../../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { currencyLedgerApi, stockPriceApi } from '../../services/api';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket } from '../../types';
 import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum } from '../../types';
+import { isEuronextSymbol } from '../../constants';
 
 /**
  * 判斷是否為台股 ticker（純數字或數字+英文字尾）。
@@ -52,7 +53,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
   const [selectedLedger, setSelectedLedger] = useState<CurrencyLedgerSummary | null>(null);
-  const sharesInputRef = useRef<HTMLInputElement>(null);
+  const [isDetectingMarket, setIsDetectingMarket] = useState(false);
 
   const [formData, setFormData] = useState({
     ticker: initialData?.ticker ?? '',
@@ -98,6 +99,48 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   const useCurrencyLedger = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
 
   /**
+   * 自動偵測市場：先嘗試 US，找不到再嘗試 UK。
+   * 若兩者都有，則預設 US（使用者可手動切換）。
+   */
+  const detectMarket = useCallback(async (ticker: string): Promise<StockMarket | null> => {
+    if (!ticker.trim()) return null;
+    const trimmed = ticker.trim().toUpperCase();
+
+    // 台股：數字開頭，不需要查詢 API
+    if (/^\d/.test(trimmed)) return StockMarketEnum.TW;
+
+    // .L 結尾直接判定為英股
+    if (trimmed.endsWith('.L')) return StockMarketEnum.UK;
+
+    // Euronext 股票
+    if (isEuronextSymbol(trimmed)) return 4 as StockMarket; // EU
+
+    // 對於其他 ticker，先嘗試查詢 US 市場
+    try {
+      const usQuote = await stockPriceApi.getQuote(StockMarketEnum.US, trimmed);
+      if (usQuote) {
+        // US 市場有此 ticker
+        return StockMarketEnum.US;
+      }
+    } catch {
+      // US 查詢失敗，繼續嘗試 UK
+    }
+
+    // 嘗試 UK 市場
+    try {
+      const ukQuote = await stockPriceApi.getQuote(StockMarketEnum.UK, trimmed);
+      if (ukQuote) {
+        return StockMarketEnum.UK;
+      }
+    } catch {
+      // UK 也找不到
+    }
+
+    // 都找不到，預設 US（讓使用者手動選擇）
+    return StockMarketEnum.US;
+  }, []);
+
+  /**
    * 表單欄位更新。
    *
    * 特殊規則：當使用者輸入台股 ticker 且匯率尚未填寫時，會自動補上 `1`。
@@ -120,10 +163,28 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     });
   };
 
-  // Handle ticker blur to auto-set exchange rate for Taiwan stocks
-  const handleTickerBlur = () => {
-    if (isTaiwanStock(formData.ticker) && !formData.exchangeRate) {
+  // Handle ticker blur to auto-detect market and set exchange rate for Taiwan stocks
+  const handleTickerBlur = async () => {
+    const ticker = formData.ticker.trim();
+    if (!ticker) return;
+
+    // Auto-set exchange rate for Taiwan stocks
+    if (isTaiwanStock(ticker) && !formData.exchangeRate) {
       setFormData((prev) => ({ ...prev, exchangeRate: '1' }));
+    }
+
+    // Skip market detection for Taiwan stocks (already handled by guessMarketFromTicker)
+    if (isTaiwanStock(ticker)) return;
+
+    // Detect market for non-Taiwan stocks
+    setIsDetectingMarket(true);
+    try {
+      const detectedMarket = await detectMarket(ticker);
+      if (detectedMarket !== null) {
+        setFormData((prev) => ({ ...prev, market: detectedMarket }));
+      }
+    } finally {
+      setIsDetectingMarket(false);
     }
   };
 
@@ -272,12 +333,14 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             市場
+            {isDetectingMarket && <span className="ml-2 text-xs text-[var(--text-muted)]">偵測中...</span>}
           </label>
           <select
             name="market"
             value={formData.market}
             onChange={(e) => setFormData(prev => ({ ...prev, market: Number(e.target.value) as StockMarket }))}
             className="input-dark w-full"
+            disabled={isDetectingMarket}
           >
             <option value={StockMarketEnum.TW}>台股</option>
             <option value={StockMarketEnum.US}>美股</option>
@@ -294,15 +357,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             type="date"
             name="transactionDate"
             value={formData.transactionDate}
-            onChange={(e) => {
-              handleChange(e);
-              // Auto-tab to shares input when date is complete (YYYY-MM-DD format)
-              const value = e.target.value;
-              if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-                // Small delay to allow state update
-                setTimeout(() => sharesInputRef.current?.focus(), 0);
-              }
-            }}
+            onChange={handleChange}
             required
             className="input-dark w-full"
           />
@@ -313,7 +368,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             股數
           </label>
           <input
-            ref={sharesInputRef}
             type="number"
             name="shares"
             value={formData.shares}
