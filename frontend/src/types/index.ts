@@ -402,3 +402,18 @@ export interface EtfClassificationResult {
   isConfirmed: boolean;
   source: string | null;
 }
+
+// User Benchmark Types
+export interface UserBenchmark {
+  id: string;
+  ticker: string;
+  market: StockMarket;
+  displayName?: string;
+  addedAt: string;
+}
+
+export interface CreateUserBenchmarkRequest {
+  ticker: string;
+  market: StockMarket;
+  displayName?: string;
+}

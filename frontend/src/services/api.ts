@@ -29,6 +29,8 @@ import type {
   YearPerformance,
   CalculateYearPerformanceRequest,
   EtfClassificationResult,
+  UserBenchmark,
+  CreateUserBenchmarkRequest,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -562,6 +564,26 @@ export const etfClassificationApi = {
   /** 檢查是否需要股息調整 */
   needsDividendAdjustment: (ticker: string) =>
     fetchApi<boolean>(`/etf-classification/${encodeURIComponent(ticker)}/needs-dividend-adjustment`),
+};
+
+// ============================================================================
+// 使用者基準標的 API
+// ============================================================================
+
+export const userBenchmarkApi = {
+  /** 取得使用者的所有基準標的 */
+  getAll: () => fetchApi<UserBenchmark[]>('/user-benchmarks'),
+
+  /** 新增基準標的 */
+  create: (data: CreateUserBenchmarkRequest) =>
+    fetchApi<UserBenchmark>('/user-benchmarks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** 刪除基準標的 */
+  delete: (id: string) =>
+    fetchApi<void>(`/user-benchmarks/${id}`, { method: 'DELETE' }),
 };
 
 export type { ApiErrorType };

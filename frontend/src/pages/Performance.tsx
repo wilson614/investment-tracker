@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
-import { stockPriceApi, marketDataApi } from '../services/api';
+import { stockPriceApi, marketDataApi, userBenchmarkApi } from '../services/api';
 import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytdApi';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { usePortfolio } from '../contexts/PortfolioContext';
@@ -19,7 +19,7 @@ import { MissingPriceModal } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
 import { StockMarket } from '../types';
 import { getEuronextSymbol } from '../constants';
-import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison } from '../types';
+import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison, UserBenchmark } from '../types';
 
 /**
  * 可選擇的 benchmark 清單（需與 backend `MarketYtdService.Benchmarks` 的 key 對齊）。
@@ -115,6 +115,10 @@ export function PerformancePage() {
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
   const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
 
+  // Custom user benchmarks state
+  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
+  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>({});
+
   const {
     availableYears,
     selectedYear,
@@ -162,6 +166,19 @@ export function PerformancePage() {
       }
     };
     loadFreshYtdData();
+  }, []);
+
+  // Load user's custom benchmarks
+  useEffect(() => {
+    const loadCustomBenchmarks = async () => {
+      try {
+        const benchmarks = await userBenchmarkApi.getAll();
+        setCustomBenchmarks(benchmarks);
+      } catch (err) {
+        console.error('Failed to load custom benchmarks:', err);
+      }
+    };
+    loadCustomBenchmarks();
   }, []);
 
   /**
@@ -233,6 +250,87 @@ export function PerformancePage() {
 
     fetchBenchmarkReturns();
   }, [selectedYear, selectedBenchmarks, availableYears, ytdData]);
+
+  /**
+   * 計算自訂 benchmark 的年度報酬。
+   *
+   * 規則：
+   * - 抓取 year-start (上年 12/31) 和 year-end (當年 12/31 或即時) 價格
+   * - 計算 (end - start) / start * 100
+   */
+  useEffect(() => {
+    const fetchCustomBenchmarkReturns = async () => {
+      if (!selectedYear || !availableYears || customBenchmarks.length === 0) {
+        setCustomBenchmarkReturns({});
+        return;
+      }
+
+      const isCurrentYear = selectedYear === availableYears.currentYear;
+      const newReturns: Record<string, number | null> = {};
+
+      await Promise.all(
+        customBenchmarks.map(async (benchmark) => {
+          try {
+            const yearStartDate = `${selectedYear - 1}-12-31`;
+            const yearEndDate = `${selectedYear}-12-31`;
+
+            // Get year-start price
+            const startPriceData = await marketDataApi.getHistoricalPrices(
+              [benchmark.ticker],
+              yearStartDate
+            );
+            const startPrice = startPriceData[benchmark.ticker]?.price;
+
+            if (!startPrice) {
+              newReturns[benchmark.id] = null;
+              return;
+            }
+
+            let endPrice: number | undefined;
+
+            if (isCurrentYear) {
+              // For current year, get live quote
+              try {
+                const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
+                endPrice = quote?.price;
+              } catch {
+                // Try Euronext for UK ETFs
+                const euronextInfo = getEuronextSymbol(benchmark.ticker);
+                if (euronextInfo) {
+                  const euronextQuote = await marketDataApi.getEuronextQuote(
+                    euronextInfo.isin,
+                    euronextInfo.mic,
+                    'TWD'
+                  );
+                  endPrice = euronextQuote?.price;
+                }
+              }
+            } else {
+              // For historical year, get year-end price
+              const endPriceData = await marketDataApi.getHistoricalPrices(
+                [benchmark.ticker],
+                yearEndDate
+              );
+              endPrice = endPriceData[benchmark.ticker]?.price;
+            }
+
+            if (endPrice && startPrice > 0) {
+              newReturns[benchmark.id] = ((endPrice - startPrice) / startPrice) * 100;
+            } else {
+              newReturns[benchmark.id] = null;
+            }
+          } catch (err) {
+            console.error(`Failed to calculate return for ${benchmark.ticker}:`, err);
+            newReturns[benchmark.id] = null;
+          }
+        })
+      );
+
+      setCustomBenchmarkReturns(newReturns);
+    };
+
+    fetchCustomBenchmarkReturns();
+  }, [selectedYear, availableYears, customBenchmarks]);
 
   /**
    * 從 localStorage 載入報價快取（與 Portfolio/Dashboard 共用 quote cache）。
@@ -1130,17 +1228,29 @@ export function PerformancePage() {
                               tooltip: `${selectedYear} 年度報酬率`,
                             };
                           }),
+                        /* Custom user benchmarks */
+                        ...customBenchmarks
+                          .filter(b => customBenchmarkReturns[b.id] != null)
+                          .map(b => ({
+                            label: b.displayName || b.ticker,
+                            value: customBenchmarkReturns[b.id]!,
+                            tooltip: `${selectedYear} 年度報酬率（自訂）`,
+                          })),
                       ]}
-                      height={80 + selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length * 40}
+                      height={80 + (selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length + customBenchmarks.filter(b => customBenchmarkReturns[b.id] != null).length) * 40}
                     />
                     {/* FR-134: Show which benchmarks are hidden due to missing data */}
-                    {selectedBenchmarks.some(k => benchmarkReturns[k] == null) && (
+                    {(selectedBenchmarks.some(k => benchmarkReturns[k] == null) || customBenchmarks.some(b => customBenchmarkReturns[b.id] == null)) && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">
                         以下指數因資料不可用已隱藏：
-                        {selectedBenchmarks
-                          .filter(k => benchmarkReturns[k] == null)
-                          .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k)
-                          .join('、')}
+                        {[
+                          ...selectedBenchmarks
+                            .filter(k => benchmarkReturns[k] == null)
+                            .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k),
+                          ...customBenchmarks
+                            .filter(b => customBenchmarkReturns[b.id] == null)
+                            .map(b => b.displayName || b.ticker),
+                        ].join('、')}
                       </p>
                     )}
                   </>

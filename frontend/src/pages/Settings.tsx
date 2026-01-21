@@ -9,9 +9,10 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Lock, Save } from 'lucide-react';
+import { ArrowLeft, User, Mail, Lock, Save, TrendingUp } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { BenchmarkSettings } from '../components/settings/BenchmarkSettings';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -185,6 +186,18 @@ export default function Settings() {
               {profileLoading ? '儲存中...' : '儲存變更'}
             </button>
           </form>
+        </div>
+
+        {/* Benchmark Settings Section */}
+        <div className="card-dark p-6 mb-6">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[var(--accent-peach)]" />
+            自訂基準指數
+          </h2>
+          <p className="text-sm text-[var(--text-muted)] mb-4">
+            新增自訂股票/ETF 作為績效比較基準。這些會顯示在「歷史績效」頁面的績效比較圖表中。
+          </p>
+          <BenchmarkSettings />
         </div>
 
         {/* Password Section */}
