@@ -6,7 +6,9 @@
 
 ## Summary
 
-This feature module delivers 8 UX improvements and data model enhancements:
+This feature module delivers UX improvements and data model enhancements in two phases:
+
+### Phase 1 (US1-US8) - COMPLETED ✅
 
 1. **Transaction Market Selection (P1)**: Add Market field to StockTransaction table, allowing users to select market during transaction creation instead of relying on localStorage cache
 2. **Benchmark Custom Stocks (P1)**: User-specific benchmark selection with Taiwan/international stock support via Sina/Stooq APIs
@@ -16,6 +18,18 @@ This feature module delivers 8 UX improvements and data model enhancements:
 6. **Taiwan Timezone Display (P3)**: Convert all time displays to UTC+8
 7. **Date Input Auto-Tab (P3)**: Auto-focus to next field after 4-digit year input
 8. **Fee Default Empty (P3)**: Remove auto-fill 0 for fee field
+
+### Phase 2 (US9-US17) - IN PROGRESS
+
+9. **Transaction Currency Field (P1)**: Add Currency field to transactions with auto-detection (TW→TWD, others→USD)
+10. **XIRR Current Year Warning (P2)**: Display warning for short-period XIRR calculations
+11. **Logout Cache Cleanup (P1)**: Clear user-specific caches on logout, store preferences in DB
+12. **Dashboard Layout Stability (P2)**: Prevent layout shift during loading
+13. **Multi-Market Same-Ticker (P1)**: Group positions by (ticker, market) composite key
+14. **Quote Fetching Enforcement (P1)**: No market fallback for position cards
+15. **Ticker Prediction Trigger (P3)**: Trigger on 4th character instead of blur
+16. **CSV Import Market/Currency (P2)**: Add required Market and Currency columns
+17. **Yahoo Historical Price Fallback (P2)**: Yahoo as primary, Stooq as fallback
 
 ## Technical Context
 
@@ -136,3 +150,94 @@ frontend/
 - Stock split calculations are critical for accuracy; extensive unit tests required
 - Market selection migration is one-time; reversible by setting all to null
 - UserBenchmark integrates with existing benchmark comparison UI on Performance page
+
+---
+
+## Phase 2 Key Design Decisions (US9-US17)
+
+### 6. Transaction Currency Field (US9)
+
+- **Change**: Add `Currency` field to `StockTransaction` entity (enum: TWD=0, USD=1, GBP=2, EUR=3)
+- **Auto-Detection**: Taiwan stocks (market=TW) → TWD, all others → USD
+- **User Override**: Currency dropdown in TransactionForm, user can manually select
+- **Migration**: Auto-populate existing transactions based on Market field
+
+### 7. XIRR Current Year Warning (US10)
+
+- **Condition**: Display warning when calculation period < 3 months
+- **UI**: Yellow warning icon with tooltip explaining short-term volatility
+- **Location**: Dashboard XIRR display and Performance page
+
+### 8. Logout Cache Cleanup (US11)
+
+- **Strategy**: Use `user_` prefix for user-specific localStorage keys
+- **Logout Action**: Clear all `user_*` keys + invalidate React Query cache
+- **DB Storage**: Move `ytd_prefs` and `cape_region_prefs` to User table or UserPreferences table
+- **Remove**: `selected_portfolio_id`/`default_portfolio_id` (single portfolio per user, fetch from API)
+
+### 9. Dashboard Layout Stability (US12)
+
+- **Historical Chart**: Always render container with min-height, show "No data" placeholder
+- **CAPE Section**: Fixed minimum height during loading state
+- **Implementation**: Use skeleton loaders with matching dimensions
+
+### 10. Multi-Market Same-Ticker Support (US13)
+
+- **Position Grouping**: Change from `GROUP BY ticker` to `GROUP BY (ticker, market)`
+- **Backend**: Update `GetPortfolioSummaryUseCase` to include market in grouping
+- **Frontend**: Display market badge on each position card
+
+### 11. Quote Fetching Market Enforcement (US14)
+
+- **Position Cards**: Strictly use position's market, NO fallback
+- **Ticker Prediction Only**: Allow US→UK fallback during TransactionForm auto-detection
+- **Failure Display**: Show "無報價" or last cached value
+
+### 12. Ticker Prediction Trigger (US15)
+
+- **Trigger**: Fire detection on 4th character via `onInput` handler
+- **Debounce**: Cancel previous request when new input arrives
+- **Loading State**: Show spinner in market dropdown during detection
+
+### 13. CSV Import Market/Currency (US16)
+
+- **Required Columns**: Add `Market` and `Currency` to CSV schema
+- **Validation**: Fail import if columns missing
+- **Template Update**: Include Market/Currency columns with example values
+
+### 14. Yahoo Historical Price Fallback (US17)
+
+- **Primary Source**: Yahoo Finance (already implemented in `YahooHistoricalPriceService`)
+- **Fallback Source**: Stooq (existing `StooqHistoricalPriceService`)
+- **Integration Point**: Update `HistoricalYearEndDataService` to try Yahoo first, then Stooq
+
+## Phase 2 Project Structure Additions
+
+```text
+backend/
+├── src/
+│   ├── InvestmentTracker.Domain/
+│   │   ├── Entities/
+│   │   │   └── StockTransaction.cs      # ADD: Currency field
+│   │   └── Enums/
+│   │       └── Currency.cs              # NEW: Currency enum
+│   ├── InvestmentTracker.Application/
+│   │   └── UseCases/
+│   │       └── Portfolio/
+│   │           └── GetPortfolioSummaryUseCase.cs  # MODIFY: (ticker, market) grouping
+│   └── InvestmentTracker.Infrastructure/
+│       └── Services/
+│           └── HistoricalYearEndDataService.cs    # MODIFY: Yahoo-first fallback
+
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── transactions/
+│   │   │   └── TransactionForm.tsx      # MODIFY: Currency dropdown, 4-char trigger
+│   │   └── dashboard/
+│   │       └── *.tsx                    # MODIFY: Layout stability
+│   ├── hooks/
+│   │   └── useAuth.tsx                  # MODIFY: Cache cleanup on logout
+│   └── contexts/
+│       └── PortfolioContext.tsx         # MODIFY: Remove localStorage portfolio ID
+```

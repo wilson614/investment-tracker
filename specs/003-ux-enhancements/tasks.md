@@ -201,7 +201,176 @@
 
 ---
 
-## Phase 11: Polish & Cross-Cutting Concerns
+## Phase 12: User Story 9 - Transaction Currency Field (Priority: P1) 🎯
+
+**Goal**: Add Currency field to transactions with auto-detection (TW→TWD, others→USD)
+
+**Independent Test**: Create transaction, verify currency auto-selects based on market, user can override
+
+### Implementation for User Story 9
+
+- [ ] T064 [P] [US9] Create Currency enum in `backend/src/InvestmentTracker.Domain/Enums/Currency.cs` (TWD=0, USD=1, GBP=2, EUR=3)
+- [ ] T065 [P] [US9] Add Currency property to StockTransaction entity in `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`
+- [ ] T066 [US9] Create EF Core migration for Currency field in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [ ] T067 [US9] Update CreateStockTransactionUseCase to handle Currency with auto-detection in `backend/src/InvestmentTracker.Application/UseCases/Transactions/CreateStockTransactionUseCase.cs`
+- [ ] T068 [US9] Update UpdateStockTransactionUseCase to handle Currency field in `backend/src/InvestmentTracker.Application/UseCases/Transactions/UpdateStockTransactionUseCase.cs`
+- [ ] T069 [US9] Update TransactionController DTOs to include Currency in `backend/src/InvestmentTracker.API/Controllers/TransactionController.cs`
+- [ ] T070 [P] [US9] Add currency dropdown to TransactionForm with auto-detection in `frontend/src/components/transactions/TransactionForm.tsx`
+- [ ] T071 [US9] Update TransactionList to display currency in `frontend/src/components/transactions/TransactionList.tsx`
+- [ ] T072 [US9] Add unit tests for currency auto-detection logic
+
+**Checkpoint**: Transaction currency field is fully functional
+
+---
+
+## Phase 13: User Story 10 - XIRR Current Year Warning (Priority: P2)
+
+**Goal**: Display warning when XIRR calculation period < 3 months
+
+**Independent Test**: View Dashboard/Performance with recent transactions only, verify warning appears
+
+### Implementation for User Story 10
+
+- [ ] T073 [P] [US10] Create XirrWarningBadge component in `frontend/src/components/common/XirrWarningBadge.tsx`
+- [ ] T074 [US10] Add warning logic to Dashboard XIRR display in `frontend/src/pages/Dashboard.tsx`
+- [ ] T075 [US10] Add warning logic to Performance page in `frontend/src/pages/Performance.tsx`
+- [ ] T076 [US10] Calculate earliest transaction date for warning threshold
+
+**Checkpoint**: XIRR warning displays correctly for short periods
+
+---
+
+## Phase 14: User Story 11 - Logout Cache Cleanup (Priority: P1) 🎯
+
+**Goal**: Clear user-specific caches on logout, store preferences in DB
+
+**Independent Test**: Login as User A, set preferences, logout, login as User B, verify no data leakage
+
+### Implementation for User Story 11
+
+- [ ] T077 [P] [US11] Add user_prefs columns to User table (ytd_prefs, cape_region_prefs) or create UserPreferences entity
+- [ ] T078 [US11] Create EF Core migration for user preferences in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [ ] T079 [P] [US11] Create UserPreferencesController endpoints (GET/PUT) in `backend/src/InvestmentTracker.API/Controllers/`
+- [ ] T080 [US11] Update logout handler to clear `user_*` localStorage keys in `frontend/src/hooks/useAuth.tsx`
+- [ ] T081 [US11] Invalidate React Query cache on logout
+- [ ] T082 [US11] Migrate ytd_prefs from localStorage to API calls in `frontend/src/components/dashboard/MarketYtdSection.tsx`
+- [ ] T083 [US11] Migrate cape_region_prefs from localStorage to API calls in Dashboard
+- [ ] T084 [US11] Remove legacy `selected_portfolio_id` localStorage usage from `frontend/src/contexts/PortfolioContext.tsx`
+- [ ] T085 [US11] Add integration test for logout cache cleanup
+
+**Checkpoint**: Logout properly clears user-specific data
+
+---
+
+## Phase 15: User Story 12 - Dashboard Layout Stability (Priority: P2)
+
+**Goal**: Prevent layout shift during loading with skeleton loaders
+
+**Independent Test**: Refresh Dashboard, verify no content jumping
+
+### Implementation for User Story 12
+
+- [ ] T086 [P] [US12] Create SkeletonLoader component in `frontend/src/components/common/SkeletonLoader.tsx`
+- [ ] T087 [US12] Add fixed min-height to HistoricalValueChart container in `frontend/src/components/dashboard/HistoricalValueChart.tsx`
+- [ ] T088 [US12] Add skeleton loader to CAPE section during loading
+- [ ] T089 [US12] Add skeleton loader to Market YTD section during loading
+- [ ] T090 [US12] Add "No data" placeholder when chart has no data points
+
+**Checkpoint**: Dashboard loads without layout shift
+
+---
+
+## Phase 16: User Story 13 - Multi-Market Same-Ticker Support (Priority: P1) 🎯
+
+**Goal**: Group positions by (ticker, market) composite key
+
+**Independent Test**: Add transactions for same ticker in different markets (e.g., WSML US vs WSML.L UK), verify separate positions
+
+### Implementation for User Story 13
+
+- [ ] T091 [US13] Update GetPortfolioSummaryUseCase to group by (ticker, market) in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/GetPortfolioSummaryUseCase.cs`
+- [ ] T092 [US13] Update PositionDto to include market identifier
+- [ ] T093 [US13] Add market badge to PositionCard in `frontend/src/components/portfolio/PositionCard.tsx`
+- [ ] T094 [US13] Update position detail page to handle market parameter in `frontend/src/pages/PositionDetail.tsx`
+- [ ] T095 [US13] Add integration test for multi-market position separation
+
+**Checkpoint**: Same ticker in different markets shows as separate positions
+
+---
+
+## Phase 17: User Story 14 - Quote Fetching Market Enforcement (Priority: P1) 🎯
+
+**Goal**: Strictly use position's market for quotes, no fallback for position cards
+
+**Independent Test**: View position with unavailable market data, verify "無報價" display instead of wrong market quote
+
+### Implementation for User Story 14
+
+- [ ] T096 [US14] Remove market fallback logic from quote fetching in `frontend/src/pages/Portfolio.tsx`
+- [ ] T097 [US14] Add "無報價" or "N/A" display for failed quotes in PositionCard
+- [ ] T098 [US14] Keep US→UK fallback ONLY for ticker prediction in TransactionForm
+- [ ] T099 [US14] Add unit test for market enforcement behavior
+
+**Checkpoint**: Quote fetching strictly respects position market
+
+---
+
+## Phase 18: User Story 15 - Ticker Prediction Trigger (Priority: P3)
+
+**Goal**: Trigger market detection on 4th character instead of blur
+
+**Independent Test**: Type 4 characters in ticker field, verify market dropdown shows loading spinner and updates
+
+### Implementation for User Story 15
+
+- [ ] T100 [US15] Update ticker input handler to trigger on 4th character in `frontend/src/components/transactions/TransactionForm.tsx`
+- [ ] T101 [US15] Add debounce to cancel previous detection request
+- [ ] T102 [US15] Add loading spinner to market dropdown during detection
+- [ ] T103 [US15] Preserve manual market selection after auto-detection
+
+**Checkpoint**: Ticker prediction triggers on 4th character with proper UX
+
+---
+
+## Phase 19: User Story 16 - CSV Import Market/Currency (Priority: P2)
+
+**Goal**: Add required Market and Currency columns to CSV import
+
+**Independent Test**: Import CSV with Market/Currency columns, verify transactions created correctly
+
+### Implementation for User Story 16
+
+- [ ] T104 [P] [US16] Update CSV import parser to require Market column in `backend/src/InvestmentTracker.Application/UseCases/Transactions/ImportTransactionsUseCase.cs`
+- [ ] T105 [P] [US16] Update CSV import parser to require Currency column
+- [ ] T106 [US16] Add validation error for missing Market/Currency columns
+- [ ] T107 [US16] Update CSV template with Market/Currency example values
+- [ ] T108 [US16] Update frontend import UI to show new column requirements
+- [ ] T109 [US16] Add integration test for CSV import with Market/Currency
+
+**Checkpoint**: CSV import requires and handles Market/Currency correctly
+
+---
+
+## Phase 20: User Story 17 - Yahoo Historical Price Fallback (Priority: P2)
+
+**Goal**: Use Yahoo Finance as primary source, Stooq as fallback for historical prices
+
+**Independent Test**: Fetch historical price where Yahoo has data, verify Yahoo is used; mock Yahoo failure, verify Stooq fallback
+
+### Implementation for User Story 17
+
+- [x] T110 [P] [US17] Create IYahooHistoricalPriceService interface in `backend/src/InvestmentTracker.Domain/Interfaces/`
+- [x] T111 [P] [US17] Implement YahooHistoricalPriceService in `backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs`
+- [ ] T112 [US17] Update HistoricalYearEndDataService to try Yahoo first, then Stooq in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs`
+- [ ] T113 [US17] Add logging for which source was used
+- [ ] T114 [US17] Add unit tests for fallback behavior in `backend/tests/InvestmentTracker.Infrastructure.Tests/`
+- [ ] T115 [US17] Add error display when both Yahoo and Stooq fail in frontend
+
+**Checkpoint**: Historical price fetching uses Yahoo as primary with Stooq fallback
+
+---
+
+## Phase 21: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final improvements and validation
 
@@ -217,37 +386,51 @@
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phase 3-10)**: All depend on Foundational phase completion
-  - User stories can proceed in priority order (P1 → P2 → P3)
-  - US1 and US2 are both P1, can be done in parallel
-- **Polish (Phase 11)**: Depends on all desired user stories being complete
+- **Setup (Phase 1)**: No dependencies - can start immediately ✅
+- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories ✅
+- **User Stories Phase 1 (Phase 3-10)**: US1-US8 - All depend on Foundational phase ✅
+- **User Stories Phase 2 (Phase 12-20)**: US9-US17 - Depends on Phase 1 user stories
+  - US9, US11, US13, US14 are P1 (critical)
+  - US10, US12, US16, US17 are P2 (important)
+  - US15 is P3 (enhancement)
+- **Polish (Phase 21)**: Depends on all desired user stories being complete
 
-### User Story Dependencies
+### User Story Dependencies (Phase 1 - Complete)
 
-- **US1 (P1)**: Can start after Phase 2 - No dependencies on other stories
-- **US2 (P1)**: Can start after Phase 2 - No dependencies on other stories
-- **US3 (P2)**: Can start after Phase 2 - Uses existing performance API
-- **US4 (P2)**: Can start after Phase 2 - Affects position calculations (test carefully)
-- **US5 (P3)**: Can start after Phase 2 - Simple route change
-- **US6 (P3)**: Can start after Phase 2 - Frontend-only changes
-- **US7 (P3)**: Can start after Phase 2 - Frontend-only changes
-- **US8 (P3)**: Can start after Phase 2 - Frontend-only changes
+- **US1 (P1)**: Transaction Market Selection ✅
+- **US2 (P1)**: Benchmark Custom Stocks ✅
+- **US3 (P2)**: Dashboard Historical Chart ✅
+- **US4 (P2)**: Stock Split Settings ✅
+- **US5 (P3)**: Default Dashboard Landing ✅
+- **US6 (P3)**: Taiwan Timezone Display ✅
+- **US7 (P3)**: Date Input Auto-Tab ✅
+- **US8 (P3)**: Fee Default Empty ✅
+
+### User Story Dependencies (Phase 2 - In Progress)
+
+- **US9 (P1)**: Transaction Currency - Depends on US1 (Market field exists)
+- **US10 (P2)**: XIRR Warning - No dependencies
+- **US11 (P1)**: Logout Cache Cleanup - No dependencies
+- **US12 (P2)**: Dashboard Layout Stability - Depends on US3 (Historical chart exists)
+- **US13 (P1)**: Multi-Market Same-Ticker - Depends on US1 (Market field exists)
+- **US14 (P1)**: Quote Fetching Enforcement - Depends on US13 (Multi-market support)
+- **US15 (P3)**: Ticker Prediction Trigger - Depends on US1 (Market dropdown exists)
+- **US16 (P2)**: CSV Import Market/Currency - Depends on US9 (Currency field exists)
+- **US17 (P2)**: Yahoo Historical Fallback - No dependencies
 
 ### Parallel Opportunities
 
-Within Phase 2:
+Within Phase 2 (Foundational):
 - T005, T006, T007, T008 can all run in parallel
 
-Within US1:
-- T011, T012, T017, T018 can run in parallel
+Within US9 (Currency):
+- T064, T065, T070 can run in parallel
 
-Within US2:
-- T023, T024, T025, T026, T027, T029 can run in parallel
+Within US11 (Cache Cleanup):
+- T077, T079 can run in parallel
 
-Within US4:
-- T036-T041, T043, T044, T046 can run in parallel
+Within US17 (Yahoo Fallback):
+- T110, T111 can run in parallel
 
 ---
 
@@ -267,29 +450,49 @@ Task: "Add guessMarket utility function in frontend/src/utils/marketUtils.ts"
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+### Phase 1 Complete (US1-US8) ✅
 
-1. Complete Phase 1: Setup (migrations)
-2. Complete Phase 2: Foundational (entities, DbContext)
-3. Complete Phase 3: User Story 1 (market selection)
-4. **STOP and VALIDATE**: Test market selection end-to-end
-5. Deploy/demo if ready
+All Phase 1 user stories have been implemented and tested.
 
-### Incremental Delivery
+### Phase 2 Incremental Delivery (US9-US17)
 
-1. Setup + Foundational → Foundation ready
-2. Add US1 (Market Selection) → Test → Deploy (MVP!)
-3. Add US2 (Benchmark) → Test → Deploy
-4. Add US3-4 (Chart, Split) → Test → Deploy
-5. Add US5-8 (UX Polish) → Test → Deploy
+Recommended execution order based on dependencies:
+
+1. **Wave 1 - No Dependencies** (Can start immediately):
+   - US10 (XIRR Warning) - P2
+   - US11 (Logout Cache Cleanup) - P1 🎯
+   - US17 (Yahoo Historical Fallback) - P2
+
+2. **Wave 2 - Depends on US1** (Market field already exists):
+   - US9 (Transaction Currency) - P1 🎯
+   - US13 (Multi-Market Same-Ticker) - P1 🎯
+   - US15 (Ticker Prediction Trigger) - P3
+
+3. **Wave 3 - Depends on Wave 2**:
+   - US14 (Quote Fetching Enforcement) - P1 🎯 - Depends on US13
+   - US16 (CSV Import Market/Currency) - P2 - Depends on US9
+
+4. **Wave 4 - Dashboard Enhancement**:
+   - US12 (Dashboard Layout Stability) - P2 - Depends on US3
+
+5. **Polish Phase** - Run after all user stories complete
 
 ---
 
 ## Notes
+
+### General
 
 - [P] tasks = different files, no dependencies
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
-- US4 (Stock Split) affects position calculations - test thoroughly with edge cases
+
+### Phase 2 Specific Notes
+
+- **US9 (Currency)**: Auto-detection logic: TW market → TWD, all others → USD
+- **US11 (Cache)**: localStorage keys with `user_` prefix will be cleared on logout; prefs stored in DB
+- **US13 (Multi-Market)**: Position grouping key changes from `ticker` to `(ticker, market)` - test carefully
+- **US14 (Quote Enforcement)**: No market fallback for position cards; US→UK fallback ONLY for ticker prediction
+- **US17 (Yahoo Fallback)**: Yahoo Finance as primary source, Stooq as fallback

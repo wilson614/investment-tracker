@@ -136,7 +136,8 @@ Transaction form fee field defaults to empty instead of auto-filling 0.
 
 ### Edge Cases
 
-- When selected market API cannot fetch quote, system should try other markets as fallback
+- When position card quote fetch fails, display "無報價" or last cached value (NO market fallback - see FR-340)
+- When ticker prediction in TransactionForm fails for US market, MAY try UK market as fallback (FR-342)
 - When stock split record date is before user's first transaction, should handle correctly
 - When Benchmark custom stock stops trading, should display last available quote
 - When non-numeric characters entered in year field, should not trigger auto-tab
@@ -281,18 +282,18 @@ CSV import must include Market (required) and Currency (required) columns for pr
 
 ### User Story 17 - Yahoo Historical Price Fallback (Priority: P2)
 
-Implement Yahoo Finance as fallback for historical price fetching when Stooq is unavailable or rate-limited. Evaluate whether Yahoo should become primary source.
+Use Yahoo Finance as PRIMARY source for historical price fetching, with Stooq as fallback when Yahoo is unavailable or fails.
 
-**Why this priority**: Stooq has rate limits and occasional availability issues; having fallback improves reliability.
+**Why this priority**: Yahoo provides more reliable data; Stooq serves as backup for edge cases.
 
-**Independent Test**: Block Stooq API, verify system successfully fetches historical prices from Yahoo.
+**Independent Test**: Fetch historical price, verify Yahoo is used first; mock Yahoo failure, verify Stooq fallback works.
 
 **Acceptance Scenarios**:
 
-1. **Given** Stooq returns rate limit error, **When** fetching historical price, **Then** automatically fallback to Yahoo
-2. **Given** Stooq timeout or error, **When** fetching, **Then** retry with Yahoo as fallback
-3. **Given** Yahoo is configured as primary, **When** Yahoo fails, **Then** fallback to Stooq
-4. **Given** both sources fail, **When** displaying, **Then** show appropriate error message
+1. **Given** system fetches historical price, **When** Yahoo is available, **Then** use Yahoo as primary source
+2. **Given** Yahoo returns error or timeout, **When** fetching historical price, **Then** automatically fallback to Stooq
+3. **Given** both Yahoo and Stooq fail, **When** displaying, **Then** show appropriate error message
+4. **Given** successful fetch from either source, **When** logging, **Then** record which source was used
 
 ---
 
@@ -312,7 +313,7 @@ Implement Yahoo Finance as fallback for historical price fetching when Stooq is 
 - **FR-307**: System MUST support user adding custom stocks as Benchmark (per-user storage)
 - **FR-308**: System MUST support Taiwan stock quotes (real-time Sina, historical Stooq)
 - **FR-309**: System MUST support international stock quotes (real-time Sina, historical Stooq)
-- **FR-310**: System MUST display dividend impact warning next to non-accumulating international ETFs
+- **FR-310**: System MUST display dividend impact warning next to non-accumulating international ETFs (note: informational warning only, no per-stock detection; applies to all international ETF benchmarks)
 
 #### Dashboard Historical Chart
 - **FR-311**: Dashboard MUST display historical value line chart (year-end snapshots)
