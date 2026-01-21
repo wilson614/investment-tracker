@@ -59,7 +59,7 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
   - 功能規格：`specs/<module-name>/spec.md`
   - 實作計畫：`specs/<module-name>/plan.md`
   - 任務清單：`specs/<module-name>/tasks.md`
-- Speckit 配置/模板存放於 `.speckit/` 目錄
+- Speckit 配置/模板存放於 `.specify/` 目錄
 - 目前主要模組：`specs/001-portfolio-tracker/`
 
 #### 標準流程（必須依序執行）
