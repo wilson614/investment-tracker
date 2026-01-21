@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Application.Interfaces;
 
@@ -12,9 +13,14 @@ public interface IHistoricalYearEndDataService
     /// Gets year-end stock price from cache, or fetches from API and caches it.
     /// Returns null if price cannot be obtained (requires manual entry).
     /// </summary>
+    /// <param name="ticker">Stock ticker symbol</param>
+    /// <param name="year">Year for the year-end price</param>
+    /// <param name="market">Stock market (used to determine data source; EU market requires manual entry)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     Task<YearEndPriceResult?> GetOrFetchYearEndPriceAsync(
         string ticker,
         int year,
+        StockMarket? market = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

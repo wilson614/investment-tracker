@@ -17,6 +17,7 @@ public class HistoricalPerformanceService(
     IStockTransactionRepository transactionRepository,
     PortfolioCalculator portfolioCalculator,
     ICurrentUserService currentUserService,
+    IHistoricalYearEndDataService historicalYearEndDataService,
     ILogger<HistoricalPerformanceService> logger)
     : IHistoricalPerformanceService
 {
@@ -129,9 +130,99 @@ public class HistoricalPerformanceService(
         // Year-start prices: use provided YearStartPrices, or fall back to YearEndPrices
         var yearStartPrices = request.YearStartPrices != null
             ? new Dictionary<string, YearEndPriceInfo>(request.YearStartPrices, StringComparer.OrdinalIgnoreCase)
-            : yearEndPrices;
+            : new Dictionary<string, YearEndPriceInfo>(StringComparer.OrdinalIgnoreCase);
 
-        // Check year-end prices for positions
+        // Build ticker -> market lookup from transactions
+        var tickerMarketLookup = validTransactions
+            .GroupBy(t => t.Ticker, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Market, StringComparer.OrdinalIgnoreCase);
+
+        // Auto-fetch missing year-end prices using HistoricalYearEndDataService (in parallel)
+        var yearEndMissingTickers = yearEndPositions
+            .Where(p => !yearEndPrices.ContainsKey(p.Ticker))
+            .Select(p => p.Ticker)
+            .Distinct()
+            .ToList();
+
+        // Fetch year-end prices sequentially to avoid DbContext concurrency issues
+        foreach (var ticker in yearEndMissingTickers)
+        {
+            try
+            {
+                tickerMarketLookup.TryGetValue(ticker, out var market);
+                var priceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                    ticker, year, market, cancellationToken);
+                if (priceResult == null) continue;
+
+                // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
+                var currency = GetCurrencyForMarket(market);
+
+                decimal exchangeRate = 1m;
+                if (currency != "TWD")
+                {
+                    var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
+                        currency, portfolio.HomeCurrency, year, cancellationToken);
+                    exchangeRate = rateResult?.Rate ?? 1m;
+                }
+
+                yearEndPrices[ticker] = new YearEndPriceInfo
+                {
+                    Price = priceResult.Price,
+                    ExchangeRate = exchangeRate
+                };
+                logger.LogInformation("Auto-fetched year-end price for {Ticker}/{Year}", ticker, year);
+            }
+            catch (Exception ex)
+            {
+                // Log and continue - this ticker will be added to missingPrices later
+                logger.LogWarning(ex, "Failed to fetch year-end price for {Ticker}/{Year}, will be added to missing prices", ticker, year);
+            }
+        }
+
+        // Auto-fetch missing year-start prices (previous year end)
+        var yearStartYear = year - 1;
+        var yearStartMissingTickers = yearStartPositions
+            .Where(p => !yearStartPrices.ContainsKey(p.Ticker))
+            .Select(p => p.Ticker)
+            .Distinct()
+            .ToList();
+
+        // Fetch year-start prices sequentially to avoid DbContext concurrency issues
+        foreach (var ticker in yearStartMissingTickers)
+        {
+            try
+            {
+                tickerMarketLookup.TryGetValue(ticker, out var market);
+                var priceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                    ticker, yearStartYear, market, cancellationToken);
+                if (priceResult == null) continue;
+
+                // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
+                var currency = GetCurrencyForMarket(market);
+
+                decimal exchangeRate = 1m;
+                if (currency != "TWD")
+                {
+                    var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
+                        currency, portfolio.HomeCurrency, yearStartYear, cancellationToken);
+                    exchangeRate = rateResult?.Rate ?? 1m;
+                }
+
+                yearStartPrices[ticker] = new YearEndPriceInfo
+                {
+                    Price = priceResult.Price,
+                    ExchangeRate = exchangeRate
+                };
+                logger.LogInformation("Auto-fetched year-start price for {Ticker}/{Year}", ticker, yearStartYear);
+            }
+            catch (Exception ex)
+            {
+                // Log and continue - this ticker will be added to missingPrices later
+                logger.LogWarning(ex, "Failed to fetch year-start price for {Ticker}/{Year}, will be added to missing prices", ticker, yearStartYear);
+            }
+        }
+
+        // Check year-end prices for positions (after auto-fetch)
         foreach (var position in yearEndPositions)
         {
             if (!yearEndPrices.ContainsKey(position.Ticker))
@@ -483,5 +574,21 @@ public class HistoricalPerformanceService(
             return nonTaiwanEntry.Value.ExchangeRate;
         }
         return fallback > 0 ? fallback : 30m;
+    }
+
+    /// <summary>
+    /// 根據市場判斷計價貨幣。
+    /// 與即時報價服務 (StockPriceService) 使用相同邏輯。
+    /// </summary>
+    private static string GetCurrencyForMarket(StockMarket? market)
+    {
+        return market switch
+        {
+            StockMarket.TW => "TWD",
+            StockMarket.US => "USD",
+            StockMarket.UK => "USD", // UK 市場多數 ETF 以 USD 計價
+            StockMarket.EU => "USD", // Euronext 多數 ETF 以 USD 計價
+            _ => "USD" // 預設 USD
+        };
     }
 }

@@ -16,6 +16,7 @@ public class HistoricalYearEndDataService(
     IHistoricalYearEndDataRepository repository,
     IStooqHistoricalPriceService stooqService,
     ITwseStockHistoricalPriceService twseStockService,
+    IYahooHistoricalPriceService yahooService,
     ILogger<HistoricalYearEndDataService> logger) : IHistoricalYearEndDataService
 {
     /// <summary>
@@ -25,14 +26,15 @@ public class HistoricalYearEndDataService(
     public async Task<YearEndPriceResult?> GetOrFetchYearEndPriceAsync(
         string ticker,
         int year,
+        StockMarket? market = null,
         CancellationToken cancellationToken = default)
     {
-        // 不快取當年度（YTD 價格仍在變動）
+        // 不快取當年度（YTD 價格仍在變動）- 直接回傳 null，讓前端用即時報價
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
-            logger.LogDebug("Year {Year} is current year or future - not caching", year);
-            return await FetchPriceFromApiAsync(ticker, year, cancellationToken);
+            logger.LogDebug("Year {Year} is current year or future - returning null (frontend should provide live price)", year);
+            return null;
         }
 
         // 先查快取
@@ -52,7 +54,7 @@ public class HistoricalYearEndDataService(
 
         // 從 API 抓取
         logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", ticker, year);
-        var apiResult = await FetchPriceFromApiAsync(ticker, year, cancellationToken);
+        var apiResult = await FetchPriceFromApiAsync(ticker, year, market, cancellationToken);
 
         if (apiResult != null)
         {
@@ -94,12 +96,12 @@ public class HistoricalYearEndDataService(
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
 
-        // 不快取當年度
+        // 不快取當年度 - 直接回傳 null，讓前端用即時匯率
         var currentYear = DateTime.UtcNow.Year;
         if (year >= currentYear)
         {
-            logger.LogDebug("Year {Year} is current year or future - not caching exchange rate", year);
-            return await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
+            logger.LogDebug("Year {Year} is current year or future - returning null for exchange rate", year);
+            return null;
         }
 
         // 先查快取
@@ -230,16 +232,25 @@ public class HistoricalYearEndDataService(
     private async Task<YearEndPriceResult?> FetchPriceFromApiAsync(
         string ticker,
         int year,
+        StockMarket? market,
         CancellationToken cancellationToken)
     {
         try
         {
-            // 判斷是否為台股（例如 2330、0050 這類純數字代號）
-            if (IsTaiwanStock(ticker))
+            // 根據 market 參數判斷資料來源
+            // 台股：使用 TWSE API
+            if (market == StockMarket.TW || (market == null && IsTaiwanStock(ticker)))
             {
                 return await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
             }
 
+            // 歐股 (Euronext)：使用 Yahoo Finance API
+            if (market == StockMarket.EU)
+            {
+                return await FetchEuronextStockPriceAsync(ticker, year, cancellationToken);
+            }
+
+            // 美股、英股：使用 Stooq API
             // 以 12/31 作為目標日期（Stooq 會回傳最近的交易日）
             var targetDate = new DateOnly(year, 12, 31);
             var result = await stooqService.GetStockPriceAsync(ticker, targetDate, cancellationToken);
@@ -304,6 +315,33 @@ public class HistoricalYearEndDataService(
             Currency = "TWD", // 台股皆以 TWD 計價
             ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             Source = "TWSE",
+            FromCache = false
+        };
+    }
+
+    /// <summary>
+    /// 從 Yahoo Finance 取得 Euronext 歐股歷史價格。
+    /// </summary>
+    private async Task<YearEndPriceResult?> FetchEuronextStockPriceAsync(
+        string ticker,
+        int year,
+        CancellationToken cancellationToken)
+    {
+        var targetDate = new DateOnly(year, 12, 31);
+        var result = await yahooService.GetHistoricalPriceAsync(ticker, targetDate, cancellationToken);
+
+        if (result == null)
+        {
+            logger.LogWarning("Could not fetch year-end price for Euronext stock {Ticker}/{Year} from Yahoo Finance", ticker, year);
+            return null;
+        }
+
+        return new YearEndPriceResult
+        {
+            Price = result.Price,
+            Currency = result.Currency,
+            ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            Source = "Yahoo",
             FromCache = false
         };
     }

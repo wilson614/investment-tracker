@@ -18,6 +18,7 @@ public class HistoricalYearEndDataServiceTests
     private readonly Mock<IHistoricalYearEndDataRepository> _repositoryMock;
     private readonly Mock<IStooqHistoricalPriceService> _stooqServiceMock;
     private readonly Mock<ITwseStockHistoricalPriceService> _twseServiceMock;
+    private readonly Mock<IYahooHistoricalPriceService> _yahooServiceMock;
     private readonly HistoricalYearEndDataService _service;
 
     public HistoricalYearEndDataServiceTests()
@@ -25,12 +26,14 @@ public class HistoricalYearEndDataServiceTests
         _repositoryMock = new Mock<IHistoricalYearEndDataRepository>();
         _stooqServiceMock = new Mock<IStooqHistoricalPriceService>();
         _twseServiceMock = new Mock<ITwseStockHistoricalPriceService>();
+        _yahooServiceMock = new Mock<IYahooHistoricalPriceService>();
         var loggerMock = new Mock<ILogger<HistoricalYearEndDataService>>();
 
         _service = new HistoricalYearEndDataService(
             _repositoryMock.Object,
             _stooqServiceMock.Object,
             _twseServiceMock.Object,
+            _yahooServiceMock.Object,
             loggerMock.Object);
     }
 
@@ -51,7 +54,7 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync(cachedEntry);
 
         // Act
-        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, CancellationToken.None);
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
@@ -80,7 +83,7 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync(new StooqPriceResult(105.25m, new DateOnly(2023, 12, 29), "USD"));
 
         // Act
-        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, CancellationToken.None);
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
@@ -120,9 +123,9 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync(new StooqPriceResult(105.25m, new DateOnly(2023, 12, 29), "USD"));
 
         // Act - First call
-        var result1 = await _service.GetOrFetchYearEndPriceAsync(ticker, year, CancellationToken.None);
+        var result1 = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
         // Act - Second call
-        var result2 = await _service.GetOrFetchYearEndPriceAsync(ticker, year, CancellationToken.None);
+        var result2 = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
 
         // Assert
         result1.Should().NotBeNull();
@@ -148,7 +151,7 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync(new StooqPriceResult(110.00m, DateOnly.FromDateTime(DateTime.UtcNow), "USD"));
 
         // Act
-        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, currentYear, CancellationToken.None);
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, currentYear, market: null, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
@@ -178,7 +181,7 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync(new TwseStockPriceResult(580.00m, new DateOnly(2023, 12, 29), ticker));
 
         // Act
-        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, CancellationToken.None);
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();

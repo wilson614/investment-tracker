@@ -287,49 +287,28 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
     /// <summary>
     /// 判斷 ticker 的實際交易幣別。
     /// 許多英國掛牌 ETF（特別是 Vanguard UCITS ETFs）以 USD 計價。
+    /// 為與即時報價服務一致，UK 市場預設為 USD。
     /// </summary>
     private static string GetTradingCurrency(string baseTicker, string fullSymbol)
     {
-        // LSE 常見的 USD 計價 ETF
-        // 多為 Vanguard UCITS ETFs 的累積／配息版本
-        var usdDenominatedEtfs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        // 明確 GBP 計價的 UK 股票（真正的英國本土股票）
+        var gbpDenominatedStocks = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            // Vanguard FTSE All-World
-            "VWRA", "VWRD", "VWRL",
-            // Vanguard S&P 500
-            "VUAA", "VUSA",
-            // Vanguard FTSE Developed World
-            "VHVE", "VHVG",
-            // Vanguard FTSE Developed Europe
-            "VEUR", "VERX", "VEUA",
-            // Vanguard FTSE Emerging Markets
-            "VFEM", "VFEG",
-            // Vanguard FTSE Japan
-            "VJPA", "VJPN",
-            // iShares Core MSCI World
-            "SWDA", "IWDA",
-            // iShares Core S&P 500
-            "CSPX",
-            // iShares MSCI EM
-            "EIMI", "EMIM",
-            // Xtrackers
-            "XRSU", "EXUS",
-            // HSBC China
-            "HCHA",
-            // iShares World Small Cap
-            "WSML"
+            // 如需要支援 GBP 計價的英國本土股票，可在此新增
         };
-
-        if (usdDenominatedEtfs.Contains(baseTicker))
-        {
-            return "USD";
-        }
 
         // 預設以交易所 suffix 推導幣別
         var lowerSymbol = fullSymbol.ToLowerInvariant();
+
+        // UK 市場：預設為 USD（與即時報價服務一致）
+        // 多數投資者持有的 UK ETF（如 VWRA、WSML 等）都是 USD 計價
+        if (lowerSymbol.EndsWith(".uk"))
+        {
+            return gbpDenominatedStocks.Contains(baseTicker) ? "GBP" : "USD";
+        }
+
         return lowerSymbol switch
         {
-            _ when lowerSymbol.EndsWith(".uk") => "GBP",
             _ when lowerSymbol.EndsWith(".de") => "EUR",
             _ when lowerSymbol.EndsWith(".fr") => "EUR",
             _ when lowerSymbol.EndsWith(".nl") => "EUR",
