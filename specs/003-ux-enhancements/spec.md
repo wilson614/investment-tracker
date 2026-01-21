@@ -352,8 +352,9 @@ Implement Yahoo Finance as fallback for historical price fetching when Stooq is 
 #### [NEW] Logout Cache Cleanup (US11)
 - **FR-330**: Logout MUST clear all localStorage keys with `user_` prefix (quote caches, user-specific state)
 - **FR-331**: Logout MUST invalidate all React Query caches
-- **FR-332**: Critical user preferences (selected portfolio, last viewed position) MUST be stored in database, not localStorage
+- **FR-332**: Chart display preferences (ytd_prefs, cape_region_prefs) MUST be stored in database for cross-device sync
 - **FR-333**: localStorage keys MUST use `user_` prefix for user-specific data; shared settings (theme) use different prefix or no prefix
+- **FR-333a**: Remove `selected_portfolio_id`/`default_portfolio_id` from localStorage - single portfolio per user, always fetch from API
 
 #### [NEW] Dashboard Layout Stability (US12)
 - **FR-334**: Historical chart section MUST maintain consistent height (show placeholder when empty)
@@ -428,6 +429,8 @@ Implement Yahoo Finance as fallback for historical price fetching when Stooq is 
 - Q: Yahoo/Stooq historical price source priority? → A: Yahoo as primary source, Stooq as fallback (prioritizing stability)
 - Q: Default currency for UK/EU stocks? → A: All non-Taiwan stocks default to USD; user can manually change to GBP/EUR
 - Q: localStorage cleanup strategy on logout? → A: Use `user_` prefix for user-specific keys, clear only these on logout; critical preferences (selected portfolio) should be stored in DB
+- Q: Portfolio selection mechanism needed? → A: No - spec defines single portfolio per user (FR-020/FR-021); remove `selected_portfolio_id`/`default_portfolio_id` from localStorage, always fetch from API
+- Q: Chart display preferences (ytd_prefs, cape_region_prefs) storage? → A: Store in database for cross-device sync
 
 ## Assumptions
 
