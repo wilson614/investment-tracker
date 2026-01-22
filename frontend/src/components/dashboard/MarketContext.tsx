@@ -364,7 +364,7 @@ export function MarketContext({ className = '' }: MarketContextProps) {
       <div className="p-5">
         {isLoading && !data ? (
           <div className="max-h-[240px] overflow-y-auto">
-            {Array.from({ length: 5 }).map((_, i) => (
+            {Array.from({ length: selectedRegions.length || 5 }).map((_, i) => (
               <CapeRowSkeleton key={i} />
             ))}
           </div>

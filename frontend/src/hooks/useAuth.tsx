@@ -80,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 清除市場資料快取（登入時應重新取得）
     localStorage.removeItem('ytd_data_cache');
     localStorage.removeItem('cape_data_cache');
+    localStorage.removeItem('custom_benchmark_ytd_cache');
 
     // 移除導覽快取（不應跨帳號保留）
     localStorage.removeItem('default_portfolio_id');

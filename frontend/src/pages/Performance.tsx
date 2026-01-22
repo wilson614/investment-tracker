@@ -38,7 +38,7 @@ const BENCHMARK_OPTIONS = [
   { key: 'Europe', label: '歐洲 (VEUA)', symbol: 'VEUA' },
   { key: 'Japan', label: '日本 (VJPA)', symbol: 'VJPA' },
   { key: 'China', label: '中國 (HCHA)', symbol: 'HCHA' },
-  { key: 'Taiwan 0050', label: '台灣 0050', symbol: '0050' },
+  { key: 'Taiwan 0050', label: '台灣', symbol: '0050' },
 ] as const;
 
 // Shared localStorage key with dashboard MarketYtdSection
@@ -1198,7 +1198,10 @@ export function PerformancePage() {
                             已達上限（最多 10 個）
                           </div>
                         )}
-                        <div className="grid grid-cols-2 gap-2">
+                        {/* 系統內建基準 */}
+                        <div className="mb-4">
+                          <h4 className="text-xs text-[var(--text-muted)] mb-2">系統內建基準</h4>
+                          <div className="grid grid-cols-2 gap-2">
                           {BENCHMARK_OPTIONS.map((option) => {
                             const isSelected = tempSelectedBenchmarks.includes(option.key);
                             const isAtLimit = tempSelectedBenchmarks.length >= 10;
@@ -1237,7 +1240,55 @@ export function PerformancePage() {
                             </button>
                           );
                           })}
+                          </div>
                         </div>
+                        {/* 自訂基準 */}
+                        {customBenchmarks.length > 0 && (
+                          <div>
+                            <h4 className="text-xs text-[var(--text-muted)] mb-2">自訂基準</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                              {customBenchmarks.map((b) => {
+                                const customKey = `custom_${b.id}`;
+                                const isSelected = tempSelectedBenchmarks.includes(customKey);
+                                const isAtLimit = tempSelectedBenchmarks.length >= 10;
+                                const isDisabled = !isSelected && isAtLimit;
+
+                                return (
+                                  <button
+                                    key={customKey}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        if (tempSelectedBenchmarks.length > 1) {
+                                          setTempSelectedBenchmarks(tempSelectedBenchmarks.filter(k => k !== customKey));
+                                        }
+                                      } else if (!isAtLimit) {
+                                        setTempSelectedBenchmarks([...tempSelectedBenchmarks, customKey]);
+                                      }
+                                    }}
+                                    disabled={isDisabled}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                                      isSelected
+                                        ? 'border-[var(--accent-peach)] bg-[var(--accent-peach)]/10 text-[var(--text-primary)]'
+                                        : isDisabled
+                                          ? 'border-[var(--border-color)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                                          : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--text-muted)]'
+                                    }`}
+                                  >
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                                      isSelected
+                                        ? 'bg-[var(--accent-peach)] border-[var(--accent-peach)]'
+                                        : 'border-[var(--text-muted)]'
+                                    }`}>
+                                      {isSelected && <Check className="w-3 h-3 text-[var(--bg-primary)]" />}
+                                    </div>
+                                    <span className="text-sm truncate">{b.displayName || b.ticker}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="px-5 py-4 border-t border-[var(--border-color)] flex justify-end gap-3">
                         <button

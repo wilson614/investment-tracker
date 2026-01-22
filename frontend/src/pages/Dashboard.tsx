@@ -13,7 +13,7 @@ import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
 import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../components/dashboard';
 import { AssetAllocationPieChart } from '../components/charts';
 import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
-import { SkeletonChart } from '../components/common/SkeletonLoader';
+import { Skeleton } from '../components/common/SkeletonLoader';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 import { refreshCapeData } from '../services/capeApi';
@@ -531,7 +531,7 @@ export function DashboardPage() {
         <div className="card-dark p-6 mb-6" style={{ minHeight: 356 }}>
           <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷年淨值變化</h2>
           {isLoadingHistorical ? (
-            <SkeletonChart height="h-[280px]" className="!p-0 !bg-transparent" />
+            <Skeleton width="w-full" height="h-[280px]" />
           ) : historicalData.length > 0 ? (
             <HistoricalValueChart
               data={historicalData}
