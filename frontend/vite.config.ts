@@ -4,8 +4,13 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { execSync } from 'child_process'
 
-// Get version from git tag (e.g., "v1.1.0" or "v1.1.0-5-g1234567" for dev)
-function getGitVersion(): string {
+// Get version from environment variable (CI) or git tag (local dev)
+function getAppVersion(): string {
+  // CI 環境透過 build-arg 傳入
+  if (process.env.VITE_APP_VERSION) {
+    return process.env.VITE_APP_VERSION
+  }
+  // 本機開發從 git tag 讀取
   try {
     return execSync('git describe --tags --always').toString().trim()
   } catch {
@@ -17,7 +22,7 @@ function getGitVersion(): string {
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
-    __APP_VERSION__: JSON.stringify(getGitVersion()),
+    __APP_VERSION__: JSON.stringify(getAppVersion()),
   },
   server: {
     port: 3000,

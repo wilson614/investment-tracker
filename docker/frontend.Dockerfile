@@ -10,6 +10,10 @@ WORKDIR /app
 ARG VITE_API_URL=http://localhost:5000/api
 ENV VITE_API_URL=$VITE_API_URL
 
+# Build argument for app version (from git describe in CI)
+ARG VITE_APP_VERSION=dev
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
+
 # Copy package files first for layer caching
 COPY package*.json ./
 
