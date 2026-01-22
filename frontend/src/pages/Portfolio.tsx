@@ -327,7 +327,7 @@ export function PortfolioPage() {
         transactionType: data.transactionType,
         shares: data.shares,
         pricePerShare: data.pricePerShare,
-        exchangeRate: data.exchangeRate ?? 1,
+        exchangeRate: data.exchangeRate,
         fees: data.fees,
         fundSource: data.fundSource,
         currencyLedgerId: data.currencyLedgerId,

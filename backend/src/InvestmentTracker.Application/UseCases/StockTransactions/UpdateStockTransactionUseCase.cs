@@ -15,7 +15,8 @@ public class UpdateStockTransactionUseCase(
     IStockTransactionRepository transactionRepository,
     IPortfolioRepository portfolioRepository,
     ICurrentUserService currentUserService,
-    PortfolioCalculator portfolioCalculator)
+    PortfolioCalculator portfolioCalculator,
+    ITransactionDateExchangeRateService txDateFxService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         Guid transactionId,
@@ -35,13 +36,36 @@ public class UpdateStockTransactionUseCase(
         // 保留原始值供後續計算使用
         var originalType = transaction.TransactionType;
 
+        // 處理匯率：若未提供，自動抓取交易日匯率
+        var exchangeRate = request.ExchangeRate;
+        if (exchangeRate is not > 0)
+        {
+            // 台股以數字開頭（如 0050、2330），匯率為 1.0
+            if (!string.IsNullOrEmpty(request.Ticker) && char.IsDigit(request.Ticker[0]))
+            {
+                exchangeRate = 1.0m;
+            }
+            else
+            {
+                // 非台股，自動抓取交易日當天的歷史匯率
+                var fxResult = await txDateFxService.GetOrFetchAsync(
+                    portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+
+                if (fxResult == null)
+                    throw new BusinessRuleException(
+                        $"無法取得 {portfolio.BaseCurrency}/{portfolio.HomeCurrency} 於 {request.TransactionDate:yyyy-MM-dd} 的匯率，請手動輸入匯率");
+
+                exchangeRate = fxResult.Rate;
+            }
+        }
+
         // 更新交易屬性（包含 ticker 與交易類型）
         transaction.SetTicker(request.Ticker);
         transaction.SetTransactionType(request.TransactionType);
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetShares(request.Shares);
         transaction.SetPricePerShare(request.PricePerShare);
-        transaction.SetExchangeRate(request.ExchangeRate);
+        transaction.SetExchangeRate(exchangeRate);
         transaction.SetFees(request.Fees);
         transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
         transaction.SetNotes(request.Notes);
@@ -80,7 +104,7 @@ public class UpdateStockTransactionUseCase(
                 TransactionType.Sell,
                 request.Shares,
                 request.PricePerShare,
-                request.ExchangeRate ?? 1.0m,
+                exchangeRate ?? 1.0m,
                 request.Fees);
 
             var realizedPnl = portfolioCalculator.CalculateRealizedPnl(positionBeforeSell, tempSellTransaction);
