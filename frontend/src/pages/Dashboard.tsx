@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
-import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
+import { portfolioApi, stockPriceApi, transactionApi, marketDataApi } from '../services/api';
 import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../components/dashboard';
 import { AssetAllocationPieChart } from '../components/charts';
 import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
@@ -266,6 +266,37 @@ export function DashboardPage() {
       const fetchPromises = summary.positions.map(async (position) => {
         try {
           const market = position.market ?? guessMarket(position.ticker);
+
+          // EU 市場使用 Euronext API
+          if (market === StockMarket.EU) {
+            const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(
+              position.ticker,
+              homeCurrency
+            );
+            if (euronextQuote?.exchangeRate) {
+              const syntheticQuote: StockQuoteResponse = {
+                symbol: position.ticker,
+                name: euronextQuote.name || position.ticker,
+                price: euronextQuote.price,
+                market: StockMarket.EU as StockMarketType,
+                source: 'Euronext',
+                fetchedAt: new Date().toISOString(),
+                exchangeRate: euronextQuote.exchangeRate,
+                exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
+                changePercent: euronextQuote.changePercent ?? undefined,
+                change: euronextQuote.change ?? undefined,
+              };
+              const cacheData: CachedQuote = {
+                quote: syntheticQuote,
+                updatedAt: new Date().toISOString(),
+                market: StockMarket.EU as StockMarketType,
+              };
+              localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+              return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
+            }
+            return null;
+          }
+
           let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
           let finalMarket = market;
 
