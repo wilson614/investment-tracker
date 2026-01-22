@@ -49,11 +49,13 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
 
         builder.Property(t => t.Market)
             .IsRequired()
-            .HasDefaultValue(StockMarket.US);
+            .HasDefaultValue(StockMarket.US)
+            .HasSentinel((StockMarket)0);
 
         builder.Property(t => t.Currency)
             .IsRequired()
-            .HasDefaultValue(Currency.USD);
+            .HasDefaultValue(Currency.USD)
+            .HasSentinel((Currency)0);
 
         builder.Property(t => t.IsDeleted)
             .IsRequired()
