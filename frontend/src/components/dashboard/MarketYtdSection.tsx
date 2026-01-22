@@ -41,7 +41,7 @@ const BENCHMARK_LABELS: Record<string, string> = {
   'Europe': '歐洲',
   'Japan': '日本',
   'China': '中國',
-  'Taiwan 0050': '台灣',
+  'Taiwan 0050': '台灣 (0050)',
 };
 
 /**

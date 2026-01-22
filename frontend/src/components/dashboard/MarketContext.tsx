@@ -92,8 +92,11 @@ function CapeRowSkeleton() {
         <Skeleton width="w-14" height="h-5" circle />
       </div>
       <div className="flex items-center gap-4">
-        <Skeleton width="w-10" height="h-6" />
-        <Skeleton width="w-16" height="h-4" className="hidden sm:block" />
+        <Skeleton width="w-10" height="h-7" />
+        <div className="hidden sm:block space-y-1">
+          <Skeleton width="w-10" height="h-3" />
+          <Skeleton width="w-12" height="h-4" />
+        </div>
         <Skeleton width="w-24" height="h-2" />
       </div>
     </div>
@@ -363,14 +366,14 @@ export function MarketContext({ className = '' }: MarketContextProps) {
 
       <div className="p-5">
         {isLoading && !data ? (
-          <div className="max-h-[240px] overflow-y-auto">
+          <div className="h-[240px] overflow-y-auto">
             {Array.from({ length: selectedRegions.length || 5 }).map((_, i) => (
               <CapeRowSkeleton key={i} />
             ))}
           </div>
         ) : sortedData && sortedData.length > 0 ? (
           <div>
-            <div className="max-h-[240px] overflow-y-auto">
+            <div className="h-[240px] overflow-y-auto">
               {sortedData.map((item) => (
                 <CapeRow key={item.region} item={item} />
               ))}

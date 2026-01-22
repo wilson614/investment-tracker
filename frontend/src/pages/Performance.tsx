@@ -38,7 +38,7 @@ const BENCHMARK_OPTIONS = [
   { key: 'Europe', label: '歐洲 (VEUA)', symbol: 'VEUA' },
   { key: 'Japan', label: '日本 (VJPA)', symbol: 'VJPA' },
   { key: 'China', label: '中國 (HCHA)', symbol: 'HCHA' },
-  { key: 'Taiwan 0050', label: '台灣', symbol: '0050' },
+  { key: 'Taiwan 0050', label: '台灣 (0050)', symbol: '0050' },
 ] as const;
 
 // Shared localStorage key with dashboard MarketYtdSection
@@ -55,8 +55,10 @@ function loadSelectedBenchmarksFromLocalStorage(): string[] {
     if (stored) {
       const keys = JSON.parse(stored) as string[];
       if (Array.isArray(keys) && keys.length > 0) {
-        // Validate keys exist in BENCHMARK_OPTIONS
-        const validKeys = keys.filter(k => BENCHMARK_OPTIONS.some(o => o.key === k));
+        // Validate keys: system benchmarks must exist in BENCHMARK_OPTIONS, custom benchmarks start with 'custom_'
+        const validKeys = keys.filter(k =>
+          BENCHMARK_OPTIONS.some(o => o.key === k) || k.startsWith('custom_')
+        );
         if (validKeys.length > 0) return validKeys;
       }
     }
@@ -127,8 +129,10 @@ export function PerformancePage() {
         if (prefs.ytdBenchmarkPreferences) {
           const benchmarks = JSON.parse(prefs.ytdBenchmarkPreferences) as string[];
           if (Array.isArray(benchmarks) && benchmarks.length > 0) {
-            // Validate keys exist in BENCHMARK_OPTIONS
-            const validKeys = benchmarks.filter(k => BENCHMARK_OPTIONS.some(o => o.key === k));
+            // Validate keys: system benchmarks must exist in BENCHMARK_OPTIONS, custom benchmarks start with 'custom_'
+            const validKeys = benchmarks.filter(k =>
+              BENCHMARK_OPTIONS.some(o => o.key === k) || k.startsWith('custom_')
+            );
             if (validKeys.length > 0) {
               setSelectedBenchmarks(validKeys);
               // Sync to localStorage for offline use
@@ -1342,27 +1346,30 @@ export function PerformancePage() {
                               tooltip: `${selectedYear} 年度報酬率`,
                             };
                           }),
-                        /* Custom user benchmarks */
+                        /* Custom user benchmarks - only show selected ones */
                         ...customBenchmarks
-                          .filter(b => customBenchmarkReturns[b.id] != null)
+                          .filter(b => {
+                            const customKey = `custom_${b.id}`;
+                            return selectedBenchmarks.includes(customKey) && customBenchmarkReturns[b.id] != null;
+                          })
                           .map(b => ({
                             label: b.displayName || b.ticker,
                             value: customBenchmarkReturns[b.id]!,
                             tooltip: `${selectedYear} 年度報酬率（自訂）`,
                           })),
                       ]}
-                      height={80 + (selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length + customBenchmarks.filter(b => customBenchmarkReturns[b.id] != null).length) * 40}
+                      height={80 + (selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length + customBenchmarks.filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] != null).length) * 40}
                     />
                     {/* FR-134: Show which benchmarks are hidden due to missing data */}
-                    {(selectedBenchmarks.some(k => benchmarkReturns[k] == null) || customBenchmarks.some(b => customBenchmarkReturns[b.id] == null)) && (
+                    {(selectedBenchmarks.some(k => !k.startsWith('custom_') && benchmarkReturns[k] == null) || customBenchmarks.some(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)) && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">
                         以下指數因資料不可用已隱藏：
                         {[
                           ...selectedBenchmarks
-                            .filter(k => benchmarkReturns[k] == null)
+                            .filter(k => !k.startsWith('custom_') && benchmarkReturns[k] == null)
                             .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k),
                           ...customBenchmarks
-                            .filter(b => customBenchmarkReturns[b.id] == null)
+                            .filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)
                             .map(b => b.displayName || b.ticker),
                         ].join('、')}
                       </p>
