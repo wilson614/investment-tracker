@@ -394,6 +394,19 @@ public class MarketDataController(
         {
             var normalizedTicker = ticker.Trim().ToUpperInvariant();
 
+            // 從 request.Markets 取得 market 參數（若有提供）
+            StockMarket? market = null;
+            if (request.Markets != null)
+            {
+                var marketValue = request.Markets
+                    .FirstOrDefault(m => m.Key.Equals(ticker, StringComparison.OrdinalIgnoreCase))
+                    .Value;
+                if (marketValue.HasValue && Enum.IsDefined(typeof(StockMarket), marketValue.Value))
+                {
+                    market = (StockMarket)marketValue.Value;
+                }
+            }
+
             try
             {
                 if (isCompletedYearEndLookup)
@@ -401,7 +414,7 @@ public class MarketDataController(
                     var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
                         normalizedTicker,
                         targetDate.Year,
-                        market: null,
+                        market,
                         cancellationToken);
 
                     if (cachedResult != null)
@@ -1060,7 +1073,14 @@ public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Pric
 /// <summary>
 /// 多檔股票歷史價格查詢請求。
 /// </summary>
-public record HistoricalPricesRequest(string[] Tickers, string Date);
+public record HistoricalPricesRequest(
+    string[] Tickers,
+    string Date,
+    /// <summary>
+    /// 可選的 ticker 到 market 對應表。用於正確轉換 Yahoo Finance 符號。
+    /// Key: ticker (不區分大小寫), Value: StockMarket 枚舉值 (0=TW, 1=US, 2=UK, 3=EU)
+    /// </summary>
+    Dictionary<string, int?>? Markets = null);
 
 /// <summary>
 /// 歷史價格查詢回應。

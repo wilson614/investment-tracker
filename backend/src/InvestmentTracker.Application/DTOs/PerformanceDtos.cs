@@ -84,6 +84,9 @@ public record MissingPriceDto
 
     /// <summary>價格類型：年初參考價或年末/截止日參考價。</summary>
     public string PriceType { get; init; } = "YearEnd";
+
+    /// <summary>股票市場（用於正確轉換 Yahoo Finance 符號）。</summary>
+    public int? Market { get; init; }
 }
 
 /// <summary>

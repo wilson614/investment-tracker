@@ -503,12 +503,12 @@ export const marketDataApi = {
     ),
 
   /** 批次取得歷史價格 */
-  getHistoricalPrices: (tickers: string[], date: string) =>
+  getHistoricalPrices: (tickers: string[], date: string, markets?: Record<string, number | null>) =>
     fetchApi<Record<string, { price: number; currency: string; actualDate: string }>>(
       '/market-data/historical-prices',
       {
         method: 'POST',
-        body: JSON.stringify({ tickers, date }),
+        body: JSON.stringify({ tickers, date, markets }),
       }
     ),
 

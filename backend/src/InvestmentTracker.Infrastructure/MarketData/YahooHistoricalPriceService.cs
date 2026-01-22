@@ -7,22 +7,14 @@ namespace InvestmentTracker.Infrastructure.MarketData;
 
 /// <summary>
 /// 從 Yahoo Finance 取得歷史價格的服務實作。
-/// 用於 Euronext 等 Stooq 不支援的市場。
+/// 用於 Euronext、UK 等 Stooq 不支援的市場。
+/// 注意：調用者應傳入已轉換好的 Yahoo Finance 符號（如 SWRD.L, AGAC.AS）。
+/// 符號轉換邏輯統一在 HistoricalYearEndDataService.ConvertToYahooSymbol 進行。
 /// </summary>
 public class YahooHistoricalPriceService(
     HttpClient httpClient,
     ILogger<YahooHistoricalPriceService> logger) : IYahooHistoricalPriceService
 {
-    /// <summary>
-    /// Euronext ticker 到 Yahoo Finance symbol 的對應表。
-    /// Yahoo Finance 使用 .AS (Amsterdam) 後綴。
-    /// </summary>
-    private static readonly Dictionary<string, string> EuronextToYahooSymbol = new(StringComparer.OrdinalIgnoreCase)
-    {
-        { "AGAC", "AGAC.AS" },
-        { "SSAC", "SSAC.AS" },
-    };
-
     public async Task<YahooHistoricalPriceResult?> GetHistoricalPriceAsync(
         string symbol,
         DateOnly date,
@@ -30,10 +22,8 @@ public class YahooHistoricalPriceService(
     {
         try
         {
-            // 轉換 Euronext ticker 到 Yahoo Finance symbol
-            var yahooSymbol = EuronextToYahooSymbol.TryGetValue(symbol.ToUpperInvariant(), out var mapped)
-                ? mapped
-                : symbol;
+            // 直接使用傳入的符號（調用者應已完成轉換）
+            var yahooSymbol = symbol;
 
             // 計算時間範圍：目標日期前後各 7 天，確保能找到交易日
             var startDate = date.AddDays(-7);

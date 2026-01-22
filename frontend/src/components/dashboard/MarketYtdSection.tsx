@@ -318,7 +318,8 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             // Get year-start price
             const startPriceData = await marketDataApi.getHistoricalPrices(
               [benchmark.ticker],
-              yearStartDate
+              yearStartDate,
+              { [benchmark.ticker]: benchmark.market }
             );
             const startPrice = startPriceData[benchmark.ticker]?.price;
 

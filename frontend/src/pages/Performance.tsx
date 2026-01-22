@@ -336,7 +336,8 @@ export function PerformancePage() {
             // Get year-start price
             const startPriceData = await marketDataApi.getHistoricalPrices(
               [benchmark.ticker],
-              yearStartDate
+              yearStartDate,
+              { [benchmark.ticker]: benchmark.market }
             );
             const startPrice = startPriceData[benchmark.ticker]?.price;
 
@@ -369,7 +370,8 @@ export function PerformancePage() {
               // For historical year, get year-end price
               const endPriceData = await marketDataApi.getHistoricalPrices(
                 [benchmark.ticker],
-                yearEndDate
+                yearEndDate,
+                { [benchmark.ticker]: benchmark.market }
               );
               endPrice = endPriceData[benchmark.ticker]?.price;
             }
@@ -517,9 +519,16 @@ export function PerformancePage() {
     const yearStartDate = `${year - 1}-12-31`;
     if (yearStartMissing.length > 0) {
       const tickers = yearStartMissing.map(mp => mp.ticker);
+      // 建立 ticker 到 market 的對應表
+      const markets: Record<string, number | null> = {};
+      for (const mp of yearStartMissing) {
+        if (mp.market !== undefined) {
+          markets[mp.ticker] = mp.market;
+        }
+      }
 
       try {
-        const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearStartDate);
+        const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearStartDate, markets);
 
         for (const mp of yearStartMissing) {
           const result = stooqPrices[mp.ticker];
@@ -572,9 +581,16 @@ export function PerformancePage() {
     if (yearEndMissing.length > 0) {
       const tickers = yearEndMissing.map(mp => mp.ticker);
       const yearEndCurrenciesNeeded = new Set<string>();
+      // 建立 ticker 到 market 的對應表
+      const yearEndMarkets: Record<string, number | null> = {};
+      for (const mp of yearEndMissing) {
+        if (mp.market !== undefined) {
+          yearEndMarkets[mp.ticker] = mp.market;
+        }
+      }
 
       try {
-        const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearEndDate);
+        const stooqPrices = await marketDataApi.getHistoricalPrices(tickers, yearEndDate, yearEndMarkets);
 
         for (const mp of yearEndMissing) {
           const result = stooqPrices[mp.ticker];

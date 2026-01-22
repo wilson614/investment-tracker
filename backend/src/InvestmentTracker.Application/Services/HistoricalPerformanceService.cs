@@ -227,11 +227,15 @@ public class HistoricalPerformanceService(
         {
             if (!yearEndPrices.ContainsKey(position.Ticker))
             {
+                int? marketValue = tickerMarketLookup.TryGetValue(position.Ticker, out var positionMarket)
+                    ? (int)positionMarket
+                    : null;
                 missingPrices.Add(new MissingPriceDto
                 {
                     Ticker = position.Ticker,
                     Date = yearEnd,
-                    PriceType = "YearEnd"
+                    PriceType = "YearEnd",
+                    Market = marketValue
                 });
             }
         }
@@ -241,11 +245,15 @@ public class HistoricalPerformanceService(
         {
             if (!yearStartPrices.ContainsKey(position.Ticker))
             {
+                int? marketValue = tickerMarketLookup.TryGetValue(position.Ticker, out var positionMarket)
+                    ? (int)positionMarket
+                    : null;
                 missingPrices.Add(new MissingPriceDto
                 {
                     Ticker = position.Ticker,
                     Date = priceReferenceDate,
-                    PriceType = "YearStart"
+                    PriceType = "YearStart",
+                    Market = marketValue
                 });
             }
         }
