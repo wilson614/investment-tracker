@@ -14,8 +14,8 @@ import { authApi } from '../../services/api';
 import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-// App version - read from package.json (update package.json when releasing)
-const APP_VERSION = `v${__APP_VERSION__}`;
+// App version - auto-read from git tag at build time
+const APP_VERSION = __APP_VERSION__;
 
 interface NavLinkProps {
   /** 目標路由 */
