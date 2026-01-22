@@ -4,7 +4,7 @@
  */
 
 import type { CapeData, CapeDisplayItem, CapeValuation } from '../types';
-import { marketDataApi } from './api';
+import { marketDataApi, userPreferencesApi } from './api';
 
 const REGION_PREFS_KEY = 'cape_region_preferences';
 const CAPE_CACHE_KEY = 'cape_data_cache';
@@ -242,7 +242,7 @@ export function transformCapeData(data: CapeData, selectedRegions?: string[]): C
 }
 
 /**
- * Get user's selected CAPE regions from localStorage
+ * Get user's selected CAPE regions from localStorage (sync fallback)
  */
 export function getSelectedRegions(): string[] {
   try {
@@ -260,14 +260,48 @@ export function getSelectedRegions(): string[] {
 }
 
 /**
- * Save user's selected CAPE regions to localStorage
+ * Save user's selected CAPE regions to localStorage and API
  */
 export function setSelectedRegions(regions: string[]): void {
+  // Always save to localStorage first (for immediate sync)
   try {
     localStorage.setItem(REGION_PREFS_KEY, JSON.stringify(regions));
   } catch {
     // localStorage might be full or disabled
   }
+
+  // Then save to API (fire-and-forget)
+  userPreferencesApi.update({
+    capeRegionPreferences: JSON.stringify(regions),
+  }).catch((err) => {
+    console.error('Failed to save CAPE region preferences to API:', err);
+  });
+}
+
+/**
+ * Load CAPE region preferences from API (async, call once on app init)
+ * This syncs localStorage with the server's stored preferences.
+ */
+export async function loadSelectedRegionsFromApi(): Promise<string[]> {
+  try {
+    const prefs = await userPreferencesApi.get();
+    if (prefs.capeRegionPreferences) {
+      const regions = JSON.parse(prefs.capeRegionPreferences);
+      if (Array.isArray(regions) && regions.length > 0) {
+        // Sync to localStorage
+        try {
+          localStorage.setItem(REGION_PREFS_KEY, JSON.stringify(regions));
+        } catch {
+          // Ignore
+        }
+        return regions;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load CAPE region preferences from API:', err);
+  }
+  // Fall back to localStorage
+  return getSelectedRegions();
 }
 
 /**

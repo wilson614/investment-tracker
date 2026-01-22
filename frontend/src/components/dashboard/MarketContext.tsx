@@ -5,8 +5,9 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Loader2, TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertCircle, Settings, X, Check, Search, Info } from 'lucide-react';
 import { useCapeData } from '../../hooks/useCapeData';
+import { Skeleton } from '../common/SkeletonLoader';
 import type { CapeDisplayItem, CapeValuation } from '../../types';
 
 type CapeSortKey = 'default' | 'cape-asc' | 'cape-desc' | 'percentile-asc' | 'percentile-desc';
@@ -76,6 +77,25 @@ function PercentileBar({ percentile }: PercentileBarProps) {
         />
       </div>
       <span className="text-xs text-[var(--text-muted)] font-mono w-8">{pct}%</span>
+    </div>
+  );
+}
+
+/**
+ * CAPE 列骨架：載入時的佔位元素。
+ */
+function CapeRowSkeleton() {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-[var(--border-color)] last:border-b-0">
+      <div className="flex items-center gap-3">
+        <Skeleton width="w-24" height="h-5" />
+        <Skeleton width="w-14" height="h-5" circle />
+      </div>
+      <div className="flex items-center gap-4">
+        <Skeleton width="w-10" height="h-6" />
+        <Skeleton width="w-16" height="h-4" className="hidden sm:block" />
+        <Skeleton width="w-24" height="h-2" />
+      </div>
     </div>
   );
 }
@@ -343,8 +363,10 @@ export function MarketContext({ className = '' }: MarketContextProps) {
 
       <div className="p-5">
         {isLoading && !data ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
+          <div className="max-h-[240px] overflow-y-auto">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <CapeRowSkeleton key={i} />
+            ))}
           </div>
         ) : sortedData && sortedData.length > 0 ? (
           <div>

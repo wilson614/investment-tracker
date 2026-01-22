@@ -19,7 +19,7 @@ This feature module delivers UX improvements and data model enhancements in two 
 7. **Date Input Auto-Tab (P3)**: Auto-focus to next field after 4-digit year input
 8. **Fee Default Empty (P3)**: Remove auto-fill 0 for fee field
 
-### Phase 2 (US9-US17) - IN PROGRESS
+### Phase 2 (US9-US17) - COMPLETED ✅
 
 9. **Transaction Currency Field (P1)**: Add Currency field to transactions with auto-detection (TW→TWD, others→USD)
 10. **XIRR Current Year Warning (P2)**: Display warning for short-period XIRR calculations

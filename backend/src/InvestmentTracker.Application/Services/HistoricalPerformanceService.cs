@@ -531,6 +531,11 @@ public class HistoricalPerformanceService(
         logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
             year, xirrSource * 100, xirrHome * 100);
 
+        // Earliest transaction date in this year (for XIRR short-period warning)
+        var earliestTransactionDateInYear = yearTransactions.Count > 0
+            ? yearTransactions.Min(t => t.TransactionDate)
+            : (DateTime?)null;
+
         return new YearPerformanceDto
         {
             Year = year,
@@ -552,6 +557,7 @@ public class HistoricalPerformanceService(
             // Common
             CashFlowCount = cashFlowsSource.Count,
             TransactionCount = yearTransactions.Count,
+            EarliestTransactionDateInYear = earliestTransactionDateInYear,
             MissingPrices = []
         };
     }

@@ -137,7 +137,6 @@ export function CurrencyTransactionForm({
           value={foreignAmount}
           onChange={(e) => setForeignAmount(e.target.value)}
           className="input-dark w-full"
-          placeholder="0.00"
           required
         />
       </div>
@@ -153,7 +152,6 @@ export function CurrencyTransactionForm({
             value={homeAmount}
             onChange={(e) => setHomeAmount(e.target.value)}
             className="input-dark w-full"
-            placeholder="0"
             required={needsHomeCost}
           />
         </div>
@@ -169,7 +167,6 @@ export function CurrencyTransactionForm({
           onChange={(e) => setNotes(e.target.value)}
           className="input-dark w-full"
           rows={2}
-          placeholder="選填"
         />
       </div>
 

@@ -16,6 +16,8 @@ import {
 interface UseMarketYtdDataResult {
   data: MarketYtdComparison | null;
   isLoading: boolean;
+  // 背景重新抓取中（stale-while-revalidate）
+  isRefreshing: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 }
@@ -28,6 +30,7 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
   const [data, setData] = useState<MarketYtdComparison | null>(initialData);
   // Only show loading if we have no cached data at all
   const [isLoading, setIsLoading] = useState(!cached.data);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasFetchedRef = useRef(false);
@@ -35,10 +38,15 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
   dataRef.current = data;
 
   const fetchData = useCallback(async (forceRefresh = false) => {
+    const hasExistingData = !!dataRef.current;
+
     // Only show loading state if we have no data yet
-    if (!dataRef.current) {
+    if (!hasExistingData) {
       setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
     }
+
     setError(null);
 
     try {
@@ -56,6 +64,7 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
       // If we have cached data, silently fail and keep showing cached data
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -80,6 +89,7 @@ export function useMarketYtdData(): UseMarketYtdDataResult {
   return {
     data,
     isLoading,
+    isRefreshing,
     error,
     refresh,
   };

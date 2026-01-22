@@ -283,3 +283,138 @@ All endpoints follow existing error format:
   "traceId": "00-abc123..."
 }
 ```
+
+---
+
+## Phase 2 API Additions (US9-US17)
+
+## §7 User Preferences API (US11)
+
+### GET /api/user-preferences
+
+**Description**: Get current user's preferences.
+
+**Response**:
+```json
+{
+  "ytdBenchmarkPreferences": "[\"SPY\", \"VTI\"]",
+  "capeRegionPreferences": "[\"US\", \"TW\"]",
+  "defaultPortfolioId": "uuid or null"
+}
+```
+
+### PUT /api/user-preferences
+
+**Description**: Update user preferences (partial update).
+
+**Request**:
+```json
+{
+  "ytdBenchmarkPreferences": "[\"SPY\", \"QQQ\"]",
+  "capeRegionPreferences": "[\"US\"]",
+  "defaultPortfolioId": "uuid or null"
+}
+```
+
+**Response**: `200 OK` with updated preferences
+
+**Notes**:
+- All fields are optional - only provided fields are updated
+- Preferences are stored as JSON strings
+
+---
+
+## §8 Transaction API (Modified - US9)
+
+### POST /api/transactions
+
+**Modified Request** - Add `currency` field:
+```json
+{
+  "portfolioId": "uuid",
+  "ticker": "AAPL",
+  "transactionDate": "2024-01-15",
+  "transactionType": 0,
+  "shares": 10,
+  "pricePerShare": 185.50,
+  "market": 1,           // 0=TW, 1=US, 2=UK, 3=EU
+  "currency": 2,         // NEW: 1=TWD, 2=USD, 3=GBP, 4=EUR
+  "exchangeRate": 31.5,
+  "fees": 1.99,
+  "notes": "Optional notes"
+}
+```
+
+**Auto-Detection**:
+- If `currency` not provided: TW market → TWD (1), all others → USD (2)
+
+### GET /api/transactions/{id}
+
+**Modified Response** - Include `currency` field:
+```json
+{
+  "id": "uuid",
+  "ticker": "AAPL",
+  "market": 1,
+  "marketName": "US",
+  "currency": 2,
+  "currencyName": "USD",
+  // ... other fields
+}
+```
+
+---
+
+## §9 Portfolio Summary API (Modified - US13)
+
+### GET /api/portfolios/{id}/summary
+
+**Modified Response** - Position uses (ticker, market) composite key:
+```json
+{
+  "positions": [
+    {
+      "ticker": "WSML",
+      "market": 1,
+      "marketName": "US",
+      "currency": 2,
+      "currencyName": "USD",
+      "totalShares": 100,
+      "adjustedShares": 100
+    },
+    {
+      "ticker": "WSML",
+      "market": 2,
+      "marketName": "UK",
+      "currency": 3,
+      "currencyName": "GBP",
+      "totalShares": 50,
+      "adjustedShares": 50
+    }
+  ]
+}
+```
+
+**Notes**:
+- Same ticker in different markets now displays as separate positions
+- Position key is `(ticker, market)` not just `ticker`
+
+---
+
+## §10 Performance API (Modified - US10)
+
+### GET /api/performance/xirr
+
+**Modified Response** - Include calculation period warning:
+```json
+{
+  "xirr": 0.1523,
+  "calculationPeriodMonths": 2,
+  "warningMessage": "計算期間少於 3 個月，XIRR 數值可能較不穩定",
+  "isShortPeriod": true
+}
+```
+
+**Notes**:
+- `isShortPeriod`: true when calculation period < 3 months
+- `warningMessage`: Localized warning message (may be null)

@@ -51,7 +51,6 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
   const [newSymbol, setNewSymbol] = useState('');
   const [newMarket, setNewMarket] = useState<StockMarket>(StockMarketEnum.US);
   const [newSplitDate, setNewSplitDate] = useState('');
-  const [newFromShares, setNewFromShares] = useState('1');
   const [newToShares, setNewToShares] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -100,13 +99,12 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       setAddError('請輸入生效日期');
       return;
     }
-    const fromShares = parseFloat(newFromShares);
     const toShares = parseFloat(newToShares);
-    if (isNaN(fromShares) || fromShares <= 0 || isNaN(toShares) || toShares <= 0) {
-      setAddError('請輸入有效的股數');
+    if (isNaN(toShares) || toShares <= 0) {
+      setAddError('請輸入有效的比例');
       return;
     }
-    const ratio = toShares / fromShares;
+    const ratio = toShares;
 
     setIsAdding(true);
     setAddError(null);
@@ -125,7 +123,6 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       setNewSymbol('');
       setNewMarket(StockMarketEnum.US);
       setNewSplitDate('');
-      setNewFromShares('1');
       setNewToShares('');
       onUpdate?.();
     } catch (err) {
@@ -206,14 +203,13 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
       {/* Add Form */}
       <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
         <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">新增股票分割</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-[var(--text-muted)] mb-1">股票代號</label>
             <input
               type="text"
               value={newSymbol}
               onChange={(e) => handleSymbolChange(e.target.value)}
-              placeholder="如 0050"
               className="input-dark w-full"
               disabled={isAdding}
             />
@@ -240,48 +236,37 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
               value={newSplitDate}
               onChange={(e) => setNewSplitDate(e.target.value)}
               className="input-dark w-full"
+              required
               disabled={isAdding}
             />
           </div>
           <div>
             <label className="block text-xs text-[var(--text-muted)] mb-1">分割比例</label>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={newFromShares}
-                onChange={(e) => setNewFromShares(e.target.value)}
-                className="input-dark w-12 text-center"
-                disabled={isAdding}
-              />
-              <span className="text-[var(--text-muted)]">拆</span>
+            <div className="flex items-center gap-2">
+              <span className="text-base text-[var(--text-muted)] shrink-0">1 拆</span>
               <input
                 type="number"
                 step="0.001"
                 min="0.001"
                 value={newToShares}
                 onChange={(e) => setNewToShares(e.target.value)}
-                placeholder="4"
-                className="input-dark w-16 text-center"
+                className="input-dark w-20 text-center"
                 disabled={isAdding}
               />
+              <button
+                type="button"
+                onClick={handleAdd}
+                disabled={isAdding || !newSymbol.trim() || !newSplitDate || !newToShares}
+                className="btn-accent flex-1 py-2 flex items-center justify-center gap-2"
+              >
+                {isAdding ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                新增
+              </button>
             </div>
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={isAdding || !newSymbol.trim() || !newSplitDate || !newToShares}
-              className="btn-accent w-full py-2 flex items-center justify-center gap-2"
-            >
-              {isAdding ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              新增
-            </button>
           </div>
         </div>
         {addError && (
@@ -313,6 +298,7 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
                       value={editSplitDate}
                       onChange={(e) => setEditSplitDate(e.target.value)}
                       className="input-dark w-full text-sm"
+                      required
                       disabled={isUpdating}
                     />
                   </div>
@@ -376,7 +362,7 @@ export function StockSplitSettings({ onUpdate }: StockSplitSettingsProps) {
                       {formatDate(s.splitDate)}
                     </span>
                     <span className="text-sm font-mono text-[var(--accent-peach)]">
-                      1拆{s.splitRatio}
+                      1 拆 {s.splitRatio}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">

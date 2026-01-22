@@ -484,10 +484,16 @@ export const marketDataApi = {
   refreshYtdComparison: () =>
     fetchApi<MarketYtdComparison>('/market-data/ytd-comparison/refresh', { method: 'POST' }),
 
-  /** 取得 Euronext 報價 */
-  getEuronextQuote: (isin: string, mic: string, homeCurrency: string = 'TWD', refresh: boolean = false) =>
+  /** 取得 Euronext 報價（使用 ISIN/MIC） */
+  getEuronextQuote: (isin: string, mic: string, homeCurrency: string = 'TWD') =>
     fetchApi<EuronextQuoteResponse>(
-      `/market-data/euronext/quote?isin=${encodeURIComponent(isin)}&mic=${encodeURIComponent(mic)}&homeCurrency=${encodeURIComponent(homeCurrency)}&refresh=${refresh}`
+      `/market-data/euronext/quote?isin=${encodeURIComponent(isin)}&mic=${encodeURIComponent(mic)}&homeCurrency=${encodeURIComponent(homeCurrency)}`
+    ),
+
+  /** 透過 ticker 取得 Euronext 報價（自動查詢 ISIN/MIC） */
+  getEuronextQuoteByTicker: (ticker: string, homeCurrency: string = 'TWD') =>
+    fetchApi<EuronextQuoteResponse>(
+      `/market-data/euronext/quote-by-ticker?ticker=${encodeURIComponent(ticker)}&homeCurrency=${encodeURIComponent(homeCurrency)}`
     ),
 
   /** 取得歷史價格 */
@@ -621,6 +627,34 @@ export const stockSplitApi = {
   /** 刪除股票分割 */
   delete: (id: string) =>
     fetchApi<void>(`/stock-splits/${id}`, { method: 'DELETE' }),
+};
+
+// ============================================================================
+// 使用者偏好設定 API
+// ============================================================================
+
+export interface UserPreferences {
+  ytdBenchmarkPreferences: string | null;
+  capeRegionPreferences: string | null;
+  defaultPortfolioId: string | null;
+}
+
+export interface UpdateUserPreferencesRequest {
+  ytdBenchmarkPreferences?: string;
+  capeRegionPreferences?: string;
+  defaultPortfolioId?: string;
+}
+
+export const userPreferencesApi = {
+  /** 取得使用者偏好設定 */
+  get: () => fetchApi<UserPreferences>('/user-preferences'),
+
+  /** 更新使用者偏好設定 */
+  update: (data: UpdateUserPreferencesRequest) =>
+    fetchApi<UserPreferences>('/user-preferences', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };
 
 export type { ApiErrorType };

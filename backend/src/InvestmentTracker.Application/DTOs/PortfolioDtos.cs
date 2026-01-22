@@ -61,6 +61,9 @@ public record StockTransactionDto
 
     /// <summary>交易所屬市場。</summary>
     public StockMarket Market { get; init; }
+
+    /// <summary>交易計價幣別。</summary>
+    public Currency Currency { get; init; }
 }
 
 /// <summary>
@@ -80,6 +83,7 @@ public record StockPositionDto
     public decimal? UnrealizedPnlHome { get; init; }
     public decimal? UnrealizedPnlPercentage { get; init; }
     public StockMarket? Market { get; init; }
+    public string? Currency { get; init; }
 }
 
 /// <summary>

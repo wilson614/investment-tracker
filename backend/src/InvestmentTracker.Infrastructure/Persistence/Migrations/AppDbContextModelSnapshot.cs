@@ -186,45 +186,50 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     b.ToTable("etf_classifications", (string)null);
                 });
 
-            modelBuilder.Entity("InvestmentTracker.Domain.Entities.EuronextQuoteCache", b =>
+            modelBuilder.Entity("InvestmentTracker.Domain.Entities.EuronextSymbolMapping", b =>
                 {
-                    b.Property<string>("Isin")
-                        .HasMaxLength(12)
-                        .HasColumnType("character varying(12)");
+                    b.Property<string>("Ticker")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("ticker");
 
-                    b.Property<string>("Mic")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<decimal?>("Change")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("ChangePercent")
-                        .HasColumnType("text");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("currency");
 
-                    b.Property<DateTime>("FetchedAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("Isin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("isin");
 
-                    b.Property<bool>("IsStale")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
+                    b.Property<string>("Mic")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("mic");
 
-                    b.Property<DateTime?>("MarketTime")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
 
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
 
-                    b.HasKey("Isin", "Mic");
+                    b.HasKey("Ticker");
 
-                    b.ToTable("euronext_quote_cache", (string)null);
+                    b.HasIndex("Isin", "Mic")
+                        .HasDatabaseName("ix_euronext_symbol_mappings_isin_mic");
+
+                    b.ToTable("euronext_symbol_mappings", (string)null);
                 });
 
             modelBuilder.Entity("InvestmentTracker.Domain.Entities.HistoricalExchangeRateCache", b =>
@@ -495,6 +500,9 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("Currency")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("CurrencyLedgerId")
                         .HasColumnType("uuid");
 
@@ -651,6 +659,43 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                     b.ToTable("user_benchmarks", (string)null);
                 });
 
+            modelBuilder.Entity("InvestmentTracker.Domain.Entities.UserPreferences", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CapeRegionPreferences")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DefaultPortfolioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("YtdBenchmarkPreferences")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefaultPortfolioId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_UserPreferences_UserId");
+
+                    b.ToTable("user_preferences", (string)null);
+                });
+
             modelBuilder.Entity("InvestmentTracker.Domain.Entities.CurrencyLedger", b =>
                 {
                     b.HasOne("InvestmentTracker.Domain.Entities.User", "User")
@@ -732,6 +777,24 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("InvestmentTracker.Domain.Entities.UserPreferences", b =>
+                {
+                    b.HasOne("InvestmentTracker.Domain.Entities.Portfolio", "DefaultPortfolio")
+                        .WithMany()
+                        .HasForeignKey("DefaultPortfolioId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("InvestmentTracker.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DefaultPortfolio");
 
                     b.Navigation("User");
                 });

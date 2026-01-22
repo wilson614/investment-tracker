@@ -8,11 +8,11 @@
  * - 若資金來源為 CurrencyLedger 且不是台股，則匯率欄位可省略，交由 backend 依帳本推導。
  * - ForeignCurrency portfolio 也不使用匯率欄位。
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
-import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket } from '../../types';
-import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum } from '../../types';
-import { isEuronextSymbol } from '../../constants';
+import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket, Currency } from '../../types';
+import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
 
 /**
  * 判斷是否為台股 ticker（純數字或數字+英文字尾）。
@@ -35,6 +35,14 @@ const guessMarketFromTicker = (ticker: string): StockMarket => {
   return StockMarketEnum.US;
 };
 
+/**
+ * 根據 market 推測 currency
+ * TW → TWD，其他 → USD（使用者可手動覆寫為 GBP/EUR）
+ */
+const guessCurrencyFromMarket = (market: StockMarket): Currency => {
+  return market === StockMarketEnum.TW ? CurrencyEnum.TWD : CurrencyEnum.USD;
+};
+
 interface TransactionFormProps {
   /** 目標 portfolio ID */
   portfolioId: string;
@@ -54,19 +62,27 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
   const [selectedLedger, setSelectedLedger] = useState<CurrencyLedgerSummary | null>(null);
   const [isDetectingMarket, setIsDetectingMarket] = useState(false);
+  // 追蹤使用者是否手動選擇了 market（避免自動偵測覆蓋使用者選擇）
+  const [userSelectedMarket, setUserSelectedMarket] = useState(false);
+  // debounce timer ref
+  const detectMarketTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [formData, setFormData] = useState({
-    ticker: initialData?.ticker ?? '',
-    transactionType: (initialData?.transactionType ?? 1) as TransactionType,
-    transactionDate: initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0],
-    shares: initialData?.shares?.toString() ?? '',
-    pricePerShare: initialData?.pricePerShare?.toString() ?? '',
-    exchangeRate: initialData?.exchangeRate?.toString() ?? '',
-    fees: initialData?.fees?.toString() ?? '',
-    fundSource: (initialData?.fundSource ?? FundSourceEnum.None) as FundSource,
-    currencyLedgerId: initialData?.currencyLedgerId ?? '',
-    notes: initialData?.notes ?? '',
-    market: (initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '')) as StockMarket,
+  const [formData, setFormData] = useState(() => {
+    const initialMarket = initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '');
+    return {
+      ticker: initialData?.ticker ?? '',
+      transactionType: (initialData?.transactionType ?? 1) as TransactionType,
+      transactionDate: initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+      shares: initialData?.shares?.toString() ?? '',
+      pricePerShare: initialData?.pricePerShare?.toString() ?? '',
+      exchangeRate: initialData?.exchangeRate?.toString() ?? '',
+      fees: initialData?.fees?.toString() ?? '',
+      fundSource: (initialData?.fundSource ?? FundSourceEnum.None) as FundSource,
+      currencyLedgerId: initialData?.currencyLedgerId ?? '',
+      notes: initialData?.notes ?? '',
+      market: initialMarket as StockMarket,
+      currency: (initialData?.currency ?? guessCurrencyFromMarket(initialMarket)) as Currency,
+    };
   });
 
   // 載入外幣帳本清單，供資金來源選擇（CurrencyLedger）。
@@ -92,8 +108,9 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     }
   }, [formData.currencyLedgerId, currencyLedgers]);
 
-  // Derived state: is current ticker a Taiwan stock?
-  const isTW = isTaiwanStock(formData.ticker);
+  // Derived state: is current market Taiwan?
+  // 匯率框隱藏邏輯跟著市場選擇，而非 ticker 格式
+  const isTW = formData.market === StockMarketEnum.TW;
 
   // Derived state: is using currency ledger for non-TW stock?
   const useCurrencyLedger = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
@@ -111,9 +128,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
 
     // .L 結尾直接判定為英股
     if (trimmed.endsWith('.L')) return StockMarketEnum.UK;
-
-    // Euronext 股票
-    if (isEuronextSymbol(trimmed)) return 4 as StockMarket; // EU
 
     // 對於其他 ticker，先嘗試查詢 US 市場
     try {
@@ -141,9 +155,55 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
   }, []);
 
   /**
+   * 觸發市場偵測（帶 debounce）。
+   * 只有當 ticker 長度 >= 4 且使用者未手動選擇 market 時才觸發。
+   */
+  const triggerMarketDetection = useCallback((ticker: string) => {
+    // 清除之前的 timer
+    if (detectMarketTimerRef.current) {
+      clearTimeout(detectMarketTimerRef.current);
+      detectMarketTimerRef.current = null;
+    }
+
+    const trimmed = ticker.trim();
+    // 少於 4 字元不觸發
+    if (trimmed.length < 4) return;
+    // 台股不需要 API 偵測
+    if (isTaiwanStock(trimmed)) return;
+    // 使用者已手動選擇 market，不覆蓋
+    if (userSelectedMarket) return;
+
+    // debounce 300ms
+    detectMarketTimerRef.current = setTimeout(async () => {
+      setIsDetectingMarket(true);
+      try {
+        const detectedMarket = await detectMarket(trimmed);
+        if (detectedMarket !== null) {
+          setFormData((prev) => ({
+            ...prev,
+            market: detectedMarket,
+            currency: guessCurrencyFromMarket(detectedMarket),
+          }));
+        }
+      } finally {
+        setIsDetectingMarket(false);
+      }
+    }, 300);
+  }, [detectMarket, userSelectedMarket]);
+
+  // 清理 timer
+  useEffect(() => {
+    return () => {
+      if (detectMarketTimerRef.current) {
+        clearTimeout(detectMarketTimerRef.current);
+      }
+    };
+  }, []);
+
+  /**
    * 表單欄位更新。
    *
-   * 特殊規則：當使用者輸入台股 ticker 且匯率尚未填寫時，會自動補上 `1`。
+   * 特殊規則：當市場為台股時，匯率固定為 1。
    */
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -151,41 +211,32 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
     const { name, value } = e.target;
     setFormData((prev) => {
       const newData = { ...prev, [name]: value };
-      // Auto-set exchange rate to 1 for Taiwan stocks
-      if (name === 'ticker' && isTaiwanStock(value) && !prev.exchangeRate) {
-        newData.exchangeRate = '1';
+      // Auto-set market based on ticker (quick guess, not API call)
+      if (name === 'ticker' && !userSelectedMarket) {
+        const newMarket = guessMarketFromTicker(value);
+        newData.market = newMarket;
+        newData.currency = guessCurrencyFromMarket(newMarket);
+        // 台股匯率固定為 1，其他市場清空
+        newData.exchangeRate = newMarket === StockMarketEnum.TW ? '1' : '';
       }
-      // Auto-set market based on ticker
-      if (name === 'ticker') {
-        newData.market = guessMarketFromTicker(value);
+      // Auto-set currency when market changes
+      if (name === 'market') {
+        newData.currency = guessCurrencyFromMarket(Number(value) as StockMarket);
+        // 使用者手動選擇了 market
+        setUserSelectedMarket(true);
       }
       return newData;
     });
+
+    // 當 ticker 輸入時，觸發市場偵測（在 4+ 字元時）
+    if (name === 'ticker') {
+      triggerMarketDetection(value);
+    }
   };
 
-  // Handle ticker blur to auto-detect market and set exchange rate for Taiwan stocks
-  const handleTickerBlur = async () => {
-    const ticker = formData.ticker.trim();
-    if (!ticker) return;
-
-    // Auto-set exchange rate for Taiwan stocks
-    if (isTaiwanStock(ticker) && !formData.exchangeRate) {
-      setFormData((prev) => ({ ...prev, exchangeRate: '1' }));
-    }
-
-    // Skip market detection for Taiwan stocks (already handled by guessMarketFromTicker)
-    if (isTaiwanStock(ticker)) return;
-
-    // Detect market for non-Taiwan stocks
-    setIsDetectingMarket(true);
-    try {
-      const detectedMarket = await detectMarket(ticker);
-      if (detectedMarket !== null) {
-        setFormData((prev) => ({ ...prev, market: detectedMarket }));
-      }
-    } finally {
-      setIsDetectingMarket(false);
-    }
+  // Handle ticker blur - market detection now happens on 4th char, no special handling needed
+  const handleTickerBlur = () => {
+    // No-op: 匯率處理已經跟著市場選擇，不需要在 blur 時額外處理
   };
 
   /**
@@ -252,6 +303,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         currencyLedgerId: formData.currencyLedgerId || undefined,
         notes: formData.notes || undefined,
         market: formData.market,
+        currency: formData.currency,
       };
 
       await onSubmit(request);
@@ -269,6 +321,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         currencyLedgerId: '',
         notes: '',
         market: StockMarketEnum.US as StockMarket,
+        currency: CurrencyEnum.USD as Currency,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create transaction');
@@ -311,7 +364,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             required
             maxLength={20}
             className="input-dark w-full"
-            placeholder="例如：VWRA, 2330"
           />
         </div>
 
@@ -333,12 +385,29 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
             市場
-            {isDetectingMarket && <span className="ml-2 text-xs text-[var(--text-muted)]">偵測中...</span>}
+            {isDetectingMarket && (
+              <span className="ml-2 text-xs text-[var(--text-muted)] inline-flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                偵測中...
+              </span>
+            )}
           </label>
           <select
             name="market"
             value={formData.market}
-            onChange={(e) => setFormData(prev => ({ ...prev, market: Number(e.target.value) as StockMarket }))}
+            onChange={(e) => {
+              const newMarket = Number(e.target.value) as StockMarket;
+              const newCurrency = guessCurrencyFromMarket(newMarket);
+              setFormData(prev => ({
+                ...prev,
+                market: newMarket,
+                currency: newCurrency,
+                // 台股匯率固定為 1，其他市場清空讓後端自動抓取
+                exchangeRate: newMarket === StockMarketEnum.TW ? '1' : '',
+              }));
+              // 使用者手動選擇了 market
+              setUserSelectedMarket(true);
+            }}
             className="input-dark w-full"
             disabled={isDetectingMarket}
           >
@@ -348,6 +417,34 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             <option value={StockMarketEnum.EU}>歐股</option>
           </select>
         </div>
+
+        {/* 計價幣別 - 台股時隱藏（固定為 TWD） */}
+        {!isTW && (
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              計價幣別
+            </label>
+            <select
+              name="currency"
+              value={formData.currency}
+              onChange={(e) => {
+                const newCurrency = Number(e.target.value) as Currency;
+                // 幣別變更時清空匯率，讓後端自動抓取
+                setFormData(prev => ({
+                  ...prev,
+                  currency: newCurrency,
+                  exchangeRate: newCurrency === CurrencyEnum.TWD ? '1' : '',
+                }));
+              }}
+              className="input-dark w-full"
+            >
+              <option value={CurrencyEnum.TWD}>TWD</option>
+              <option value={CurrencyEnum.USD}>USD</option>
+              <option value={CurrencyEnum.GBP}>GBP</option>
+              <option value={CurrencyEnum.EUR}>EUR</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
@@ -376,7 +473,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             min="0.0001"
             step="0.0001"
             className="input-dark w-full"
-            placeholder="10.5"
           />
         </div>
 
@@ -393,7 +489,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             min="0"
             step="0.00001"
             className="input-dark w-full"
-            placeholder="100.00"
           />
         </div>
 
@@ -429,7 +524,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
             min="0"
             step="0.01"
             className="input-dark w-full"
-            placeholder="0"
           />
         </div>
       </div>
@@ -512,7 +606,6 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
           rows={2}
           maxLength={500}
           className="input-dark w-full"
-          placeholder="輸入備註..."
         />
       </div>
 

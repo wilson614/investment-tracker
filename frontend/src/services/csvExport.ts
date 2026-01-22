@@ -4,7 +4,7 @@
  */
 
 import type { StockTransaction, StockPosition, CurrencyTransaction } from '../types';
-import { TransactionType, CurrencyTransactionType } from '../types';
+import { TransactionType, CurrencyTransactionType, StockMarket, Currency } from '../types';
 
 // UTF-8 BOM for Excel compatibility
 const UTF8_BOM = '\uFEFF';
@@ -15,6 +15,22 @@ const TRANSACTION_TYPE_LABELS: Record<number, string> = {
   [TransactionType.Sell]: '賣出',
   [TransactionType.Split]: '分割',
   [TransactionType.Adjustment]: '調整',
+};
+
+// Stock market labels
+const STOCK_MARKET_LABELS: Record<number, string> = {
+  [StockMarket.TW]: 'TW',
+  [StockMarket.US]: 'US',
+  [StockMarket.UK]: 'UK',
+  [StockMarket.EU]: 'EU',
+};
+
+// Currency labels
+const CURRENCY_LABELS: Record<number, string> = {
+  [Currency.TWD]: 'TWD',
+  [Currency.USD]: 'USD',
+  [Currency.GBP]: 'GBP',
+  [Currency.EUR]: 'EUR',
 };
 
 // Currency transaction type labels in Chinese
@@ -71,6 +87,8 @@ export function generateTransactionsCsv(
     '日期',
     '股票代號',
     '類型',
+    '市場',
+    '幣別',
     '股數',
     '價格（原幣）',
     '手續費（原幣）',
@@ -86,6 +104,8 @@ export function generateTransactionsCsv(
     escapeCSVField(formatDate(tx.transactionDate)),
     escapeCSVField(tx.ticker),
     escapeCSVField(TRANSACTION_TYPE_LABELS[tx.transactionType] || String(tx.transactionType)),
+    escapeCSVField(STOCK_MARKET_LABELS[tx.market] || ''),
+    escapeCSVField(CURRENCY_LABELS[tx.currency] || ''),
     escapeCSVField(formatNumber(tx.shares, 4)),
     escapeCSVField(formatNumber(tx.pricePerShare, 4)),
     escapeCSVField(formatNumber(tx.fees, 2)),

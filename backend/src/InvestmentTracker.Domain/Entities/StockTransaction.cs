@@ -22,6 +22,7 @@ public class StockTransaction : BaseEntity
     public bool IsDeleted { get; private set; }
     public decimal? RealizedPnlHome { get; private set; }
     public StockMarket Market { get; private set; }
+    public Currency Currency { get; private set; }
 
     // 導覽屬性
     public Portfolio Portfolio { get; private set; } = null!;
@@ -75,7 +76,8 @@ public class StockTransaction : BaseEntity
         FundSource fundSource = FundSource.None,
         Guid? currencyLedgerId = null,
         string? notes = null,
-        StockMarket? market = null)
+        StockMarket? market = null,
+        Currency? currency = null)
     {
         if (portfolioId == Guid.Empty)
             throw new ArgumentException("Portfolio ID is required", nameof(portfolioId));
@@ -90,7 +92,9 @@ public class StockTransaction : BaseEntity
         SetFees(fees);
         SetFundSource(fundSource, currencyLedgerId);
         SetNotes(notes);
-        SetMarket(market ?? GuessMarketFromTicker(ticker));
+        var resolvedMarket = market ?? GuessMarketFromTicker(ticker);
+        SetMarket(resolvedMarket);
+        SetCurrency(currency ?? GuessCurrencyFromMarket(resolvedMarket));
     }
 
     public void SetTransactionDate(DateTime date)
@@ -185,6 +189,24 @@ public class StockTransaction : BaseEntity
             throw new ArgumentException("Invalid market", nameof(market));
 
         Market = market;
+    }
+
+    public void SetCurrency(Currency currency)
+    {
+        if (!Enum.IsDefined(typeof(Currency), currency))
+            throw new ArgumentException("Invalid currency", nameof(currency));
+
+        Currency = currency;
+    }
+
+    /// <summary>
+    /// Auto-detect currency based on market.
+    /// Taiwan stocks use TWD, all others default to USD.
+    /// User can override to GBP/EUR manually.
+    /// </summary>
+    public static Currency GuessCurrencyFromMarket(StockMarket market)
+    {
+        return market == StockMarket.TW ? Currency.TWD : Currency.USD;
     }
 
     /// <summary>

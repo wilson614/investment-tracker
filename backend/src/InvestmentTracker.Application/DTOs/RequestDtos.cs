@@ -85,6 +85,11 @@ public record CreateStockTransactionRequest
     /// 交易所屬市場。若未提供，會根據 Ticker 自動推測。
     /// </summary>
     public StockMarket? Market { get; init; }
+
+    /// <summary>
+    /// 交易計價幣別。若未提供，會根據 Market 自動推測（TW → TWD，其他 → USD）。
+    /// </summary>
+    public Currency? Currency { get; init; }
 }
 
 /// <summary>
@@ -131,6 +136,11 @@ public record UpdateStockTransactionRequest
     /// 交易所屬市場。
     /// </summary>
     public StockMarket? Market { get; init; }
+
+    /// <summary>
+    /// 交易計價幣別。若未提供，會根據 Market 自動推測（TW → TWD，其他 → USD）。
+    /// </summary>
+    public Currency? Currency { get; init; }
 }
 
 /// <summary>
@@ -169,6 +179,11 @@ public record XirrResultDto
     public double? XirrPercentage { get; init; }
     public int CashFlowCount { get; init; }
     public DateTime AsOfDate { get; init; }
+
+    /// <summary>
+    /// 最早的交易日期，用於判斷 XIRR 計算期間是否過短。
+    /// </summary>
+    public DateTime? EarliestTransactionDate { get; init; }
 
     /// <summary>
     /// 交易日缺少匯率、需要手動補齊的清單。

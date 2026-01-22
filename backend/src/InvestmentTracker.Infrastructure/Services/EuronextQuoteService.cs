@@ -6,17 +6,47 @@ using Microsoft.Extensions.Logging;
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// 取得並快取 Euronext 報價的服務。
-/// 內含報價快取與匯率換算邏輯。
+/// 取得 Euronext 報價的服務。
+/// 使用 SymbolMapping 快取 ticker → ISIN/MIC 對應，報價本身不快取到 DB。
 /// </summary>
 public class EuronextQuoteService(
     IEuronextApiClient apiClient,
-    IEuronextQuoteCacheRepository cacheRepository,
+    IEuronextSymbolMappingRepository symbolMappingRepository,
     IExchangeRateProvider exchangeRateProvider,
     ILogger<EuronextQuoteService> logger)
 {
-    // 快取有效期間（分鐘）（交易時段預設 15 分鐘）
-    private const int CacheMinutes = 15;
+    /// <summary>
+    /// 依 ticker 取得 Euronext 報價。
+    /// 會自動查詢並快取 ticker → ISIN/MIC 對應。
+    /// </summary>
+    /// <param name="ticker">股票代碼（如 AGAC、SSAC）</param>
+    /// <param name="homeCurrency">要換算的目標幣別（預設：TWD）</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>包含價格與匯率的報價結果</returns>
+    public async Task<EuronextQuoteResult?> GetQuoteByTickerAsync(
+        string ticker,
+        string homeCurrency = "TWD",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // 1. 查詢 ticker → ISIN/MIC 對應
+            var mapping = await GetOrCreateMappingAsync(ticker, cancellationToken);
+            if (mapping == null)
+            {
+                logger.LogWarning("Cannot find ISIN/MIC mapping for ticker {Ticker}", ticker);
+                return null;
+            }
+
+            // 2. 使用 ISIN/MIC 取得報價
+            return await GetQuoteAsync(mapping.Isin, mapping.Mic, homeCurrency, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting quote for ticker {Ticker}", ticker);
+            return null;
+        }
+    }
 
     /// <summary>
     /// 取得 Euronext 掛牌股票報價，並可選擇換算成指定的本位幣匯率。
@@ -24,43 +54,17 @@ public class EuronextQuoteService(
     /// <param name="isin">ISIN（例如：AGAC 的 IE000FHBZDZ8）</param>
     /// <param name="mic">Market Identifier Code（例如：阿姆斯特丹 XAMS）</param>
     /// <param name="homeCurrency">要換算的目標幣別（預設：TWD）</param>
-    /// <param name="forceRefresh">是否略過快取直接刷新</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>包含價格與匯率的報價結果</returns>
     public async Task<EuronextQuoteResult?> GetQuoteAsync(
         string isin,
         string mic,
         string homeCurrency = "TWD",
-        bool forceRefresh = false,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            // 優先嘗試從快取取得
-            if (!forceRefresh)
-            {
-                var cached = await cacheRepository.GetByIsinAndMicAsync(isin, mic, cancellationToken);
-                if (cached is { IsStale: false } && !IsCacheExpired(cached))
-                {
-                    logger.LogDebug("Using cached quote for {Isin}-{Mic}", isin, mic);
-
-                    // 取得快取資料對應的匯率
-                    var rate = await GetExchangeRateAsync(cached.Currency, homeCurrency, cancellationToken);
-
-                    return new EuronextQuoteResult(
-                        cached.Price,
-                        cached.Currency,
-                        cached.MarketTime,
-                        cached.Isin,
-                        rate,
-                        true,
-                        cached.ChangePercent,
-                        cached.Change);
-                }
-            }
-
-            // 抓取最新報價
-            logger.LogInformation("Fetching fresh quote for {Isin}-{Mic}", isin, mic);
+            logger.LogInformation("Fetching Euronext quote for {Isin}-{Mic}", isin, mic);
             var quote = await apiClient.GetQuoteAsync(isin, mic, cancellationToken);
 
             if (quote == null)
@@ -68,18 +72,6 @@ public class EuronextQuoteService(
                 logger.LogWarning("No quote returned for {Isin}-{Mic}", isin, mic);
                 return null;
             }
-
-            // 寫入快取
-            var cacheEntry = new EuronextQuoteCache(
-                isin,
-                mic,
-                quote.Price,
-                quote.Currency,
-                quote.MarketTime ?? DateTime.UtcNow,
-                quote.ChangePercent,
-                quote.Change);
-
-            await cacheRepository.UpsertAsync(cacheEntry, cancellationToken);
 
             // 取得匯率
             var exchangeRate = await GetExchangeRateAsync(quote.Currency, homeCurrency, cancellationToken);
@@ -90,7 +82,7 @@ public class EuronextQuoteService(
                 quote.MarketTime,
                 quote.Name,
                 exchangeRate,
-                false,
+                false, // 不再從 DB 快取取得
                 quote.ChangePercent,
                 quote.Change);
         }
@@ -101,10 +93,60 @@ public class EuronextQuoteService(
         }
     }
 
-    private bool IsCacheExpired(EuronextQuoteCache cached)
+    /// <summary>
+    /// 取得或建立 ticker → ISIN/MIC 對應。
+    /// 如果 DB 中沒有，會呼叫 Euronext Search API 查詢並快取。
+    /// </summary>
+    private async Task<EuronextSymbolMapping?> GetOrCreateMappingAsync(
+        string ticker,
+        CancellationToken cancellationToken)
     {
-        var age = DateTime.UtcNow - cached.FetchedAt;
-        return age.TotalMinutes > CacheMinutes;
+        // 先從 DB 查詢
+        var existing = await symbolMappingRepository.GetByTickerAsync(ticker, cancellationToken);
+        if (existing != null)
+        {
+            logger.LogDebug("Found existing mapping for {Ticker}: {Isin}-{Mic}",
+                ticker, existing.Isin, existing.Mic);
+            return existing;
+        }
+
+        // 呼叫 Euronext Search API
+        logger.LogInformation("Searching Euronext for ticker {Ticker}", ticker);
+        var searchResults = await apiClient.SearchAsync(ticker, cancellationToken);
+
+        if (searchResults.Count == 0)
+        {
+            logger.LogWarning("No search results for ticker {Ticker}", ticker);
+            return null;
+        }
+
+        // 取第一個完全匹配的結果
+        var result = searchResults[0];
+
+        // 快取到 DB
+        var mapping = new EuronextSymbolMapping(
+            result.Ticker,
+            result.Isin,
+            result.Mic,
+            result.Currency,
+            result.Name);
+
+        await symbolMappingRepository.UpsertAsync(mapping, cancellationToken);
+        logger.LogInformation("Cached mapping for {Ticker}: {Isin}-{Mic}",
+            ticker, result.Isin, result.Mic);
+
+        return mapping;
+    }
+
+    /// <summary>
+    /// 取得 ticker 對應的 ISIN/MIC 資訊。
+    /// 供 API endpoint 使用。
+    /// </summary>
+    public async Task<EuronextSymbolMapping?> GetSymbolMappingAsync(
+        string ticker,
+        CancellationToken cancellationToken = default)
+    {
+        return await GetOrCreateMappingAsync(ticker, cancellationToken);
     }
 
     private async Task<decimal?> GetExchangeRateAsync(

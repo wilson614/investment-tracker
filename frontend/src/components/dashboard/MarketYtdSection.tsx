@@ -7,12 +7,12 @@
  * 也支援用戶自訂基準（從 UserBenchmark API 載入）。
  */
 
-import { useState, useMemo, useEffect } from 'react';
-import { Loader2, Info, Settings, X, Check } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Info, Settings, X, Check } from 'lucide-react';
 import { useMarketYtdData } from '../../hooks/useMarketYtdData';
-import { userBenchmarkApi, stockPriceApi, marketDataApi } from '../../services/api';
+import { userBenchmarkApi, stockPriceApi, marketDataApi, userPreferencesApi } from '../../services/api';
+import { Skeleton } from '../common/SkeletonLoader';
 import type { MarketYtdReturn, UserBenchmark } from '../../types';
-import { getEuronextSymbol } from '../../constants';
 
 type YtdSortKey = 'ytd-desc' | 'ytd-asc' | 'name-asc' | 'name-desc';
 
@@ -24,6 +24,7 @@ const YTD_SORT_OPTIONS: { value: YtdSortKey; label: string }[] = [
 ];
 
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
+const CUSTOM_YTD_CACHE_KEY = 'custom_benchmark_ytd_cache';
 
 /**
  * 英文 key → 中文顯示名稱（需與 backend `MarketYtdService.Benchmarks` 一致）。
@@ -59,11 +60,11 @@ const DEFAULT_BENCHMARKS = [
 ];
 
 /**
- * 從 localStorage 讀取使用者選擇的 benchmarks。
+ * 從 localStorage 讀取使用者選擇的 benchmarks（fallback 用）。
  *
  * 回傳英文 key（例如 `All Country`），以符合 API 回傳與其他頁面的同步。
  */
-function getSelectedBenchmarks(): string[] {
+function getSelectedBenchmarksFromLocalStorage(): string[] {
   try {
     const stored = localStorage.getItem(YTD_PREFS_KEY);
     if (stored) {
@@ -79,14 +80,63 @@ function getSelectedBenchmarks(): string[] {
 }
 
 /**
- * 將 benchmarks 寫入 localStorage（供 Dashboard/Performance 共用）。
+ * 將 benchmarks 寫入 localStorage（fallback 用）。
  */
-function saveSelectedBenchmarks(benchmarks: string[]): void {
+function saveSelectedBenchmarksToLocalStorage(benchmarks: string[]): void {
   try {
     localStorage.setItem(YTD_PREFS_KEY, JSON.stringify(benchmarks));
   } catch {
     // Ignore
   }
+}
+
+interface CustomBenchmarkCache {
+  benchmarks: Array<{ id: string; ticker: string; market: number }>;
+  returns: Record<string, number | null>;
+}
+
+/**
+ * 從 localStorage 讀取自訂基準快取（包含清單和 YTD）。
+ */
+function loadCustomBenchmarkCache(): CustomBenchmarkCache {
+  try {
+    const cached = localStorage.getItem(CUSTOM_YTD_CACHE_KEY);
+    if (cached) {
+      const data = JSON.parse(cached);
+      // 相容舊格式（只有 returns）
+      if (data && typeof data === 'object' && !data.benchmarks) {
+        return { benchmarks: [], returns: data };
+      }
+      return data;
+    }
+  } catch {
+    // Ignore
+  }
+  return { benchmarks: [], returns: {} };
+}
+
+/**
+ * 將自訂基準快取寫入 localStorage。
+ */
+function saveCustomBenchmarkCache(cache: CustomBenchmarkCache): void {
+  try {
+    localStorage.setItem(CUSTOM_YTD_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * YTD 卡片骨架：載入時的佔位元素。
+ */
+function YtdCardSkeleton() {
+  return (
+    <div className="bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center">
+      <Skeleton width="w-16" height="h-4" className="mx-auto mb-2" />
+      <Skeleton width="w-12" height="h-6" className="mx-auto mb-2" />
+      <Skeleton width="w-10" height="h-3" className="mx-auto" />
+    </div>
+  );
 }
 
 interface YtdCardProps {
@@ -96,7 +146,9 @@ interface YtdCardProps {
 function YtdCard({ item }: YtdCardProps) {
   const hasYtd = item.ytdReturnPercent != null;
   const isPositive = hasYtd && item.ytdReturnPercent! >= 0;
-  // For custom benchmarks, use the symbol as the label
+
+  // 自訂基準：用 ticker
+  // 系統基準：用中文對應名稱
   const displayLabel = item.isCustom
     ? item.symbol
     : (BENCHMARK_LABELS[item.marketKey] || item.marketKey);
@@ -105,7 +157,6 @@ function YtdCard({ item }: YtdCardProps) {
     <div className={`bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center ${item.isCustom ? 'border border-[var(--accent-peach)]/30' : ''}`}>
       <div className="text-sm text-[var(--text-primary)] truncate mb-1" title={displayLabel}>
         {displayLabel}
-        {item.isCustom && <span className="ml-1 text-[10px] text-[var(--accent-peach)]">自訂</span>}
       </div>
       {item.error ? (
         <div className="text-base text-[var(--color-warning)] my-1">N/A</div>
@@ -116,7 +167,12 @@ function YtdCard({ item }: YtdCardProps) {
       ) : (
         <div className="text-base text-[var(--text-muted)] my-1">--</div>
       )}
-      <div className="font-mono text-xs text-[var(--text-muted)]">{item.symbol}</div>
+      {/* 系統基準顯示 symbol，自訂基準顯示「自訂」標籤 */}
+      {item.isCustom ? (
+        <div className="text-xs text-[var(--accent-peach)]">自訂</div>
+      ) : (
+        <div className="font-mono text-xs text-[var(--text-muted)]">{item.symbol}</div>
+      )}
     </div>
   );
 }
@@ -125,40 +181,133 @@ interface MarketYtdSectionProps {
   className?: string;
 }
 
+// 在元件外部快取初始值（只讀一次 localStorage）
+const initialCustomCache = loadCustomBenchmarkCache();
+const initialHasCached =
+  initialCustomCache.benchmarks.length > 0 && Object.keys(initialCustomCache.returns).length > 0;
+
 export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
-  const { data, isLoading } = useMarketYtdData();
+  const { data, isLoading, isRefreshing } = useMarketYtdData();
   const [sortKey, setSortKey] = useState<YtdSortKey>('ytd-desc');
-  const [selectedBenchmarks, setSelectedBenchmarksState] = useState<string[]>(getSelectedBenchmarks);
+  const [selectedBenchmarks, setSelectedBenchmarksState] = useState<string[]>(getSelectedBenchmarksFromLocalStorage);
   const [showSettings, setShowSettings] = useState(false);
   const [tempSelected, setTempSelected] = useState<string[]>(selectedBenchmarks);
 
-  // Custom user benchmarks
-  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
-  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>({});
-  const [isLoadingCustom, setIsLoadingCustom] = useState(false);
+  // 背景更新時鎖定排序，避免頻繁跳動
+  const [lockedOrder, setLockedOrder] = useState<string[] | null>(null);
+
+  // Custom user benchmarks - 使用預先載入的快取
+  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>(
+    initialCustomCache.benchmarks.map(b => ({ ...b, addedAt: '' } as UserBenchmark))
+  );
+  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>(
+    initialCustomCache.returns
+  );
+  const [isLoadingCustom, setIsLoadingCustom] = useState(!initialHasCached);
+  const [customReturnsLoaded, setCustomReturnsLoaded] = useState(initialHasCached);
+  const [isRefreshingCustom, setIsRefreshingCustom] = useState(false);
+
+  // 追蹤是否已有快取（用於 useEffect 內部判斷）
+  const hasCachedDataRef = useRef(initialHasCached);
+
+  // Load user preferences from API
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await userPreferencesApi.get();
+        if (prefs.ytdBenchmarkPreferences) {
+          const benchmarks = JSON.parse(prefs.ytdBenchmarkPreferences);
+          if (Array.isArray(benchmarks) && benchmarks.length > 0) {
+            setSelectedBenchmarksState(benchmarks);
+            // Sync to localStorage for offline use
+            saveSelectedBenchmarksToLocalStorage(benchmarks);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load preferences from API, using localStorage:', err);
+        // Keep localStorage values as fallback
+      }
+    };
+    loadPreferences();
+  }, []);
+
+  // Save preferences to API
+  const savePreferences = useCallback(async (benchmarks: string[]) => {
+    // Always save to localStorage first (for immediate sync)
+    saveSelectedBenchmarksToLocalStorage(benchmarks);
+
+    // Then save to API
+    try {
+      await userPreferencesApi.update({
+        ytdBenchmarkPreferences: JSON.stringify(benchmarks),
+      });
+    } catch (err) {
+      console.error('Failed to save preferences to API:', err);
+    }
+  }, []);
 
   // Load user's custom benchmarks
   useEffect(() => {
     const loadCustomBenchmarks = async () => {
+      const hasCached = hasCachedDataRef.current;
+
+      // 若已有快取資料，保持畫面穩定，背景靜默更新
+      if (!hasCached) {
+        setIsLoadingCustom(true);
+        setCustomReturnsLoaded(false);
+      } else {
+        setIsRefreshingCustom(true);
+      }
+
       try {
         const benchmarks = await userBenchmarkApi.getAll();
         setCustomBenchmarks(benchmarks);
+
+        // 清理已刪除的自訂基準：從 selectedBenchmarks 中移除不存在的 custom_ key
+        const validCustomKeys = new Set(benchmarks.map(b => `custom_${b.id}`));
+        setSelectedBenchmarksState(prev => {
+          const cleaned = prev.filter(key => {
+            // 保留系統基準和仍存在的自訂基準
+            if (!key.startsWith('custom_')) return true;
+            return validCustomKeys.has(key);
+          });
+          // 如果有清理，同步更新 localStorage 和 API
+          if (cleaned.length !== prev.length) {
+            savePreferences(cleaned);
+          }
+          return cleaned.length > 0 ? cleaned : DEFAULT_BENCHMARKS;
+        });
+
+        // 如果沒有自訂基準，直接標記載入完成
+        if (benchmarks.length === 0) {
+          setIsLoadingCustom(false);
+          setCustomReturnsLoaded(true);
+        }
       } catch (err) {
         console.error('Failed to load custom benchmarks:', err);
+        setIsLoadingCustom(false);
+        setCustomReturnsLoaded(true);
+      } finally {
+        setIsRefreshingCustom(false);
       }
     };
     loadCustomBenchmarks();
-  }, []);
+  }, [savePreferences]);
 
   // Calculate YTD returns for custom benchmarks
   useEffect(() => {
     const calculateCustomReturns = async () => {
       if (customBenchmarks.length === 0) {
         setCustomBenchmarkReturns({});
+        saveCustomBenchmarkCache({ benchmarks: [], returns: {} });
         return;
       }
 
-      setIsLoadingCustom(true);
+      // 只在沒有快取資料時才顯示 loading（有快取時背景靜默更新）
+      if (!hasCachedDataRef.current) {
+        setIsLoadingCustom(true);
+      }
+
       const currentYear = new Date().getFullYear();
       const yearStartDate = `${currentYear - 1}-12-31`;
       const newReturns: Record<string, number | null> = {};
@@ -181,17 +330,18 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             // Get current price
             let endPrice: number | undefined;
             try {
-              const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
-              endPrice = quote?.price;
+              // Use Euronext API for EU market (4)
+              if (benchmark.market === 4) {
+                const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
+                endPrice = euronextQuote?.price;
+              } else {
+                const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
+                endPrice = quote?.price;
+              }
             } catch {
-              // Try Euronext for UK ETFs
-              const euronextInfo = getEuronextSymbol(benchmark.ticker);
-              if (euronextInfo) {
-                const euronextQuote = await marketDataApi.getEuronextQuote(
-                  euronextInfo.isin,
-                  euronextInfo.mic,
-                  'TWD'
-                );
+              // Fallback: try Euronext if standard market fails
+              if (benchmark.market === 4) {
+                const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
                 endPrice = euronextQuote?.price;
               }
             }
@@ -209,7 +359,14 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
       );
 
       setCustomBenchmarkReturns(newReturns);
+      // 儲存快取（包含清單和 YTD）
+      saveCustomBenchmarkCache({
+        benchmarks: customBenchmarks.map(b => ({ id: b.id, ticker: b.ticker, market: b.market })),
+        returns: newReturns,
+      });
+      hasCachedDataRef.current = true; // 標記已有快取
       setIsLoadingCustom(false);
+      setCustomReturnsLoaded(true);
     };
 
     calculateCustomReturns();
@@ -225,7 +382,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
     if (!data?.benchmarks) return null;
 
     // Filter by selected benchmarks
-    let filtered = data.benchmarks.filter(b => selectedBenchmarks.includes(b.marketKey));
+    const filtered = data.benchmarks.filter(b => selectedBenchmarks.includes(b.marketKey));
 
     // Sort
     return [...filtered].sort((a, b) => {
@@ -235,9 +392,9 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
         case 'ytd-desc':
           return (b.ytdReturnPercent ?? -Infinity) - (a.ytdReturnPercent ?? -Infinity);
         case 'name-asc':
-          return a.marketKey.localeCompare(b.marketKey);
+          return (BENCHMARK_LABELS[a.marketKey] || a.marketKey).localeCompare(BENCHMARK_LABELS[b.marketKey] || b.marketKey);
         case 'name-desc':
-          return b.marketKey.localeCompare(a.marketKey);
+          return (BENCHMARK_LABELS[b.marketKey] || b.marketKey).localeCompare(BENCHMARK_LABELS[a.marketKey] || a.marketKey);
         default:
           return 0;
       }
@@ -246,54 +403,99 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
 
   // Combine system benchmarks with custom benchmarks for display
   const allDisplayItems = useMemo(() => {
-    const items: MarketYtdReturn[] = [];
+    const items: Array<MarketYtdReturn & { isCustom?: boolean }> = [];
 
     // Add system benchmarks
     if (filteredAndSorted) {
       items.push(...filteredAndSorted);
     }
 
-    // Add custom benchmarks with calculated returns (only if selected)
-    customBenchmarks.forEach(b => {
-      const customKey = `custom_${b.id}`;
-      // 只顯示被選中的自訂基準
-      if (!selectedBenchmarks.includes(customKey)) return;
+    // Add custom benchmarks with calculated returns (only if selected AND loaded)
+    // 沒有快取時：等自訂基準的 YTD 計算完成後一次加入，避免空框與半拍
+    // 有快取時：customReturnsLoaded 會是 true，直接顯示快取並背景更新
+    if (customReturnsLoaded) {
+      customBenchmarks.forEach(b => {
+        const customKey = `custom_${b.id}`;
+        // 只顯示被選中的自訂基準
+        if (!selectedBenchmarks.includes(customKey)) return;
 
-      const returnValue = customBenchmarkReturns[b.id];
-      items.push({
-        marketKey: customKey,
-        symbol: b.ticker,
-        ytdReturnPercent: returnValue ?? undefined,
-        isCustom: true,
-      } as MarketYtdReturn & { isCustom?: boolean });
-    });
+        const returnValue = customBenchmarkReturns[b.id];
+        items.push({
+          marketKey: customKey,
+          symbol: b.ticker,
+          name: b.ticker,
+          jan1Price: null,
+          currentPrice: null,
+          ytdReturnPercent: returnValue ?? null,
+          fetchedAt: null,
+          error: null,
+          isCustom: true,
+        });
+      });
+    }
 
     // Sort the combined list
-    return items.sort((a, b) => {
+    const sorted = items.sort((a, b) => {
+      const aIsCustom = a.isCustom === true;
+      const bIsCustom = b.isCustom === true;
+
       switch (sortKey) {
         case 'ytd-asc':
           return (a.ytdReturnPercent ?? -Infinity) - (b.ytdReturnPercent ?? -Infinity);
         case 'ytd-desc':
           return (b.ytdReturnPercent ?? -Infinity) - (a.ytdReturnPercent ?? -Infinity);
-        case 'name-asc':
-          return a.marketKey.localeCompare(b.marketKey);
-        case 'name-desc':
-          return b.marketKey.localeCompare(a.marketKey);
+        case 'name-asc': {
+          const aLabel = aIsCustom ? a.symbol : (BENCHMARK_LABELS[a.marketKey] || a.marketKey);
+          const bLabel = bIsCustom ? b.symbol : (BENCHMARK_LABELS[b.marketKey] || b.marketKey);
+          return aLabel.localeCompare(bLabel);
+        }
+        case 'name-desc': {
+          const aLabel = aIsCustom ? a.symbol : (BENCHMARK_LABELS[a.marketKey] || a.marketKey);
+          const bLabel = bIsCustom ? b.symbol : (BENCHMARK_LABELS[b.marketKey] || b.marketKey);
+          return bLabel.localeCompare(aLabel);
+        }
         default:
           return 0;
       }
     });
-  }, [filteredAndSorted, customBenchmarks, customBenchmarkReturns, sortKey, selectedBenchmarks]);
+
+    // 背景更新中：鎖定目前順序，避免跳動
+    if (lockedOrder && (isRefreshing || isRefreshingCustom)) {
+      const orderIndex = new Map(lockedOrder.map((key, index) => [key, index]));
+      return [...sorted].sort((a, b) => {
+        const aIndex = orderIndex.get(a.marketKey);
+        const bIndex = orderIndex.get(b.marketKey);
+        if (aIndex == null && bIndex == null) return 0;
+        if (aIndex == null) return 1;
+        if (bIndex == null) return -1;
+        return aIndex - bIndex;
+      });
+    }
+
+    return sorted;
+  }, [filteredAndSorted, customBenchmarks, customBenchmarkReturns, sortKey, selectedBenchmarks, customReturnsLoaded, lockedOrder, isRefreshing, isRefreshingCustom]);
 
   const handleOpenSettings = () => {
     setTempSelected(selectedBenchmarks);
     setShowSettings(true);
   };
 
+  // 背景更新開始時鎖定目前排序；結束後解除鎖定
+  useEffect(() => {
+    if ((isRefreshing || isRefreshingCustom) && !lockedOrder && allDisplayItems.length > 0) {
+      setLockedOrder(allDisplayItems.map(i => i.marketKey));
+      return;
+    }
+
+    if (!(isRefreshing || isRefreshingCustom) && lockedOrder) {
+      setLockedOrder(null);
+    }
+  }, [isRefreshing, isRefreshingCustom, lockedOrder, allDisplayItems]);
+
   const handleSaveSettings = () => {
     if (tempSelected.length > 0) {
       setSelectedBenchmarksState(tempSelected);
-      saveSelectedBenchmarks(tempSelected);
+      savePreferences(tempSelected);
     }
     setShowSettings(false);
   };
@@ -455,8 +657,10 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
 
       <div className="p-5">
         {(isLoading || isLoadingCustom) && !data ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
+          <div className="grid grid-cols-5 gap-2">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <YtdCardSkeleton key={i} />
+            ))}
           </div>
         ) : allDisplayItems.length > 0 ? (
           <div className="grid grid-cols-5 gap-2">

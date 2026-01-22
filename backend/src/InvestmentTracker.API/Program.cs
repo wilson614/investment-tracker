@@ -7,6 +7,7 @@ using InvestmentTracker.Application.UseCases.CurrencyLedger;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using InvestmentTracker.Application.UseCases.Benchmark;
+using InvestmentTracker.Application.UseCases.UserPreferences;
 using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.Validators;
@@ -144,7 +145,8 @@ builder.Services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>(
 builder.Services.AddScoped<ICurrencyTransactionRepository, CurrencyTransactionRepository>();
 builder.Services.AddScoped<IStockSplitRepository, StockSplitRepository>();
 builder.Services.AddScoped<IUserBenchmarkRepository, UserBenchmarkRepository>();
-builder.Services.AddScoped<IEuronextQuoteCacheRepository, EuronextQuoteCacheRepository>();
+builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
+builder.Services.AddScoped<IEuronextSymbolMappingRepository, EuronextSymbolMappingRepository>();
 builder.Services.AddScoped<IEtfClassificationRepository, EtfClassificationRepository>();
 builder.Services.AddScoped<IHistoricalYearEndDataRepository, HistoricalYearEndDataRepository>();
 builder.Services.AddScoped<IHistoricalExchangeRateCacheRepository, HistoricalExchangeRateCacheRepository>();
@@ -183,6 +185,8 @@ builder.Services.AddScoped<DeleteStockSplitUseCase>();
 builder.Services.AddScoped<GetUserBenchmarksUseCase>();
 builder.Services.AddScoped<AddUserBenchmarkUseCase>();
 builder.Services.AddScoped<DeleteUserBenchmarkUseCase>();
+builder.Services.AddScoped<GetUserPreferencesUseCase>();
+builder.Services.AddScoped<UpdateUserPreferencesUseCase>();
 
 // Stock Price Service
 builder.Services.AddSingleton<ITwseRateLimiter, TwseRateLimiter>(); // Singleton to share rate limit across all requests

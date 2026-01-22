@@ -8,10 +8,12 @@ namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
 /// 依交易日期管理歷史匯率快取的服務。
-/// 採 lazy loading：先查快取，若缺少則從 Stooq 抓取並寫入快取。
+/// 採 lazy loading：先查快取，若缺少則從 Yahoo Finance 或 Stooq 抓取並寫入快取。
+/// 優先使用 Yahoo Finance，若失敗則 fallback 到 Stooq。
 /// </summary>
 public class TransactionDateExchangeRateService(
     IHistoricalExchangeRateCacheRepository repository,
+    IYahooHistoricalPriceService yahooService,
     IStooqHistoricalPriceService stooqService,
     ILogger<TransactionDateExchangeRateService> logger) : ITransactionDateExchangeRateService
 {
@@ -29,7 +31,7 @@ public class TransactionDateExchangeRateService(
         var cached = await repository.GetAsync(currencyPair, dateOnly, cancellationToken);
         if (cached != null)
         {
-            logger.LogDebug("Cache hit for {CurrencyPair}/{Date}: {Rate}", 
+            logger.LogDebug("Cache hit for {CurrencyPair}/{Date}: {Rate}",
                 currencyPair, dateOnly.ToString("yyyy-MM-dd"), cached.Rate);
             return new TransactionDateExchangeRateResult
             {
@@ -42,11 +44,19 @@ public class TransactionDateExchangeRateService(
             };
         }
 
-        // 從 Stooq API 抓取
-        logger.LogInformation("Cache miss for {CurrencyPair}/{Date}, fetching from Stooq...", 
+        // 優先從 Yahoo Finance 抓取
+        logger.LogInformation("Cache miss for {CurrencyPair}/{Date}, fetching from Yahoo Finance...",
             currencyPair, dateOnly.ToString("yyyy-MM-dd"));
-        
-        var apiResult = await FetchFromStooqAsync(fromCurrency, toCurrency, dateOnly, cancellationToken);
+
+        var apiResult = await FetchFromYahooAsync(fromCurrency, toCurrency, dateOnly, cancellationToken);
+
+        // Yahoo 失敗時 fallback 到 Stooq
+        if (apiResult == null)
+        {
+            logger.LogInformation("Yahoo Finance failed for {CurrencyPair}/{Date}, falling back to Stooq...",
+                currencyPair, dateOnly.ToString("yyyy-MM-dd"));
+            apiResult = await FetchFromStooqAsync(fromCurrency, toCurrency, dateOnly, cancellationToken);
+        }
 
         if (apiResult != null)
         {
@@ -124,6 +134,43 @@ public class TransactionDateExchangeRateService(
     {
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
         return await repository.ExistsAsync(currencyPair, transactionDate.Date, cancellationToken);
+    }
+
+    private async Task<TransactionDateExchangeRateResult?> FetchFromYahooAsync(
+        string fromCurrency,
+        string toCurrency,
+        DateTime transactionDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var targetDate = DateOnly.FromDateTime(transactionDate);
+            var result = await yahooService.GetExchangeRateAsync(
+                fromCurrency, toCurrency, targetDate, cancellationToken);
+
+            if (result == null)
+            {
+                logger.LogWarning("Could not fetch exchange rate for {From}/{To}/{Date} from Yahoo Finance",
+                    fromCurrency, toCurrency, transactionDate.ToString("yyyy-MM-dd"));
+                return null;
+            }
+
+            return new TransactionDateExchangeRateResult
+            {
+                Rate = result.Rate,
+                CurrencyPair = result.CurrencyPair,
+                RequestedDate = transactionDate.Date,
+                ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error fetching exchange rate for {From}/{To}/{Date} from Yahoo Finance",
+                fromCurrency, toCurrency, transactionDate.ToString("yyyy-MM-dd"));
+            return null;
+        }
     }
 
     private async Task<TransactionDateExchangeRateResult?> FetchFromStooqAsync(

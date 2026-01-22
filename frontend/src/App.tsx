@@ -52,7 +52,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/portfolio/position/:ticker"
+        path="/portfolio/position/:ticker/:market?"
         element={
           <ProtectedRoute>
             <AppLayout>

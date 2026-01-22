@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using InvestmentTracker.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -183,4 +184,177 @@ public class EuronextApiClient(HttpClient httpClient, ILogger<EuronextApiClient>
         "£" => "GBP",
         _ => symbol.ToUpperInvariant()
     };
+
+    /// <summary>
+    /// 搜尋 Euronext 上市標的，取得 ticker 對應的 ISIN/MIC。
+    /// 使用 Euronext 的 instrumentSearch API。
+    /// </summary>
+    public async Task<IReadOnlyList<EuronextSearchResult>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Euronext search API: /en/instrumentSearch/searchJSON?q={query}
+            var url = $"https://live.euronext.com/en/instrumentSearch/searchJSON?q={Uri.EscapeDataString(query)}";
+
+            logger.LogDebug("Searching Euronext for {Query}", query);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("Accept", "application/json");
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var response = await httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Euronext search API returned {StatusCode} for query '{Query}'",
+                    response.StatusCode, query);
+                return [];
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(json) || json == "[]")
+            {
+                logger.LogDebug("No results found for query '{Query}'", query);
+                return [];
+            }
+
+            var results = ParseSearchResults(json, query);
+            logger.LogDebug("Found {Count} results for query '{Query}'", results.Count, query);
+            return results;
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "HTTP error searching Euronext for '{Query}'", query);
+            return [];
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error searching Euronext for '{Query}'", query);
+            return [];
+        }
+    }
+
+    private List<EuronextSearchResult> ParseSearchResults(string json, string originalQuery)
+    {
+        var results = new List<EuronextSearchResult>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+
+            // API 可能回傳陣列或物件
+            JsonElement root = doc.RootElement;
+
+            // 如果是陣列，直接遍歷
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in root.EnumerateArray())
+                {
+                    var result = ParseSearchItem(item, originalQuery);
+                    if (result != null)
+                    {
+                        results.Add(result);
+                    }
+                }
+            }
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Failed to parse Euronext search response");
+        }
+
+        return results;
+    }
+
+    // Regex to extract ticker from label: <span class='symbol'>AGAC</span>
+    private static readonly Regex SymbolInLabelRegex = new(
+        @"<span\s+class=['""]symbol['""]>([^<]+)</span>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private EuronextSearchResult? ParseSearchItem(JsonElement item, string originalQuery)
+    {
+        try
+        {
+            // Euronext search API 實際格式:
+            // { "value": "IE000FHBZDZ8" (ISIN), "isin": "...", "mic": "...",
+            //   "label": "...<span class='symbol'>AGAC</span>...", "name": "..." }
+
+            // 取得 ISIN
+            string? isin = null;
+            if (item.TryGetProperty("isin", out var isinEl))
+            {
+                isin = isinEl.GetString();
+            }
+
+            // 取得 MIC
+            string? mic = null;
+            if (item.TryGetProperty("mic", out var micEl))
+            {
+                mic = micEl.GetString();
+            }
+
+            // 取得 label（包含 ticker）和 name
+            string? label = null;
+            string? name = null;
+            if (item.TryGetProperty("label", out var labelEl))
+            {
+                label = labelEl.GetString();
+            }
+            if (item.TryGetProperty("name", out var nameEl))
+            {
+                name = nameEl.GetString();
+            }
+
+            // 從 label 中解析 ticker（<span class='symbol'>AGAC</span>）
+            string? ticker = null;
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                var symbolMatch = SymbolInLabelRegex.Match(label);
+                if (symbolMatch.Success)
+                {
+                    ticker = symbolMatch.Groups[1].Value.Trim();
+                }
+            }
+
+            // 取得幣別
+            string currency = "EUR"; // 預設
+            if (item.TryGetProperty("currency", out var currencyEl))
+            {
+                var currencyValue = currencyEl.GetString();
+                if (!string.IsNullOrWhiteSpace(currencyValue))
+                {
+                    currency = MapCurrencySymbol(currencyValue);
+                }
+            }
+
+            // 驗證必要欄位
+            if (string.IsNullOrWhiteSpace(ticker) ||
+                string.IsNullOrWhiteSpace(isin) ||
+                string.IsNullOrWhiteSpace(mic))
+            {
+                return null;
+            }
+
+            // 只回傳 ticker 完全匹配的結果（忽略大小寫）
+            if (!ticker.Equals(originalQuery, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return new EuronextSearchResult
+            {
+                Ticker = ticker.ToUpperInvariant(),
+                Isin = isin.ToUpperInvariant(),
+                Mic = mic.ToUpperInvariant(),
+                Name = name,
+                Currency = currency.ToUpperInvariant()
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to parse Euronext search item");
+            return null;
+        }
+    }
 }

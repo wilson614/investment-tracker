@@ -35,19 +35,12 @@ public class GetPortfolioSummaryUseCase(
         var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
 
         // 使用拆股調整後的持倉，確保與現價比較一致（FR-052）
+        // 現在以 (Ticker, Market) 作為 composite key 分組，支援同一 ticker 在不同市場
         var positions = portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
             transactions, stockSplits, splitAdjustmentService);
 
-        // 建立 ticker -> market 對照表（從最新的交易紀錄取得市場資訊）
-        var tickerMarketLookup = transactions
-            .Where(t => !t.IsDeleted)
-            .GroupBy(t => t.Ticker, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(t => t.TransactionDate).First().Market,
-                StringComparer.OrdinalIgnoreCase);
-
         // 轉為不分大小寫的 dictionary，避免 ticker 比對失敗
+        // 注意：這裡只按 ticker 查詢，可能需要前端傳入 (ticker, market) composite key
         var currentPrices = performanceRequest?.CurrentPrices != null
             ? new Dictionary<string, CurrentPriceInfo>(
                 performanceRequest.CurrentPrices, StringComparer.OrdinalIgnoreCase)
@@ -66,15 +59,17 @@ public class GetPortfolioSummaryUseCase(
         {
             // 僅在至少一筆交易具有 ExchangeRate 時，才視為可提供本位幣指標
             // ForeignCurrency 投資組合永遠使用原始幣別，為一致性視為「有匯率」
+            // 以 (Ticker, Market) composite key 篩選對應的交易
             var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
+                t.Market == position.Market &&
                 t is { HasExchangeRate: true, TransactionType: TransactionType.Buy or TransactionType.Adjustment });
 
             StockPositionDto dto;
 
-            // 取得此 ticker 的市場資訊
-            tickerMarketLookup.TryGetValue(position.Ticker, out var market);
+            // 直接使用 position.Market（現在 StockPosition 包含 Market 資訊）
+            var market = position.Market;
 
             if (isForeignCurrencyPortfolio)
             {
@@ -88,7 +83,8 @@ public class GetPortfolioSummaryUseCase(
                     TotalCostSource = position.TotalCostSource,
                     AverageCostPerShareHome = position.AverageCostPerShareSource,
                     AverageCostPerShareSource = position.AverageCostPerShareSource,
-                    Market = market
+                    Market = market,
+                    Currency = position.Currency
                 };
             }
             else
@@ -101,7 +97,8 @@ public class GetPortfolioSummaryUseCase(
                     TotalCostSource = position.TotalCostSource,
                     AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
                     AverageCostPerShareSource = position.AverageCostPerShareSource,
-                    Market = market
+                    Market = market,
+                    Currency = position.Currency
                 };
             }
 

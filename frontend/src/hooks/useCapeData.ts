@@ -13,6 +13,7 @@ import {
   setSelectedRegions as saveSelectedRegions,
   getAvailableRegions,
   loadCachedCapeData,
+  loadSelectedRegionsFromApi,
 } from '../services/capeApi';
 
 interface UseCapeDataResult {
@@ -40,8 +41,19 @@ export function useCapeData(): UseCapeDataResult {
   const [availableRegions, setAvailableRegions] = useState<{ key: string; label: string }[]>(getAvailableRegions);
 
   const hasFetchedRef = useRef(false);
+  const hasLoadedPrefsRef = useRef(false);
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  // Load preferences from API on mount
+  useEffect(() => {
+    if (!hasLoadedPrefsRef.current) {
+      hasLoadedPrefsRef.current = true;
+      loadSelectedRegionsFromApi().then((regions) => {
+        setSelectedRegionsState(regions);
+      });
+    }
+  }, []);
 
   const fetchData = useCallback(async (forceRefresh = false) => {
     // Only show loading state if we have no data yet

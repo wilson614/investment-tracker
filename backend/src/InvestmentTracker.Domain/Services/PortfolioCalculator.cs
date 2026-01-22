@@ -9,6 +9,7 @@ namespace InvestmentTracker.Domain.Services;
 
 /// <summary>
 /// 投資組合計算的領域服務（Domain Service），包含部位追蹤、移動平均成本與損益（PnL）計算。
+/// Position 以 (Ticker, Market) 作為 composite key，支援同一 ticker 在不同市場獨立計算。
 /// </summary>
 public class PortfolioCalculator
 {
@@ -87,6 +88,76 @@ public class PortfolioCalculator
     }
 
     /// <summary>
+    /// Calculates the current position for a (ticker, market) combination.
+    /// Uses moving average cost method for cost basis calculation.
+    /// </summary>
+    public StockPosition CalculatePositionByMarket(string ticker, StockMarket market, IEnumerable<StockTransaction> transactions)
+    {
+        var tickerTransactions = transactions
+            .Where(t => t.Ticker == ticker && t.Market == market && !t.IsDeleted)
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+        if (tickerTransactions.Count == 0)
+        {
+            return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m, market);
+        }
+
+        var totalShares = 0m;
+        var totalCostHome = 0m;
+        var totalCostSource = 0m;
+
+        // 取得幣別：使用第一筆買入交易的幣別
+        var currency = tickerTransactions
+            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency;
+
+        foreach (var transaction in tickerTransactions)
+        {
+            switch (transaction.TransactionType)
+            {
+                case TransactionType.Buy:
+                    totalShares += transaction.Shares;
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+
+                case TransactionType.Sell:
+                    if (totalShares > 0)
+                    {
+                        var avgCostPerShareHome = totalCostHome / totalShares;
+                        var avgCostPerShareSource = totalCostSource / totalShares;
+                        totalCostHome -= transaction.Shares * avgCostPerShareHome;
+                        totalCostSource -= transaction.Shares * avgCostPerShareSource;
+                        totalShares -= transaction.Shares;
+                    }
+                    break;
+
+                case TransactionType.Split:
+                    totalShares *= transaction.Shares;
+                    break;
+
+                case TransactionType.Adjustment:
+                    totalShares += transaction.Shares;
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+            }
+        }
+
+        totalShares = Math.Max(0, totalShares);
+        totalCostHome = Math.Max(0, totalCostHome);
+        totalCostSource = Math.Max(0, totalCostSource);
+
+        var averageCostHome = totalShares > 0 ? totalCostHome / totalShares : 0m;
+        var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
+
+        return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource, market, currency?.ToString());
+    }
+
+    /// <summary>
     /// 依據目前市價計算未實現損益（unrealized PnL）。
     /// </summary>
     public UnrealizedPnl CalculateUnrealizedPnl(
@@ -150,6 +221,7 @@ public class PortfolioCalculator
     /// <summary>
     /// Recalculates all positions with stock split adjustments applied.
     /// Uses the StockSplitAdjustmentService to adjust historical transactions.
+    /// Groups by (Ticker, Market) composite key to support same ticker in different markets.
     /// </summary>
     public IEnumerable<StockPosition> RecalculateAllPositionsWithSplitAdjustments(
         IEnumerable<StockTransaction> transactions,
@@ -158,10 +230,14 @@ public class PortfolioCalculator
     {
         var transactionList = transactions.Where(t => !t.IsDeleted).ToList();
         var splitList = splits.ToList();
-        var tickers = transactionList.Select(t => t.Ticker).Distinct();
 
-        return tickers.Select(ticker => CalculatePositionWithSplitAdjustments(
-            ticker, transactionList, splitList, splitService));
+        // Group by (Ticker, Market) composite key
+        var tickerMarketKeys = transactionList
+            .Select(t => (t.Ticker, t.Market))
+            .Distinct();
+
+        return tickerMarketKeys.Select(key => CalculatePositionWithSplitAdjustmentsByMarket(
+            key.Ticker, key.Market, transactionList, splitList, splitService));
     }
 
     /// <summary>
@@ -239,6 +315,84 @@ public class PortfolioCalculator
         var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
 
         return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource);
+    }
+
+    /// <summary>
+    /// Calculates position for a (ticker, market) combination with stock split adjustments applied.
+    /// </summary>
+    public StockPosition CalculatePositionWithSplitAdjustmentsByMarket(
+        string ticker,
+        StockMarket market,
+        IEnumerable<StockTransaction> transactions,
+        IReadOnlyList<StockSplit> splits,
+        StockSplitAdjustmentService splitService)
+    {
+        var tickerTransactions = transactions
+            .Where(t => t.Ticker == ticker && t.Market == market && !t.IsDeleted)
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+        if (tickerTransactions.Count == 0)
+        {
+            return new StockPosition(ticker, 0m, 0m, 0m, 0m, 0m, market);
+        }
+
+        var totalShares = 0m;
+        var totalCostHome = 0m;
+        var totalCostSource = 0m;
+
+        // 取得幣別：使用第一筆買入交易的幣別
+        var currency = tickerTransactions
+            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency;
+
+        foreach (var transaction in tickerTransactions)
+        {
+            // Get split-adjusted values for this transaction
+            var adjusted = splitService.GetAdjustedValues(transaction, splits);
+            var adjustedShares = adjusted.AdjustedShares;
+
+            switch (transaction.TransactionType)
+            {
+                case TransactionType.Buy:
+                    totalShares += adjustedShares;
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+
+                case TransactionType.Sell:
+                    if (totalShares > 0)
+                    {
+                        var avgCostPerShareHome = totalCostHome / totalShares;
+                        var avgCostPerShareSource = totalCostSource / totalShares;
+                        totalCostHome -= adjustedShares * avgCostPerShareHome;
+                        totalCostSource -= adjustedShares * avgCostPerShareSource;
+                        totalShares -= adjustedShares;
+                    }
+                    break;
+
+                case TransactionType.Split:
+                    totalShares *= transaction.Shares;
+                    break;
+
+                case TransactionType.Adjustment:
+                    totalShares += adjustedShares;
+                    if (transaction.TotalCostHome.HasValue)
+                        totalCostHome += transaction.TotalCostHome.Value;
+                    totalCostSource += transaction.TotalCostSource;
+                    break;
+            }
+        }
+
+        totalShares = Math.Max(0, totalShares);
+        totalCostHome = Math.Max(0, totalCostHome);
+        totalCostSource = Math.Max(0, totalCostSource);
+
+        var averageCostHome = totalShares > 0 ? totalCostHome / totalShares : 0m;
+        var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
+
+        return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource, market, currency?.ToString());
     }
 
     /// <summary>
@@ -399,7 +553,9 @@ public record StockPosition(
     decimal TotalCostHome,
     decimal TotalCostSource,
     decimal AverageCostPerShareHome,
-    decimal AverageCostPerShareSource);
+    decimal AverageCostPerShareSource,
+    StockMarket? Market = null,
+    string? Currency = null);
 
 /// <summary>
 /// Represents unrealized profit/loss calculation result.

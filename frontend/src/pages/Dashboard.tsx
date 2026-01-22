@@ -12,6 +12,8 @@ import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi } from '../services/api';
 import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../components/dashboard';
 import { AssetAllocationPieChart } from '../components/charts';
+import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
+import { SkeletonChart } from '../components/common/SkeletonLoader';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 import { refreshCapeData } from '../services/capeApi';
@@ -99,6 +101,7 @@ export function DashboardPage() {
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<StockTransaction[]>([]);
   const [historicalData, setHistoricalData] = useState<HistoricalYearValue[]>([]);
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +128,7 @@ export function DashboardPage() {
     if (!portfolio) return;
 
     const loadHistoricalData = async () => {
+      setIsLoadingHistorical(true);
       try {
         const availableYears = await portfolioApi.getAvailableYears(portfolio.id);
         if (availableYears.years.length === 0) {
@@ -164,6 +168,8 @@ export function DashboardPage() {
       } catch {
         // Silently fail - chart will show "no data" message
         setHistoricalData([]);
+      } finally {
+        setIsLoadingHistorical(false);
       }
     };
 
@@ -494,9 +500,15 @@ export function DashboardPage() {
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
               {xirrResult?.xirrPercentage != null ? (
-                <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
-                  {formatPercent(xirrResult.xirrPercentage)}
-                </p>
+                <div className="flex items-center gap-1">
+                  <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
+                    {formatPercent(xirrResult.xirrPercentage)}
+                  </p>
+                  <XirrWarningBadge
+                    earliestTransactionDate={xirrResult.earliestTransactionDate}
+                    asOfDate={xirrResult.asOfDate}
+                  />
+                </div>
               ) : (
                 <p className="text-xl font-bold text-[var(--text-muted)]">-</p>
               )}
@@ -516,16 +528,22 @@ export function DashboardPage() {
         </div>
 
         {/* Historical Portfolio Value Chart */}
-        {historicalData.length > 0 && (
-          <div className="card-dark p-6 mb-6">
-            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷年淨值變化</h2>
+        <div className="card-dark p-6 mb-6" style={{ minHeight: 356 }}>
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷年淨值變化</h2>
+          {isLoadingHistorical ? (
+            <SkeletonChart height="h-[280px]" className="!p-0 !bg-transparent" />
+          ) : historicalData.length > 0 ? (
             <HistoricalValueChart
               data={historicalData}
               currency={portfolio.homeCurrency}
               height={280}
             />
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center justify-center h-[280px] text-[var(--text-muted)]">
+              無歷史資料
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Asset Allocation */}

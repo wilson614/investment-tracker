@@ -20,8 +20,8 @@ import {
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
-import { FundSource } from '../../types';
-import type { CreateStockTransactionRequest, TransactionType, CurrencyLedgerSummary } from '../../types';
+import { FundSource, StockMarket, Currency } from '../../types';
+import type { CreateStockTransactionRequest, TransactionType, CurrencyLedgerSummary, StockMarket as StockMarketType, Currency as CurrencyType } from '../../types';
 
 interface StockImportButtonProps {
   /** 目標 portfolio ID */
@@ -57,6 +57,18 @@ const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
       name: 'type',
       label: '交易類型',
       aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
+      required: true,
+    },
+    {
+      name: 'market',
+      label: '市場',
+      aliases: ['Market', 'exchange', 'Exchange', '市場', '交易所'],
+      required: true,
+    },
+    {
+      name: 'currency',
+      label: '幣別',
+      aliases: ['Currency', 'currencyCode', 'currency_code', '幣別', '貨幣'],
       required: true,
     },
     {
@@ -130,6 +142,74 @@ function parseTransactionType(typeStr: string): TransactionType | null {
   const num = parseInt(normalized);
   if (num >= 1 && num <= 4) {
     return num as TransactionType;
+  }
+
+  return null;
+}
+
+/**
+ * 將 CSV 內的市場文字轉成 enum。
+ *
+ * 支援：
+ * - 英文代碼：TW/US/UK/EU
+ * - 中文名稱：台灣/美國/英國/歐洲
+ * - 數字：1-4
+ */
+function parseMarket(marketStr: string): StockMarketType | null {
+  const normalized = marketStr.toUpperCase().trim();
+
+  // Direct code mappings
+  if (normalized === 'TW' || normalized === '台灣' || normalized === '臺灣') {
+    return StockMarket.TW;
+  }
+  if (normalized === 'US' || normalized === '美國') {
+    return StockMarket.US;
+  }
+  if (normalized === 'UK' || normalized === '英國') {
+    return StockMarket.UK;
+  }
+  if (normalized === 'EU' || normalized === '歐洲') {
+    return StockMarket.EU;
+  }
+
+  // Numeric mappings
+  const num = parseInt(normalized);
+  if (num >= 1 && num <= 4) {
+    return num as StockMarketType;
+  }
+
+  return null;
+}
+
+/**
+ * 將 CSV 內的幣別文字轉成 enum。
+ *
+ * 支援：
+ * - 英文代碼：TWD/USD/GBP/EUR
+ * - 中文名稱：台幣/美元/英鎊/歐元
+ * - 數字：1-4
+ */
+function parseCurrency(currencyStr: string): CurrencyType | null {
+  const normalized = currencyStr.toUpperCase().trim();
+
+  // Direct code mappings
+  if (normalized === 'TWD' || normalized === '台幣' || normalized === '臺幣' || normalized === 'NTD' || normalized === 'NT$') {
+    return Currency.TWD;
+  }
+  if (normalized === 'USD' || normalized === '美元' || normalized === 'US$' || normalized === '$') {
+    return Currency.USD;
+  }
+  if (normalized === 'GBP' || normalized === '英鎊' || normalized === '£') {
+    return Currency.GBP;
+  }
+  if (normalized === 'EUR' || normalized === '歐元' || normalized === '€') {
+    return Currency.EUR;
+  }
+
+  // Numeric mappings
+  const num = parseInt(normalized);
+  if (num >= 1 && num <= 4) {
+    return num as CurrencyType;
   }
 
   return null;
@@ -242,6 +322,30 @@ export function StockImportButton({
           continue;
         }
 
+        // Parse market
+        const marketStr = getRowValue(row, csvData.headers, mapping, 'market');
+        if (!marketStr) {
+          errors.push({ row: rowNum, column: '市場', message: '市場為必填欄位' });
+          continue;
+        }
+        const market = parseMarket(marketStr);
+        if (market === null) {
+          errors.push({ row: rowNum, column: '市場', message: `無法辨識市場: ${marketStr}（支援 TW/US/UK/EU 或 台灣/美國/英國/歐洲）` });
+          continue;
+        }
+
+        // Parse currency
+        const currencyStr = getRowValue(row, csvData.headers, mapping, 'currency');
+        if (!currencyStr) {
+          errors.push({ row: rowNum, column: '幣別', message: '幣別為必填欄位' });
+          continue;
+        }
+        const currency = parseCurrency(currencyStr);
+        if (currency === null) {
+          errors.push({ row: rowNum, column: '幣別', message: `無法辨識幣別: ${currencyStr}（支援 TWD/USD/GBP/EUR 或 台幣/美元/英鎊/歐元）` });
+          continue;
+        }
+
         // Parse shares
         const sharesStr = getRowValue(row, csvData.headers, mapping, 'shares');
         if (!sharesStr) {
@@ -305,6 +409,8 @@ export function StockImportButton({
           fundSource: useLedgerForRow ? FundSource.CurrencyLedger : FundSource.None,
           currencyLedgerId: useLedgerForRow ? (selectedLedgerId ?? undefined) : undefined,
           notes: notes || undefined,
+          market,
+          currency,
         };
 
         // Create transaction
@@ -350,8 +456,11 @@ export function StockImportButton({
         <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
           <div className="card-dark p-6 w-full max-w-md m-4">
             <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">選擇匯率來源</h2>
-            <p className="text-[var(--text-muted)] mb-4">
+            <p className="text-[var(--text-muted)] mb-2">
               您可以選擇從外幣帳本自動計算匯率，或在 CSV 中手動提供匯率。
+            </p>
+            <p className="text-xs text-[var(--text-muted)] mb-4 bg-[var(--bg-tertiary)] p-2 rounded">
+              <strong>注意：</strong>CSV 檔案需包含「市場」（TW/US/UK/EU）及「幣別」（TWD/USD/GBP/EUR）欄位。
             </p>
 
             <div className="space-y-3">

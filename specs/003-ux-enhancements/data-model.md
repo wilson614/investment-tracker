@@ -250,3 +250,179 @@ dotnet ef database update -s ../InvestmentTracker.API
 - Ticker: Required, max 20 chars
 - Market: Required, valid enum
 - Unique constraint: (UserId, Ticker, Market)
+
+---
+
+## Phase 2 Entity Changes (US9-US17)
+
+## §7 Currency Enum (New)
+
+**Purpose**: Enumeration for transaction denomination currencies.
+
+### Definition
+```csharp
+public enum Currency
+{
+    TWD = 1,  // Taiwan Dollar
+    USD = 2,  // US Dollar
+    GBP = 3,  // British Pound
+    EUR = 4   // Euro
+}
+```
+
+### Auto-Detection Rules
+- Taiwan stocks (market=TW) → TWD
+- All other markets → USD (user can override to GBP/EUR)
+
+---
+
+## §8 StockTransaction.Currency (Modified)
+
+**Change**: Add `Currency` field to `StockTransaction` entity.
+
+### Updated Schema
+```csharp
+public class StockTransaction
+{
+    // ... existing fields ...
+
+    public StockMarket Market { get; set; }    // Added in Phase 1
+    public Currency Currency { get; set; }     // NEW: TWD=1, USD=2, GBP=3, EUR=4
+}
+```
+
+### Migration
+```sql
+-- Add Currency column with default USD
+ALTER TABLE stock_transactions ADD COLUMN currency INTEGER NOT NULL DEFAULT 2;
+
+-- Populate based on Market field
+UPDATE stock_transactions SET currency =
+  CASE
+    WHEN market = 0 THEN 1  -- TW market → TWD
+    ELSE 2                   -- All others → USD
+  END;
+```
+
+---
+
+## §9 UserPreferences (New)
+
+**Purpose**: Store per-user UI preferences in database instead of localStorage.
+
+### Schema
+```csharp
+public class UserPreferences : BaseEntity
+{
+    public Guid UserId { get; private set; }
+
+    // YTD benchmark selections (JSON array, e.g., ["SPY", "VTI"])
+    public string? YtdBenchmarkPreferences { get; private set; }
+
+    // CAPE region selections (JSON array, e.g., ["US", "TW"])
+    public string? CapeRegionPreferences { get; private set; }
+
+    // Default portfolio ID
+    public Guid? DefaultPortfolioId { get; private set; }
+
+    // Navigation
+    public User User { get; private set; }
+    public Portfolio? DefaultPortfolio { get; private set; }
+}
+```
+
+### Database Table
+```sql
+CREATE TABLE user_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    ytd_benchmark_preferences TEXT NULL,
+    cape_region_preferences TEXT NULL,
+    default_portfolio_id UUID NULL REFERENCES portfolios(id),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_user_preferences_user_id ON user_preferences(user_id);
+```
+
+### Business Rules
+- **1:1 relationship**: One UserPreferences per User
+- **Lazy creation**: Created on first preference save
+- **JSON storage**: Preferences stored as JSON strings for flexibility
+
+---
+
+## §10 EuronextSymbolMapping (New)
+
+**Purpose**: Cache Euronext ticker → ISIN/MIC mappings for quote fetching.
+
+### Schema
+```csharp
+public class EuronextSymbolMapping
+{
+    public string Ticker { get; private set; }    // Primary key (e.g., AGAC)
+    public string Isin { get; private set; }      // ISIN identifier (e.g., IE000FHBZDZ8)
+    public string Mic { get; private set; }       // Market identifier (e.g., XAMS)
+    public string? Name { get; private set; }     // Stock name
+    public string Currency { get; private set; }  // Quote currency (e.g., USD, EUR)
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
+}
+```
+
+### Database Table
+```sql
+CREATE TABLE euronext_symbol_mappings (
+    ticker VARCHAR(20) PRIMARY KEY,
+    isin VARCHAR(20) NOT NULL,
+    mic VARCHAR(10) NOT NULL,
+    name VARCHAR(255) NULL,
+    currency VARCHAR(10) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+### Business Rules
+- **Global cache**: Shared across all users
+- **Auto-populated**: Created when Euronext quote is first fetched
+- **TTL**: No expiration (symbols are stable)
+
+---
+
+## §11 Updated Relationships Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         User                                     │
+│  (unchanged from 001-portfolio-tracker)                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┬──────────────────┐
+              │               │               │                  │
+              │ 1:1           │ 1:N           │ 1:1              │
+              ▼               ▼               ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   Portfolio     │  │  UserBenchmark  │  │ UserPreferences │  │  (other user    │
+│   (unchanged)   │  │     [Phase 1]   │  │    [Phase 2]    │  │   entities)     │
+└─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
+        │
+        │ 1:N
+        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   StockTransaction                               │
+│  [Phase 1] + Market: StockMarket (enum)                         │
+│  [Phase 2] + Currency: Currency (enum)                          │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      StockSplit                                  │
+│  [Phase 1] Standalone global table - not per-user               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  EuronextSymbolMapping                           │
+│  [Phase 2] Global cache table - ticker to ISIN/MIC mapping      │
+└─────────────────────────────────────────────────────────────────┘
+```

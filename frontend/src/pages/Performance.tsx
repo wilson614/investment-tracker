@@ -10,15 +10,15 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
-import { stockPriceApi, marketDataApi, userBenchmarkApi } from '../services/api';
+import { stockPriceApi, marketDataApi, userBenchmarkApi, userPreferencesApi } from '../services/api';
 import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytdApi';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { YearSelector } from '../components/performance/YearSelector';
 import { MissingPriceModal } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
+import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
 import { StockMarket } from '../types';
-import { getEuronextSymbol } from '../constants';
 import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison, UserBenchmark } from '../types';
 
 /**
@@ -45,11 +45,11 @@ const BENCHMARK_OPTIONS = [
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 
 /**
- * 從 localStorage 讀取使用者選擇的 benchmark（與 Dashboard 同步）。
+ * 從 localStorage 讀取使用者選擇的 benchmark（與 Dashboard 同步，fallback 用）。
  *
  * Dashboard 會存英文 key（例如 `All Country`），這裡會做基本驗證，避免壞資料造成 UI 異常。
  */
-function loadSelectedBenchmarks(): string[] {
+function loadSelectedBenchmarksFromLocalStorage(): string[] {
   try {
     const stored = localStorage.getItem(YTD_PREFS_KEY);
     if (stored) {
@@ -67,9 +67,9 @@ function loadSelectedBenchmarks(): string[] {
 }
 
 /**
- * 將使用者選擇的 benchmark 寫回 localStorage（與 Dashboard 同步）。
+ * 將使用者選擇的 benchmark 寫回 localStorage（fallback 用）。
  */
-function saveSelectedBenchmarks(keys: string[]): void {
+function saveSelectedBenchmarksToLocalStorage(keys: string[]): void {
   try {
     localStorage.setItem(YTD_PREFS_KEY, JSON.stringify(keys));
   } catch {
@@ -107,7 +107,7 @@ export function PerformancePage() {
   const fetchRetryCountRef = useRef<number>(0); // Limit auto-retries to prevent infinite loops
 
   // Benchmark comparison state - multi-select support, synced with dashboard
-  const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarks);
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarksFromLocalStorage);
   const [tempSelectedBenchmarks, setTempSelectedBenchmarks] = useState<string[]>([]);
   const [showBenchmarkSettings, setShowBenchmarkSettings] = useState(false);
   const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
@@ -118,6 +118,46 @@ export function PerformancePage() {
   // Custom user benchmarks state
   const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
   const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>({});
+
+  // Load user preferences from API on mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await userPreferencesApi.get();
+        if (prefs.ytdBenchmarkPreferences) {
+          const benchmarks = JSON.parse(prefs.ytdBenchmarkPreferences) as string[];
+          if (Array.isArray(benchmarks) && benchmarks.length > 0) {
+            // Validate keys exist in BENCHMARK_OPTIONS
+            const validKeys = benchmarks.filter(k => BENCHMARK_OPTIONS.some(o => o.key === k));
+            if (validKeys.length > 0) {
+              setSelectedBenchmarks(validKeys);
+              // Sync to localStorage for offline use
+              saveSelectedBenchmarksToLocalStorage(validKeys);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load preferences from API, using localStorage:', err);
+        // Keep localStorage values as fallback
+      }
+    };
+    loadPreferences();
+  }, []);
+
+  // Save preferences to API
+  const savePreferences = useCallback(async (keys: string[]) => {
+    // Always save to localStorage first (for immediate sync)
+    saveSelectedBenchmarksToLocalStorage(keys);
+
+    // Then save to API
+    try {
+      await userPreferencesApi.update({
+        ytdBenchmarkPreferences: JSON.stringify(keys),
+      });
+    } catch (err) {
+      console.error('Failed to save preferences to API:', err);
+    }
+  }, []);
 
   const {
     availableYears,
@@ -174,12 +214,27 @@ export function PerformancePage() {
       try {
         const benchmarks = await userBenchmarkApi.getAll();
         setCustomBenchmarks(benchmarks);
+
+        // 清理已刪除的自訂基準：從 selectedBenchmarks 中移除不存在的 custom_ key
+        const validCustomKeys = new Set(benchmarks.map(b => `custom_${b.id}`));
+        setSelectedBenchmarks(prev => {
+          const cleaned = prev.filter(key => {
+            // 保留系統基準和仍存在的自訂基準
+            if (!key.startsWith('custom_')) return true;
+            return validCustomKeys.has(key);
+          });
+          // 如果有清理，同步更新 localStorage 和 API
+          if (cleaned.length !== prev.length) {
+            savePreferences(cleaned);
+          }
+          return cleaned.length > 0 ? cleaned : ['All Country'];
+        });
       } catch (err) {
         console.error('Failed to load custom benchmarks:', err);
       }
     };
     loadCustomBenchmarks();
-  }, []);
+  }, [savePreferences]);
 
   /**
    * 當年度或 benchmark 選擇變動時，更新 benchmark 報酬。
@@ -291,17 +346,18 @@ export function PerformancePage() {
             if (isCurrentYear) {
               // For current year, get live quote
               try {
-                const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
-                endPrice = quote?.price;
+                // Use Euronext API for EU market (4)
+                if (benchmark.market === 4) {
+                  const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
+                  endPrice = euronextQuote?.price;
+                } else {
+                  const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
+                  endPrice = quote?.price;
+                }
               } catch {
-                // Try Euronext for UK ETFs
-                const euronextInfo = getEuronextSymbol(benchmark.ticker);
-                if (euronextInfo) {
-                  const euronextQuote = await marketDataApi.getEuronextQuote(
-                    euronextInfo.isin,
-                    euronextInfo.mic,
-                    'TWD'
-                  );
+                // Fallback: try Euronext if standard market fails
+                if (benchmark.market === 4) {
+                  const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
                   endPrice = euronextQuote?.price;
                 }
               }
@@ -363,7 +419,7 @@ export function PerformancePage() {
    * 補齊缺漏 ticker 的「即時」報價（通常用於當年度/YTD）。
    *
    * 規則：
-   * - 先判斷是否為 Euronext symbol，若是改走 `marketDataApi.getEuronextQuote`。
+   * - 若 MissingPrice 帶有 market = 4 (Euronext)，走 Euronext API。
    * - 其餘用 `stockPriceApi.getQuoteWithRate`，若推測為 US 但失敗則嘗試 UK。
    */
   const fetchCurrentPrices = useCallback(async (
@@ -374,14 +430,9 @@ export function PerformancePage() {
 
     await Promise.all(missingPrices.map(async (mp) => {
       try {
-        // Check if this is a Euronext symbol first
-        const euronextInfo = getEuronextSymbol(mp.ticker);
-        if (euronextInfo) {
-          const euronextQuote = await marketDataApi.getEuronextQuote(
-            euronextInfo.isin,
-            euronextInfo.mic,
-            homeCurrency
-          );
+        // Check if this is a Euronext ticker (market = 4)
+        if (mp.market === 4) {
+          const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(mp.ticker, homeCurrency);
           if (euronextQuote?.exchangeRate) {
             prices[mp.ticker] = {
               price: euronextQuote.price,
@@ -392,7 +443,7 @@ export function PerformancePage() {
         }
 
         // Standard market handling
-        const market = guessMarket(mp.ticker);
+        const market = mp.market ?? guessMarket(mp.ticker);
         let quote = await stockPriceApi.getQuoteWithRate(market, mp.ticker, homeCurrency);
 
         if (!quote && market === StockMarket.US) {
@@ -934,7 +985,7 @@ export function PerformancePage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-center gap-2">
                     {performance.xirrPercentageSource >= 0 ? (
                       <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                     ) : (
@@ -945,6 +996,12 @@ export function PerformancePage() {
                     }`}>
                       {formatPercent(performance.xirrPercentageSource)}
                     </span>
+                    <XirrWarningBadge
+                      earliestTransactionDate={performance.earliestTransactionDateInYear}
+                      asOfDate={selectedYear === new Date().getFullYear()
+                        ? new Date().toISOString()
+                        : `${selectedYear}-12-31`}
+                    />
                   </div>
                 </div>
               )}
@@ -966,7 +1023,7 @@ export function PerformancePage() {
                   </div>
                 </div>
                 {performance.xirrPercentage != null ? (
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-center gap-2">
                     {performance.xirrPercentage >= 0 ? (
                       <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                     ) : (
@@ -977,6 +1034,12 @@ export function PerformancePage() {
                     }`}>
                       {formatPercent(performance.xirrPercentage)}
                     </span>
+                    <XirrWarningBadge
+                      earliestTransactionDate={performance.earliestTransactionDateInYear}
+                      asOfDate={selectedYear === new Date().getFullYear()
+                        ? new Date().toISOString()
+                        : `${selectedYear}-12-31`}
+                    />
                   </div>
                 ) : isFetchingPrices ? (
                   <div className="flex items-center gap-2">
@@ -1189,7 +1252,7 @@ export function PerformancePage() {
                           onClick={() => {
                             if (tempSelectedBenchmarks.length > 0) {
                               setSelectedBenchmarks(tempSelectedBenchmarks);
-                              saveSelectedBenchmarks(tempSelectedBenchmarks);
+                              savePreferences(tempSelectedBenchmarks);
                             }
                             setShowBenchmarkSettings(false);
                           }}

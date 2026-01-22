@@ -5,7 +5,7 @@
  *
  * 特色：
  * - 進頁面先套用 localStorage 快取 quote / XIRR 讓數字立即可見，再自動抓最新報價。
- * - 報價支援 US 失敗時的 UK fallback。
+ * - US14: 報價嚴格依照 position 的 market 獲取，不再有 US→UK fallback。
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -104,7 +104,9 @@ const loadCachedXirr = (portfolioId: string, ticker: string): XirrResult | null 
 };
 
 export function PositionDetailPage() {
-  const { ticker } = useParams<{ ticker: string }>();
+  const { ticker, market: marketParam } = useParams<{ ticker: string; market?: string }>();
+  // Parse market from URL param (if provided)
+  const urlMarket: StockMarketType | undefined = marketParam ? parseInt(marketParam, 10) as StockMarketType : undefined;
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [position, setPosition] = useState<StockPosition | null>(null);
@@ -118,8 +120,9 @@ export function PositionDetailPage() {
   // XIRR cache will be loaded after we have portfolioId
   const cachedXirrRef = useRef<XirrResult | null>(null);
 
-  // Quote state - initialize from cache
-  const [selectedMarket, setSelectedMarket] = useState<StockMarketType>(cachedData.market);
+  // Quote state - initialize from cache, but prefer URL market if provided
+  const initialMarket = urlMarket ?? cachedData.market;
+  const [selectedMarket] = useState<StockMarketType>(initialMarket);
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     cachedData.quote ? 'success' : 'idle'
   );
@@ -167,10 +170,15 @@ export function PositionDetailPage() {
 
       setPortfolio(summaryData.portfolio);
 
-      // Find position for this ticker
-      const pos = summaryData.positions.find(
-        (p) => p.ticker.toUpperCase() === ticker.toUpperCase()
-      );
+      // Find position for this ticker (and market if specified in URL)
+      // When urlMarket is provided, we match exactly; otherwise match by ticker only
+      const pos = summaryData.positions.find((p) => {
+        const tickerMatch = p.ticker.toUpperCase() === ticker.toUpperCase();
+        if (urlMarket != null) {
+          return tickerMatch && p.market === urlMarket;
+        }
+        return tickerMatch;
+      });
 
       // If we have cached quote, apply it immediately to position
       if (pos && cachedData.quote && cachedData.quote.exchangeRate) {
@@ -191,17 +199,21 @@ export function PositionDetailPage() {
         setPosition(pos || null);
       }
 
-      // Filter transactions for this ticker
-      const tickerTx = txData.filter(
-        (t) => t.ticker.toUpperCase() === ticker.toUpperCase()
-      );
+      // Filter transactions for this ticker (and market if specified in URL)
+      const tickerTx = txData.filter((t) => {
+        const tickerMatch = t.ticker.toUpperCase() === ticker.toUpperCase();
+        if (urlMarket != null) {
+          return tickerMatch && t.market === urlMarket;
+        }
+        return tickerMatch;
+      });
       setTransactions(tickerTx);
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗');
     } finally {
       setIsLoading(false);
     }
-  }, [ticker]);
+  }, [ticker, urlMarket]);
 
   useEffect(() => {
     loadData();
@@ -246,7 +258,7 @@ export function PositionDetailPage() {
    * - localStorage quote cache
    * - position 的 currentValue / PnL
    *
-   * 若選擇 US 且失敗，會自動 fallback 至 UK。
+   * US14: 不再有 US→UK fallback，嚴格使用 position 的 market。
    */
   const handleFetchQuote = async () => {
     if (!portfolio || !portfolioId) return;
@@ -254,24 +266,13 @@ export function PositionDetailPage() {
     setFetchStatus('loading');
 
     try {
-      let quote = await stockPriceApi.getQuoteWithRate(
+      const quote = await stockPriceApi.getQuoteWithRate(
         selectedMarket,
         ticker!,
         portfolio.homeCurrency
       );
 
-      // UK fallback for US market
-      if (!quote && selectedMarket === StockMarket.US) {
-        quote = await stockPriceApi.getQuoteWithRate(
-          StockMarket.UK,
-          ticker!,
-          portfolio.homeCurrency
-        );
-        if (quote) {
-          setSelectedMarket(StockMarket.UK);
-        }
-      }
-
+      // US14: No market fallback - strictly use position's market
       if (quote) {
         const now = new Date();
         setLastQuote(quote);

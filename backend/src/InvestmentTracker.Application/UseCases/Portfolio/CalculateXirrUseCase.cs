@@ -137,12 +137,16 @@ public class CalculateXirrUseCase(
 
         var xirr = portfolioCalculator.CalculateXirr(cashFlows);
 
+        // 取得最早的交易日期
+        var earliestDate = orderedTransactions.FirstOrDefault()?.TransactionDate;
+
         return new XirrResultDto
         {
             Xirr = xirr,
             XirrPercentage = xirr * 100,
             CashFlowCount = cashFlows.Count,
             AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+            EarliestTransactionDate = earliestDate,
             MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
         };
     }
@@ -180,7 +184,8 @@ public class CalculateXirrUseCase(
                 Xirr = null,
                 XirrPercentage = null,
                 CashFlowCount = 0,
-                AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date
+                AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+                EarliestTransactionDate = null
             };
         }
 
@@ -237,12 +242,16 @@ public class CalculateXirrUseCase(
 
         var xirr = portfolioCalculator.CalculateXirr(cashFlows);
 
+        // 取得最早的交易日期
+        var earliestDate = tickerTransactions.FirstOrDefault()?.TransactionDate;
+
         return new XirrResultDto
         {
             Xirr = xirr,
             XirrPercentage = xirr * 100,
             CashFlowCount = cashFlows.Count,
             AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+            EarliestTransactionDate = earliestDate,
             MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
         };
     }

@@ -24,7 +24,6 @@ import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType, PortfolioType } from '../types';
-import { isEuronextSymbol, getEuronextSymbol } from '../constants';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
@@ -51,7 +50,8 @@ const guessMarket = (ticker: string): StockMarketType => {
  * 注意：perf cache 會包含 portfolioId，用來避免跨帳號/跨投資組合讀到錯誤資料。
  */
 const getPerfCacheKey = (portfolioId: string) => `perf_cache_${portfolioId}`;
-const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+const getQuoteCacheKey = (ticker: string, market?: StockMarketType) =>
+  `quote_cache_${ticker}_${market ?? 'default'}`;
 
 interface CachedPerformance {
   summary: PortfolioSummary;
@@ -66,22 +66,36 @@ interface CachedQuote {
 }
 
 /**
- * 從 localStorage 載入報價快取（依 ticker）。
+ * 依 ticker 格式推測市場別。
+ */
+const guessMarketForCache = (ticker: string): StockMarketType => {
+  if (/^\d+[A-Za-z]*$/.test(ticker)) {
+    return StockMarket.TW;
+  }
+  if (ticker.endsWith('.L')) {
+    return StockMarket.UK;
+  }
+  return StockMarket.US;
+};
+
+/**
+ * 從 localStorage 載入報價快取（依 ticker + market）。
  *
  * 設計重點：
  * - 不限制快取時效：進頁面時先用快取快速 render。
  * - 僅在快取包含 exchangeRate 時回填，避免本位幣換算資料不完整。
  */
-const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
+const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType }[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
 
-  for (const ticker of tickers) {
+  for (const pos of positions) {
     try {
-      const cached = localStorage.getItem(getQuoteCacheKey(ticker));
+      const market = pos.market ?? guessMarketForCache(pos.ticker);
+      const cached = localStorage.getItem(getQuoteCacheKey(pos.ticker, market));
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
         if (data.quote.exchangeRate) {
-          prices[ticker] = {
+          prices[pos.ticker] = {
             price: data.quote.price,
             exchangeRate: data.quote.exchangeRate,
           };
@@ -143,9 +157,8 @@ export function PortfolioPage() {
       ]);
       setTransactions(txData);
 
-      // Load cached prices for all positions
-      const tickers = basicSummary.positions.map(pos => pos.ticker);
-      const cachedPrices = loadCachedPrices(tickers);
+      // Load cached prices for all positions (using position with market info)
+      const cachedPrices = loadCachedPrices(basicSummary.positions);
       currentPricesRef.current = cachedPrices;
 
       // If we have cached prices, calculate with them immediately
@@ -201,9 +214,8 @@ export function PortfolioPage() {
       ]);
       setTransactions(txData);
 
-      // Load cached prices for all positions
-      const tickers = basicSummary.positions.map(pos => pos.ticker);
-      const cachedPrices = loadCachedPrices(tickers);
+      // Load cached prices for all positions (using position with market info)
+      const cachedPrices = loadCachedPrices(basicSummary.positions);
       currentPricesRef.current = cachedPrices;
 
       // If we have cached prices, calculate with them immediately
@@ -243,19 +255,14 @@ export function PortfolioPage() {
    *
    * 使用時機：新增持倉後，自動補上新標的的報價，讓持倉/績效能立即更新。
    */
-  const fetchPriceForTicker = async (ticker: string): Promise<void> => {
+  const fetchPriceForTicker = async (ticker: string, market?: StockMarketType): Promise<void> => {
     if (!summary) return;
     const homeCurrency = summary.portfolio.homeCurrency;
 
     try {
-      // Euronext 標的需先透過 ISIN/MIC 查詢，回傳後再組合成 synthetic quote 以沿用既有快取格式。
-      const euronextInfo = getEuronextSymbol(ticker);
-      if (euronextInfo) {
-        const euronextQuote = await marketDataApi.getEuronextQuote(
-          euronextInfo.isin,
-          euronextInfo.mic,
-          homeCurrency
-        );
+      // Euronext 標的透過 ticker 查詢（後端會自動解析 ISIN/MIC）
+      if (market === 4) {
+        const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(ticker, homeCurrency);
         if (euronextQuote?.exchangeRate) {
           const syntheticQuote: StockQuoteResponse = {
             symbol: ticker,
@@ -265,7 +272,7 @@ export function PortfolioPage() {
             source: 'Euronext',
             fetchedAt: new Date().toISOString(),
             exchangeRate: euronextQuote.exchangeRate,
-            exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+            exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
             changePercent: euronextQuote.changePercent ?? undefined,
             change: euronextQuote.change ?? undefined,
           };
@@ -274,7 +281,7 @@ export function PortfolioPage() {
             updatedAt: new Date().toISOString(),
             market: 4 as StockMarketType,
           };
-          localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+          localStorage.setItem(getQuoteCacheKey(ticker, 4 as StockMarketType), JSON.stringify(cacheData));
           currentPricesRef.current[ticker] = { price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
           await updateSummaryWithPrices({ ...currentPricesRef.current });
           setRefreshTrigger(Date.now());
@@ -282,23 +289,17 @@ export function PortfolioPage() {
         return;
       }
 
-      // Standard market handling
-      const market = guessMarket(ticker);
-      let quote = await stockPriceApi.getQuoteWithRate(market, ticker, homeCurrency);
-      let finalMarket = market;
-
-      if (!quote && market === StockMarket.US) {
-        quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, ticker, homeCurrency);
-        if (quote) finalMarket = StockMarket.UK;
-      }
+      // Standard market handling - no fallback since market is explicitly specified
+      const targetMarket = market ?? guessMarket(ticker);
+      const quote = await stockPriceApi.getQuoteWithRate(targetMarket, ticker, homeCurrency);
 
       if (quote?.exchangeRate) {
         const cacheData: CachedQuote = {
           quote,
           updatedAt: new Date().toISOString(),
-          market: finalMarket,
+          market: targetMarket,
         };
-        localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+        localStorage.setItem(getQuoteCacheKey(ticker, targetMarket), JSON.stringify(cacheData));
         currentPricesRef.current[ticker] = { price: quote.price, exchangeRate: quote.exchangeRate };
         await updateSummaryWithPrices({ ...currentPricesRef.current });
         setRefreshTrigger(Date.now());
@@ -332,6 +333,7 @@ export function PortfolioPage() {
         currencyLedgerId: data.currencyLedgerId,
         notes: data.notes,
         market: data.market,
+        currency: data.currency,
       });
     } else {
       await transactionApi.create(data);
@@ -349,7 +351,7 @@ export function PortfolioPage() {
     const isNewPosition = !existingTickers.has(data.ticker);
     if (isNewPosition && data.transactionType === TransactionType.Buy) {
       // Fetch price in background - don't block UI
-      fetchPriceForTicker(data.ticker);
+      fetchPriceForTicker(data.ticker, data.market);
     }
   };
 
@@ -426,7 +428,7 @@ export function PortfolioPage() {
    * 抓取所有持倉的最新報價（含匯率），並更新 summary / XIRR。
    *
    * 補充：
-   * - 先判斷是否為 Euronext symbol，若是則走 Euronext quote 流程，並建立 synthetic quote 以沿用快取格式。
+   * - 先判斷是否為 Euronext symbol（market === 4），若是則走 Euronext quote 流程。
    * - 其餘走一般市場（TW/US/UK）報價，US 失敗時嘗試 UK。
    */
   const handleFetchAllPrices = async () => {
@@ -438,12 +440,11 @@ export function PortfolioPage() {
       const homeCurrency = summary.portfolio.homeCurrency;
       const fetchPromises = summary.positions.map(async (position) => {
         try {
-          // Check if this is a Euronext symbol first
-          const euronextInfo = getEuronextSymbol(position.ticker);
-          if (euronextInfo) {
-            const euronextQuote = await marketDataApi.getEuronextQuote(
-              euronextInfo.isin,
-              euronextInfo.mic,
+          // Use Euronext API if position's market is EU (4)
+          const positionMarket = position.market ?? guessMarket(position.ticker);
+          if (positionMarket === 4) {
+            const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(
+              position.ticker,
               homeCurrency
             );
             if (euronextQuote?.exchangeRate) {
@@ -456,7 +457,7 @@ export function PortfolioPage() {
                 source: 'Euronext',
                 fetchedAt: new Date().toISOString(),
                 exchangeRate: euronextQuote.exchangeRate,
-                exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+                exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
                 changePercent: euronextQuote.changePercent ?? undefined,
                 change: euronextQuote.change ?? undefined,
               };
@@ -465,58 +466,28 @@ export function PortfolioPage() {
                 updatedAt: new Date().toISOString(),
                 market: 4 as StockMarketType,
               };
-              localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+              localStorage.setItem(getQuoteCacheKey(position.ticker, 4 as StockMarketType), JSON.stringify(cacheData));
               return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
             }
             return null;
           }
 
-          // Standard market handling
+          // Standard market handling - no fallback since market is explicitly specified
           const market = position.market ?? guessMarket(position.ticker);
-          let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
-          let finalMarket = market;
-
-          if (!quote && market === StockMarket.US) {
-            quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-            if (quote) finalMarket = StockMarket.UK;
-          }
+          const quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
 
           if (quote?.exchangeRate) {
             // Save full quote to cache for PositionCard to use
             const cacheData: CachedQuote = {
               quote,
               updatedAt: new Date().toISOString(),
-              market: finalMarket,
+              market,
             };
-            localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+            localStorage.setItem(getQuoteCacheKey(position.ticker, market), JSON.stringify(cacheData));
             return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
           }
           return null;
         } catch {
-          // Check for Euronext first in fallback
-          if (isEuronextSymbol(position.ticker)) {
-            console.error(`Failed to fetch Euronext price for ${position.ticker}`);
-            return null;
-          }
-
-          const market = position.market ?? guessMarket(position.ticker);
-          if (market === StockMarket.US) {
-            try {
-              const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-              if (ukQuote?.exchangeRate) {
-                // Save full quote to cache
-                const cacheData: CachedQuote = {
-                  quote: ukQuote,
-                  updatedAt: new Date().toISOString(),
-                  market: StockMarket.UK,
-                };
-                localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
-                return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
-              }
-            } catch {
-              // UK also failed
-            }
-          }
           console.error(`Failed to fetch price for ${position.ticker}`);
           return null;
         }
@@ -637,8 +608,8 @@ export function PortfolioPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {summary.positions.map((position) => (
                 <Link
-                  key={position.ticker}
-                  to={`/portfolio/position/${position.ticker}`}
+                  key={`${position.ticker}-${position.market ?? 'default'}`}
+                  to={`/portfolio/position/${position.ticker}${position.market != null ? `/${position.market}` : ''}`}
                   className="block"
                 >
                   <PositionCard

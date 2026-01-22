@@ -59,6 +59,11 @@ public record YearPerformanceDto
     /// <summary>年度期間實際交易筆數（僅 buy/sell，不含年度起訖估值）。</summary>
     public int TransactionCount { get; init; }
 
+    /// <summary>
+    /// 年度期間最早的交易日期。用於判斷 XIRR 計算期間是否過短（< 3 個月）。
+    /// </summary>
+    public DateTime? EarliestTransactionDateInYear { get; init; }
+
     /// <summary>計算所需但缺少參考價格的持倉清單。</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 

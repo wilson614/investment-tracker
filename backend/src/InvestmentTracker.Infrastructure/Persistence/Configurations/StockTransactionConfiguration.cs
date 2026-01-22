@@ -51,6 +51,10 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
             .IsRequired()
             .HasDefaultValue(StockMarket.US);
 
+        builder.Property(t => t.Currency)
+            .IsRequired()
+            .HasDefaultValue(Currency.USD);
+
         builder.Property(t => t.IsDeleted)
             .IsRequired()
             .HasDefaultValue(false);

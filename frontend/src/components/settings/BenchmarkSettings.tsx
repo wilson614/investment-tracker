@@ -9,7 +9,6 @@ import { Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { userBenchmarkApi, etfClassificationApi, stockPriceApi } from '../../services/api';
 import { StockMarket as StockMarketEnum } from '../../types';
 import type { UserBenchmark, StockMarket, CreateUserBenchmarkRequest } from '../../types';
-import { isEuronextSymbol } from '../../constants';
 
 const MARKET_LABELS: Record<StockMarket, string> = {
   [StockMarketEnum.TW]: '台股',
@@ -99,9 +98,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
 
     // .L 結尾直接判定為英股
     if (trimmed.endsWith('.L')) return StockMarketEnum.UK;
-
-    // Euronext 股票
-    if (isEuronextSymbol(trimmed)) return StockMarketEnum.EU;
 
     // 對於其他 ticker，先嘗試查詢 US 市場
     try {
@@ -211,7 +207,6 @@ export function BenchmarkSettings({ onUpdate }: BenchmarkSettingsProps) {
               value={newTicker}
               onChange={(e) => handleTickerChange(e.target.value)}
               onBlur={handleTickerBlur}
-              placeholder="如 VWRA.L"
               className="input-dark w-full"
               disabled={isAdding}
             />

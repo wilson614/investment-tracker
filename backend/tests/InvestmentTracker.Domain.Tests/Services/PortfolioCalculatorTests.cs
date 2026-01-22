@@ -342,6 +342,88 @@ public class PortfolioCalculatorTests
 
     #endregion
 
+    #region Multi-Market Same-Ticker Tests (US13)
+
+    [Fact]
+    public void RecalculateAllPositions_SameTickerDifferentMarkets_CreatesSeparatePositions()
+    {
+        // Arrange: Same ticker (VWRA) in both US and UK markets
+        var splitService = new StockSplitAdjustmentService();
+        var transactions = new List<StockTransaction>
+        {
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.US, 10m, 100m, 31.5m, 0m),
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.UK, 5m, 80m, 40m, 0m)
+        };
+        var splits = new List<StockSplit>();
+
+        // Act
+        var positions = _calculator.RecalculateAllPositionsWithSplitAdjustments(
+            transactions, splits, splitService).ToList();
+
+        // Assert: Should have 2 separate positions
+        Assert.Equal(2, positions.Count);
+
+        var usPosition = positions.First(p => p.Market == StockMarket.US);
+        var ukPosition = positions.First(p => p.Market == StockMarket.UK);
+
+        Assert.Equal("VWRA", usPosition.Ticker);
+        Assert.Equal(10m, usPosition.TotalShares);
+        Assert.Equal(StockMarket.US, usPosition.Market);
+
+        Assert.Equal("VWRA", ukPosition.Ticker);
+        Assert.Equal(5m, ukPosition.TotalShares);
+        Assert.Equal(StockMarket.UK, ukPosition.Market);
+    }
+
+    [Fact]
+    public void RecalculateAllPositions_SameTickerSameMarket_CombinesIntoSinglePosition()
+    {
+        // Arrange: Same ticker and market should be combined
+        var splitService = new StockSplitAdjustmentService();
+        var transactions = new List<StockTransaction>
+        {
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.US, 10m, 100m, 31.5m, 0m),
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.US, 5m, 110m, 32m, 0m)
+        };
+        var splits = new List<StockSplit>();
+
+        // Act
+        var positions = _calculator.RecalculateAllPositionsWithSplitAdjustments(
+            transactions, splits, splitService).ToList();
+
+        // Assert: Should have 1 combined position
+        Assert.Single(positions);
+        var position = positions.First();
+        Assert.Equal("VWRA", position.Ticker);
+        Assert.Equal(15m, position.TotalShares);
+        Assert.Equal(StockMarket.US, position.Market);
+    }
+
+    [Fact]
+    public void CalculatePositionByMarket_FiltersTransactionsByMarket()
+    {
+        // Arrange: Mix of US and UK transactions for the same ticker
+        var transactions = new List<StockTransaction>
+        {
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.US, 10m, 100m, 31.5m, 0m),
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.UK, 5m, 80m, 40m, 0m),
+            CreateBuyTransactionWithMarket("VWRA", StockMarket.US, 3m, 105m, 32m, 0m)
+        };
+
+        // Act
+        var usPosition = _calculator.CalculatePositionByMarket("VWRA", StockMarket.US, transactions);
+        var ukPosition = _calculator.CalculatePositionByMarket("VWRA", StockMarket.UK, transactions);
+
+        // Assert
+        Assert.Equal(13m, usPosition.TotalShares);  // 10 + 3
+        Assert.Equal(StockMarket.US, usPosition.Market);
+
+        Assert.Equal(5m, ukPosition.TotalShares);
+        Assert.Equal(StockMarket.UK, ukPosition.Market);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private StockTransaction CreateBuyTransaction(
@@ -370,6 +452,22 @@ public class PortfolioCalculatorTests
             price,
             exchangeRate,
             fees);
+    }
+
+    private StockTransaction CreateBuyTransactionWithMarket(
+        string ticker, StockMarket market, decimal shares, decimal price, decimal exchangeRate, decimal fees)
+    {
+        var tx = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            ticker,
+            TransactionType.Buy,
+            shares,
+            price,
+            exchangeRate,
+            fees);
+        tx.SetMarket(market);
+        return tx;
     }
 
     #endregion

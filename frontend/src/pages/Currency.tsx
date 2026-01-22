@@ -28,8 +28,8 @@ export default function Currency() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // Create form state
-  const [selectedCurrency, setSelectedCurrency] = useState('');
+  // Create form state - 預設選擇第一個可用的幣別
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
@@ -130,12 +130,11 @@ export default function Currency() {
                     className="input-dark w-full"
                     required
                   >
-                    <option value="">請選擇幣別</option>
                     {SUPPORTED_CURRENCIES.map((currency) => {
                       const isDisabled = existingCurrencies.has(currency.code);
                       return (
-                        <option 
-                          key={currency.code} 
+                        <option
+                          key={currency.code}
                           value={currency.code}
                           disabled={isDisabled}
                         >

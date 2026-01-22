@@ -4,7 +4,6 @@ import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse,
 import { StockMarket } from '../../types';
 import { StaleQuoteIndicator, EtfTypeBadge } from '../common';
 import type { EtfType } from '../common';
-import { isEuronextSymbol, getEuronextSymbol } from '../../constants';
 
 interface PositionCardProps {
   position: StockPosition;
@@ -35,19 +34,19 @@ const MARKET_LABELS: Record<number, string> = {
   4: 'Euronext',
 };
 
-// Get base currency for a market (TW -> TWD, US/UK -> USD, Euronext -> mapping currency)
+// Get base currency for a market (TW -> TWD, US/UK -> USD, Euronext -> EUR as default, actual from quote)
 const EURONEXT_MARKET: StockMarketType = 4 as StockMarketType;
 
-const getMarketCurrency = (ticker: string, market: StockMarketType): string => {
+const getMarketCurrency = (market: StockMarketType): string => {
   if (market === EURONEXT_MARKET) {
-    const euronextInfo = getEuronextSymbol(ticker);
-    return euronextInfo?.currency ?? 'EUR';
+    return 'EUR';
   }
   return market === StockMarket.TW ? 'TWD' : 'USD';
 };
 
-// Cache key for localStorage
-const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+// Cache key for localStorage - includes market to prevent cross-market conflicts
+const getQuoteCacheKey = (ticker: string, market?: StockMarketType) =>
+  `quote_cache_${ticker}_${market ?? 'default'}`;
 
 interface CachedQuote {
   quote: StockQuoteResponse;
@@ -70,7 +69,7 @@ export function PositionCard({
     const positionMarket = position.market ?? guessMarket(position.ticker);
 
     try {
-      const cached = localStorage.getItem(getQuoteCacheKey(position.ticker));
+      const cached = localStorage.getItem(getQuoteCacheKey(position.ticker, positionMarket));
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
         return {
@@ -138,7 +137,7 @@ export function PositionCard({
         market,
         fromCache,
       };
-      localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(data));
+      localStorage.setItem(getQuoteCacheKey(position.ticker, market), JSON.stringify(data));
     } catch {
       // Ignore cache errors
     }
@@ -179,12 +178,11 @@ export function PositionCard({
     setIsStaleQuote(false);
 
     try {
-      // Check if this is a Euronext symbol first
-      const euronextInfo = getEuronextSymbol(position.ticker);
-      if (euronextInfo) {
-        const euronextQuote = await marketDataApi.getEuronextQuote(
-          euronextInfo.isin,
-          euronextInfo.mic,
+      // Use Euronext API if position's market is EU (4)
+      const positionMarket = position.market ?? targetMarket;
+      if (positionMarket === EURONEXT_MARKET) {
+        const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(
+          position.ticker,
           homeCurrency
         );
         if (euronextQuote) {
@@ -198,7 +196,7 @@ export function PositionCard({
             source: 'Euronext',
             fetchedAt: euronextQuote.marketTime || new Date().toISOString(),
             exchangeRate: euronextQuote.exchangeRate ?? undefined,
-            exchangeRatePair: `${euronextInfo.currency}/${homeCurrency}`,
+            exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
           };
           setLastQuote(syntheticQuote);
           setLastUpdated(new Date());
@@ -214,23 +212,14 @@ export function PositionCard({
         }
       }
 
-      let quote = await stockPriceApi.getQuoteWithRate(targetMarket, position.ticker, homeCurrency);
-      let finalMarket = targetMarket;
+      const quote = await stockPriceApi.getQuoteWithRate(targetMarket, position.ticker, homeCurrency);
 
-      // If US market fails, try UK market (for ETFs like VWRA that are listed on LSE)
-      if (!quote && targetMarket === StockMarket.US) {
-        quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-        if (quote) {
-          finalMarket = StockMarket.UK;
-          setSelectedMarket(StockMarket.UK);
-        }
-      }
-
+      // US14: No market fallback - strictly use position's market
       if (quote) {
         setLastQuote(quote);
         setLastUpdated(new Date());
         setFetchStatus('success');
-        saveToCache(quote, finalMarket);
+        saveToCache(quote, targetMarket);
 
         // Notify parent with the fetched price and exchange rate
         if (onPriceUpdate && quote.exchangeRate) {
@@ -238,37 +227,20 @@ export function PositionCard({
         }
       } else {
         setFetchStatus('error');
-        setError('找不到報價');
+        setError('無報價');
       }
     } catch (err) {
-      // Check for Euronext first
-      if (isEuronextSymbol(position.ticker)) {
+      // Check for Euronext market
+      const positionMarket = position.market ?? selectedMarket;
+      if (positionMarket === EURONEXT_MARKET) {
         setFetchStatus('error');
         setError('Euronext 報價獲取失敗');
         return;
       }
 
-      // If US fails with exception, try UK as fallback
-      if (targetMarket === StockMarket.US) {
-        try {
-          const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-          if (ukQuote) {
-            setSelectedMarket(StockMarket.UK);
-            setLastQuote(ukQuote);
-            setLastUpdated(new Date());
-            setFetchStatus('success');
-            saveToCache(ukQuote, StockMarket.UK);
-            if (onPriceUpdate && ukQuote.exchangeRate) {
-              onPriceUpdate(position.ticker, ukQuote.price, ukQuote.exchangeRate);
-            }
-            return;
-          }
-        } catch {
-          // UK also failed
-        }
-      }
+      // US14: No market fallback - show error directly
       setFetchStatus('error');
-      setError(err instanceof Error ? err.message : '獲取失敗');
+      setError(err instanceof Error ? err.message : '無報價');
     }
   };
 
@@ -276,7 +248,8 @@ export function PositionCard({
     ? 'number-positive'
     : 'number-negative';
 
-  const marketCurrency = getMarketCurrency(position.ticker, selectedMarket);
+  // 優先使用 position.currency（從後端交易資料取得），否則根據市場推測
+  const marketCurrency = position.currency ?? getMarketCurrency(selectedMarket);
   const hasCurrentValue = position.currentValueHome !== undefined && position.currentValueHome !== null;
 
   return (

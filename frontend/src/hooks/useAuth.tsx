@@ -83,9 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 移除導覽快取（不應跨帳號保留）
     localStorage.removeItem('default_portfolio_id');
+    localStorage.removeItem('selected_portfolio_id');
 
-    // 保留使用者偏好設定（ytd_benchmark_preferences, cape_region_preferences）
-    // 這些是 UI 偏好，可以跨帳號保留
+    // 使用者偏好設定（ytd_benchmark_preferences, cape_region_preferences）
+    // 現在存在後端 database，但 localStorage 也有快取副本
+    // 這裡不清除 localStorage 副本，讓 API 同步來處理
 
     setUser(null);
   };

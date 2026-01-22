@@ -62,7 +62,8 @@ public class StockTransactionsController(
                 AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
                 SplitRatio = adjusted.SplitRatio,
                 HasSplitAdjustment = adjusted.HasSplitAdjustment,
-                Market = t.Market
+                Market = t.Market,
+                Currency = t.Currency
             };
         }));
     }
@@ -108,7 +109,8 @@ public class StockTransactionsController(
             AdjustedPricePerShare = adjusted.HasSplitAdjustment ? adjusted.AdjustedPrice : null,
             SplitRatio = adjusted.SplitRatio,
             HasSplitAdjustment = adjusted.HasSplitAdjustment,
-            Market = transaction.Market
+            Market = transaction.Market,
+            Currency = transaction.Currency
         });
     }
 

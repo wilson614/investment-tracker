@@ -8,8 +8,8 @@
  * - 當 `totalCostHome` 為 null 時，代表沒有匯率資料，改顯示 source currency 成本。
  */
 import { Pencil, Trash2, SplitSquareHorizontal } from 'lucide-react';
-import type { StockTransaction, TransactionType, StockMarket } from '../../types';
-import { StockMarket as StockMarketEnum } from '../../types';
+import type { StockTransaction, TransactionType, StockMarket, Currency } from '../../types';
+import { StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
 import { formatFullDate } from '../../utils/dateUtils';
 
 interface TransactionListProps {
@@ -48,6 +48,13 @@ const marketBadgeStyles: Record<StockMarket, string> = {
   [StockMarketEnum.US]: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   [StockMarketEnum.UK]: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   [StockMarketEnum.EU]: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+};
+
+const currencyLabels: Record<Currency, string> = {
+  [CurrencyEnum.TWD]: 'TWD',
+  [CurrencyEnum.USD]: 'USD',
+  [CurrencyEnum.GBP]: 'GBP',
+  [CurrencyEnum.EUR]: 'EUR',
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
@@ -164,7 +171,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
               <td className="text-right font-medium number-display whitespace-nowrap">
                 {tx.totalCostHome != null
                   ? `${formatTWD(tx.totalCostHome)} TWD`
-                  : formatNumber(tx.totalCostSource, 2)}
+                  : `${formatNumber(tx.totalCostSource, 2)} ${currencyLabels[tx.currency] || '?'}`}
               </td>
               <td className="text-right">
                 {tx.realizedPnlHome != null ? (

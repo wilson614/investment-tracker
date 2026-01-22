@@ -124,7 +124,8 @@ public class CreateStockTransactionUseCase(
                 request.FundSource,
                 request.CurrencyLedgerId,
                 request.Notes,
-                request.Market);
+                request.Market,
+                request.Currency);
 
             realizedPnlHome = portfolioCalculator.CalculateRealizedPnl(currentPosition, tempSellTransaction);
         }
@@ -142,7 +143,8 @@ public class CreateStockTransactionUseCase(
             request.FundSource,
             request.CurrencyLedgerId,
             request.Notes,
-            request.Market);
+            request.Market,
+            request.Currency);
 
         // 若為賣出交易，設定已實現損益
         if (realizedPnlHome.HasValue)
@@ -190,6 +192,7 @@ public class CreateStockTransactionUseCase(
             HasExchangeRate = transaction.HasExchangeRate,
             RealizedPnlHome = transaction.RealizedPnlHome,
             Market = transaction.Market,
+            Currency = transaction.Currency,
             CreatedAt = transaction.CreatedAt,
             UpdatedAt = transaction.UpdatedAt
         };

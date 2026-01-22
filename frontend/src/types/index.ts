@@ -95,6 +95,7 @@ export interface StockTransaction {
   splitRatio: number;
   hasSplitAdjustment: boolean;
   market: StockMarket;
+  currency: Currency;
 }
 
 export interface CreateStockTransactionRequest {
@@ -110,6 +111,7 @@ export interface CreateStockTransactionRequest {
   currencyLedgerId?: string;
   notes?: string;
   market?: StockMarket;
+  currency?: Currency;
 }
 
 export interface UpdateStockTransactionRequest {
@@ -124,6 +126,7 @@ export interface UpdateStockTransactionRequest {
   currencyLedgerId?: string;
   notes?: string;
   market?: StockMarket;
+  currency?: Currency;
 }
 
 export interface StockPosition {
@@ -139,6 +142,7 @@ export interface StockPosition {
   unrealizedPnlHome?: number;
   unrealizedPnlPercentage?: number;
   market?: StockMarket;
+  currency?: string;
 }
 
 export interface PortfolioSummary {
@@ -243,11 +247,18 @@ export interface CalculateXirrRequest {
   asOfDate?: string;
 }
 
+export interface MissingExchangeRate {
+  transactionDate: string;
+  currency: string;
+}
+
 export interface XirrResult {
   xirr: number | null;
   xirrPercentage: number | null;
   cashFlowCount: number;
   asOfDate: string;
+  earliestTransactionDate: string | null;
+  missingExchangeRates: MissingExchangeRate[] | null;
 }
 
 // Stock Price Types
@@ -258,6 +269,14 @@ export const StockMarket = {
   EU: 4,
 } as const;
 export type StockMarket = (typeof StockMarket)[keyof typeof StockMarket];
+
+export const Currency = {
+  TWD: 1,
+  USD: 2,
+  GBP: 3,
+  EUR: 4,
+} as const;
+export type Currency = (typeof Currency)[keyof typeof Currency];
 
 export interface StockQuoteResponse {
   symbol: string;
@@ -367,6 +386,7 @@ export interface YearPerformance {
   // Common
   cashFlowCount: number;
   transactionCount: number;
+  earliestTransactionDateInYear: string | null;
   missingPrices: MissingPrice[];
   isComplete: boolean;
 }
@@ -375,6 +395,7 @@ export interface MissingPrice {
   ticker: string;
   date: string;
   priceType: 'YearStart' | 'YearEnd';
+  market?: StockMarket;
 }
 
 export interface AvailableYears {

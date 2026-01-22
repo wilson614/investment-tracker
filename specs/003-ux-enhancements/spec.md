@@ -2,7 +2,7 @@
 
 **Feature Branch**: `003-ux-enhancements`
 **Created**: 2026-01-21
-**Status**: Implemented (Phase 1-10 Complete), Phase 2 In Progress (US9-US17)
+**Status**: Implemented (Phase 1-10 Complete), Phase 2 Complete (US9-US17)
 **Input**: Stock split UI, Benchmark custom stocks, default login page, dashboard historical chart, Taiwan timezone, date input optimization, fee default value, transaction Market field, **[NEW]** transaction currency, XIRR for current year, logout cache cleanup, dashboard layout stability, multi-market same-ticker support, quote fallback logic, ticker prediction trigger, CSV import market/currency, Yahoo historical price fallback
 
 ## User Scenarios & Testing *(mandatory)*

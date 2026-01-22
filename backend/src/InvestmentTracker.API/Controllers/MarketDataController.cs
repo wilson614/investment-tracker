@@ -180,11 +180,11 @@ public class MarketDataController(
 
     /// <summary>
     /// 取得 Euronext 上市股票的報價（例如：阿姆斯特丹市場的 AGAC）。
+    /// 使用 ISIN 和 MIC 直接查詢。
     /// </summary>
     /// <param name="isin">ISIN code（例如：IE000FHBZDZ8）</param>
     /// <param name="mic">Market Identifier Code（例如：阿姆斯特丹為 XAMS）</param>
     /// <param name="homeCurrency">匯率換算目標幣別（預設：TWD）</param>
-    /// <param name="refresh">是否強制更新（略過快取）</param>
     /// <param name="cancellationToken"></param>
     [HttpGet("euronext/quote")]
     [ProducesResponseType(typeof(EuronextQuoteResponse), StatusCodes.Status200OK)]
@@ -193,7 +193,6 @@ public class MarketDataController(
         [FromQuery] string isin,
         [FromQuery] string mic,
         [FromQuery] string? homeCurrency = "TWD",
-        [FromQuery] bool refresh = false,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(isin) || string.IsNullOrWhiteSpace(mic))
@@ -205,7 +204,6 @@ public class MarketDataController(
             isin.Trim().ToUpperInvariant(),
             mic.Trim().ToUpperInvariant(),
             homeCurrency ?? "TWD",
-            refresh,
             cancellationToken);
 
         if (quote == null)
@@ -222,6 +220,82 @@ public class MarketDataController(
             quote.FromCache,
             quote.ChangePercent,
             quote.Change));
+    }
+
+    /// <summary>
+    /// 依 ticker 取得 Euronext 上市股票的報價。
+    /// 會自動查詢並快取 ticker → ISIN/MIC 對應。
+    /// </summary>
+    /// <param name="ticker">股票代碼（例如：AGAC、SSAC）</param>
+    /// <param name="homeCurrency">匯率換算目標幣別（預設：TWD）</param>
+    /// <param name="cancellationToken"></param>
+    [HttpGet("euronext/quote-by-ticker")]
+    [ProducesResponseType(typeof(EuronextQuoteResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EuronextQuoteResponse>> GetEuronextQuoteByTicker(
+        [FromQuery] string ticker,
+        [FromQuery] string? homeCurrency = "TWD",
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+        {
+            return BadRequest("Ticker is required");
+        }
+
+        var quote = await euronextQuoteService.GetQuoteByTickerAsync(
+            ticker.Trim().ToUpperInvariant(),
+            homeCurrency ?? "TWD",
+            cancellationToken);
+
+        if (quote == null)
+        {
+            return NotFound($"No quote found for ticker {ticker}");
+        }
+
+        return Ok(new EuronextQuoteResponse(
+            quote.Price,
+            quote.Currency,
+            quote.MarketTime,
+            quote.Name,
+            quote.ExchangeRate,
+            quote.FromCache,
+            quote.ChangePercent,
+            quote.Change));
+    }
+
+    /// <summary>
+    /// 取得 Euronext ticker 對應的 ISIN/MIC 資訊。
+    /// 會自動查詢並快取對應關係。
+    /// </summary>
+    /// <param name="ticker">股票代碼（例如：AGAC、SSAC）</param>
+    /// <param name="cancellationToken"></param>
+    [HttpGet("euronext/symbol-mapping")]
+    [ProducesResponseType(typeof(EuronextSymbolMappingResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EuronextSymbolMappingResponse>> GetEuronextSymbolMapping(
+        [FromQuery] string ticker,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+        {
+            return BadRequest("Ticker is required");
+        }
+
+        var mapping = await euronextQuoteService.GetSymbolMappingAsync(
+            ticker.Trim().ToUpperInvariant(),
+            cancellationToken);
+
+        if (mapping == null)
+        {
+            return NotFound($"No symbol mapping found for ticker {ticker}");
+        }
+
+        return Ok(new EuronextSymbolMappingResponse(
+            mapping.Ticker,
+            mapping.Isin,
+            mapping.Mic,
+            mapping.Currency,
+            mapping.Name));
     }
 
     /// <summary>
@@ -1055,3 +1129,13 @@ public record TransactionDateExchangeRateResponse(
     DateTime ActualDate,
     string Source,
     bool FromCache);
+
+/// <summary>
+/// Euronext 股票代碼對應 ISIN/MIC 的回應。
+/// </summary>
+public record EuronextSymbolMappingResponse(
+    string Ticker,
+    string Isin,
+    string Mic,
+    string Currency,
+    string? Name);
