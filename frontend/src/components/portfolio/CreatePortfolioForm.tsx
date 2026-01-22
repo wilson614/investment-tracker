@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { X, Globe, DollarSign } from 'lucide-react';
-import { PortfolioType } from '../../types';
+import { X, DollarSign } from 'lucide-react';
 import type { CreatePortfolioRequest } from '../../types';
 import { portfolioApi } from '../../services/api';
 
@@ -12,7 +11,6 @@ interface CreatePortfolioFormProps {
 const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'TWD'];
 
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
-  const [portfolioType, setPortfolioType] = useState<PortfolioType>(PortfolioType.Primary);
   const [displayName, setDisplayName] = useState('');
   const [baseCurrency, setBaseCurrency] = useState('USD');
   const [homeCurrency, setHomeCurrency] = useState('TWD');
@@ -27,10 +25,9 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
 
     try {
       const request: CreatePortfolioRequest = {
-        portfolioType,
         displayName: displayName.trim() || undefined,
         baseCurrency,
-        homeCurrency: portfolioType === PortfolioType.ForeignCurrency ? baseCurrency : homeCurrency,
+        homeCurrency,
         description: description.trim() || undefined,
       };
 
@@ -61,63 +58,16 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Portfolio Type Selection */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              投資組合類型
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setPortfolioType(PortfolioType.Primary)}
-                className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${
-                  portfolioType === PortfolioType.Primary
-                    ? 'border-[var(--accent-teal)] bg-[var(--accent-teal)]/10'
-                    : 'border-[var(--border-primary)] hover:border-[var(--border-secondary)]'
-                }`}
-              >
-                <DollarSign
-                  className={`w-5 h-5 ${
-                    portfolioType === PortfolioType.Primary
-                      ? 'text-[var(--accent-teal)]'
-                      : 'text-[var(--text-secondary)]'
-                  }`}
-                />
-                <div className="text-left">
-                  <div className="text-sm font-medium text-[var(--text-primary)]">
-                    主要投資組合
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">
-                    含匯率轉換
-                  </div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPortfolioType(PortfolioType.ForeignCurrency)}
-                className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${
-                  portfolioType === PortfolioType.ForeignCurrency
-                    ? 'border-[var(--accent-teal)] bg-[var(--accent-teal)]/10'
-                    : 'border-[var(--border-primary)] hover:border-[var(--border-secondary)]'
-                }`}
-              >
-                <Globe
-                  className={`w-5 h-5 ${
-                    portfolioType === PortfolioType.ForeignCurrency
-                      ? 'text-[var(--accent-teal)]'
-                      : 'text-[var(--text-secondary)]'
-                  }`}
-                />
-                <div className="text-left">
-                  <div className="text-sm font-medium text-[var(--text-primary)]">
-                    外幣投資組合
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">
-                    單一幣別計算
-                  </div>
-                </div>
-              </button>
+          {/* Portfolio Type Indicator */}
+          <div className="flex items-center gap-3 p-4 rounded-lg border-2 border-[var(--accent-teal)] bg-[var(--accent-teal)]/10">
+            <DollarSign className="w-5 h-5 text-[var(--accent-teal)]" />
+            <div className="text-left">
+              <div className="text-sm font-medium text-[var(--text-primary)]">
+                主要投資組合
+              </div>
+              <div className="text-xs text-[var(--text-muted)]">
+                含匯率轉換
+              </div>
             </div>
           </div>
 
@@ -137,10 +87,10 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           </div>
 
           {/* Currency Selection */}
-          <div className={`grid gap-4 ${portfolioType === PortfolioType.Primary ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="grid gap-4 grid-cols-2">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                {portfolioType === PortfolioType.ForeignCurrency ? '計價幣別' : '資產幣別'}
+                資產幣別
               </label>
               <select
                 value={baseCurrency}
@@ -155,24 +105,22 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
               </select>
             </div>
 
-            {portfolioType === PortfolioType.Primary && (
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                  本國幣別
-                </label>
-                <select
-                  value={homeCurrency}
-                  onChange={(e) => setHomeCurrency(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
-                >
-                  {COMMON_CURRENCIES.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                本國幣別
+              </label>
+              <select
+                value={homeCurrency}
+                onChange={(e) => setHomeCurrency(e.target.value)}
+                className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
+              >
+                {COMMON_CURRENCIES.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Description */}

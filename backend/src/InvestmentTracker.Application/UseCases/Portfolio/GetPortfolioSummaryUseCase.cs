@@ -46,9 +46,6 @@ public class GetPortfolioSummaryUseCase(
                 performanceRequest.CurrentPrices, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        // ForeignCurrency 投資組合：所有指標都以原始幣別計算（不做匯率換算）
-        var isForeignCurrencyPortfolio = portfolio.PortfolioType == PortfolioType.ForeignCurrency;
-
         var positionDtos = new List<StockPositionDto>();
         // totalCostHome：僅包含有報價的持倉（避免損益百分比失真）
         var totalCostHome = 0m;
@@ -58,49 +55,27 @@ public class GetPortfolioSummaryUseCase(
         foreach (var position in positions.Where(p => p.TotalShares > 0))
         {
             // 僅在至少一筆交易具有 ExchangeRate 時，才視為可提供本位幣指標
-            // ForeignCurrency 投資組合永遠使用原始幣別，為一致性視為「有匯率」
             // 以 (Ticker, Market) composite key 篩選對應的交易
-            var hasAnyExchangeRate = isForeignCurrencyPortfolio || transactions.Any(t =>
+            var hasAnyExchangeRate = transactions.Any(t =>
                 !t.IsDeleted &&
                 t.Ticker.Equals(position.Ticker, StringComparison.OrdinalIgnoreCase) &&
                 t.Market == position.Market &&
                 t is { HasExchangeRate: true, TransactionType: TransactionType.Buy or TransactionType.Adjustment });
 
-            StockPositionDto dto;
-
             // 直接使用 position.Market（現在 StockPosition 包含 Market 資訊）
             var market = position.Market;
 
-            if (isForeignCurrencyPortfolio)
+            var dto = new StockPositionDto
             {
-                // ForeignCurrency 投資組合：所有指標以原始幣別計算
-                dto = new StockPositionDto
-                {
-                    Ticker = position.Ticker,
-                    TotalShares = position.TotalShares,
-                    // 對 FC 投資組合：將原始幣別數值放在 "Home" 欄位作為主要顯示
-                    TotalCostHome = position.TotalCostSource,
-                    TotalCostSource = position.TotalCostSource,
-                    AverageCostPerShareHome = position.AverageCostPerShareSource,
-                    AverageCostPerShareSource = position.AverageCostPerShareSource,
-                    Market = market,
-                    Currency = position.Currency
-                };
-            }
-            else
-            {
-                dto = new StockPositionDto
-                {
-                    Ticker = position.Ticker,
-                    TotalShares = position.TotalShares,
-                    TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
-                    TotalCostSource = position.TotalCostSource,
-                    AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
-                    AverageCostPerShareSource = position.AverageCostPerShareSource,
-                    Market = market,
-                    Currency = position.Currency
-                };
-            }
+                Ticker = position.Ticker,
+                TotalShares = position.TotalShares,
+                TotalCostHome = hasAnyExchangeRate ? position.TotalCostHome : null,
+                TotalCostSource = position.TotalCostSource,
+                AverageCostPerShareHome = hasAnyExchangeRate ? position.AverageCostPerShareHome : null,
+                AverageCostPerShareSource = position.AverageCostPerShareSource,
+                Market = market,
+                Currency = position.Currency
+            };
 
             // 紀錄此持倉是否應納入總損益統計
             var contributesToPnl = false;
@@ -108,29 +83,7 @@ public class GetPortfolioSummaryUseCase(
             // 若提供現價，則計算未實現損益
             if (currentPrices?.TryGetValue(position.Ticker, out var priceInfo) == true)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    // ForeignCurrency 投資組合：以原始幣別計算損益（匯率 = 1）
-                    var currentValueSource = position.TotalShares * priceInfo.Price;
-                    var unrealizedPnlSource = currentValueSource - position.TotalCostSource;
-                    var unrealizedPnlPercentage = position.TotalCostSource > 0
-                        ? unrealizedPnlSource / position.TotalCostSource * 100
-                        : null as decimal?;
-
-                    dto = dto with
-                    {
-                        CurrentPrice = priceInfo.Price,
-                        CurrentExchangeRate = 1m, // FC 投資組合不使用匯率
-                        CurrentValueHome = currentValueSource,
-                        UnrealizedPnlHome = unrealizedPnlSource,
-                        UnrealizedPnlPercentage = unrealizedPnlPercentage
-                    };
-
-                    totalValueHome = (totalValueHome ?? 0) + currentValueSource;
-                    totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + unrealizedPnlSource;
-                    contributesToPnl = true;
-                }
-                else if (hasAnyExchangeRate)
+                if (hasAnyExchangeRate)
                 {
                     var pnl = portfolioCalculator.CalculateUnrealizedPnl(
                         position, priceInfo.Price, priceInfo.ExchangeRate);
@@ -163,16 +116,9 @@ public class GetPortfolioSummaryUseCase(
 
             // 只有在此持倉納入損益計算時，才累加到 totalCostHome
             // 以確保 TotalCost 與 TotalValue 可比較，進而正確計算百分比
-            if (contributesToPnl)
+            if (contributesToPnl && hasAnyExchangeRate)
             {
-                if (isForeignCurrencyPortfolio)
-                {
-                    totalCostHome += position.TotalCostSource;
-                }
-                else if (hasAnyExchangeRate)
-                {
-                    totalCostHome += position.TotalCostHome;
-                }
+                totalCostHome += position.TotalCostHome;
             }
 
             positionDtos.Add(dto);
@@ -185,7 +131,6 @@ public class GetPortfolioSummaryUseCase(
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
-            PortfolioType = portfolio.PortfolioType,
             DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt

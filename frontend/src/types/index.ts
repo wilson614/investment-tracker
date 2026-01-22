@@ -25,20 +25,12 @@ export interface RegisterRequest {
   displayName: string;
 }
 
-// Portfolio Type Enum
-export const PortfolioType = {
-  Primary: 0,
-  ForeignCurrency: 1,
-} as const;
-export type PortfolioType = (typeof PortfolioType)[keyof typeof PortfolioType];
-
 export interface Portfolio {
   id: string;
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
   isActive: boolean;
-  portfolioType: PortfolioType;
   displayName?: string;
   createdAt: string;
   updatedAt: string;
@@ -48,7 +40,6 @@ export interface CreatePortfolioRequest {
   description?: string;
   baseCurrency: string;
   homeCurrency: string;
-  portfolioType?: PortfolioType;
   displayName?: string;
 }
 

@@ -6,7 +6,7 @@
  * 重要行為：
  * - 台股會自動將匯率補為 1（若使用者未填）。
  * - 若資金來源為 CurrencyLedger 且不是台股，則匯率欄位可省略，交由 backend 依帳本推導。
- * - ForeignCurrency portfolio 也不使用匯率欄位。
+ * - 若資金來源為外幣帳本，則匯率欄位可省略。
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -52,11 +52,9 @@ interface TransactionFormProps {
   onSubmit: (data: CreateStockTransactionRequest) => Promise<void>;
   /** 取消 callback */
   onCancel?: () => void;
-  /** 當為 true 時，隱藏匯率欄位（ForeignCurrency portfolios 使用 source currency） */
-  isForeignCurrencyPortfolio?: boolean;
 }
 
-export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, isForeignCurrencyPortfolio = false }: TransactionFormProps) {
+export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
@@ -275,8 +273,7 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
 
     try {
       // When using currency ledger (and not TW stock), don't send exchange rate - backend will calculate
-      // ForeignCurrency portfolios also don't use exchange rate
-      const shouldOmitExchangeRate = isForeignCurrencyPortfolio || (formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW);
+      const shouldOmitExchangeRate = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
 
       // Taiwan stocks always use exchange rate 1
       // For other stocks, parse the value or use undefined if empty/invalid
@@ -492,8 +489,8 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel, 
           />
         </div>
 
-        {/* Exchange rate - hidden for Taiwan stocks, currency ledger, and ForeignCurrency portfolios */}
-        {!useCurrencyLedger && !isTW && !isForeignCurrencyPortfolio && (
+        {/* Exchange rate - hidden for Taiwan stocks and currency ledger */}
+        {!useCurrencyLedger && !isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               匯率（選填）

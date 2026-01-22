@@ -23,7 +23,6 @@ public class CreatePortfolioUseCase(
             userId,
             request.BaseCurrency,
             request.HomeCurrency,
-            request.PortfolioType,
             request.DisplayName);
 
         if (!string.IsNullOrWhiteSpace(request.Description))

@@ -18,11 +18,6 @@ public record CreatePortfolioRequest
     public string HomeCurrency { get; init; } = "TWD";
 
     /// <summary>
-    /// 投資組合類型（Primary 或 ForeignCurrency）。
-    /// </summary>
-    public PortfolioType PortfolioType { get; init; } = PortfolioType.Primary;
-
-    /// <summary>
     /// 投資組合顯示名稱（例如："美股投資組合"）。
     /// </summary>
     [StringLength(100)]

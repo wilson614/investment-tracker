@@ -23,7 +23,7 @@ import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
-import { StockMarket, TransactionType, PortfolioType } from '../types';
+import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
@@ -683,7 +683,6 @@ export function PortfolioPage() {
                   setShowForm(false);
                   setEditingTransaction(null);
                 }}
-                isForeignCurrencyPortfolio={portfolio?.portfolioType === PortfolioType.ForeignCurrency}
               />
             </div>
           </div>

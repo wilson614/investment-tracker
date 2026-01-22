@@ -1,5 +1,4 @@
 using InvestmentTracker.Domain.Common;
-using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Entities;
 
@@ -15,11 +14,6 @@ public class Portfolio : BaseEntity
     public bool IsActive { get; private set; } = true;
 
     /// <summary>
-    /// 投資組合類型，決定幣別處理模式
-    /// </summary>
-    public PortfolioType PortfolioType { get; private set; } = PortfolioType.Primary;
-
-    /// <summary>
     /// 顯示名稱（例如：「美股投資組合」）
     /// </summary>
     public string? DisplayName { get; private set; }
@@ -33,14 +27,13 @@ public class Portfolio : BaseEntity
     // EF Core 必要的無參數建構子
     private Portfolio() { }
 
-    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD", PortfolioType portfolioType = PortfolioType.Primary, string? displayName = null)
+    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD", string? displayName = null)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
 
         UserId = userId;
         SetCurrencies(baseCurrency, homeCurrency);
-        PortfolioType = portfolioType;
         SetDisplayName(displayName);
     }
 
