@@ -76,6 +76,14 @@ public class AppDbContext : DbContext
         // UserPreferences：需與 User 使用相同的過濾條件，避免 required navigation 警告
         modelBuilder.Entity<UserPreferences>()
             .HasQueryFilter(up => up.User.IsActive);
+
+        // RefreshToken：需與 User 使用相同的過濾條件
+        modelBuilder.Entity<RefreshToken>()
+            .HasQueryFilter(rt => rt.User.IsActive);
+
+        // UserBenchmark：需與 User 使用相同的過濾條件
+        modelBuilder.Entity<UserBenchmark>()
+            .HasQueryFilter(ub => ub.User.IsActive);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
