@@ -105,6 +105,7 @@ export function PerformancePage() {
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
+  const [dismissMissingPricesOverlay, setDismissMissingPricesOverlay] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
   const fetchRetryCountRef = useRef<number>(0); // Limit auto-retries to prevent infinite loops
 
@@ -795,6 +796,7 @@ export function PerformancePage() {
     if (performance.missingPrices.length === 0) return;
 
     setIsFetchingPrices(true);
+    setDismissMissingPricesOverlay(false); // Show overlay again when manually refreshing
     hasFetchedForYearRef.current = null; // Reset to allow re-fetch
     fetchRetryCountRef.current = 0; // Reset retry count for manual refresh
 
@@ -832,6 +834,7 @@ export function PerformancePage() {
   const handleYearChange = (year: number) => {
     setSelectedYear(year);
     setPriceFetchFailed(false);
+    setDismissMissingPricesOverlay(false); // Reset overlay dismiss state for new year
     hasFetchedForYearRef.current = null; // Reset to allow fresh fetch for new year
     fetchRetryCountRef.current = 0; // Reset retry count for new year
   };
@@ -908,13 +911,23 @@ export function PerformancePage() {
         ) : performance ? (
           <>
             {/* Missing Prices Overlay - Full screen modal when fetching or missing prices */}
-            {performance.missingPrices.length > 0 && (
+            {performance.missingPrices.length > 0 && !dismissMissingPricesOverlay && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="card-dark w-full max-w-md mx-4">
-                  <div className="px-5 py-4 border-b border-[var(--border-color)]">
+                  <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
                     <h3 className="text-lg font-bold text-[var(--text-primary)]">
                       {isFetchingPrices ? '正在抓取價格...' : '缺少股票價格'}
                     </h3>
+                    {!isFetchingPrices && (
+                      <button
+                        type="button"
+                        onClick={() => setDismissMissingPricesOverlay(true)}
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded transition-colors"
+                        title="關閉"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
                   <div className="p-5">
                     {(() => {
