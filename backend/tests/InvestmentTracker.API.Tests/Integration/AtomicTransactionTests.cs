@@ -28,6 +28,7 @@ public class AtomicTransactionTests : IDisposable
     private readonly CurrencyLedgerService _currencyLedgerService;
     private readonly Mock<ICurrentUserService> _currentUserServiceMock;
     private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock;
+    private readonly Mock<IMonthlySnapshotService> _monthlySnapshotServiceMock;
     private readonly Guid _testUserId = Guid.NewGuid();
 
     public AtomicTransactionTests()
@@ -43,6 +44,11 @@ public class AtomicTransactionTests : IDisposable
         _txDateFxServiceMock
             .Setup(x => x.GetOrFetchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TransactionDateExchangeRateResult { Rate = 31.5m, CurrencyPair = "USDTWD" });
+
+        _monthlySnapshotServiceMock = new Mock<IMonthlySnapshotService>();
+        _monthlySnapshotServiceMock
+            .Setup(x => x.InvalidateFromMonthAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _dbContext = new AppDbContext(options, _currentUserServiceMock.Object);
         _portfolioRepository = new PortfolioRepository(_dbContext);
@@ -104,7 +110,8 @@ public class AtomicTransactionTests : IDisposable
             _portfolioCalculator,
             _currencyLedgerService,
             _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object);
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -156,7 +163,8 @@ public class AtomicTransactionTests : IDisposable
             _portfolioCalculator,
             _currencyLedgerService,
             _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object);
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -196,7 +204,8 @@ public class AtomicTransactionTests : IDisposable
             _portfolioCalculator,
             _currencyLedgerService,
             _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object);
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -244,7 +253,8 @@ public class AtomicTransactionTests : IDisposable
             _portfolioCalculator,
             _currencyLedgerService,
             _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object);
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -281,7 +291,8 @@ public class AtomicTransactionTests : IDisposable
             _portfolioCalculator,
             _currencyLedgerService,
             _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object);
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object);
 
         // First purchase: 200 USD
         var request1 = new CreateStockTransactionRequest

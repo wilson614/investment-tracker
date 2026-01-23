@@ -19,7 +19,8 @@ public class CreateStockTransactionUseCase(
     PortfolioCalculator portfolioCalculator,
     CurrencyLedgerService currencyLedgerService,
     ICurrentUserService currentUserService,
-    ITransactionDateExchangeRateService txDateFxService)
+    ITransactionDateExchangeRateService txDateFxService,
+    IMonthlySnapshotService monthlySnapshotService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         CreateStockTransactionRequest request,
@@ -153,6 +154,11 @@ public class CreateStockTransactionUseCase(
         }
 
         await transactionRepository.AddAsync(transaction, cancellationToken);
+
+        // 交易異動後：使月度快取失效（從影響月份起）
+        var affectedFromMonth = new DateOnly(request.TransactionDate.Year, request.TransactionDate.Month, 1);
+        await monthlySnapshotService.InvalidateFromMonthAsync(
+            request.PortfolioId, affectedFromMonth, cancellationToken);
 
         // 股票交易建立後（取得 ID），再建立連動的外幣交易
         if (currencyLedger != null && requiredAmount.HasValue)

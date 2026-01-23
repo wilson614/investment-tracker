@@ -406,6 +406,19 @@ export interface YearEndPriceInfo {
   exchangeRate: number;
 }
 
+export interface MonthlyNetWorth {
+  month: string;
+  value: number | null;
+  contributions: number | null;
+}
+
+export interface MonthlyNetWorthHistory {
+  data: MonthlyNetWorth[];
+  currency: string;
+  totalMonths: number;
+  dataSource: string;
+}
+
 // ETF Classification Types
 export type EtfTypeValue = 'Unknown' | 'Accumulating' | 'Distributing';
 

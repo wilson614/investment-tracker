@@ -230,6 +230,9 @@ builder.Services.AddScoped<IHistoricalYearEndDataService, HistoricalYearEndDataS
 // Transaction-Date Exchange Rate Service (cache for transaction-date FX rates)
 builder.Services.AddScoped<ITransactionDateExchangeRateService, TransactionDateExchangeRateService>();
 
+// Monthly Snapshot Service (monthly net worth history)
+builder.Services.AddScoped<IMonthlySnapshotService, MonthlySnapshotService>();
+
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();
 

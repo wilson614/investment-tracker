@@ -29,6 +29,7 @@ import type {
   YearPerformance,
   CalculateYearPerformanceRequest,
   EtfClassificationResult,
+  MonthlyNetWorthHistory,
   UserBenchmark,
   CreateUserBenchmarkRequest,
   StockSplit,
@@ -171,6 +172,17 @@ export const portfolioApi = {
       method: 'POST',
       body: JSON.stringify(request),
     }),
+
+  /** 取得月度淨值資料 */
+  getMonthlyNetWorth: (portfolioId: string, fromMonth?: string, toMonth?: string) => {
+    const params = new URLSearchParams();
+    if (fromMonth) params.set('fromMonth', fromMonth);
+    if (toMonth) params.set('toMonth', toMonth);
+    const query = params.toString();
+    return fetchApi<MonthlyNetWorthHistory>(
+      `/portfolios/${portfolioId}/performance/monthly${query ? `?${query}` : ''}`
+    );
+  },
 };
 
 // ============================================================================

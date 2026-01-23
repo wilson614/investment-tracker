@@ -16,14 +16,14 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-interface YearValue {
-  year: number;
+interface MonthValue {
+  month: string;
   value: number | null;
-  contributions: number;
+  contributions: number | null;
 }
 
 interface HistoricalValueChartProps {
-  data: YearValue[];
+  data: MonthValue[];
   currency: string;
   height?: number;
   className?: string;
@@ -39,7 +39,7 @@ export function HistoricalValueChart({
     return data
       .filter((d) => d.value != null)
       .map((d) => ({
-        year: d.year.toString(),
+        month: d.month,
         value: d.value,
         contributions: d.contributions,
       }));
@@ -71,7 +71,7 @@ export function HistoricalValueChart({
   if (chartData.length < 2) {
     return (
       <div className={`flex items-center justify-center text-[var(--text-muted)] ${className}`} style={{ height }}>
-        需要至少兩年資料才能顯示圖表
+        需要至少兩個月份資料才能顯示圖表
       </div>
     );
   }
@@ -85,10 +85,11 @@ export function HistoricalValueChart({
         >
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
           <XAxis
-            dataKey="year"
+            dataKey="month"
             stroke="var(--text-muted)"
             tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
             axisLine={{ stroke: 'var(--border-color)' }}
+            interval={Math.floor(chartData.length / 12)}
           />
           <YAxis
             tickFormatter={formatValue}
@@ -105,6 +106,7 @@ export function HistoricalValueChart({
             }}
             labelStyle={{ color: 'var(--text-primary)' }}
             formatter={(value, name) => {
+              if (value == null) return ['—', name];
               const numValue = typeof value === 'number' ? value : 0;
               if (name === 'value') {
                 return [`${formatFullValue(numValue)} ${currency}`, '期末價值'];

@@ -363,18 +363,7 @@ public class HistoricalYearEndDataService(
     /// </summary>
     private static string ConvertToYahooSymbol(string ticker, StockMarket? market)
     {
-        // Already has suffix, use as-is
-        if (ticker.Contains('.'))
-        {
-            return ticker;
-        }
-
-        return market switch
-        {
-            StockMarket.UK => $"{ticker}.L",      // London Stock Exchange
-            StockMarket.EU => $"{ticker}.AS",     // Euronext Amsterdam (default for EU)
-            _ => ticker                            // US stocks don't need suffix
-        };
+        return YahooSymbolHelper.ConvertToYahooSymbol(ticker, market);
     }
 
     /// <summary>

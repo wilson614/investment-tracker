@@ -16,7 +16,8 @@ public class UpdateStockTransactionUseCase(
     IPortfolioRepository portfolioRepository,
     ICurrentUserService currentUserService,
     PortfolioCalculator portfolioCalculator,
-    ITransactionDateExchangeRateService txDateFxService)
+    ITransactionDateExchangeRateService txDateFxService,
+    IMonthlySnapshotService monthlySnapshotService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         Guid transactionId,
@@ -35,6 +36,7 @@ public class UpdateStockTransactionUseCase(
 
         // 保留原始值供後續計算使用
         var originalType = transaction.TransactionType;
+        var originalTransactionDate = transaction.TransactionDate;
 
         // 處理匯率：若未提供，自動抓取交易日匯率
         var exchangeRate = request.ExchangeRate;
@@ -117,6 +119,14 @@ public class UpdateStockTransactionUseCase(
         }
 
         await transactionRepository.UpdateAsync(transaction, cancellationToken);
+
+        // 交易異動後：使月度快取失效（從影響月份起）
+        var originalDateOnly = DateOnly.FromDateTime(originalTransactionDate);
+        var newDateOnly = DateOnly.FromDateTime(transaction.TransactionDate);
+        var affectedDate = originalDateOnly <= newDateOnly ? originalDateOnly : newDateOnly;
+        var affectedFromMonth = new DateOnly(affectedDate.Year, affectedDate.Month, 1);
+        await monthlySnapshotService.InvalidateFromMonthAsync(
+            transaction.PortfolioId, affectedFromMonth, cancellationToken);
 
         return new StockTransactionDto
         {

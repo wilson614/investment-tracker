@@ -44,5 +44,10 @@ public class PortfolioConfiguration : IEntityTypeConfiguration<Portfolio>
             .WithOne(t => t.Portfolio)
             .HasForeignKey(t => t.PortfolioId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany<MonthlyNetWorthSnapshot>()
+            .WithOne(s => s.Portfolio)
+            .HasForeignKey(s => s.PortfolioId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<HistoricalExchangeRateCache> HistoricalExchangeRateCaches => Set<HistoricalExchangeRateCache>();
     public DbSet<UserBenchmark> UserBenchmarks => Set<UserBenchmark>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+    public DbSet<MonthlyNetWorthSnapshot> MonthlyNetWorthSnapshots => Set<MonthlyNetWorthSnapshot>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -55,6 +56,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Portfolio>()
             .HasQueryFilter(p => p.IsActive &&
                 (_currentUserService == null || p.UserId == _currentUserService.UserId));
+
+        // MonthlyNetWorthSnapshot：透過 Portfolio 導覽屬性套用同樣的 user filter
+        modelBuilder.Entity<MonthlyNetWorthSnapshot>()
+            .HasQueryFilter(s => s.Portfolio.IsActive &&
+                (_currentUserService == null || s.Portfolio.UserId == _currentUserService.UserId));
 
         // CurrencyLedger：依使用者過濾 + 啟用狀態
         modelBuilder.Entity<CurrencyLedger>()

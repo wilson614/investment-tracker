@@ -89,10 +89,10 @@ interface PositionWithPnl {
   weight?: number; // FR-131: position weight as % of total portfolio
 }
 
-interface HistoricalYearValue {
-  year: number;
+interface HistoricalMonthValue {
+  month: string;
   value: number | null;
-  contributions: number;
+  contributions: number | null;
 }
 
 export function DashboardPage() {
@@ -100,7 +100,7 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<StockTransaction[]>([]);
-  const [historicalData, setHistoricalData] = useState<HistoricalYearValue[]>([]);
+  const [historicalData, setHistoricalData] = useState<HistoricalMonthValue[]>([]);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
@@ -130,41 +130,14 @@ export function DashboardPage() {
     const loadHistoricalData = async () => {
       setIsLoadingHistorical(true);
       try {
-        const availableYears = await portfolioApi.getAvailableYears(portfolio.id);
-        if (availableYears.years.length === 0) {
-          setHistoricalData([]);
-          return;
-        }
-
-        // Calculate cumulative contributions up to each year-end
-        const yearDataPromises = availableYears.years.map(async (year) => {
-          try {
-            const perf = await portfolioApi.calculateYearPerformance(portfolio.id, { year });
-            return {
-              year,
-              value: perf.endValueHome,
-              contributions: perf.netContributionsHome,
-            };
-          } catch {
-            return { year, value: null, contributions: 0 };
-          }
-        });
-
-        const results = await Promise.all(yearDataPromises);
-
-        // Calculate cumulative contributions
-        let cumulativeContributions = 0;
-        const sortedResults = results.sort((a, b) => a.year - b.year);
-        const historicalValues: HistoricalYearValue[] = sortedResults.map((r) => {
-          cumulativeContributions += r.contributions;
-          return {
-            year: r.year,
-            value: r.value,
-            contributions: cumulativeContributions,
-          };
-        });
-
-        setHistoricalData(historicalValues);
+        const result = await portfolioApi.getMonthlyNetWorth(portfolio.id);
+        setHistoricalData(
+          result.data.map((d) => ({
+            month: d.month,
+            value: d.value,
+            contributions: d.contributions,
+          }))
+        );
       } catch {
         // Silently fail - chart will show "no data" message
         setHistoricalData([]);
@@ -560,7 +533,7 @@ export function DashboardPage() {
 
         {/* Historical Portfolio Value Chart */}
         <div className="card-dark p-6 mb-6" style={{ minHeight: 356 }}>
-          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷年淨值變化</h2>
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">歷史淨值變化</h2>
           {isLoadingHistorical ? (
             <Skeleton width="w-full" height="h-[280px]" />
           ) : historicalData.length > 0 ? (

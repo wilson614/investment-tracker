@@ -11,7 +11,8 @@ public class DeleteStockTransactionUseCase(
     IStockTransactionRepository transactionRepository,
     IPortfolioRepository portfolioRepository,
     ICurrencyTransactionRepository currencyTransactionRepository,
-    ICurrentUserService currentUserService)
+    ICurrentUserService currentUserService,
+    IMonthlySnapshotService monthlySnapshotService)
 {
     public async Task ExecuteAsync(Guid transactionId, CancellationToken cancellationToken = default)
     {
@@ -35,5 +36,10 @@ public class DeleteStockTransactionUseCase(
 
         // 軟刪除股票交易
         await transactionRepository.SoftDeleteAsync(transactionId, cancellationToken);
+
+        // 交易異動後：使月度快取失效（從影響月份起）
+        var affectedFromMonth = new DateOnly(transaction.TransactionDate.Year, transaction.TransactionDate.Month, 1);
+        await monthlySnapshotService.InvalidateFromMonthAsync(
+            transaction.PortfolioId, affectedFromMonth, cancellationToken);
     }
 }
