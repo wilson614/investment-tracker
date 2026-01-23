@@ -34,36 +34,42 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T007 Create `ISimpleReturnCalculator` interface in backend/src/InvestmentTracker.Domain/Interfaces/ISimpleReturnCalculator.cs
-- [ ] T008 Implement `SimpleReturnCalculator` in backend/src/InvestmentTracker.Domain/Services/SimpleReturnCalculator.cs
-- [ ] T009 [P] Write unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/SimpleReturnCalculatorTests.cs
-- [ ] T010 [P] Add `SimpleReturnSource`, `SimpleReturnHome`, `StartValue*`, `EndValue*`, `NetContributions*` to `YearPerformanceDto` in backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs
+- [ ] T007 Update `CurrencyTransactionType` to add `Deposit` / `Withdraw` in backend/src/InvestmentTracker.Domain/Enums/CurrencyTransactionType.cs
+- [ ] T008 Create `IReturnCalculator` interface in backend/src/InvestmentTracker.Domain/Interfaces/IReturnCalculator.cs
+- [ ] T009 Implement `ReturnCalculator` (Modified Dietz + TWR) in backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs
+- [ ] T010 [P] Write unit tests in backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs
 - [ ] T011 [P] Add `UnrealizedPnlSource`, `UnrealizedPnlSourcePercentage`, `CurrentValueSource` to `StockPositionDto` in backend/src/InvestmentTracker.Application/DTOs/PositionDtos.cs
 - [ ] T012 [P] Create `MonthlyNetWorthDto` and `MonthlyNetWorthHistoryDto` in backend/src/InvestmentTracker.Application/DTOs/MonthlyNetWorthDtos.cs
 - [ ] T013 [P] Create `BenchmarkReturnDto` with `DataSource` field in backend/src/InvestmentTracker.Application/DTOs/BenchmarkReturnDtos.cs
-- [ ] T014 Register new services (SimpleReturnCalculator, MonthlySnapshotService, YahooAnnualReturnService) in backend/src/InvestmentTracker.Infrastructure/DependencyInjection.cs
+- [ ] T014 [P] Update `YearPerformanceDto` to include Modified Dietz + TWR fields (home/source) in backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
 ---
 
-## Phase 3: User Story 1 - View Annual Simple Return (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - View Annual Returns with Dual Metrics (Priority: P1) 🎯 MVP
 
-**Goal**: Replace XIRR with Simple Return for more intuitive yearly performance metrics
+**Goal**: Display Modified Dietz Return (investor timing) + TWR (stock selection) with CF source strategy and per-event portfolio value snapshots
 
-**Independent Test**: Performance page displays Simple Return percentage for each year with both source and home currency values
+**Independent Test**: Performance page displays both Modified Dietz and TWR for selected year in both source and home currency; values are stable across refresh
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Inject `ISimpleReturnCalculator` into `HistoricalPerformanceService` in backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs
-- [ ] T016 [US1] Calculate start-of-year and end-of-year values for each year in HistoricalPerformanceService
-- [ ] T017 [US1] Calculate net contributions per year and call SimpleReturnCalculator for source/home currency
-- [ ] T018 [US1] Populate new DTO fields (simpleReturnSource, simpleReturnHome, startValue*, endValue*, netContributions*) in response
-- [ ] T019 [P] [US1] Update TypeScript types in frontend/src/types/index.ts to include new YearPerformance fields (coordinate with T029 for Position types)
-- [ ] T020 [US1] Update `YearPerformanceCard` to show Simple Return as primary metric in frontend/src/components/performance/YearPerformanceCard.tsx
-- [ ] T021 [US1] Update Performance page to display both source and home currency returns in frontend/src/pages/Performance.tsx
+- [ ] T015 [US1] Create `TransactionPortfolioSnapshot` entity in backend/src/InvestmentTracker.Domain/Entities/TransactionPortfolioSnapshot.cs
+- [ ] T016 [US1] Add DbSet and entity mappings in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
+- [ ] T017 [US1] Create entity configuration in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/TransactionPortfolioSnapshotConfiguration.cs
+- [ ] T018 [US1] Generate migration for TransactionPortfolioSnapshot + CurrencyTransactionType changes in backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/
+- [ ] T019 [US1] Create `IReturnCashFlowStrategy` + implementations (StockTransaction / CurrencyLedger external in/out) in backend/src/InvestmentTracker.Domain/Services/ReturnCashFlowStrategy.cs
+- [ ] T020 [US1] Create `ITransactionPortfolioSnapshotService` in backend/src/InvestmentTracker.Application/Interfaces/ITransactionPortfolioSnapshotService.cs
+- [ ] T021 [US1] Implement `TransactionPortfolioSnapshotService` in backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs (re-use price/FX fetching patterns from MonthlySnapshotService)
+- [ ] T022 [US1] Register new services in backend/src/InvestmentTracker.API/Program.cs (ReturnCalculator, CashFlowStrategy, SnapshotService)
+- [ ] T023 [US1] On StockTransaction create/update/delete, write or invalidate per-event snapshots in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs, UpdateStockTransactionUseCase.cs, DeleteStockTransactionUseCase.cs
+- [ ] T024 [US1] If ledger mode enabled, ensure Deposit/Withdraw currency transactions also write/invalidate snapshots in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/ (relevant use cases)
+- [ ] T025 [US1] Update HistoricalPerformanceService to compute Modified Dietz + TWR using snapshots and CF strategy in backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs
+- [ ] T026 [P] [US1] Update TypeScript types in frontend/src/types/index.ts (new YearPerformance fields)
+- [ ] T027 [US1] Update Performance UI to display two metrics (Modified Dietz + TWR) in frontend/src/pages/Performance.tsx
 
-**Checkpoint**: Performance page shows Simple Return instead of XIRR - Story 1 complete
+**Checkpoint**: Performance page shows Modified Dietz + TWR (home/source) - Story 1 complete
 
 ---
 
