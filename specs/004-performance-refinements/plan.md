@@ -6,7 +6,7 @@
 ## Summary
 
 This feature optimizes performance analysis by:
-1. Replacing annual XIRR with Simple Return for more intuitive yearly metrics
+1. Replacing annual XIRR with Modified Dietz Return + Time-Weighted Return (TWR), including CF source strategy (StockTransaction vs CurrencyLedger external in/out) and per-event portfolio value snapshots (before/after)
 2. Adding source/home currency toggle for performance comparison
 3. Displaying source currency unrealized P&L on position details
 4. Upgrading historical net worth chart from yearly to monthly data points
@@ -33,7 +33,7 @@ This feature optimizes performance analysis by:
 |-----------|--------|-------|
 | I. Clean Architecture | ✅ PASS | Changes span Domain (calculation), Application (services), Infrastructure (external APIs), API (endpoints), Frontend (components) - proper layer separation |
 | II. Multi-Tenancy | ✅ PASS | All queries already include user context filtering; no changes to isolation model |
-| III. Accuracy First | ✅ PASS | Simple Return formula clearly defined; all monetary calculations use `decimal`; unit tests required |
+| III. Accuracy First | ✅ PASS | Modified Dietz + TWR formulas and CF strategy clarified; all monetary calculations use `decimal`; unit tests required |
 | IV. Self-Hosted Friendly | ✅ PASS | No new external dependencies; uses existing Yahoo/Stooq/Sina APIs with fallback |
 | V. Technology Stack | ✅ PASS | C#/.NET 8, React/TypeScript, PostgreSQL, EF Core - all within approved stack |
 
@@ -66,25 +66,28 @@ backend/
 │   │   ├── Entities/
 │   │   │   └── MonthlyNetWorthSnapshot.cs     # NEW: Monthly snapshot entity
 │   │   └── Services/
-│   │       └── SimpleReturnCalculator.cs       # NEW: Simple return calculation
+│   │       ├── ReturnCalculator.cs             # NEW: Modified Dietz + TWR
+│   │       └── ReturnCashFlowStrategy.cs       # NEW: CF source strategy (stock vs ledger)
 │   ├── InvestmentTracker.Application/
 │   │   ├── DTOs/
-│   │   │   └── PerformanceDtos.cs              # MODIFY: Add SimpleReturn fields
+│   │   │   └── PerformanceDtos.cs              # MODIFY: Add Modified Dietz + TWR fields
 │   │   ├── Interfaces/
-│   │   │   └── IMonthlySnapshotService.cs      # NEW: Monthly snapshot interface
+│   │   │   ├── IMonthlySnapshotService.cs      # NEW: Monthly snapshot interface
+│   │   │   └── ITransactionPortfolioSnapshotService.cs # NEW: per-event before/after snapshot
 │   │   └── Services/
-│   │       └── HistoricalPerformanceService.cs # MODIFY: Use SimpleReturn
+│   │       └── HistoricalPerformanceService.cs # MODIFY: Use ReturnCalculator + CF strategy
 │   ├── InvestmentTracker.Infrastructure/
 │   │   ├── MarketData/
 │   │   │   └── YahooAnnualReturnService.cs     # NEW: Yahoo Total Return fetcher
 │   │   └── Services/
-│   │       └── MonthlySnapshotService.cs       # NEW: Monthly snapshot impl
+│   │       ├── MonthlySnapshotService.cs       # NEW: Monthly snapshot impl
+│   │       └── TransactionPortfolioSnapshotService.cs # NEW: per-event snapshot writer
 │   └── InvestmentTracker.API/
 │       └── Controllers/
 │           └── PerformanceController.cs        # MODIFY: Add monthly endpoint
 └── tests/
     ├── InvestmentTracker.Domain.Tests/
-    │   └── SimpleReturnCalculatorTests.cs      # NEW: Unit tests
+    │   └── ReturnCalculatorTests.cs           # NEW: Unit tests for Modified Dietz + TWR
     └── InvestmentTracker.Application.Tests/
         └── MonthlySnapshotServiceTests.cs      # NEW: Integration tests
 
@@ -95,11 +98,11 @@ frontend/
 │   │   │   └── HistoricalValueChart.tsx        # MODIFY: Monthly data support
 │   │   ├── performance/
 │   │   │   ├── CurrencyToggle.tsx              # NEW: Currency mode toggle
-│   │   │   └── YearPerformanceCard.tsx         # MODIFY: SimpleReturn display
+│   │   │   └── YearPerformanceCard.tsx         # MODIFY: Modified Dietz + TWR display
 │   │   └── portfolio/
 │   │       └── PositionDetail.tsx            # MODIFY: Source currency P&L display
 │   ├── pages/
-│   │   ├── Performance.tsx                     # MODIFY: Toggle + SimpleReturn
+│   │   ├── Performance.tsx                     # MODIFY: Toggle + dual returns display
 │   │   └── PositionDetail.tsx                  # MODIFY: Source currency P&L
 │   ├── services/
 │   │   └── api.ts                              # MODIFY: New endpoints
@@ -121,3 +124,4 @@ frontend/
 | Monthly data volume | Medium | Cache month snapshots; fetch full daily series per ticker and derive month-end points server-side; invalidate from changed month on transaction edits |
 | Yahoo Annual Return scraping | Medium | Fallback to existing calculation if unavailable |
 | Token refresh verification | Low | Existing mechanism, just verify + extend timeout |
+| Return calculation refactor | High | Introduce CF strategy + per-event portfolio snapshots; keep XIRR endpoint unchanged; allow DB rebuild in dev/prod if no important data |
