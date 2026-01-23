@@ -109,7 +109,7 @@ The project MUST adhere to the following technology choices:
 - **Database**: PostgreSQL (primary), with Entity Framework Core as ORM
 - **API Style**: RESTful with JSON responses; consider GraphQL only if complexity
   warrants it in future iterations
-- **Testing**: xUnit for backend, Jest/React Testing Library for frontend
+- **Testing**: xUnit for backend, Vitest + React Testing Library for frontend
 - **Containerization**: Docker with multi-stage builds for production images
 
 **Rationale**: This stack provides type safety, mature tooling, and aligns with
@@ -187,4 +187,4 @@ For day-to-day development decisions not covered by this constitution, refer to:
 - `.specify/` directory for feature specifications and implementation plans
 - `docs/` directory for technical documentation and ADRs (Architecture Decision Records)
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-06 | **Last Amended**: 2026-01-06
+**Version**: 1.0.1 | **Ratified**: 2026-01-06 | **Last Amended**: 2026-01-24
