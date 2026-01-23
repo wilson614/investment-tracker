@@ -215,7 +215,7 @@ As a user, I want to stay logged in during normal usage without being frequently
 
 ### Measurable Outcomes
 
-- **SC-001**: Users can see intuitive annual simple return on performance page without needing to understand XIRR concept
+- **SC-001**: Users can see annual Modified Dietz + TWR on performance page to distinguish timing vs selection without needing to interpret XIRR
 - **SC-002**: Users can switch performance comparison currency mode within 2 clicks
 - **SC-003**: Users can see both source and home currency P&L on position detail page without additional calculations
 - **SC-004**: Historical net worth chart displays all available monthly data points from first transaction

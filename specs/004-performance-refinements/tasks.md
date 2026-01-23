@@ -21,7 +21,7 @@
 
 - [ ] T001 Create `MonthlyNetWorthSnapshot` entity in backend/src/InvestmentTracker.Domain/Entities/MonthlyNetWorthSnapshot.cs
 - [ ] T002 [P] Create `BenchmarkAnnualReturn` entity in backend/src/InvestmentTracker.Domain/Entities/BenchmarkAnnualReturn.cs
-- [ ] T003 Add DbSet properties and configure entity mappings in backend/src/InvestmentTracker.Infrastructure/Persistence/ApplicationDbContext.cs
+- [ ] T003 Add DbSet properties and configure entity mappings in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs
 - [ ] T004 Create entity configurations in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/
 - [ ] T005 Generate migration: `dotnet ef migrations add AddPerformanceRefinementsTables`
 - [ ] T006 Apply migration to development database and verify indexes
@@ -61,7 +61,7 @@
 - [ ] T018 [US1] Generate migration for TransactionPortfolioSnapshot + CurrencyTransactionType changes in backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/
 - [ ] T019 [US1] Create `IReturnCashFlowStrategy` + implementations (StockTransaction / CurrencyLedger external in/out) in backend/src/InvestmentTracker.Domain/Services/ReturnCashFlowStrategy.cs
 - [ ] T020 [US1] Create `ITransactionPortfolioSnapshotService` in backend/src/InvestmentTracker.Application/Interfaces/ITransactionPortfolioSnapshotService.cs
-- [ ] T021 [US1] Implement `TransactionPortfolioSnapshotService` in backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs (re-use price/FX fetching patterns from MonthlySnapshotService)
+- [ ] T021 [US1] Implement `TransactionPortfolioSnapshotService` in backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs (re-use price/FX fetching patterns from MonthlySnapshotService; include on-demand backfill for missing snapshots)
 - [ ] T022 [US1] Register new services in backend/src/InvestmentTracker.API/Program.cs (ReturnCalculator, CashFlowStrategy, SnapshotService)
 - [ ] T023 [US1] On StockTransaction create/update/delete, write or invalidate per-event snapshots in backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs, UpdateStockTransactionUseCase.cs, DeleteStockTransactionUseCase.cs
 - [ ] T024 [US1] If ledger mode enabled, ensure Deposit/Withdraw currency transactions also write/invalidate snapshots in backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/ (relevant use cases)
@@ -81,11 +81,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T022 [P] [US2] Create `CurrencyToggle.tsx` component with localStorage persistence in frontend/src/components/performance/CurrencyToggle.tsx
-- [ ] T023 [P] [US2] Create tests for CurrencyToggle in frontend/src/components/performance/CurrencyToggle.test.tsx
-- [ ] T024 [US2] Add `CurrencyToggle` to performance comparison section in frontend/src/pages/Performance.tsx
-- [ ] T025 [US2] Wire toggle state to chart data selection (source vs home currency mode)
-- [ ] T026 [US2] Ensure benchmark values remain unchanged regardless of toggle state
+- [ ] T028 [P] [US2] Create `CurrencyToggle.tsx` component with localStorage persistence in frontend/src/components/performance/CurrencyToggle.tsx
+- [ ] T029 [P] [US2] Create tests for CurrencyToggle in frontend/src/components/performance/CurrencyToggle.test.tsx
+- [ ] T030 [US2] Add `CurrencyToggle` to performance comparison section in frontend/src/pages/Performance.tsx
+- [ ] T031 [US2] Wire toggle state to chart data selection (source vs home currency mode)
+- [ ] T032 [US2] Ensure benchmark values remain unchanged regardless of toggle state
 
 **Checkpoint**: Currency toggle works and persists - Story 2 complete
 
@@ -99,10 +99,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Calculate `CurrentValueSource`, `UnrealizedPnlSource`, `UnrealizedPnlSourcePercentage` in backend/src/InvestmentTracker.Application/Services/PortfolioSummaryService.cs
-- [ ] T028 [US3] Map source P&L fields to DTO in GetPortfolioSummaryAsync response
-- [ ] T029 [US3] Update TypeScript types for position with source P&L fields in frontend/src/types/index.ts (depends on T019 completion to avoid merge conflicts)
-- [ ] T030 [US3] Display source P&L in PositionDetail metrics section with color coding in frontend/src/pages/PositionDetail.tsx
+- [ ] T033 [US3] Calculate `CurrentValueSource`, `UnrealizedPnlSource`, `UnrealizedPnlSourcePercentage` in backend/src/InvestmentTracker.Application/Services/PortfolioSummaryService.cs
+- [ ] T034 [US3] Map source P&L fields to DTO in GetPortfolioSummaryAsync response
+- [ ] T035 [US3] Update TypeScript types for position with source P&L fields in frontend/src/types/index.ts (depends on T026 completion to avoid merge conflicts)
+- [ ] T036 [US3] Display source P&L in PositionDetail metrics section with color coding in frontend/src/pages/PositionDetail.tsx
 
 **Checkpoint**: Position detail shows source currency P&L - Story 3 complete
 
@@ -116,15 +116,15 @@
 
 ### Implementation for User Story 4
 
-- [ ] T031 [US4] Create `IMonthlySnapshotService` interface in backend/src/InvestmentTracker.Application/Interfaces/IMonthlySnapshotService.cs
-- [ ] T032 [US4] Implement `MonthlySnapshotService` with historical price fetching (Yahoo primary; Stooq/TWSE fallback) in backend/src/InvestmentTracker.Infrastructure/Services/MonthlySnapshotService.cs
-- [ ] T033 [US4] Implement range-based price strategy (fetch full daily series per ticker for requested range and derive month-end points server-side)
-- [ ] T034 [US4] Implement cache invalidation on transaction create/update/delete (delete snapshots from affected month onwards)
-- [ ] T035 [P] [US4] Write integration tests in backend/tests/InvestmentTracker.Application.Tests/Services/MonthlySnapshotServiceTests.cs
-- [ ] T036 [US4] Add `GetMonthlyNetWorth` endpoint with fromMonth/toMonth params in backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs (include current month as-of today)
-- [ ] T037 [P] [US4] Add `getMonthlyNetWorth` API method in frontend/src/services/api.ts
-- [ ] T038 [US4] Update Dashboard to use monthly net worth API instead of per-year performance calls in frontend/src/pages/Dashboard.tsx
-- [ ] T039 [US4] Update `HistoricalValueChart` to display monthly labels (YYYY-MM) in frontend/src/components/dashboard/HistoricalValueChart.tsx and handle 60+ points
+- [ ] T037 [US4] Create `IMonthlySnapshotService` interface in backend/src/InvestmentTracker.Application/Interfaces/IMonthlySnapshotService.cs
+- [ ] T038 [US4] Implement `MonthlySnapshotService` with historical price fetching (Yahoo primary; Stooq/TWSE fallback) in backend/src/InvestmentTracker.Infrastructure/Services/MonthlySnapshotService.cs
+- [ ] T039 [US4] Implement range-based price strategy (fetch full daily series per ticker for requested range and derive month-end points server-side)
+- [ ] T040 [US4] Implement cache invalidation on transaction create/update/delete (delete snapshots from affected month onwards)
+- [ ] T041 [P] [US4] Write integration tests in backend/tests/InvestmentTracker.Application.Tests/Services/MonthlySnapshotServiceTests.cs
+- [ ] T042 [US4] Add `GetMonthlyNetWorth` endpoint with fromMonth/toMonth params in backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs (include current month as-of today)
+- [ ] T043 [P] [US4] Add `getMonthlyNetWorth` API method in frontend/src/services/api.ts
+- [ ] T044 [US4] Update Dashboard to use monthly net worth API instead of per-year performance calls in frontend/src/pages/Dashboard.tsx
+- [ ] T045 [US4] Update `HistoricalValueChart` to display monthly labels (YYYY-MM) in frontend/src/components/dashboard/HistoricalValueChart.tsx and handle 60+ points
 
 **Checkpoint**: Chart shows monthly net worth data - Story 4 complete
 
@@ -140,14 +140,14 @@
 
 ### Implementation for User Story 5
 
-- [ ] T039 [US5] Add `GetAnnualTotalReturnAsync` method to existing `IYahooHistoricalPriceService` interface in backend/src/InvestmentTracker.Domain/Interfaces/IYahooHistoricalPriceService.cs
-- [ ] T040 [US5] Implement `GetAnnualTotalReturnAsync` in `YahooHistoricalPriceService` - fetch from Yahoo Performance page in backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs
-- [ ] T041 [US5] Create `BenchmarkAnnualReturn` cache entity and repository for storing fetched Total Returns
-- [ ] T042 [US5] Implement fallback to existing price-based calculation when Yahoo Total Return unavailable
-- [ ] T043 [P] [US5] Write tests in backend/tests/InvestmentTracker.Domain.Tests/Services/YahooHistoricalPriceServiceTests.cs
-- [ ] T044 [US5] Modify existing `GetBenchmarkReturns` endpoint to prefer Yahoo Total Return over price calculation in backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
-- [ ] T045 [US5] Add `DataSource` field to `BenchmarkReturnsResponse` (Yahoo / Calculated)
-- [ ] T046 [P] [US5] Update frontend to display DataSource indicator in frontend/src/pages/Performance.tsx
+- [ ] T046 [US5] Add `GetAnnualTotalReturnAsync` method to existing `IYahooHistoricalPriceService` interface in backend/src/InvestmentTracker.Domain/Interfaces/IYahooHistoricalPriceService.cs
+- [ ] T047 [US5] Implement `GetAnnualTotalReturnAsync` in `YahooHistoricalPriceService` - fetch from Yahoo Performance page in backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs
+- [ ] T048 [US5] Create `BenchmarkAnnualReturn` cache entity and repository for storing fetched Total Returns
+- [ ] T049 [US5] Implement fallback to existing price-based calculation when Yahoo Total Return unavailable
+- [ ] T050 [P] [US5] Write tests in backend/tests/InvestmentTracker.Domain.Tests/Services/YahooHistoricalPriceServiceTests.cs
+- [ ] T051 [US5] Modify existing `GetBenchmarkReturns` endpoint to prefer Yahoo Total Return over price calculation in backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
+- [ ] T052 [US5] Add `DataSource` field to `BenchmarkReturnsResponse` (Yahoo / Calculated)
+- [ ] T053 [P] [US5] Update frontend to display DataSource indicator in frontend/src/pages/Performance.tsx
 
 **Checkpoint**: Benchmark shows Yahoo Total Return - Story 5 complete
 
@@ -161,13 +161,13 @@
 
 ### Implementation for User Story 6
 
-- [ ] T047 [US6] Update default Access Token expiration from 15 to 120 minutes in backend/src/InvestmentTracker.Infrastructure/Services/JwtTokenService.cs
-- [ ] T048 [P] [US6] Verify environment variable `Jwt__AccessTokenExpirationMinutes` override works
-- [ ] T049 [US6] Verify `/api/auth/refresh` endpoint exists and works correctly
-- [ ] T050 [US6] Modify `fetchApi` to attempt token refresh on 401 before clearing session in frontend/src/services/api.ts
-- [ ] T051 [US6] Implement retry with new token after successful refresh
-- [ ] T052 [US6] Add refresh loop prevention flag to avoid infinite retries
-- [ ] T053 [US6] Update stored tokens in localStorage after successful refresh
+- [ ] T054 [US6] Update default Access Token expiration from 15 to 120 minutes in backend/src/InvestmentTracker.Infrastructure/Services/JwtTokenService.cs
+- [ ] T055 [P] [US6] Verify environment variable `Jwt__AccessTokenExpirationMinutes` override works
+- [ ] T056 [US6] Verify `/api/auth/refresh` endpoint exists and works correctly
+- [ ] T057 [US6] Modify `fetchApi` to attempt token refresh on 401 before clearing session in frontend/src/services/api.ts
+- [ ] T058 [US6] Implement retry with new token after successful refresh
+- [ ] T059 [US6] Add refresh loop prevention flag to avoid infinite retries
+- [ ] T060 [US6] Update stored tokens in localStorage after successful refresh
 
 **Checkpoint**: Token refresh works smoothly - Story 6 complete
 
@@ -177,17 +177,17 @@
 
 **Purpose**: Final validation and documentation
 
-- [ ] T054 [P] Run backend tests: `dotnet test`
-- [ ] T055 [P] Run frontend tests: `npm test`
-- [ ] T056 Fix any failing tests
-- [ ] T057 [P] Update Swagger/OpenAPI comments for new endpoints
-- [ ] T058 Run quickstart.md verification checklist
-- [ ] T059 Manual testing: US1 - Performance page shows Simple Return
-- [ ] T060 [P] Manual testing: US2 - Currency toggle works and persists
-- [ ] T061 [P] Manual testing: US3 - Position detail shows source currency P&L
-- [ ] T062 [P] Manual testing: US4 - Chart shows monthly data points
-- [ ] T063 [P] Manual testing: US5 - Benchmark shows Yahoo Total Return
-- [ ] T064 Manual testing: US6 - User stays logged in for 2+ hours
+- [ ] T061 [P] Run backend tests: `dotnet test`
+- [ ] T062 [P] Run frontend tests: `npm test`
+- [ ] T063 Fix any failing tests
+- [ ] T064 [P] Update Swagger/OpenAPI comments for new endpoints
+- [ ] T065 Run quickstart.md verification checklist
+- [ ] T066 Manual testing: US1 - Performance page shows Modified Dietz + TWR
+- [ ] T067 [P] Manual testing: US2 - Currency toggle works and persists
+- [ ] T068 [P] Manual testing: US3 - Position detail shows source currency P&L
+- [ ] T069 [P] Manual testing: US4 - Chart shows monthly data points
+- [ ] T070 [P] Manual testing: US5 - Benchmark shows Yahoo Total Return
+- [ ] T071 Manual testing: US6 - User stays logged in for 2+ hours
 
 ---
 
@@ -216,9 +216,9 @@
 
 - T001/T002: Entity creation can run in parallel
 - T009-T013: DTO creation and tests can run in parallel
-- T019/T022/T023: Frontend work can run in parallel
-- T029/T034/T036/T043/T045/T046: Tests and API methods marked [P]
-- US6 (T048-T054): Entirely independent, can run parallel with any user story
+- T026/T028/T029: Frontend work can run in parallel
+- T040/T042/T043/T050/T052/T053: Tests and API methods marked [P]
+- US6 (T054-T060): Entirely independent, can run parallel with any user story
 
 ---
 
@@ -228,15 +228,15 @@
 |-------|-------|----------|-------|-------------|
 | 1 | - | P1 | T001-T006 | Setup: Entities & Migrations |
 | 2 | - | P1 | T007-T014 | Foundational: Calculator & DTOs |
-| 3 | US1 | P1 | T015-T021 | Simple Return Display |
-| 4 | US2 | P1 | T022-T026 | Currency Toggle |
-| 5 | US3 | P2 | T027-T030 | Source Currency P&L |
-| 6 | US4 | P2 | T031-T038 | Monthly Net Worth Chart |
-| 7 | US5 | P3 | T039-T046 | Yahoo Benchmark Total Return |
-| 8 | US6 | P3 | T047-T053 | Token Refresh |
-| 9 | - | P1 | T054-T064 | Polish & Validation |
+| 3 | US1 | P1 | T015-T027 | Modified Dietz + TWR |
+| 4 | US2 | P1 | T028-T032 | Currency Toggle |
+| 5 | US3 | P2 | T033-T036 | Source Currency P&L |
+| 6 | US4 | P2 | T037-T045 | Monthly Net Worth Chart |
+| 7 | US5 | P3 | T046-T053 | Yahoo Benchmark Total Return |
+| 8 | US6 | P3 | T054-T060 | Token Refresh |
+| 9 | - | P1 | T061-T071 | Polish & Validation |
 
-**Total Tasks**: 64
+**Total Tasks**: 71
 **Critical Path**: Phase 1 → Phase 2 → Phase 3/4 (P1 parallel) → Phase 5/6 (P2 parallel) → Phase 7/8 (P3 parallel) → Phase 9
 
 ---
