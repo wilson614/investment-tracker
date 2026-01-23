@@ -16,22 +16,38 @@
 - Q: What should the chart "Contributions" line represent? → A: Cumulative net contributions (Buy - Sell) in home currency
 - Q: Which FX rate should be used when converting month-end valuations to home currency? → A: Month-end FX rate (nearest trading day on or before valuation date)
 - Q: Month-end price strategy? → A: Fetch full daily series per ticker for the requested range and derive month-end points server-side (Yahoo primary; fallback as needed)
+- Q: Which return calculation methods should be displayed? → A: Two methods - Modified Dietz (measures investor timing) and Time-Weighted Return (measures stock selection)
+- Q: How should portfolio value at transaction dates be obtained for TWR? → A: Store portfolio value at each transaction time (方案 A - 交易時儲存)
+
+### Session 2026-01-24
+
+- Q: What is the Cash Flow (CF) definition and selection logic? → A: Default use StockTransaction Buy/Sell as CF (MVP); if the portfolio has valid CurrencyLedger in/out data, automatically switch to ledger-based CF (Stock buy/sell treated as internal transfers). Implement via Strategy Pattern.
+- Q: How to determine "valid" CurrencyLedger in/out data? → A: Switch to ledger-based CF only when external in/out CurrencyTransaction types exist (InitialBalance / Deposit / Withdraw). Exchange/Spend-only (and Interest/OtherIncome/OtherExpense-only) ledgers must NOT trigger the switch.
+- Q: What assets are included in portfolio value for return calculations? → A: Strategy-dependent. StockTransaction CF mode uses stock holdings value only; Ledger CF mode uses stock holdings value + CurrencyLedger cash balance (converted to home/source).
+- Q: In ledger mode, which CurrencyTransactionType are treated as external CF events? → A: Add explicit CurrencyTransactionType.Deposit and .Withdraw. Only InitialBalance/Deposit/Withdraw are CF events. ExchangeBuy/ExchangeSell/Spend are NOT CF events. Interest/OtherIncome/OtherExpense are treated as returns (affect portfolio value) and are NOT CF events.
+- Q: For TWR, how should sub-period returns use before/after values around CF events? → A: Use before/after model. Each sub-period return uses previous event's ValueAfter as start and current event's ValueBefore as end.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - View Annual Simple Return (Priority: P1)
+### User Story 1 - View Annual Returns with Dual Metrics (Priority: P1)
 
-As an investor, I want to see the annual "Simple Return" instead of XIRR on the performance page, so I can understand my yearly investment performance more intuitively without being misled by annualized short-term data.
+As an investor, I want to see two types of annual returns on the performance page:
+1. **Modified Dietz Return** - to understand how well I timed my investments (買賣時機)
+2. **Time-Weighted Return (TWR)** - to understand how well my stock selection performed (選股能力)
 
-**Why this priority**: This is the core metric on the performance page, directly affecting how users understand investment performance. XIRR is suitable for long-term calculations, while simple return is more intuitive for single-year analysis.
+This helps me distinguish between "good timing" and "good stock picking".
 
-**Independent Test**: Enter the performance page, select any year, and the system should display the simple return rate instead of XIRR.
+**Why this priority**: These are the core metrics on the performance page, directly affecting how users understand investment performance. XIRR is confusing for single-year analysis; these two metrics provide clearer insights.
+
+**Independent Test**: Enter the performance page, select any year, and the system should display both Modified Dietz and TWR rates.
 
 **Acceptance Scenarios**:
 
-1. **Given** user has transaction records for 2024, **When** user enters the performance page and selects 2024, **Then** system displays the 2024 simple return rate (both source and home currency versions)
-2. **Given** user has holdings at year start and buy/sell transactions during the year, **When** user views that year's performance, **Then** simple return is correctly calculated as (End Value - Start Value - Net Contributions) / (Start Value + Net Contributions) × 100%
-3. **Given** user is in their first investment year (no start value), **When** user views that year's performance, **Then** simple return is calculated as (End Value - Net Contributions) / Net Contributions × 100%
+1. **Given** user has transaction records for 2024, **When** user enters the performance page and selects 2024, **Then** system displays both Modified Dietz and TWR (in source and home currency)
+2. **Given** user has holdings at year start and buy/sell transactions during the year, **When** user views that year's performance, **Then** Modified Dietz is calculated as: `(End - Start - ΣCF) / (Start + Σ(CF × W))` where W = (TotalDays - DaysSinceStart) / TotalDays
+3. **Given** user has multiple transactions during the year, **When** user views TWR, **Then** TWR is calculated by geometrically linking sub-period returns: `Π(1 + R_i) - 1`
+4. **Given** user is in their first investment year (no start value), **When** user views Modified Dietz, **Then** Modified Dietz uses net contributions as the denominator base
+5. **Given** user creates a new transaction, **When** transaction is saved, **Then** system automatically fetches and stores the portfolio value before and after the transaction for TWR calculation
 
 ---
 
@@ -132,10 +148,17 @@ As a user, I want to stay logged in during normal usage without being frequently
 
 #### Annual Return Calculation
 
-- **FR-001**: System MUST display "Simple Return" instead of XIRR in performance page annual cards
-- **FR-002**: System MUST calculate simple return using formula: (End Value - Start Value - Net Contributions) / (Start Value + Net Contributions) × 100%
-- **FR-003**: System MUST use formula for first investment year (no start value): (End Value - Net Contributions) / Net Contributions × 100%
-- **FR-004**: System MUST display both source currency and home currency simple returns
+- **FR-001**: System MUST display both "Modified Dietz Return" and "Time-Weighted Return (TWR)" in performance page annual cards
+- **FR-002**: System MUST calculate Modified Dietz using formula: `(End - Start - ΣCF) / (Start + Σ(CF × W))` where W = (TotalDays - DaysSinceStart) / TotalDays
+- **FR-003**: System MUST calculate TWR by geometrically linking sub-period returns: `Π(1 + R_i) - 1` where each sub-period ends at a cash flow event
+- **FR-004**: System MUST display both source currency and home currency versions for each return metric
+- **FR-004a**: System MUST store portfolio value (before and after) at each cash flow event for TWR calculation
+- **FR-004b**: System MUST choose cash flow event source via a strategy:
+  - Default (MVP): StockTransaction Buy/Sell are cash flow events
+  - If portfolio has valid CurrencyLedger external in/out (InitialBalance/Deposit/Withdraw): CurrencyLedger external in/out events become the cash flow events and stock buy/sell are treated as internal transfers
+  - Note: CurrencyTransactionType.ExchangeBuy/ExchangeSell/Spend are NOT external cash flow events
+- **FR-004c**: For new cash flow events, system MUST fetch historical prices to calculate and store portfolio values at event date
+- **FR-004d**: For existing historical events without stored values, system SHOULD provide a backfill mechanism (acceptable to rebuild by clearing DB in dev/prod if no important data)
 
 #### Performance Comparison Currency Toggle
 
@@ -186,6 +209,7 @@ As a user, I want to stay logged in during normal usage without being frequently
 - **MonthlySnapshot**: Month-end net worth snapshot including date, individual holding prices, total value
 - **BenchmarkAnnualReturn**: Benchmark annual total return with source indicator (Yahoo / calculated)
 - **UserPreference**: User preference settings including performance comparison currency mode
+- **TransactionPortfolioSnapshot**: Portfolio value snapshot at transaction time, storing values before and after the transaction for TWR calculation. Fields include: `TransactionId`, `PortfolioValueBeforeHome`, `PortfolioValueBeforeSource`, `PortfolioValueAfterHome`, `PortfolioValueAfterSource`, `SnapshotDate`
 
 ## Success Criteria *(mandatory)*
 
