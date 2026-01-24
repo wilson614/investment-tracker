@@ -75,12 +75,23 @@ public class CurrencyTransaction : BaseEntity
                     throw new ArgumentException("Exchange rate is required for exchange transactions", nameof(exchangeRate));
                 break;
 
+            case CurrencyTransactionType.InitialBalance:
+            case CurrencyTransactionType.Deposit:
+            case CurrencyTransactionType.Withdraw:
+                // 外部入出金/期初餘額：本國幣金額（成本/對應金額）可選填；匯率不強制
+                break;
+
             case CurrencyTransactionType.Interest:
                 // 利息交易的本國幣金額和匯率為選填
                 break;
 
             case CurrencyTransactionType.Spend:
                 // 支出交易不需要本國幣金額或匯率
+                break;
+
+            case CurrencyTransactionType.OtherIncome:
+            case CurrencyTransactionType.OtherExpense:
+                // 其他收支：本國幣金額與匯率皆為選填
                 break;
         }
 

@@ -19,6 +19,12 @@ public record YearPerformanceDto
     /// <summary>本位幣年度總報酬率百分比。</summary>
     public double? TotalReturnPercentage { get; init; }
 
+    /// <summary>本位幣 Modified Dietz 報酬率百分比（衡量投資人擇時）。</summary>
+    public double? ModifiedDietzPercentage { get; init; }
+
+    /// <summary>本位幣 Time-Weighted Return (TWR) 報酬率百分比（衡量選股/資產表現）。</summary>
+    public double? TimeWeightedReturnPercentage { get; init; }
+
     /// <summary>年度起始資產價值（本位幣）。</summary>
     public decimal? StartValueHome { get; init; }
 
@@ -41,6 +47,12 @@ public record YearPerformanceDto
 
     /// <summary>原始幣別年度總報酬率百分比。</summary>
     public double? TotalReturnPercentageSource { get; init; }
+
+    /// <summary>原始幣別 Modified Dietz 報酬率百分比（衡量投資人擇時）。</summary>
+    public double? ModifiedDietzPercentageSource { get; init; }
+
+    /// <summary>原始幣別 Time-Weighted Return (TWR) 報酬率百分比（衡量選股/資產表現）。</summary>
+    public double? TimeWeightedReturnPercentageSource { get; init; }
 
     /// <summary>年度起始資產價值（原始幣別）。</summary>
     public decimal? StartValueSource { get; init; }

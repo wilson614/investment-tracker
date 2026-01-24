@@ -17,7 +17,6 @@ import { usePortfolio } from '../contexts/PortfolioContext';
 import { YearSelector } from '../components/performance/YearSelector';
 import { MissingPriceModal } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
-import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
 import { StockMarket } from '../types';
 import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison, UserBenchmark } from '../types';
 
@@ -999,15 +998,15 @@ export function PerformancePage() {
               </div>
             )}
 
-            {/* Performance Metrics - XIRR Cards Only */}
+            {/* Performance Metrics - Annual Return Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Source Currency XIRR Card (USD) */}
-              {performance.sourceCurrency && performance.xirrPercentageSource != null && (
+              {/* Source Currency (USD) */}
+              {performance.sourceCurrency && (
                 <div className="card-dark p-6 border-l-4 border-[var(--accent-peach)]">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-4">
                     <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                     <h3 className="text-[var(--text-muted)]">
-                      {selectedYear} 年度 XIRR ({performance.sourceCurrency})
+                      {selectedYear} 年度報酬 ({performance.sourceCurrency})
                     </h3>
                     <div className="relative group">
                       <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
@@ -1018,70 +1017,163 @@ export function PerformancePage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {performance.xirrPercentageSource >= 0 ? (
-                      <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
-                    ) : (
-                      <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
-                    )}
-                    <span className={`text-3xl font-bold number-display ${
-                      performance.xirrPercentageSource >= 0 ? 'number-positive' : 'number-negative'
-                    }`}>
-                      {formatPercent(performance.xirrPercentageSource)}
-                    </span>
-                    <XirrWarningBadge
-                      earliestTransactionDate={performance.earliestTransactionDateInYear}
-                      asOfDate={selectedYear === new Date().getFullYear()
-                        ? new Date().toISOString()
-                        : `${selectedYear}-12-31`}
-                    />
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* 修正 Dietz 報酬率 */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <p className="text-sm text-[var(--text-muted)]">修正 Dietz 報酬率</p>
+                        <div className="relative group">
+                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              衡量投資人操作（加碼/減碼）
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {performance.modifiedDietzPercentageSource != null ? (
+                        <div className="flex items-center gap-2">
+                          {performance.modifiedDietzPercentageSource >= 0 ? (
+                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                          ) : (
+                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                          )}
+                          <span className={`text-3xl font-bold number-display ${
+                            performance.modifiedDietzPercentageSource >= 0 ? 'number-positive' : 'number-negative'
+                          }`}>
+                            {formatPercent(performance.modifiedDietzPercentageSource)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-2xl text-[var(--text-muted)]">—</span>
+                      )}
+                    </div>
+
+                    {/* 時間加權報酬率 */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
+                        <div className="relative group">
+                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              衡量資產本身表現（不受加碼/減碼影響，TWR）
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {performance.timeWeightedReturnPercentageSource != null ? (
+                        <div className="flex items-center gap-2">
+                          {performance.timeWeightedReturnPercentageSource >= 0 ? (
+                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                          ) : (
+                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                          )}
+                          <span className={`text-3xl font-bold number-display ${
+                            performance.timeWeightedReturnPercentageSource >= 0 ? 'number-positive' : 'number-negative'
+                          }`}>
+                            {formatPercent(performance.timeWeightedReturnPercentageSource)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-2xl text-[var(--text-muted)]">—</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Home Currency XIRR Card (TWD) */}
+              {/* Home Currency (TWD) */}
               <div className="card-dark p-6">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-4">
                   <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                   <h3 className="text-[var(--text-muted)]">
-                    {selectedYear} 年度 XIRR ({portfolio.homeCurrency})
+                    {selectedYear} 年度報酬 ({portfolio.homeCurrency})
                   </h3>
                   <div className="relative group">
                     <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                     <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                       <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                        {performance.transactionCount} 筆交易（含匯率變動）
+                        {performance.transactionCount} 筆交易
                       </div>
                     </div>
                   </div>
                 </div>
-                {performance.xirrPercentage != null ? (
-                  <div className="flex items-center gap-2">
-                    {performance.xirrPercentage >= 0 ? (
-                      <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+
+                <div className="grid grid-cols-1 gap-4">
+                  {/* 修正 Dietz 報酬率 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <p className="text-sm text-[var(--text-muted)]">修正 Dietz 報酬率</p>
+                      <div className="relative group">
+                        <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            衡量投資人操作（加碼/減碼）
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {performance.modifiedDietzPercentage != null ? (
+                      <div className="flex items-center gap-2">
+                        {performance.modifiedDietzPercentage >= 0 ? (
+                          <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                        ) : (
+                          <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                        )}
+                        <span className={`text-3xl font-bold number-display ${
+                          performance.modifiedDietzPercentage >= 0 ? 'number-positive' : 'number-negative'
+                        }`}>
+                          {formatPercent(performance.modifiedDietzPercentage)}
+                        </span>
+                      </div>
+                    ) : isFetchingPrices ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                        <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
+                      </div>
                     ) : (
-                      <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                      <span className="text-2xl text-[var(--text-muted)]">—</span>
                     )}
-                    <span className={`text-3xl font-bold number-display ${
-                      performance.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'
-                    }`}>
-                      {formatPercent(performance.xirrPercentage)}
-                    </span>
-                    <XirrWarningBadge
-                      earliestTransactionDate={performance.earliestTransactionDateInYear}
-                      asOfDate={selectedYear === new Date().getFullYear()
-                        ? new Date().toISOString()
-                        : `${selectedYear}-12-31`}
-                    />
                   </div>
-                ) : isFetchingPrices ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                    <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
+
+                  {/* 時間加權報酬率 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
+                      <div className="relative group">
+                        <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            衡量資產本身表現（不受加碼/減碼影響，TWR）
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {performance.timeWeightedReturnPercentage != null ? (
+                      <div className="flex items-center gap-2">
+                        {performance.timeWeightedReturnPercentage >= 0 ? (
+                          <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                        ) : (
+                          <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                        )}
+                        <span className={`text-3xl font-bold number-display ${
+                          performance.timeWeightedReturnPercentage >= 0 ? 'number-positive' : 'number-negative'
+                        }`}>
+                          {formatPercent(performance.timeWeightedReturnPercentage)}
+                        </span>
+                      </div>
+                    ) : isFetchingPrices ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                        <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
+                      </div>
+                    ) : (
+                      <span className="text-2xl text-[var(--text-muted)]">—</span>
+                    )}
                   </div>
-                ) : (
-                  <span className="text-2xl text-[var(--text-muted)]">需要價格資料</span>
-                )}
+                </div>
               </div>
             </div>
 
@@ -1190,7 +1282,7 @@ export function PerformancePage() {
                   <span className="ml-2 text-[var(--text-muted)]">正在取得即時股價以計算績效...</span>
                 </div>
               </div>
-            ) : performance.xirrPercentageSource != null && (
+            ) : performance.modifiedDietzPercentageSource != null && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
@@ -1359,9 +1451,9 @@ export function PerformancePage() {
                     <PerformanceBarChart
                       data={[
                         {
-                          label: `我的 XIRR (${performance.sourceCurrency})`,
-                          value: performance.xirrPercentageSource,
-                          tooltip: `${selectedYear} 年化報酬率 (${performance.transactionCount} 筆交易)`,
+                          label: `我的投資組合（${performance.sourceCurrency}）`,
+                          value: performance.modifiedDietzPercentageSource,
+                          tooltip: `${selectedYear} 年度報酬率（修正 Dietz 報酬率）`,
                         },
                         /* FR-134: Filter out benchmarks with null data instead of showing 0 */
                         ...selectedBenchmarks

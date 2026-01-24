@@ -29,6 +29,7 @@ public class AtomicTransactionTests : IDisposable
     private readonly Mock<ICurrentUserService> _currentUserServiceMock;
     private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock;
     private readonly Mock<IMonthlySnapshotService> _monthlySnapshotServiceMock;
+    private readonly Mock<ITransactionPortfolioSnapshotService> _txSnapshotServiceMock;
     private readonly Guid _testUserId = Guid.NewGuid();
 
     public AtomicTransactionTests()
@@ -48,6 +49,14 @@ public class AtomicTransactionTests : IDisposable
         _monthlySnapshotServiceMock = new Mock<IMonthlySnapshotService>();
         _monthlySnapshotServiceMock
             .Setup(x => x.InvalidateFromMonthAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock = new Mock<ITransactionPortfolioSnapshotService>();
+        _txSnapshotServiceMock
+            .Setup(x => x.UpsertSnapshotAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _txSnapshotServiceMock
+            .Setup(x => x.DeleteSnapshotAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         _dbContext = new AppDbContext(options, _currentUserServiceMock.Object);
@@ -111,7 +120,8 @@ public class AtomicTransactionTests : IDisposable
             _currencyLedgerService,
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object);
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -164,7 +174,8 @@ public class AtomicTransactionTests : IDisposable
             _currencyLedgerService,
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object);
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -205,7 +216,8 @@ public class AtomicTransactionTests : IDisposable
             _currencyLedgerService,
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object);
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -254,7 +266,8 @@ public class AtomicTransactionTests : IDisposable
             _currencyLedgerService,
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object);
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
 
         var request = new CreateStockTransactionRequest
         {
@@ -292,7 +305,8 @@ public class AtomicTransactionTests : IDisposable
             _currencyLedgerService,
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object);
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
 
         // First purchase: 200 USD
         var request1 = new CreateStockTransactionRequest

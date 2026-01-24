@@ -20,7 +20,8 @@ public class CreateStockTransactionUseCase(
     CurrencyLedgerService currencyLedgerService,
     ICurrentUserService currentUserService,
     ITransactionDateExchangeRateService txDateFxService,
-    IMonthlySnapshotService monthlySnapshotService)
+    IMonthlySnapshotService monthlySnapshotService,
+    ITransactionPortfolioSnapshotService txSnapshotService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         CreateStockTransactionRequest request,
@@ -173,6 +174,13 @@ public class CreateStockTransactionUseCase(
 
             await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
         }
+
+        // US1: 寫入交易日快照（before/after），供 Dietz/TWR 計算使用
+        await txSnapshotService.UpsertSnapshotAsync(
+            request.PortfolioId,
+            transaction.Id,
+            transaction.TransactionDate,
+            cancellationToken);
 
         return MapToDto(transaction);
     }

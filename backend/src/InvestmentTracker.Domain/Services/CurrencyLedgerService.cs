@@ -108,20 +108,10 @@ public class CurrencyLedgerService
             {
                 case CurrencyTransactionType.ExchangeBuy:
                 case CurrencyTransactionType.InitialBalance:
+                case CurrencyTransactionType.Deposit:
                     // 納入成本基礎（cost basis）
                     totalCost += tx.HomeAmount ?? 0m;
                     balance += tx.ForeignAmount;
-                    break;
-
-                case CurrencyTransactionType.ExchangeSell:
-                    // 依比例扣除成本基礎（cost basis）
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        var costReduction = avgCost * tx.ForeignAmount;
-                        totalCost -= costReduction;
-                        balance -= tx.ForeignAmount;
-                    }
                     break;
 
                 case CurrencyTransactionType.Interest:
@@ -130,9 +120,11 @@ public class CurrencyLedgerService
                     balance += tx.ForeignAmount;
                     break;
 
+                case CurrencyTransactionType.ExchangeSell:
                 case CurrencyTransactionType.Spend:
                 case CurrencyTransactionType.OtherExpense:
-                    // Spend/OtherExpense 會扣除餘額並依比例扣除成本
+                case CurrencyTransactionType.Withdraw:
+                    // 出金/支出類：扣除餘額並依比例扣除成本
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -165,11 +157,15 @@ public class CurrencyLedgerService
             {
                 case CurrencyTransactionType.ExchangeBuy:
                 case CurrencyTransactionType.InitialBalance:
+                case CurrencyTransactionType.Deposit:
                     totalCost += tx.HomeAmount ?? 0m;
                     balance += tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
+                case CurrencyTransactionType.Spend:
+                case CurrencyTransactionType.OtherExpense:
+                case CurrencyTransactionType.Withdraw:
                     // 依比例扣除成本基礎（與加權平均成本計算相同）
                     if (balance > 0)
                     {
@@ -182,16 +178,6 @@ public class CurrencyLedgerService
                 case CurrencyTransactionType.Interest:
                 case CurrencyTransactionType.OtherIncome:
                     balance += tx.ForeignAmount;
-                    break;
-
-                case CurrencyTransactionType.Spend:
-                case CurrencyTransactionType.OtherExpense:
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        totalCost -= avgCost * tx.ForeignAmount;
-                        balance -= tx.ForeignAmount;
-                    }
                     break;
             }
         }
@@ -214,6 +200,7 @@ public class CurrencyLedgerService
             {
                 case CurrencyTransactionType.ExchangeBuy:
                 case CurrencyTransactionType.InitialBalance:
+                case CurrencyTransactionType.Deposit:
                     totalCost += tx.HomeAmount ?? 0m;
                     balance += tx.ForeignAmount;
                     break;
@@ -238,6 +225,7 @@ public class CurrencyLedgerService
 
                 case CurrencyTransactionType.Spend:
                 case CurrencyTransactionType.OtherExpense:
+                case CurrencyTransactionType.Withdraw:
                     if (balance > 0)
                     {
                         var avgCost = totalCost / balance;
@@ -272,12 +260,12 @@ public class CurrencyLedgerService
         decimal purchaseAmount)
     {
         // 取得買入日（含）之前的所有收入類交易，依時間由新到舊排序
-        // 包含：ExchangeBuy、InitialBalance、Interest、OtherIncome
+        // 包含：ExchangeBuy、InitialBalance、Deposit、Interest、OtherIncome
         var currencyTransactions = transactions.ToList();
         var incomeTransactions = currencyTransactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
-                       t.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance or CurrencyTransactionType.Interest or CurrencyTransactionType.OtherIncome)
+                       t.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance or CurrencyTransactionType.Deposit or CurrencyTransactionType.Interest or CurrencyTransactionType.OtherIncome)
             .OrderByDescending(t => t.TransactionDate)
             .ThenByDescending(t => t.CreatedAt)
             .ToList();
@@ -286,7 +274,7 @@ public class CurrencyLedgerService
         var expenseTransactions = currencyTransactions
             .Where(t => !t.IsDeleted &&
                        t.TransactionDate.Date <= purchaseDate.Date &&
-                       t.TransactionType is CurrencyTransactionType.ExchangeSell or CurrencyTransactionType.Spend or CurrencyTransactionType.OtherExpense)
+                       t.TransactionType is CurrencyTransactionType.ExchangeSell or CurrencyTransactionType.Spend or CurrencyTransactionType.OtherExpense or CurrencyTransactionType.Withdraw)
             // 排除買入日當天的 Spend（因為這筆就是正在計算的買股）
             .Where(t => !(t.TransactionDate.Date == purchaseDate.Date &&
                          t.TransactionType is CurrencyTransactionType.Spend or CurrencyTransactionType.OtherExpense))
@@ -356,11 +344,13 @@ public class CurrencyLedgerService
         {
             CurrencyTransactionType.ExchangeBuy => tx.ForeignAmount,
             CurrencyTransactionType.InitialBalance => tx.ForeignAmount,
+            CurrencyTransactionType.Deposit => tx.ForeignAmount,
             CurrencyTransactionType.Interest => tx.ForeignAmount,
             CurrencyTransactionType.OtherIncome => tx.ForeignAmount,
             CurrencyTransactionType.ExchangeSell => -tx.ForeignAmount,
             CurrencyTransactionType.Spend => -tx.ForeignAmount,
             CurrencyTransactionType.OtherExpense => -tx.ForeignAmount,
+            CurrencyTransactionType.Withdraw => -tx.ForeignAmount,
             _ => 0m
         };
     }

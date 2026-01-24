@@ -160,6 +160,10 @@ builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
 builder.Services.AddScoped<PortfolioCalculator>();
 builder.Services.AddScoped<CurrencyLedgerService>();
 builder.Services.AddScoped<StockSplitAdjustmentService>();
+builder.Services.AddScoped<IReturnCalculator, ReturnCalculator>();
+builder.Services.AddScoped<StockTransactionCashFlowStrategy>();
+builder.Services.AddScoped<CurrencyLedgerCashFlowStrategy>();
+builder.Services.AddScoped<ReturnCashFlowStrategyProvider>();
 
 // Register Use Cases
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
@@ -232,6 +236,9 @@ builder.Services.AddScoped<ITransactionDateExchangeRateService, TransactionDateE
 
 // Monthly Snapshot Service (monthly net worth history)
 builder.Services.AddScoped<IMonthlySnapshotService, MonthlySnapshotService>();
+
+// Transaction Portfolio Snapshot Service (per-event before/after snapshots)
+builder.Services.AddScoped<ITransactionPortfolioSnapshotService, TransactionPortfolioSnapshotService>();
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssemblyContaining<CreatePortfolioRequestValidator>();

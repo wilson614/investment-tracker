@@ -12,7 +12,8 @@ public class DeleteStockTransactionUseCase(
     IPortfolioRepository portfolioRepository,
     ICurrencyTransactionRepository currencyTransactionRepository,
     ICurrentUserService currentUserService,
-    IMonthlySnapshotService monthlySnapshotService)
+    IMonthlySnapshotService monthlySnapshotService,
+    ITransactionPortfolioSnapshotService txSnapshotService)
 {
     public async Task ExecuteAsync(Guid transactionId, CancellationToken cancellationToken = default)
     {
@@ -41,5 +42,11 @@ public class DeleteStockTransactionUseCase(
         var affectedFromMonth = new DateOnly(transaction.TransactionDate.Year, transaction.TransactionDate.Month, 1);
         await monthlySnapshotService.InvalidateFromMonthAsync(
             transaction.PortfolioId, affectedFromMonth, cancellationToken);
+
+        // US1: 刪除交易日快照
+        await txSnapshotService.DeleteSnapshotAsync(
+            transaction.PortfolioId,
+            transaction.Id,
+            cancellationToken);
     }
 }

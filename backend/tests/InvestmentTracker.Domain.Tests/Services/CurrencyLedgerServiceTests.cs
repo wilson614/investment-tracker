@@ -37,6 +37,33 @@ public class CurrencyLedgerServiceTests
     }
 
     [Fact]
+    public void CalculateBalance_WithDeposit_AddsToBalance()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(CurrencyTransactionType.Deposit, 1000m)
+        };
+
+        var result = _service.CalculateBalance(transactions);
+
+        result.Should().Be(1000m);
+    }
+
+    [Fact]
+    public void CalculateBalance_WithWithdraw_SubtractsFromBalance()
+    {
+        var transactions = new[]
+        {
+            CreateTransaction(CurrencyTransactionType.ExchangeBuy, 1000m),
+            CreateTransaction(CurrencyTransactionType.Withdraw, 200m)
+        };
+
+        var result = _service.CalculateBalance(transactions);
+
+        result.Should().Be(800m);
+    }
+
+    [Fact]
     public void CalculateBalance_WithBuyAndSell_ReturnsNetAmount()
     {
         var transactions = new[]

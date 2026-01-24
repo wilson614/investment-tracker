@@ -17,7 +17,8 @@ public class UpdateStockTransactionUseCase(
     ICurrentUserService currentUserService,
     PortfolioCalculator portfolioCalculator,
     ITransactionDateExchangeRateService txDateFxService,
-    IMonthlySnapshotService monthlySnapshotService)
+    IMonthlySnapshotService monthlySnapshotService,
+    ITransactionPortfolioSnapshotService txSnapshotService)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         Guid transactionId,
@@ -127,6 +128,13 @@ public class UpdateStockTransactionUseCase(
         var affectedFromMonth = new DateOnly(affectedDate.Year, affectedDate.Month, 1);
         await monthlySnapshotService.InvalidateFromMonthAsync(
             transaction.PortfolioId, affectedFromMonth, cancellationToken);
+
+        // US1: 寫入交易日快照（before/after），供 Dietz/TWR 計算使用
+        await txSnapshotService.UpsertSnapshotAsync(
+            transaction.PortfolioId,
+            transaction.Id,
+            transaction.TransactionDate,
+            cancellationToken);
 
         return new StockTransactionDto
         {

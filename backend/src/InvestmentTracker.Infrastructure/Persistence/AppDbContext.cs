@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<UserBenchmark> UserBenchmarks => Set<UserBenchmark>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<MonthlyNetWorthSnapshot> MonthlyNetWorthSnapshots => Set<MonthlyNetWorthSnapshot>();
+    public DbSet<TransactionPortfolioSnapshot> TransactionPortfolioSnapshots => Set<TransactionPortfolioSnapshot>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -59,6 +60,11 @@ public class AppDbContext : DbContext
 
         // MonthlyNetWorthSnapshot：透過 Portfolio 導覽屬性套用同樣的 user filter
         modelBuilder.Entity<MonthlyNetWorthSnapshot>()
+            .HasQueryFilter(s => s.Portfolio.IsActive &&
+                (_currentUserService == null || s.Portfolio.UserId == _currentUserService.UserId));
+
+        // TransactionPortfolioSnapshot：透過 Portfolio 導覽屬性套用同樣的 user filter
+        modelBuilder.Entity<TransactionPortfolioSnapshot>()
             .HasQueryFilter(s => s.Portfolio.IsActive &&
                 (_currentUserService == null || s.Portfolio.UserId == _currentUserService.UserId));
 

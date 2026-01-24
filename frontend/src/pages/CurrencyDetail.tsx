@@ -50,6 +50,8 @@ const loadCachedRate = (from: string, to: string): CachedRate | null => {
 const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.ExchangeBuy]: '換匯買入',
   [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
+  [CurrencyTransactionType.Deposit]: '存入（入金）',
+  [CurrencyTransactionType.Withdraw]: '提領（出金）',
   [CurrencyTransactionType.Interest]: '利息收入',
   [CurrencyTransactionType.Spend]: '消費支出',
   [CurrencyTransactionType.InitialBalance]: '轉入餘額',
@@ -60,6 +62,8 @@ const transactionTypeLabels: Record<number, string> = {
 const transactionTypeBadgeClass: Record<number, string> = {
   [CurrencyTransactionType.ExchangeBuy]: 'badge-success',
   [CurrencyTransactionType.ExchangeSell]: 'badge-danger',
+  [CurrencyTransactionType.Deposit]: 'badge-success',
+  [CurrencyTransactionType.Withdraw]: 'badge-danger',
   [CurrencyTransactionType.Interest]: 'badge-butter',
   [CurrencyTransactionType.Spend]: 'badge-peach',
   [CurrencyTransactionType.InitialBalance]: 'badge-cream',
@@ -75,12 +79,14 @@ function getBalanceChange(tx: CurrencyTransaction): number {
   switch (tx.transactionType) {
     case CurrencyTransactionType.ExchangeBuy:
     case CurrencyTransactionType.InitialBalance:
+    case CurrencyTransactionType.Deposit:
     case CurrencyTransactionType.Interest:
     case CurrencyTransactionType.OtherIncome:
       return tx.foreignAmount;
     case CurrencyTransactionType.ExchangeSell:
     case CurrencyTransactionType.Spend:
     case CurrencyTransactionType.OtherExpense:
+    case CurrencyTransactionType.Withdraw:
       return -tx.foreignAmount;
     default:
       return 0;

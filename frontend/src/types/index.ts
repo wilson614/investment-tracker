@@ -154,6 +154,8 @@ export const CurrencyTransactionType = {
   InitialBalance: 5,
   OtherIncome: 6,
   OtherExpense: 7,
+  Deposit: 8,
+  Withdraw: 9,
 } as const;
 export type CurrencyTransactionType = (typeof CurrencyTransactionType)[keyof typeof CurrencyTransactionType];
 
@@ -363,6 +365,8 @@ export interface YearPerformance {
   xirr: number | null;
   xirrPercentage: number | null;
   totalReturnPercentage: number | null;
+  modifiedDietzPercentage: number | null;
+  timeWeightedReturnPercentage: number | null;
   startValueHome: number | null;
   endValueHome: number | null;
   netContributionsHome: number;
@@ -371,6 +375,8 @@ export interface YearPerformance {
   xirrSource: number | null;
   xirrPercentageSource: number | null;
   totalReturnPercentageSource: number | null;
+  modifiedDietzPercentageSource: number | null;
+  timeWeightedReturnPercentageSource: number | null;
   startValueSource: number | null;
   endValueSource: number | null;
   netContributionsSource: number | null;

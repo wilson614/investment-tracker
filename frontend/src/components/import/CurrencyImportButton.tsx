@@ -70,9 +70,9 @@ const currencyFields: FieldDefinition[] = [
  * 將 CSV 內的交易類型文字轉成 `CurrencyTransactionType`。
  *
  * 支援：
- * - 中文：買/賣/利息/消費/期初/其他收入/其他支出
- * - 英文：buy/sell/interest/spend/initial/balance/bonus/dividend/fee/transfer
- * - 數字：1-7
+ * - 中文：買/賣/存入/提領/利息/消費/期初/其他收入/其他支出
+ * - 英文：buy/sell/deposit/withdraw/interest/spend/initial/balance/bonus/dividend/fee/transfer
+ * - 數字：1-9
  */
 function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
   const normalized = typeStr.toLowerCase().trim();
@@ -83,6 +83,12 @@ function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
   }
   if (normalized.includes('賣') || normalized.includes('sell')) {
     return CurrencyTransactionType.ExchangeSell;
+  }
+  if (normalized.includes('存入') || normalized.includes('入金') || normalized.includes('deposit')) {
+    return CurrencyTransactionType.Deposit;
+  }
+  if (normalized.includes('提領') || normalized.includes('出金') || normalized.includes('withdraw')) {
+    return CurrencyTransactionType.Withdraw;
   }
   if (normalized.includes('利息') || normalized.includes('interest')) {
     return CurrencyTransactionType.Interest;
@@ -102,7 +108,7 @@ function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
 
   // Numeric mappings
   const num = parseInt(normalized);
-  if (num >= 1 && num <= 7) {
+  if (num >= 1 && num <= 9) {
     return num as CurrencyTransactionType;
   }
 

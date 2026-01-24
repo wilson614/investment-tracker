@@ -18,6 +18,8 @@ public class HistoricalPerformanceService(
     PortfolioCalculator portfolioCalculator,
     ICurrentUserService currentUserService,
     IHistoricalYearEndDataService historicalYearEndDataService,
+    ITransactionPortfolioSnapshotService txSnapshotService,
+    IReturnCalculator returnCalculator,
     ILogger<HistoricalPerformanceService> logger)
     : IHistoricalPerformanceService
 {
@@ -454,6 +456,41 @@ public class HistoricalPerformanceService(
             totalReturnSource = (double)((endValueSource - netContributionsSource) / netContributionsSource) * 100;
         }
 
+        // ===== US1: Modified Dietz + TWR (Source Currency) =====
+        // Ensure snapshots exist for the year (on-demand backfill)
+        await txSnapshotService.BackfillSnapshotsAsync(portfolioId, yearStart, yearEnd, cancellationToken);
+
+        var snapshots = await txSnapshotService.GetSnapshotsAsync(portfolioId, yearStart, yearEnd, cancellationToken);
+
+        var sourceSnapshots = snapshots
+            .OrderBy(s => s.SnapshotDate)
+            .ThenBy(s => s.CreatedAt)
+            .Select(s => new ReturnValuationSnapshot(
+                Date: s.SnapshotDate,
+                ValueBefore: s.PortfolioValueBeforeSource,
+                ValueAfter: s.PortfolioValueAfterSource))
+            .ToList();
+
+        var sourceCashFlows = snapshots
+            .OrderBy(s => s.SnapshotDate)
+            .ThenBy(s => s.CreatedAt)
+            .Select(s => new ReturnCashFlow(
+                Date: s.SnapshotDate,
+                Amount: s.PortfolioValueAfterSource - s.PortfolioValueBeforeSource))
+            .ToList();
+
+        var modifiedDietzSource = returnCalculator.CalculateModifiedDietz(
+            startValue: startValueSource,
+            endValue: endValueSource,
+            periodStart: yearStart,
+            periodEnd: yearEnd,
+            cashFlows: sourceCashFlows);
+
+        var twrSource = returnCalculator.CalculateTimeWeightedReturn(
+            startValue: startValueSource,
+            endValue: endValueSource,
+            cashFlowSnapshots: sourceSnapshots);
+
         // ===== Calculate Home Currency (e.g., TWD) Performance =====
         var cashFlowsHome = new List<CashFlow>();
 
@@ -536,6 +573,36 @@ public class HistoricalPerformanceService(
             totalReturnHome = (double)((endValueHome - netContributionsHome) / netContributionsHome) * 100;
         }
 
+        // ===== US1: Modified Dietz + TWR (Home Currency) =====
+        var homeSnapshots = snapshots
+            .OrderBy(s => s.SnapshotDate)
+            .ThenBy(s => s.CreatedAt)
+            .Select(s => new ReturnValuationSnapshot(
+                Date: s.SnapshotDate,
+                ValueBefore: s.PortfolioValueBeforeHome,
+                ValueAfter: s.PortfolioValueAfterHome))
+            .ToList();
+
+        var homeCashFlows = snapshots
+            .OrderBy(s => s.SnapshotDate)
+            .ThenBy(s => s.CreatedAt)
+            .Select(s => new ReturnCashFlow(
+                Date: s.SnapshotDate,
+                Amount: s.PortfolioValueAfterHome - s.PortfolioValueBeforeHome))
+            .ToList();
+
+        var modifiedDietzHome = returnCalculator.CalculateModifiedDietz(
+            startValue: startValueHome,
+            endValue: endValueHome,
+            periodStart: yearStart,
+            periodEnd: yearEnd,
+            cashFlows: homeCashFlows);
+
+        var twrHome = returnCalculator.CalculateTimeWeightedReturn(
+            startValue: startValueHome,
+            endValue: endValueHome,
+            cashFlowSnapshots: homeSnapshots);
+
         logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
             year, xirrSource * 100, xirrHome * 100);
 
@@ -551,6 +618,8 @@ public class HistoricalPerformanceService(
             Xirr = xirrHome,
             XirrPercentage = xirrHome * 100,
             TotalReturnPercentage = totalReturnHome,
+            ModifiedDietzPercentage = modifiedDietzHome.HasValue ? (double)(modifiedDietzHome.Value * 100m) : null,
+            TimeWeightedReturnPercentage = twrHome.HasValue ? (double)(twrHome.Value * 100m) : null,
             StartValueHome = startValueHome > 0 ? startValueHome : null,
             EndValueHome = endValueHome > 0 ? endValueHome : null,
             NetContributionsHome = netContributionsHome,
@@ -559,6 +628,8 @@ public class HistoricalPerformanceService(
             XirrSource = xirrSource,
             XirrPercentageSource = xirrSource * 100,
             TotalReturnPercentageSource = totalReturnSource,
+            ModifiedDietzPercentageSource = modifiedDietzSource.HasValue ? (double)(modifiedDietzSource.Value * 100m) : null,
+            TimeWeightedReturnPercentageSource = twrSource.HasValue ? (double)(twrSource.Value * 100m) : null,
             StartValueSource = startValueSource > 0 ? startValueSource : null,
             EndValueSource = endValueSource > 0 ? endValueSource : null,
             NetContributionsSource = netContributionsSource,
