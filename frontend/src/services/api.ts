@@ -39,6 +39,10 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+const TOKEN_KEY = 'token';
+const REFRESH_TOKEN_KEY = 'refreshToken';
+const USER_KEY = 'user';
+
 // ============================================================================
 // API 錯誤處理
 // ============================================================================
@@ -54,42 +58,157 @@ function createApiError(status: number, message: string): ApiErrorType {
   return error;
 }
 
-/**
- * 通用 API 請求函數
- * 自動處理驗證 token、錯誤回應及 401 重導向
- */
-async function fetchApi<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = localStorage.getItem('token');
+// ============================================================================
+// Auth / Token Refresh Helpers (US6)
+// ============================================================================
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
+let inFlightRefresh: Promise<boolean> | null = null;
+
+function removeLocalStorageByPrefixes(prefixes: readonly string[]): void {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+}
+
+function clearAuthData(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+
+  // 清除所有使用者相關的快取資料，防止帳號間資料洩漏
+  removeLocalStorageByPrefixes(['quote_cache_', 'perf_cache_', 'xirr_cache_', 'rate_cache_']);
+
+  // 清除市場資料快取（登入時應重新取得）
+  localStorage.removeItem('ytd_data_cache');
+  localStorage.removeItem('cape_data_cache');
+  localStorage.removeItem('custom_benchmark_ytd_cache');
+
+  // 導覽快取（不應跨帳號保留）
+  localStorage.removeItem('default_portfolio_id');
+  localStorage.removeItem('selected_portfolio_id');
+}
+
+function clearAuthAndRedirect(): void {
+  clearAuthData();
+  window.location.href = '/login';
+}
+
+function shouldAttachAuthHeader(endpoint: string): boolean {
+  // Auth endpoints that should NOT include Authorization header
+  return !(
+    endpoint === '/auth/login' ||
+    endpoint === '/auth/register' ||
+    endpoint === '/auth/refresh' ||
+    endpoint === '/auth/logout'
+  );
+}
+
+function buildHeaders(optionsHeaders: HeadersInit | undefined, token: string | null): Headers {
+  const headers = new Headers(optionsHeaders);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return headers;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (inFlightRefresh) {
+    return inFlightRefresh;
+  }
+
+  const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!storedRefreshToken) {
+    return false;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken: storedRefreshToken }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = (await response.json()) as AuthResponse;
+
+      localStorage.setItem(TOKEN_KEY, data.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  inFlightRefresh = refreshPromise.finally(() => {
+    inFlightRefresh = null;
   });
 
+  return inFlightRefresh;
+}
+
+/**
+ * 通用 API 請求函數
+ * - 自動處理驗證 token
+ * - 401 時嘗試 refresh token 後重試一次
+ * - refresh 失敗才清除 session 並導向登入
+ */
+async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const canUseAuthHeader = shouldAttachAuthHeader(endpoint);
+
+  const execute = async (authToken: string | null): Promise<Response> => {
+    const headers = buildHeaders(options.headers, authToken);
+
+    return fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  };
+
+  const initialToken = canUseAuthHeader ? localStorage.getItem(TOKEN_KEY) : null;
+  let response = await execute(initialToken);
+
+  if (response.status === 401 && canUseAuthHeader) {
+    // Prevent refresh loop: only retry once per request
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      const newToken = localStorage.getItem(TOKEN_KEY);
+      response = await execute(newToken);
+    }
+  }
+
   if (!response.ok) {
-    // 處理 401 未授權 - token 過期或無效
-    if (response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-      // 重導向至登入頁面
-      window.location.href = '/login';
+    // 401: refresh failed or token invalid
+    if (response.status === 401 && canUseAuthHeader) {
+      clearAuthAndRedirect();
       throw createApiError(401, 'Session expired. Please login again.');
     }
 
     const errorText = await response.text();
-    // 嘗試解析 JSON 以取得錯誤訊息
     let errorMessage = errorText || response.statusText;
     try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.error || errorJson.message || errorJson.title || errorText;
+      const errorJson = JSON.parse(errorText) as Record<string, unknown>;
+      const message =
+        (typeof errorJson.error === 'string' && errorJson.error) ||
+        (typeof errorJson.message === 'string' && errorJson.message) ||
+        (typeof errorJson.title === 'string' && errorJson.title) ||
+        null;
+      errorMessage = message ?? errorText;
     } catch {
       // 非 JSON 格式，使用原始文字
     }

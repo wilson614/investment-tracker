@@ -15,6 +15,7 @@ import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytd
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { YearSelector } from '../components/performance/YearSelector';
+import { CurrencyToggle, type PerformanceCurrencyMode } from '../components/performance/CurrencyToggle';
 import { MissingPriceModal } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
 import { StockMarket } from '../types';
@@ -116,6 +117,9 @@ export function PerformancePage() {
   const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(true); // Start as true to prevent flash
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
   const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
+
+  // US2: currency mode for performance comparison
+  const [currencyMode, setCurrencyMode] = useState<PerformanceCurrencyMode>('source');
 
   // Custom user benchmarks state
   const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
@@ -1282,24 +1286,34 @@ export function PerformancePage() {
                   <span className="ml-2 text-[var(--text-muted)]">正在取得即時股價以計算績效...</span>
                 </div>
               </div>
-            ) : performance.modifiedDietzPercentageSource != null && (
+            ) : ((currencyMode === 'source'
+                  ? performance.modifiedDietzPercentageSource
+                  : performance.modifiedDietzPercentage) != null) && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
                     績效比較
                   </h3>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTempSelectedBenchmarks(selectedBenchmarks);
-                        setShowBenchmarkSettings(true);
-                      }}
-                      className="btn-dark p-2 h-8 flex items-center justify-center"
-                      title="選擇比較基準"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-3">
+                    <CurrencyToggle
+                      value={currencyMode}
+                      onChange={setCurrencyMode}
+                      sourceCurrency={performance.sourceCurrency}
+                      homeCurrency={portfolio.homeCurrency}
+                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempSelectedBenchmarks(selectedBenchmarks);
+                          setShowBenchmarkSettings(true);
+                        }}
+                        className="btn-dark p-2 h-8 flex items-center justify-center"
+                        title="選擇比較基準"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1451,8 +1465,10 @@ export function PerformancePage() {
                     <PerformanceBarChart
                       data={[
                         {
-                          label: `我的投資組合（${performance.sourceCurrency}）`,
-                          value: performance.modifiedDietzPercentageSource,
+                          label: `我的投資組合（${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency}）`,
+                          value: currencyMode === 'home'
+                            ? performance.modifiedDietzPercentage!
+                            : performance.modifiedDietzPercentageSource!,
                           tooltip: `${selectedYear} 年度報酬率（修正 Dietz 報酬率）`,
                         },
                         /* FR-134: Filter out benchmarks with null data instead of showing 0 */

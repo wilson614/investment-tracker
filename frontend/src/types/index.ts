@@ -129,9 +129,17 @@ export interface StockPosition {
   averageCostPerShareSource: number;
   currentPrice?: number;
   currentExchangeRate?: number;
+
+  // Home currency
   currentValueHome?: number;
   unrealizedPnlHome?: number;
   unrealizedPnlPercentage?: number;
+
+  // Source currency
+  currentValueSource?: number;
+  unrealizedPnlSource?: number;
+  unrealizedPnlSourcePercentage?: number;
+
   market?: StockMarket;
   currency?: string;
 }

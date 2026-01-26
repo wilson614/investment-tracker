@@ -186,6 +186,12 @@ export function PositionDetailPage() {
         const totalCostHome = pos.totalCostHome ?? 0;
         const pnl = currentValue - totalCostHome;
         const pnlPct = totalCostHome > 0 ? (pnl / totalCostHome) * 100 : 0;
+
+        const currentValueSource = pos.totalShares * cachedData.quote.price;
+        const totalCostSource = pos.totalCostSource;
+        const pnlSource = currentValueSource - totalCostSource;
+        const pnlPctSource = totalCostSource > 0 ? (pnlSource / totalCostSource) * 100 : 0;
+
         setPosition({
           ...pos,
           currentPrice: cachedData.quote.price,
@@ -193,6 +199,9 @@ export function PositionDetailPage() {
           currentValueHome: currentValue,
           unrealizedPnlHome: pnl,
           unrealizedPnlPercentage: pnlPct,
+          currentValueSource,
+          unrealizedPnlSource: pnlSource,
+          unrealizedPnlSourcePercentage: pnlPctSource,
         });
         hasAppliedCache.current = true;
       } else {
@@ -297,6 +306,11 @@ export function PositionDetailPage() {
           const pnl = currentValue - totalCostHome;
           const pnlPct = totalCostHome > 0 ? (pnl / totalCostHome) * 100 : 0;
 
+          const currentValueSource = position.totalShares * quote.price;
+          const totalCostSource = position.totalCostSource;
+          const pnlSource = currentValueSource - totalCostSource;
+          const pnlPctSource = totalCostSource > 0 ? (pnlSource / totalCostSource) * 100 : 0;
+
           setPosition({
             ...position,
             currentPrice: quote.price,
@@ -304,6 +318,9 @@ export function PositionDetailPage() {
             currentValueHome: currentValue,
             unrealizedPnlHome: pnl,
             unrealizedPnlPercentage: pnlPct,
+            currentValueSource,
+            unrealizedPnlSource: pnlSource,
+            unrealizedPnlSourcePercentage: pnlPctSource,
           });
 
           // Calculate XIRR for this position
@@ -368,6 +385,12 @@ export function PositionDetailPage() {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
+  };
+
+  const formatSignedNumber = (value: number | null | undefined, decimals = 2) => {
+    if (value == null) return '-';
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${formatNumber(value, decimals)}`;
   };
 
   const formatTWD = (value: number | null | undefined) => {
@@ -519,6 +542,18 @@ export function PositionDetailPage() {
                       {formatPercent(position.unrealizedPnlPercentage)}
                     </p>
                   </div>
+
+                  {position.unrealizedPnlSource != null && position.unrealizedPnlSourcePercentage != null && (
+                    <div className="metric-card">
+                      <p className="text-sm text-[var(--text-muted)] mb-1">原幣未實現損益</p>
+                      <p className={`text-xl font-bold number-display ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {formatSignedNumber(position.unrealizedPnlSource, 2)}
+                      </p>
+                      <p className={`text-sm ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {formatPercent(position.unrealizedPnlSourcePercentage)}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="metric-card">
                     <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
