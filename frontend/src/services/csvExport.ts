@@ -84,6 +84,8 @@ export function generateTransactionsCsv(
   _baseCurrency = 'USD',
   homeCurrency = 'TWD'
 ): string {
+  void _baseCurrency;
+
   // CSV Headers in Chinese
   const headers = [
     '日期',
@@ -135,6 +137,8 @@ export function generatePositionsCsv(
   _baseCurrency = 'USD',
   homeCurrency = 'TWD'
 ): string {
+  void _baseCurrency;
+
   // CSV Headers in Chinese
   const headers = [
     '股票代號',
@@ -221,9 +225,11 @@ export function exportPositionsToCsv(
  */
 export function generateCurrencyTransactionsCsv(
   transactions: CurrencyTransaction[],
-  _currencyCode: string,
-  _homeCurrency = 'TWD'
+  currencyCode: string,
+  homeCurrency = 'TWD'
 ): string {
+  void currencyCode;
+  void homeCurrency;
   // CSV Headers in Chinese (match table columns without parentheses)
   const headers = [
     '日期',

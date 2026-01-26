@@ -145,7 +145,7 @@ function normalizeHeader(header: string): string {
     .replace(/（[^）]*）/g, '')
     .replace(/\[[^\]]*\]/g, '')
     .replace(/\{[^}]*\}/g, '')
-    .replace(/[_\s\-\.]/g, '')
+    .replace(/[_\s.-]/g, '')
     .trim();
 }
 

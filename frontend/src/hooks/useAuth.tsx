@@ -2,7 +2,6 @@ import {
   createContext,
   useContext,
   useState,
-  useEffect,
   useCallback,
   type ReactNode,
 } from 'react';
@@ -41,25 +40,19 @@ const removeLocalStorageByPrefixes = (prefixes: string[]) => {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // 掛載時從 localStorage 載入使用者資料
-  useEffect(() => {
-    const storedUser = localStorage.getItem(USER_KEY);
-    const token = localStorage.getItem(TOKEN_KEY);
-
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        clearAuthData();
-      }
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const storedUser = localStorage.getItem(USER_KEY);
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!storedUser || !token) return null;
+      return JSON.parse(storedUser) as User;
+    } catch {
+      return null;
     }
-    setIsLoading(false);
-  }, []);
+  });
+  const [isLoading] = useState(false);
 
-  const clearAuthData = () => {
+  const clearAuthData = useCallback(() => {
     // 清除驗證 token
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
@@ -91,7 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 這裡不清除 localStorage 副本，讓 API 同步來處理
 
     setUser(null);
-  };
+  }, []);
+
 
   const saveAuthData = (accessToken: string, refreshToken: string, userData: User) => {
     localStorage.setItem(TOKEN_KEY, accessToken);

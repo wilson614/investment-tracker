@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { stockPriceApi, marketDataApi, etfClassificationApi } from '../../services/api';
 import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse, EtfClassificationResult } from '../../types';
 import { StockMarket } from '../../types';
@@ -100,33 +100,18 @@ export function PositionCard({
 
   // Re-read from cache when refreshTrigger changes (parent finished fetching)
   useEffect(() => {
-    if (refreshTrigger) {
-      const freshData = loadCachedQuote();
-      if (freshData.quote) {
-        setLastQuote(freshData.quote);
-        setLastUpdated(freshData.updatedAt);
-        setSelectedMarket(freshData.market);
-        setFetchStatus('success');
-      }
+    if (!refreshTrigger) {
+      return;
+    }
+
+    const freshData = loadCachedQuote();
+    if (freshData.quote) {
+      setLastQuote(freshData.quote);
+      setLastUpdated(freshData.updatedAt);
+      setSelectedMarket(freshData.market);
+      setFetchStatus('success');
     }
   }, [refreshTrigger]);
-
-  // Auto-fetch on mount (always fetch fresh, use cache only for initial display)
-  useEffect(() => {
-    if (autoFetch && !hasFetched.current) {
-      hasFetched.current = true;
-      // Always fetch fresh quote on mount
-      handleFetchQuote();
-      // Fetch ETF classification
-      etfClassificationApi.getClassification(position.ticker)
-        .then(setEtfClassification)
-        .catch(() => { /* ignore classification errors */ });
-      // Also notify parent with cached data immediately if available
-      if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
-        onPriceUpdate(position.ticker, lastQuote.price, lastQuote.exchangeRate);
-      }
-    }
-  }, []);
 
   // Save to cache when quote updates
   const saveToCache = (quote: StockQuoteResponse, market: StockMarketType, fromCache?: boolean) => {
@@ -170,7 +155,7 @@ export function PositionCard({
     return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleFetchQuote = async (market?: StockMarketType) => {
+  const handleFetchQuote = useCallback(async (market?: StockMarketType) => {
     const targetMarket = market ?? selectedMarket;
     setFetchStatus('loading');
     setError(null);
@@ -242,7 +227,32 @@ export function PositionCard({
       setFetchStatus('error');
       setError(err instanceof Error ? err.message : '無報價');
     }
-  };
+  }, [homeCurrency, onPriceUpdate, position.market, position.ticker, selectedMarket]);
+
+  // Auto-fetch on mount (always fetch fresh, use cache only for initial display)
+  useEffect(() => {
+    if (!autoFetch || hasFetched.current) {
+      return;
+    }
+
+    hasFetched.current = true;
+
+    // Always fetch fresh quote on mount
+    handleFetchQuote();
+
+    // Fetch ETF classification
+    etfClassificationApi
+      .getClassification(position.ticker)
+      .then(setEtfClassification)
+      .catch(() => {
+        /* ignore classification errors */
+      });
+
+    // Also notify parent with cached data immediately if available
+    if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
+      onPriceUpdate(position.ticker, lastQuote.price, lastQuote.exchangeRate);
+    }
+  }, [autoFetch, handleFetchQuote, lastQuote, onPriceUpdate, position.ticker]);
 
   const pnlColor = (position.unrealizedPnlHome ?? 0) >= 0
     ? 'number-positive'

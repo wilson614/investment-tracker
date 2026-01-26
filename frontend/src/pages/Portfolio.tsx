@@ -190,7 +190,7 @@ export function PortfolioPage() {
       setError(null);
 
       // Get or create user's portfolio
-      let portfolios = await portfolioApi.getAll();
+      const portfolios = await portfolioApi.getAll();
       let currentPortfolio: Portfolio;
 
       if (portfolios.length === 0) {

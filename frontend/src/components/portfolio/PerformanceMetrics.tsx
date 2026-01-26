@@ -1,4 +1,3 @@
-import React from 'react';
 import type { PortfolioSummary, XirrResult } from '../../types';
 
 interface PerformanceMetricsProps {
@@ -16,63 +15,17 @@ export function PerformanceMetrics({
   isLoading = false,
   portfolioId,
 }: PerformanceMetricsProps) {
-  // Track if we've ever loaded data - only show skeleton on initial load
-  const hasLoadedRef = React.useRef(false);
-  // Track current portfolio to reset cache on switch
-  const currentPortfolioIdRef = React.useRef<string | undefined>(portfolioId);
+  void portfolioId;
 
-  // Cache the last valid values to prevent flashing
-  const lastValuesRef = React.useRef<{
-    totalCostHome: number | null;
-    totalValueHome: number | null;
-    totalUnrealizedPnlHome: number | null;
-    totalUnrealizedPnlPercentage: number | null;
-    xirrPercentage: number | null;
-    cashFlowCount: number | null;
-    positionCount: number;
-  }>({
-    totalCostHome: null,
-    totalValueHome: null,
-    totalUnrealizedPnlHome: null,
-    totalUnrealizedPnlPercentage: null,
-    xirrPercentage: null,
-    cashFlowCount: null,
-    positionCount: 0,
-  });
-
-  // Reset cache when portfolio changes
-  if (portfolioId !== currentPortfolioIdRef.current) {
-    currentPortfolioIdRef.current = portfolioId;
-    hasLoadedRef.current = false;
-    lastValuesRef.current = {
-      totalCostHome: null,
-      totalValueHome: null,
-      totalUnrealizedPnlHome: null,
-      totalUnrealizedPnlPercentage: null,
-      xirrPercentage: null,
-      cashFlowCount: null,
-      positionCount: 0,
-    };
-  }
-
-  if (summary) {
-    hasLoadedRef.current = true;
-    // Update cached values when we have new data
-    // IMPORTANT: Only use cached values for the SAME portfolio to prevent cross-portfolio data leakage
-    // When summary has no value (null/undefined), show null instead of stale cached value
-    lastValuesRef.current = {
-      totalCostHome: summary.totalCostHome,
-      totalValueHome: summary.totalValueHome ?? null,
-      totalUnrealizedPnlHome: summary.totalUnrealizedPnlHome ?? null,
-      totalUnrealizedPnlPercentage: summary.totalUnrealizedPnlPercentage ?? null,
-      xirrPercentage: xirrResult?.xirrPercentage ?? null,
-      cashFlowCount: xirrResult?.cashFlowCount ?? null,
-      positionCount: summary.positions.length,
-    };
-  }
-
-  // Use cached values for display
-  const displayValues = lastValuesRef.current;
+  const displayValues = {
+    totalCostHome: summary.totalCostHome,
+    totalValueHome: summary.totalValueHome ?? null,
+    totalUnrealizedPnlHome: summary.totalUnrealizedPnlHome ?? null,
+    totalUnrealizedPnlPercentage: summary.totalUnrealizedPnlPercentage ?? null,
+    xirrPercentage: xirrResult?.xirrPercentage ?? null,
+    cashFlowCount: xirrResult?.cashFlowCount ?? null,
+    positionCount: summary.positions.length,
+  };
 
   // For TWD, round to integer; for others, keep 2 decimals
   const formatCurrency = (value: number | null | undefined) => {
@@ -103,7 +56,7 @@ export function PerformanceMetrics({
     ? 'number-positive'
     : 'number-negative';
 
-  if (isLoading && !hasLoadedRef.current) {
+  if (isLoading) {
     return (
       <div className="card-dark p-6 animate-pulse">
         <div className="h-6 bg-[var(--bg-tertiary)] rounded w-1/3 mb-4"></div>

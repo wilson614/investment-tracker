@@ -235,8 +235,8 @@ export function transformCapeData(data: CapeData, selectedRegions?: string[]): C
     .sort((a, b) => {
       // Sort by user's selection order
       const regionKeys = Object.entries(REGION_DISPLAY_NAMES);
-      const aKey = regionKeys.find(([_, v]) => v === a.region)?.[0] || a.region;
-      const bKey = regionKeys.find(([_, v]) => v === b.region)?.[0] || b.region;
+      const aKey = regionKeys.find(([, v]) => v === a.region)?.[0] || a.region;
+      const bKey = regionKeys.find(([, v]) => v === b.region)?.[0] || b.region;
       return regions.indexOf(aKey) - regions.indexOf(bKey);
     });
 }
