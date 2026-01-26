@@ -40,7 +40,7 @@ public abstract class IntegrationTestBase : IClassFixture<CustomWebApplicationFa
     protected static string GenerateTestToken(Guid userId)
     {
         var key = new SymmetricSecurityKey(
-            "your-256-bit-secret-key-here-minimum-32-chars"u8.ToArray());
+            System.Text.Encoding.UTF8.GetBytes(CustomWebApplicationFactory.TestJwtSecret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]

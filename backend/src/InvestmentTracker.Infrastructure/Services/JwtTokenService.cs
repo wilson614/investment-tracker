@@ -32,7 +32,7 @@ public class JwtTokenService : IJwtTokenService
             throw new InvalidOperationException("JWT Secret must be at least 32 characters");
 
         _key = Encoding.UTF8.GetBytes(secret);
-        AccessTokenExpirationMinutes = _configuration.GetValue("Jwt:AccessTokenExpirationMinutes", 15);
+        AccessTokenExpirationMinutes = _configuration.GetValue("Jwt:AccessTokenExpirationMinutes", 120);
         RefreshTokenExpirationDays = _configuration.GetValue("Jwt:RefreshTokenExpirationDays", 7);
     }
 

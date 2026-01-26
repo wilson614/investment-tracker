@@ -110,7 +110,11 @@ else
 }
 
 // Configure JWT Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "your-256-bit-secret-key-here-minimum-32-chars";
+var jwtSecret = builder.Configuration["Jwt:Secret"]
+    ?? throw new InvalidOperationException("Jwt:Secret is required (must be provided via configuration or environment variables)");
+
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+    throw new InvalidOperationException("Jwt:Secret must be at least 32 characters");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "InvestmentTracker";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "InvestmentTracker";
 

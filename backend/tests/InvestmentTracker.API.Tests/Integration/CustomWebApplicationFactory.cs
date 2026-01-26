@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Microsoft.Extensions.Configuration;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -16,6 +18,15 @@ namespace InvestmentTracker.API.Tests.Integration;
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
+    public const string TestJwtSecret = "your-256-bit-secret-key-here-minimum-32-chars";
+
+    static CustomWebApplicationFactory()
+    {
+        Environment.SetEnvironmentVariable("Jwt__Secret", TestJwtSecret);
+        Environment.SetEnvironmentVariable("Jwt__Issuer", "InvestmentTracker");
+        Environment.SetEnvironmentVariable("Jwt__Audience", "InvestmentTracker");
+    }
+
     private Guid _testUserId = Guid.NewGuid();
 
     public Guid TestUserId
@@ -27,6 +38,16 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = TestJwtSecret,
+                ["Jwt:Issuer"] = "InvestmentTracker",
+                ["Jwt:Audience"] = "InvestmentTracker",
+            });
+        });
 
         builder.ConfigureServices(services =>
         {
