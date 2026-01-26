@@ -167,16 +167,34 @@ public class PortfolioCalculator
     {
         if (position.TotalShares == 0)
         {
-            return new UnrealizedPnl(0m, 0m, 0m);
+            return new UnrealizedPnl(
+                CurrentValueHome: 0m,
+                UnrealizedPnlHome: 0m,
+                UnrealizedPnlPercentage: 0m,
+                CurrentValueSource: 0m,
+                UnrealizedPnlSource: 0m,
+                UnrealizedPnlSourcePercentage: 0m);
         }
 
-        var currentValueHome = position.TotalShares * currentPriceSource * currentExchangeRate;
+        var currentValueSource = position.TotalShares * currentPriceSource;
+        var unrealizedPnlSource = currentValueSource - position.TotalCostSource;
+        var percentageSource = position.TotalCostSource > 0
+            ? unrealizedPnlSource / position.TotalCostSource * 100
+            : 0m;
+
+        var currentValueHome = currentValueSource * currentExchangeRate;
         var unrealizedPnlHome = currentValueHome - position.TotalCostHome;
-        var percentage = position.TotalCostHome > 0
+        var percentageHome = position.TotalCostHome > 0
             ? unrealizedPnlHome / position.TotalCostHome * 100
             : 0m;
 
-        return new UnrealizedPnl(currentValueHome, unrealizedPnlHome, percentage);
+        return new UnrealizedPnl(
+            CurrentValueHome: currentValueHome,
+            UnrealizedPnlHome: unrealizedPnlHome,
+            UnrealizedPnlPercentage: percentageHome,
+            CurrentValueSource: currentValueSource,
+            UnrealizedPnlSource: unrealizedPnlSource,
+            UnrealizedPnlSourcePercentage: percentageSource);
     }
 
     /// <summary>
@@ -563,7 +581,10 @@ public record StockPosition(
 public record UnrealizedPnl(
     decimal CurrentValueHome,
     decimal UnrealizedPnlHome,
-    decimal UnrealizedPnlPercentage);
+    decimal UnrealizedPnlPercentage,
+    decimal CurrentValueSource,
+    decimal UnrealizedPnlSource,
+    decimal UnrealizedPnlSourcePercentage);
 
 /// <summary>
 /// Represents a cash flow for XIRR calculation.
