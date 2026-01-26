@@ -144,7 +144,7 @@
 - [x] T047 [US5] Implement `GetAnnualTotalReturnAsync` in `YahooHistoricalPriceService` - fetch from Yahoo chart (adjclose proxy) in backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs
 - [x] T048 [US5] Create `BenchmarkAnnualReturn` cache entity and repository for storing fetched Total Returns
 - [x] T049 [US5] Implement fallback to existing price-based calculation when Yahoo Total Return unavailable
-- [ ] T050 [P] [US5] Write tests in backend/tests/InvestmentTracker.Domain.Tests/Services/YahooHistoricalPriceServiceTests.cs
+- [x] T050 [P] [US5] Write tests in backend/tests/InvestmentTracker.Infrastructure.Tests/Services/YahooHistoricalPriceServiceTests.cs
 - [x] T051 [US5] Modify existing `GetBenchmarkReturns` endpoint to prefer Yahoo Total Return over price calculation in backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
 - [x] T052 [US5] Add `DataSource` field to `BenchmarkReturnsResponse` (Yahoo / Calculated)
 - [x] T053 [P] [US5] Update frontend to display DataSource indicator in frontend/src/pages/Performance.tsx
