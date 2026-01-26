@@ -16,6 +16,7 @@ public static class PortfolioMappingExtensions
             BaseCurrency = portfolio.BaseCurrency,
             HomeCurrency = portfolio.HomeCurrency,
             IsActive = portfolio.IsActive,
+            BoundCurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
             DisplayName = portfolio.DisplayName,
             CreatedAt = portfolio.CreatedAt,
             UpdatedAt = portfolio.UpdatedAt

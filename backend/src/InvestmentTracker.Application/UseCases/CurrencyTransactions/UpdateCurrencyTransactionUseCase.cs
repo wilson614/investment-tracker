@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
@@ -12,6 +13,8 @@ namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 public class UpdateCurrencyTransactionUseCase(
     ICurrencyTransactionRepository transactionRepository,
     ICurrencyLedgerRepository ledgerRepository,
+    IPortfolioRepository portfolioRepository,
+    ITransactionPortfolioSnapshotService txSnapshotService,
     ICurrentUserService currentUserService)
 {
     public async Task<CurrencyTransactionDto> ExecuteAsync(
@@ -33,6 +36,8 @@ public class UpdateCurrencyTransactionUseCase(
         if (transaction.RelatedStockTransactionId.HasValue)
             throw new BusinessRuleException("Cannot edit transactions linked to stock purchases. Edit the stock transaction instead.");
 
+        var wasExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
+
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetAmounts(
             request.TransactionType,
@@ -43,8 +48,43 @@ public class UpdateCurrencyTransactionUseCase(
 
         await transactionRepository.UpdateAsync(transaction, cancellationToken);
 
+        var isExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
+        if (wasExternalCashFlow || isExternalCashFlow)
+        {
+            var userId = currentUserService.UserId
+                ?? throw new AccessDeniedException("User not authenticated");
+
+            var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
+                .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
+                .ToList();
+
+            foreach (var portfolio in boundPortfolios)
+            {
+                if (isExternalCashFlow)
+                {
+                    await txSnapshotService.UpsertSnapshotAsync(
+                        portfolio.Id,
+                        transaction.Id,
+                        transaction.TransactionDate,
+                        cancellationToken);
+                }
+                else
+                {
+                    await txSnapshotService.DeleteSnapshotAsync(
+                        portfolio.Id,
+                        transaction.Id,
+                        cancellationToken);
+                }
+            }
+        }
+
         return MapToDto(transaction);
     }
+
+    private static bool IsExternalCashFlowType(CurrencyTransactionType transactionType)
+        => transactionType is CurrencyTransactionType.InitialBalance
+            or CurrencyTransactionType.Deposit
+            or CurrencyTransactionType.Withdraw;
 
     private static CurrencyTransactionDto MapToDto(CurrencyTransaction transaction)
     {

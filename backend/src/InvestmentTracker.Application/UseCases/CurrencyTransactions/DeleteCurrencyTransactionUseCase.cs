@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
@@ -10,6 +11,8 @@ namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 public class DeleteCurrencyTransactionUseCase(
     ICurrencyTransactionRepository transactionRepository,
     ICurrencyLedgerRepository ledgerRepository,
+    IPortfolioRepository portfolioRepository,
+    ITransactionPortfolioSnapshotService txSnapshotService,
     ICurrentUserService currentUserService)
 {
     public async Task ExecuteAsync(
@@ -30,6 +33,28 @@ public class DeleteCurrencyTransactionUseCase(
         if (transaction.RelatedStockTransactionId.HasValue)
             throw new BusinessRuleException("Cannot delete transactions linked to stock purchases. Delete the stock transaction instead.");
 
+        var wasExternalCashFlow = transaction.TransactionType is CurrencyTransactionType.InitialBalance
+            or CurrencyTransactionType.Deposit
+            or CurrencyTransactionType.Withdraw;
+
         await transactionRepository.SoftDeleteAsync(transactionId, cancellationToken);
+
+        if (wasExternalCashFlow)
+        {
+            var userId = currentUserService.UserId
+                ?? throw new AccessDeniedException("User not authenticated");
+
+            var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
+                .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
+                .ToList();
+
+            foreach (var portfolio in boundPortfolios)
+            {
+                await txSnapshotService.DeleteSnapshotAsync(
+                    portfolio.Id,
+                    transaction.Id,
+                    cancellationToken);
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ using System;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace InvestmentTracker.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260125112414_AddPortfolioBoundCurrencyLedgerId")]
+    partial class AddPortfolioBoundCurrencyLedgerId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -445,8 +448,6 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BoundCurrencyLedgerId");
-
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_Portfolio_UserId");
 
@@ -837,11 +838,6 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("InvestmentTracker.Domain.Entities.Portfolio", b =>
                 {
-                    b.HasOne("InvestmentTracker.Domain.Entities.CurrencyLedger", null)
-                        .WithMany()
-                        .HasForeignKey("BoundCurrencyLedgerId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("InvestmentTracker.Domain.Entities.User", "User")
                         .WithMany("Portfolios")
                         .HasForeignKey("UserId")

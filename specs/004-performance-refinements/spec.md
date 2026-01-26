@@ -27,6 +27,15 @@
 - Q: In ledger mode, which CurrencyTransactionType are treated as external CF events? → A: Add explicit CurrencyTransactionType.Deposit and .Withdraw. Only InitialBalance/Deposit/Withdraw are CF events. ExchangeBuy/ExchangeSell/Spend are NOT CF events. Interest/OtherIncome/OtherExpense are treated as returns (affect portfolio value) and are NOT CF events.
 - Q: For TWR, how should sub-period returns use before/after values around CF events? → A: Use before/after model. Each sub-period return uses previous event's ValueAfter as start and current event's ValueBefore as end.
 
+### Session 2026-01-25
+
+- Q: Ledger CF 模式如何綁定 CurrencyLedger？ → A: **一個 Portfolio 明確綁定一個 CurrencyLedger**。估值（與快照）以 **股票市值 + 綁定 Ledger 現金餘額** 為準。
+- Q: Ledger CF 模式的混合規則？ → A:
+  - **顯式 CF**：以綁定 Ledger 的 `Deposit` / `Withdraw`（必要時含 `InitialBalance`）作為外部現金流事件。
+  - **隱式 CF**：若 StockTransaction **沒有** `SourceLedgerId`（現況欄位為 `CurrencyLedgerId` / FundSource 非 Ledger），則該 Buy/Sell 視為外部現金流事件（Buy 為 +CF、Sell 為 -CF）。
+  - 若 StockTransaction 有 `SourceLedgerId` 且等於 Portfolio 綁定 Ledger，則視為內部轉移（不視為外部 CF event）。
+- Q: JWT Secret 的安全要求？ → A: 移除任何硬編碼 fallback secret；未設定 `Jwt:Secret` 時，應中止啟動並要求以環境變數/設定檔提供。
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - View Annual Returns with Dual Metrics (Priority: P1)

@@ -31,6 +31,8 @@ public record UpdatePortfolioRequest
 {
     [StringLength(500)]
     public string? Description { get; init; }
+
+    public Guid? BoundCurrencyLedgerId { get; init; }
 }
 
 /// <summary>

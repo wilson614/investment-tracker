@@ -14,6 +14,12 @@ public class Portfolio : BaseEntity
     public bool IsActive { get; private set; } = true;
 
     /// <summary>
+    /// 綁定的外幣帳本（Ledger CF 模式用）。
+    /// 一個 Portfolio 明確綁定一個 CurrencyLedger。
+    /// </summary>
+    public Guid? BoundCurrencyLedgerId { get; private set; }
+
+    /// <summary>
     /// 顯示名稱（例如：「美股投資組合」）
     /// </summary>
     public string? DisplayName { get; private set; }
@@ -63,6 +69,11 @@ public class Portfolio : BaseEntity
 
         BaseCurrency = baseCurrency.ToUpperInvariant();
         HomeCurrency = homeCurrency.ToUpperInvariant();
+    }
+
+    public void BindCurrencyLedger(Guid? currencyLedgerId)
+    {
+        BoundCurrencyLedgerId = currencyLedgerId;
     }
 
     public void Deactivate() => IsActive = false;

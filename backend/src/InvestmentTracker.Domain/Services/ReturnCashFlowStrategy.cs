@@ -17,7 +17,7 @@ public interface IReturnCashFlowStrategy
     /// 取得此投資組合在指定期間內的現金流事件（依日期排序）。
     /// </summary>
     IReadOnlyList<ReturnCashFlowEvent> GetCashFlowEvents(
-        Guid portfolioId,
+        Portfolio portfolio,
         DateTime fromDate,
         DateTime toDate,
         IReadOnlyList<StockTransaction> stockTransactions,
@@ -39,6 +39,7 @@ public record ReturnCashFlowEvent(
     Guid TransactionId,
     DateTime TransactionDate,
     decimal Amount,
+    string CurrencyCode,
     ReturnCashFlowEventSource Source);
 
 public enum ReturnCashFlowEventSource
@@ -63,7 +64,7 @@ public class StockTransactionCashFlowStrategy : IReturnCashFlowStrategy
         => true;
 
     public IReadOnlyList<ReturnCashFlowEvent> GetCashFlowEvents(
-        Guid portfolioId,
+        Portfolio portfolio,
         DateTime fromDate,
         DateTime toDate,
         IReadOnlyList<StockTransaction> stockTransactions,
@@ -71,26 +72,34 @@ public class StockTransactionCashFlowStrategy : IReturnCashFlowStrategy
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
         return stockTransactions
-            .Where(t => t.PortfolioId == portfolioId
+            .Where(t => t.PortfolioId == portfolio.Id
                         && !t.IsDeleted
                         && t.TransactionDate.Date >= fromDate.Date
                         && t.TransactionDate.Date <= toDate.Date
                         && t.TransactionType is TransactionType.Buy or TransactionType.Sell)
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.CreatedAt)
-            .Select(t => new ReturnCashFlowEvent(
-                PortfolioId: t.PortfolioId,
-                TransactionId: t.Id,
-                TransactionDate: t.TransactionDate,
-                Amount: t.TransactionType == TransactionType.Buy ? t.TotalCostHome ?? 0m : -(t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1m) - t.Fees * (t.ExchangeRate ?? 1m)),
-                Source: ReturnCashFlowEventSource.StockTransaction))
+            .Select(t =>
+            {
+                var amount = t.TransactionType == TransactionType.Buy
+                    ? t.TotalCostSource
+                    : -(t.Shares * t.PricePerShare - t.Fees);
+
+                return new ReturnCashFlowEvent(
+                    PortfolioId: t.PortfolioId,
+                    TransactionId: t.Id,
+                    TransactionDate: t.TransactionDate,
+                    Amount: amount,
+                    CurrencyCode: t.Currency.ToString(),
+                    Source: ReturnCashFlowEventSource.StockTransaction);
+            })
             .ToList();
     }
 }
 
 /// <summary>
-/// Ledger 策略：當投資組合存在「有效的外部入出金」時，改以 CurrencyTransaction 的外部入出金作為 CF。
-/// 有效判定：存在 InitialBalance / Deposit / Withdraw。
+/// Ledger 策略：當投資組合存在「有效的外部入出金」時，改以 CurrencyTransaction 的外部入出金作為 CF，
+/// 並套用混合規則：若 StockTransaction 未由綁定 Ledger 支援，則仍視為外部現金流。
 /// </summary>
 public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
 {
@@ -101,40 +110,70 @@ public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
         IReadOnlyList<StockTransaction> stockTransactions,
         IReadOnlyList<CurrencyLedger> ledgers)
     {
-        // 目前系統的 CurrencyLedger 以 User 為主體，沒有直接 Portfolio 關聯。
-        // 在此以「使用者擁有任一 ledger，且 ledger 內存在外部入出金」作為可用判定。
-        // 後續若加入 PortfolioId 欄位，可改為更精準的篩選。
-        return ledgers.Any(l => l.UserId == portfolio.UserId && l.IsActive)
-               && stockTransactions.Any(t => t.PortfolioId == portfolio.Id);
+        return portfolio.BoundCurrencyLedgerId.HasValue
+               && ledgers.Any(l => l.Id == portfolio.BoundCurrencyLedgerId.Value && l.IsActive);
     }
 
     public IReadOnlyList<ReturnCashFlowEvent> GetCashFlowEvents(
-        Guid portfolioId,
+        Portfolio portfolio,
         DateTime fromDate,
         DateTime toDate,
         IReadOnlyList<StockTransaction> stockTransactions,
         IReadOnlyList<CurrencyLedger> ledgers,
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
-        var relevantLedgerIds = ledgers
-            .Where(l => l.IsActive)
-            .Select(l => l.Id)
-            .ToHashSet();
+        if (!portfolio.BoundCurrencyLedgerId.HasValue)
+            return [];
 
-        return currencyTransactions
-            .Where(t => relevantLedgerIds.Contains(t.CurrencyLedgerId)
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId.Value;
+        var boundLedgerCurrency = ledgers.FirstOrDefault(l => l.Id == boundLedgerId)?.CurrencyCode
+                                  ?? portfolio.BaseCurrency;
+
+        var explicitLedgerEvents = currencyTransactions
+            .Where(t => t.CurrencyLedgerId == boundLedgerId
                         && !t.IsDeleted
                         && t.TransactionDate.Date >= fromDate.Date
                         && t.TransactionDate.Date <= toDate.Date
-                        && t.TransactionType is CurrencyTransactionType.InitialBalance or CurrencyTransactionType.Deposit or CurrencyTransactionType.Withdraw)
+                        && t.TransactionType is CurrencyTransactionType.InitialBalance
+                            or CurrencyTransactionType.Deposit
+                            or CurrencyTransactionType.Withdraw)
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.CreatedAt)
             .Select(t => new ReturnCashFlowEvent(
-                PortfolioId: portfolioId,
+                PortfolioId: portfolio.Id,
                 TransactionId: t.Id,
                 TransactionDate: t.TransactionDate,
                 Amount: t.TransactionType == CurrencyTransactionType.Withdraw ? -t.ForeignAmount : t.ForeignAmount,
-                Source: ReturnCashFlowEventSource.CurrencyLedger))
+                CurrencyCode: boundLedgerCurrency,
+                Source: ReturnCashFlowEventSource.CurrencyLedger));
+
+        var implicitStockEvents = stockTransactions
+            .Where(t => t.PortfolioId == portfolio.Id
+                        && !t.IsDeleted
+                        && t.TransactionDate.Date >= fromDate.Date
+                        && t.TransactionDate.Date <= toDate.Date
+                        && t.TransactionType is TransactionType.Buy or TransactionType.Sell
+                        && !(t.FundSource == FundSource.CurrencyLedger && t.CurrencyLedgerId == boundLedgerId))
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.CreatedAt)
+            .Select(t =>
+            {
+                var amount = t.TransactionType == TransactionType.Buy
+                    ? t.TotalCostSource
+                    : -(t.Shares * t.PricePerShare - t.Fees);
+
+                return new ReturnCashFlowEvent(
+                    PortfolioId: t.PortfolioId,
+                    TransactionId: t.Id,
+                    TransactionDate: t.TransactionDate,
+                    Amount: amount,
+                    CurrencyCode: t.Currency.ToString(),
+                    Source: ReturnCashFlowEventSource.StockTransaction);
+            });
+
+        return explicitLedgerEvents
+            .Concat(implicitStockEvents)
+            .OrderBy(e => e.TransactionDate)
             .ToList();
     }
 }
@@ -152,9 +191,19 @@ public class ReturnCashFlowStrategyProvider(
         IReadOnlyList<CurrencyLedger> ledgers,
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
-        var hasExternalInOut = currencyTransactions
-            .Any(t => !t.IsDeleted
-                      && t.TransactionType is CurrencyTransactionType.InitialBalance or CurrencyTransactionType.Deposit or CurrencyTransactionType.Withdraw);
+        if (!portfolio.BoundCurrencyLedgerId.HasValue)
+        {
+            return stockStrategy;
+        }
+
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId.Value;
+
+        var hasExternalInOut = currencyTransactions.Any(t =>
+            t.CurrencyLedgerId == boundLedgerId
+            && !t.IsDeleted
+            && t.TransactionType is CurrencyTransactionType.InitialBalance
+                or CurrencyTransactionType.Deposit
+                or CurrencyTransactionType.Withdraw);
 
         if (hasExternalInOut && ledgerStrategy.IsApplicable(portfolio, stockTransactions, ledgers))
         {

@@ -18,6 +18,12 @@ public class HistoricalPerformanceServiceReturnTests
     private readonly Mock<ICurrentUserService> _currentUserServiceMock = new();
     private readonly Mock<IHistoricalYearEndDataService> _historicalYearEndDataServiceMock = new();
     private readonly Mock<ITransactionPortfolioSnapshotService> _txSnapshotServiceMock = new();
+    private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock = new();
+    private readonly Mock<ICurrencyLedgerRepository> _currencyLedgerRepoMock = new();
+    private readonly CurrencyLedgerService _currencyLedgerService = new();
+    private readonly ReturnCashFlowStrategyProvider _cashFlowStrategyProvider = new(
+        new StockTransactionCashFlowStrategy(),
+        new CurrencyLedgerCashFlowStrategy());
     private readonly Mock<ILogger<HistoricalPerformanceService>> _loggerMock = new();
 
     private readonly PortfolioCalculator _portfolioCalculator = new();
@@ -37,10 +43,14 @@ public class HistoricalPerformanceServiceReturnTests
         _service = new HistoricalPerformanceService(
             _portfolioRepoMock.Object,
             _transactionRepoMock.Object,
+            _currencyLedgerRepoMock.Object,
+            _currencyLedgerService,
             _portfolioCalculator,
             _currentUserServiceMock.Object,
             _historicalYearEndDataServiceMock.Object,
+            _txDateFxServiceMock.Object,
             _txSnapshotServiceMock.Object,
+            _cashFlowStrategyProvider,
             _returnCalculator,
             _loggerMock.Object);
     }
@@ -57,6 +67,12 @@ public class HistoricalPerformanceServiceReturnTests
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
 
         var buy = new StockTransaction(
             portfolioId: _portfolioId,
@@ -130,6 +146,12 @@ public class HistoricalPerformanceServiceReturnTests
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
 
         var buy1 = new StockTransaction(
             portfolioId: _portfolioId,

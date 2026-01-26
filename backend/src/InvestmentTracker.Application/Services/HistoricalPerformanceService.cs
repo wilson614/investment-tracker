@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
@@ -15,10 +16,14 @@ namespace InvestmentTracker.Application.Services;
 public class HistoricalPerformanceService(
     IPortfolioRepository portfolioRepository,
     IStockTransactionRepository transactionRepository,
+    ICurrencyLedgerRepository currencyLedgerRepository,
+    CurrencyLedgerService currencyLedgerService,
     PortfolioCalculator portfolioCalculator,
     ICurrentUserService currentUserService,
     IHistoricalYearEndDataService historicalYearEndDataService,
+    ITransactionDateExchangeRateService txDateFxService,
     ITransactionPortfolioSnapshotService txSnapshotService,
+    ReturnCashFlowStrategyProvider cashFlowStrategyProvider,
     IReturnCalculator returnCalculator,
     ILogger<HistoricalPerformanceService> logger)
     : IHistoricalPerformanceService
@@ -456,27 +461,124 @@ public class HistoricalPerformanceService(
             totalReturnSource = (double)((endValueSource - netContributionsSource) / netContributionsSource) * 100;
         }
 
-        // ===== US1: Modified Dietz + TWR (Source Currency) =====
+        // ===== US1: Cash Flow Strategy (StockTransaction vs CurrencyLedger) =====
+        IReadOnlyList<CurrencyLedger> ledgers = [];
+        IReadOnlyList<CurrencyTransaction> currencyTransactions = [];
+
+        if (portfolio.BoundCurrencyLedgerId.HasValue)
+        {
+            var boundLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+                portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+
+            if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
+            {
+                ledgers = [boundLedger];
+                currencyTransactions = boundLedger.Transactions.ToList();
+            }
+        }
+
+        var cashFlowStrategy = cashFlowStrategyProvider.GetStrategy(
+            portfolio,
+            validTransactions,
+            ledgers,
+            currencyTransactions);
+
+        var cashFlowEvents = cashFlowStrategy.GetCashFlowEvents(
+            portfolio,
+            yearStart,
+            yearEnd,
+            validTransactions,
+            ledgers,
+            currencyTransactions);
+
+        var cashFlowEventIds = cashFlowEvents
+            .Select(e => e.TransactionId)
+            .ToHashSet();
+
         // Ensure snapshots exist for the year (on-demand backfill)
         await txSnapshotService.BackfillSnapshotsAsync(portfolioId, yearStart, yearEnd, cancellationToken);
 
         var snapshots = await txSnapshotService.GetSnapshotsAsync(portfolioId, yearStart, yearEnd, cancellationToken);
 
-        var sourceSnapshots = snapshots
+        var cashFlowEventSnapshots = snapshots
+            .Where(s => cashFlowEventIds.Contains(s.TransactionId))
             .OrderBy(s => s.SnapshotDate)
             .ThenBy(s => s.CreatedAt)
+            .ToList();
+
+        async Task<decimal> ConvertAmountAsync(string fromCurrency, string toCurrency, DateTime date, decimal amount)
+        {
+            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+                return amount;
+
+            // 既有行為：base=USD, home=TWD 時，台股換算會用同年度的 USD/TWD 匯率推估
+            if (string.Equals(fromCurrency, "TWD", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(toCurrency, "USD", StringComparison.OrdinalIgnoreCase))
+            {
+                var rate = GetUsdToTwdRateForDate(date);
+                return rate > 0 ? amount / rate : 0m;
+            }
+
+            if (string.Equals(fromCurrency, "USD", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(toCurrency, "TWD", StringComparison.OrdinalIgnoreCase))
+            {
+                var rate = GetUsdToTwdRateForDate(date);
+                return amount * rate;
+            }
+
+            var fx = await txDateFxService.GetOrFetchAsync(fromCurrency, toCurrency, date, cancellationToken);
+            if (fx != null)
+                return amount * fx.Rate;
+
+            logger.LogWarning(
+                "Missing FX rate {From}/{To} on {Date} for cash flow conversion (amount={Amount})",
+                fromCurrency,
+                toCurrency,
+                date.Date,
+                amount);
+
+            return 0m;
+        }
+
+        var dietzCashFlowsSource = new List<ReturnCashFlow>();
+        var dietzCashFlowsHome = new List<ReturnCashFlow>();
+
+        foreach (var e in cashFlowEvents)
+        {
+            var amountSource = await ConvertAmountAsync(e.CurrencyCode, portfolio.BaseCurrency, e.TransactionDate, e.Amount);
+            dietzCashFlowsSource.Add(new ReturnCashFlow(e.TransactionDate, amountSource));
+
+            decimal amountHome;
+
+            if (string.Equals(e.CurrencyCode, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                amountHome = e.Amount;
+            }
+            else if (e.Source == ReturnCashFlowEventSource.StockTransaction
+                     && validTransactions.FirstOrDefault(t => t.Id == e.TransactionId) is { ExchangeRate: > 0 } stockTx)
+            {
+                amountHome = e.Amount * stockTx.ExchangeRate!.Value;
+            }
+            else if (e.Source == ReturnCashFlowEventSource.CurrencyLedger
+                     && currencyTransactions.FirstOrDefault(t => t.Id == e.TransactionId) is { HomeAmount: > 0 } currencyTx)
+            {
+                var sign = e.Amount >= 0 ? 1m : -1m;
+                amountHome = sign * currencyTx.HomeAmount!.Value;
+            }
+            else
+            {
+                amountHome = await ConvertAmountAsync(e.CurrencyCode, portfolio.HomeCurrency, e.TransactionDate, e.Amount);
+            }
+
+            dietzCashFlowsHome.Add(new ReturnCashFlow(e.TransactionDate, amountHome));
+        }
+
+        // ===== US1: Modified Dietz + TWR (Source Currency) =====
+        var sourceSnapshots = cashFlowEventSnapshots
             .Select(s => new ReturnValuationSnapshot(
                 Date: s.SnapshotDate,
                 ValueBefore: s.PortfolioValueBeforeSource,
                 ValueAfter: s.PortfolioValueAfterSource))
-            .ToList();
-
-        var sourceCashFlows = snapshots
-            .OrderBy(s => s.SnapshotDate)
-            .ThenBy(s => s.CreatedAt)
-            .Select(s => new ReturnCashFlow(
-                Date: s.SnapshotDate,
-                Amount: s.PortfolioValueAfterSource - s.PortfolioValueBeforeSource))
             .ToList();
 
         var modifiedDietzSource = returnCalculator.CalculateModifiedDietz(
@@ -484,7 +586,7 @@ public class HistoricalPerformanceService(
             endValue: endValueSource,
             periodStart: yearStart,
             periodEnd: yearEnd,
-            cashFlows: sourceCashFlows);
+            cashFlows: dietzCashFlowsSource);
 
         var twrSource = returnCalculator.CalculateTimeWeightedReturn(
             startValue: startValueSource,
@@ -574,21 +676,11 @@ public class HistoricalPerformanceService(
         }
 
         // ===== US1: Modified Dietz + TWR (Home Currency) =====
-        var homeSnapshots = snapshots
-            .OrderBy(s => s.SnapshotDate)
-            .ThenBy(s => s.CreatedAt)
+        var homeSnapshots = cashFlowEventSnapshots
             .Select(s => new ReturnValuationSnapshot(
                 Date: s.SnapshotDate,
                 ValueBefore: s.PortfolioValueBeforeHome,
                 ValueAfter: s.PortfolioValueAfterHome))
-            .ToList();
-
-        var homeCashFlows = snapshots
-            .OrderBy(s => s.SnapshotDate)
-            .ThenBy(s => s.CreatedAt)
-            .Select(s => new ReturnCashFlow(
-                Date: s.SnapshotDate,
-                Amount: s.PortfolioValueAfterHome - s.PortfolioValueBeforeHome))
             .ToList();
 
         var modifiedDietzHome = returnCalculator.CalculateModifiedDietz(
@@ -596,7 +688,7 @@ public class HistoricalPerformanceService(
             endValue: endValueHome,
             periodStart: yearStart,
             periodEnd: yearEnd,
-            cashFlows: homeCashFlows);
+            cashFlows: dietzCashFlowsHome);
 
         var twrHome = returnCalculator.CalculateTimeWeightedReturn(
             startValue: startValueHome,

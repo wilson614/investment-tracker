@@ -29,6 +29,13 @@ public class PortfolioConfiguration : IEntityTypeConfiguration<Portfolio>
             .IsRequired()
             .HasDefaultValue(true);
 
+        builder.Property(p => p.BoundCurrencyLedgerId);
+
+        builder.HasOne<CurrencyLedger>()
+            .WithMany()
+            .HasForeignKey(p => p.BoundCurrencyLedgerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.Property(p => p.CreatedAt)
             .IsRequired();
 

@@ -20,6 +20,8 @@ public class TransactionPortfolioSnapshotService(
     AppDbContext dbContext,
     IPortfolioRepository portfolioRepository,
     IStockTransactionRepository transactionRepository,
+    ICurrencyLedgerRepository currencyLedgerRepository,
+    CurrencyLedgerService currencyLedgerService,
     PortfolioCalculator portfolioCalculator,
     ICurrentUserService currentUserService,
     IYahooHistoricalPriceService yahooService,
@@ -77,6 +79,21 @@ public class TransactionPortfolioSnapshotService(
         // Source value：以 Portfolio.BaseCurrency 表示，若為台股會用匯率換算。
         var beforeValueSource = await CalculatePortfolioValueSourceAsync(portfolioId, beforeDate, portfolio.BaseCurrency, portfolio.HomeCurrency, cancellationToken);
         var afterValueSource = await CalculatePortfolioValueSourceAsync(portfolioId, afterDate, portfolio.BaseCurrency, portfolio.HomeCurrency, cancellationToken);
+
+        if (portfolio.BoundCurrencyLedgerId.HasValue)
+        {
+            var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+                portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+
+            if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
+            {
+                beforeValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+                afterValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, afterDate, cancellationToken);
+
+                beforeValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+                afterValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, afterDate, cancellationToken);
+            }
+        }
 
         var entity = new TransactionPortfolioSnapshot(
             portfolioId,
@@ -318,6 +335,59 @@ public class TransactionPortfolioSnapshotService(
         }
 
         return null;
+    }
+
+    private async Task<decimal> CalculateLedgerValueHomeAsync(
+        CurrencyLedger ledger,
+        string homeCurrency,
+        DateOnly valuationDate,
+        CancellationToken cancellationToken)
+    {
+        var balance = currencyLedgerService.CalculateBalance(
+            ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
+
+        if (balance <= 0)
+            return 0m;
+
+        if (string.Equals(ledger.CurrencyCode, homeCurrency, StringComparison.OrdinalIgnoreCase))
+            return Math.Round(balance, 4);
+
+        var exchangeRate = await GetExchangeRateAsync(ledger.CurrencyCode, homeCurrency, valuationDate, cancellationToken);
+        if (exchangeRate == null)
+            return 0m;
+
+        return Math.Round(balance * exchangeRate.Value, 4);
+    }
+
+    private async Task<decimal> CalculateLedgerValueSourceAsync(
+        CurrencyLedger ledger,
+        string sourceCurrency,
+        string homeCurrency,
+        DateOnly valuationDate,
+        CancellationToken cancellationToken)
+    {
+        var balance = currencyLedgerService.CalculateBalance(
+            ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
+
+        if (balance <= 0)
+            return 0m;
+
+        if (string.Equals(ledger.CurrencyCode, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+            return Math.Round(balance, 4);
+
+        // 以 Home 作為中介：ledgerCurrency -> home -> source
+        var toHomeRate = await GetExchangeRateAsync(ledger.CurrencyCode, homeCurrency, valuationDate, cancellationToken);
+        if (toHomeRate == null)
+            return 0m;
+
+        if (string.Equals(homeCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+            return Math.Round(balance * toHomeRate.Value, 4);
+
+        var homeToSourceRate = await GetExchangeRateAsync(homeCurrency, sourceCurrency, valuationDate, cancellationToken);
+        if (homeToSourceRate == null)
+            return 0m;
+
+        return Math.Round(balance * toHomeRate.Value * homeToSourceRate.Value, 4);
     }
 
     private static bool IsTaiwanTicker(string ticker) =>

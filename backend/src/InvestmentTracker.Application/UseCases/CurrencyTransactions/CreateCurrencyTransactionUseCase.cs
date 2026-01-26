@@ -13,6 +13,8 @@ namespace InvestmentTracker.Application.UseCases.CurrencyTransactions;
 public class CreateCurrencyTransactionUseCase(
     ICurrencyTransactionRepository transactionRepository,
     ICurrencyLedgerRepository ledgerRepository,
+    IPortfolioRepository portfolioRepository,
+    ITransactionPortfolioSnapshotService txSnapshotService,
     ICurrentUserService currentUserService)
 {
     public async Task<CurrencyTransactionDto> ExecuteAsync(
@@ -42,8 +44,32 @@ public class CreateCurrencyTransactionUseCase(
 
         await transactionRepository.AddAsync(transaction, cancellationToken);
 
+        if (IsExternalCashFlowType(transaction.TransactionType))
+        {
+            var userId = currentUserService.UserId
+                ?? throw new AccessDeniedException("User not authenticated");
+
+            var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
+                .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
+                .ToList();
+
+            foreach (var portfolio in boundPortfolios)
+            {
+                await txSnapshotService.UpsertSnapshotAsync(
+                    portfolio.Id,
+                    transaction.Id,
+                    transaction.TransactionDate,
+                    cancellationToken);
+            }
+        }
+
         return MapToDto(transaction);
     }
+
+    private static bool IsExternalCashFlowType(CurrencyTransactionType transactionType)
+        => transactionType is CurrencyTransactionType.InitialBalance
+            or CurrencyTransactionType.Deposit
+            or CurrencyTransactionType.Withdraw;
 
     private static CurrencyTransactionDto MapToDto(CurrencyTransaction transaction)
     {

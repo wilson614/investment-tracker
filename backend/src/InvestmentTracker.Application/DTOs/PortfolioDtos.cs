@@ -12,6 +12,7 @@ public record PortfolioDto
     public string BaseCurrency { get; init; } = "USD";
     public string HomeCurrency { get; init; } = "TWD";
     public bool IsActive { get; init; }
+    public Guid? BoundCurrencyLedgerId { get; init; }
     public string? DisplayName { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
@@ -81,6 +82,11 @@ public record StockPositionDto
     public decimal? CurrentValueHome { get; init; }
     public decimal? UnrealizedPnlHome { get; init; }
     public decimal? UnrealizedPnlPercentage { get; init; }
+
+    public decimal? CurrentValueSource { get; init; }
+    public decimal? UnrealizedPnlSource { get; init; }
+    public decimal? UnrealizedPnlSourcePercentage { get; init; }
+
     public StockMarket? Market { get; init; }
     public string? Currency { get; init; }
 }

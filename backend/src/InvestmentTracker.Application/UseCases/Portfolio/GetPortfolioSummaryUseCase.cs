@@ -94,8 +94,12 @@ public class GetPortfolioSummaryUseCase(
                         CurrentExchangeRate = priceInfo.ExchangeRate,
                         CurrentValueHome = pnl.CurrentValueHome,
                         UnrealizedPnlHome = pnl.UnrealizedPnlHome,
-                        UnrealizedPnlPercentage = pnl.UnrealizedPnlPercentage
+                        UnrealizedPnlPercentage = pnl.UnrealizedPnlPercentage,
+                        CurrentValueSource = pnl.CurrentValueSource,
+                        UnrealizedPnlSource = pnl.UnrealizedPnlSource,
+                        UnrealizedPnlSourcePercentage = pnl.UnrealizedPnlSourcePercentage
                     };
+
 
                     totalValueHome = (totalValueHome ?? 0) + pnl.CurrentValueHome;
                     totalUnrealizedPnl = (totalUnrealizedPnl ?? 0) + pnl.UnrealizedPnlHome;
