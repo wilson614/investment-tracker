@@ -8,7 +8,6 @@ using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace InvestmentTracker.Infrastructure.Tests.Services;
@@ -384,7 +383,6 @@ public class MonthlySnapshotServiceTests
         ITwseStockHistoricalPriceService twseStockService)
     {
         var calculator = new PortfolioCalculator();
-        var logger = new Mock<ILogger<MonthlySnapshotService>>().Object;
 
         return new MonthlySnapshotService(
             dbContext,
@@ -394,7 +392,6 @@ public class MonthlySnapshotServiceTests
             currentUserService,
             yahooService,
             stooqService,
-            twseStockService,
-            logger);
+            twseStockService);
     }
 }

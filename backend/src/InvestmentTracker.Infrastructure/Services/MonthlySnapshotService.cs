@@ -10,7 +10,6 @@ using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Infrastructure.Services;
 
@@ -22,8 +21,7 @@ public class MonthlySnapshotService(
     ICurrentUserService currentUserService,
     IYahooHistoricalPriceService yahooService,
     IStooqHistoricalPriceService stooqService,
-    ITwseStockHistoricalPriceService twseStockService,
-    ILogger<MonthlySnapshotService> logger) : IMonthlySnapshotService
+    ITwseStockHistoricalPriceService twseStockService) : IMonthlySnapshotService
 {
     public async Task InvalidateFromMonthAsync(
         Guid portfolioId,

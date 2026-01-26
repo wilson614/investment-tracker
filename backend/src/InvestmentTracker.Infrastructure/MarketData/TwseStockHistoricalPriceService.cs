@@ -26,30 +26,62 @@ public class TwseStockHistoricalPriceService(
     {
         try
         {
-            await rateLimiter.WaitForSlotAsync(cancellationToken);
+            // 月初遇到連假/週末時，該月可能沒有任何 <= 目標日期的交易日。
+            // 這會導致回傳 null，進而讓快照估值變成 0（會把 TWR 乘到 0 變成 -100%）。
+            // 因此當月初（1-7 日）查不到資料時，回退到上一個月再查一次。
 
-            // TWSE API 需要日期格式：YYYYMM01（該月第一天）
-            var dateParam = $"{date.Year}{date.Month:D2}01";
-            var url = $"{StockDayUrl}?response=json&date={dateParam}&stockNo={stockNo}";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-
-            var response = await httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            var result = await TryGetStockPriceInMonthAsync(stockNo, date, cancellationToken);
+            if (result != null)
             {
-                logger.LogWarning("TWSE STOCK_DAY returned {Status} for {StockNo}", response.StatusCode, stockNo);
-                return null;
+                return result;
             }
 
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            return ParseStockDayResponse(content, stockNo, date);
+            if (date.Day <= 7)
+            {
+                var previousMonth = date.AddMonths(-1);
+                var fallbackDate = new DateOnly(previousMonth.Year, previousMonth.Month, DateTime.DaysInMonth(previousMonth.Year, previousMonth.Month));
+
+                logger.LogDebug(
+                    "No TWSE price found for {StockNo} on {Date} (early-month). Falling back to previous month {FallbackDate}",
+                    stockNo,
+                    date,
+                    fallbackDate);
+
+                return await TryGetStockPriceInMonthAsync(stockNo, fallbackDate, cancellationToken);
+            }
+
+            return null;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching TWSE stock price for {StockNo} on {Date}", stockNo, date);
             return null;
         }
+    }
+
+    private async Task<TwseStockPriceResult?> TryGetStockPriceInMonthAsync(
+        string stockNo,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        await rateLimiter.WaitForSlotAsync(cancellationToken);
+
+        // TWSE API 需要日期格式：YYYYMM01（該月第一天）
+        var dateParam = $"{date.Year}{date.Month:D2}01";
+        var url = $"{StockDayUrl}?response=json&date={dateParam}&stockNo={stockNo}";
+
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("TWSE STOCK_DAY returned {Status} for {StockNo}", response.StatusCode, stockNo);
+            return null;
+        }
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseStockDayResponse(content, stockNo, date);
     }
 
     public async Task<TwseStockPriceResult?> GetYearEndPriceAsync(

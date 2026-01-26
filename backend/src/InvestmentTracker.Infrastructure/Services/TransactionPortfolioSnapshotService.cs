@@ -65,25 +65,233 @@ public class TransactionPortfolioSnapshotService(
         if (portfolio.UserId != currentUserService.UserId)
             throw new AccessDeniedException();
 
-        var snapshotDate = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc);
+        // StockTransaction：同日多筆 Buy/Sell 需要「串接」before/after，避免 TWR 產生錯誤的重複子期間。
+        var stockTx = await transactionRepository.GetByIdAsync(transactionId, cancellationToken);
+        if (stockTx != null)
+        {
+            await UpsertStockTransactionSnapshotsForDateAsync(
+                portfolio,
+                DateOnly.FromDateTime(stockTx.TransactionDate),
+                cancellationToken);
+            return;
+        }
 
-        // 估值：事件前/事件後都以「截至該日期」的持倉估值計算。
-        // 目前先做最小可用版本：before = 使用交易前一日持倉；after = 使用交易日後持倉。
-        // 詳細的 before/after 精準定義會在後續串接 use case 時再依交易內容調整。
-        var beforeDate = DateOnly.FromDateTime(snapshotDate.AddDays(-1));
-        var afterDate = DateOnly.FromDateTime(snapshotDate);
+        // 非 StockTransaction（例如 CurrencyTransaction）暫時沿用既有日切估值方式。
+        await UpsertLegacySnapshotAsync(
+            portfolio,
+            portfolioId,
+            transactionId,
+            transactionDate,
+            cancellationToken);
+    }
 
-        var beforeValueHome = await CalculatePortfolioValueHomeAsync(portfolioId, beforeDate, portfolio.HomeCurrency, cancellationToken);
-        var afterValueHome = await CalculatePortfolioValueHomeAsync(portfolioId, afterDate, portfolio.HomeCurrency, cancellationToken);
+    private async Task UpsertStockTransactionSnapshotsForDateAsync(
+        Portfolio portfolio,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolio.Id, cancellationToken);
 
-        // Source value：以 Portfolio.BaseCurrency 表示，若為台股會用匯率換算。
-        var beforeValueSource = await CalculatePortfolioValueSourceAsync(portfolioId, beforeDate, portfolio.BaseCurrency, portfolio.HomeCurrency, cancellationToken);
-        var afterValueSource = await CalculatePortfolioValueSourceAsync(portfolioId, afterDate, portfolio.BaseCurrency, portfolio.HomeCurrency, cancellationToken);
+        var dayTransactions = transactions
+            .Where(t => t is { IsDeleted: false }
+                        && DateOnly.FromDateTime(t.TransactionDate) == date
+                        && t.TransactionType is TransactionType.Buy or TransactionType.Sell)
+            .OrderBy(t => t.CreatedAt)
+            .ThenBy(t => t.Id)
+            .ToList();
+
+        if (dayTransactions.Count == 0)
+            return;
+
+        var snapshotDate = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+        var dayIds = dayTransactions.Select(t => t.Id).ToList();
+
+        // 若快照都已存在且已經符合「同日多筆交易串接」規則，則不重寫（避免重複對外取價）。
+        var existingSnapshots = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .Where(s => s.PortfolioId == portfolio.Id && dayIds.Contains(s.TransactionId))
+            .ToListAsync(cancellationToken);
+
+        var existingById = existingSnapshots
+            .GroupBy(s => s.TransactionId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+
+        var allSnapshotsExist = dayIds.All(id => existingById.ContainsKey(id));
+        var firstTxId = dayTransactions[0].Id;
+
+        if (allSnapshotsExist)
+        {
+            var firstSnapshot = existingById[firstTxId];
+            var existingDayEndHome = firstSnapshot.PortfolioValueAfterHome;
+            var existingDayEndSource = firstSnapshot.PortfolioValueAfterSource;
+
+            var alreadyChained = dayTransactions
+                .Skip(1)
+                .Select(tx => existingById[tx.Id])
+                .All(s => s.PortfolioValueBeforeHome == existingDayEndHome
+                          && s.PortfolioValueAfterHome == existingDayEndHome
+                          && s.PortfolioValueBeforeSource == existingDayEndSource
+                          && s.PortfolioValueAfterSource == existingDayEndSource);
+
+            if (alreadyChained)
+                return;
+
+            await ReplaceStockSnapshotsForDateAsync(
+                portfolioId: portfolio.Id,
+                snapshotDate: snapshotDate,
+                dayTransactions: dayTransactions,
+                dayStartHome: firstSnapshot.PortfolioValueBeforeHome,
+                dayEndHome: existingDayEndHome,
+                dayStartSource: firstSnapshot.PortfolioValueBeforeSource,
+                dayEndSource: existingDayEndSource,
+                cancellationToken: cancellationToken);
+
+            return;
+        }
+
+        var beforeDate = date.AddDays(-1);
+
+        var dayStartHome = await CalculatePortfolioValueHomeAsync(
+            portfolio.Id,
+            beforeDate,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayEndHome = await CalculatePortfolioValueHomeAsync(
+            portfolio.Id,
+            date,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayStartSource = await CalculatePortfolioValueSourceAsync(
+            portfolio.Id,
+            beforeDate,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayEndSource = await CalculatePortfolioValueSourceAsync(
+            portfolio.Id,
+            date,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
 
         if (portfolio.BoundCurrencyLedgerId.HasValue)
         {
             var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
-                portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+                portfolio.BoundCurrencyLedgerId.Value,
+                cancellationToken);
+
+            if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
+            {
+                dayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+                dayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
+
+                dayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+                dayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
+            }
+        }
+
+        await ReplaceStockSnapshotsForDateAsync(
+            portfolioId: portfolio.Id,
+            snapshotDate: snapshotDate,
+            dayTransactions: dayTransactions,
+            dayStartHome: dayStartHome,
+            dayEndHome: dayEndHome,
+            dayStartSource: dayStartSource,
+            dayEndSource: dayEndSource,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task ReplaceStockSnapshotsForDateAsync(
+        Guid portfolioId,
+        DateTime snapshotDate,
+        IReadOnlyList<StockTransaction> dayTransactions,
+        decimal dayStartHome,
+        decimal dayEndHome,
+        decimal dayStartSource,
+        decimal dayEndSource,
+        CancellationToken cancellationToken)
+    {
+        var ordered = dayTransactions
+            .OrderBy(t => t.CreatedAt)
+            .ThenBy(t => t.Id)
+            .ToList();
+
+        var firstId = ordered[0].Id;
+
+        var newSnapshots = ordered
+            .Select(tx => new TransactionPortfolioSnapshot(
+                portfolioId: portfolioId,
+                transactionId: tx.Id,
+                snapshotDate: snapshotDate,
+                portfolioValueBeforeHome: tx.Id == firstId ? dayStartHome : dayEndHome,
+                portfolioValueAfterHome: dayEndHome,
+                portfolioValueBeforeSource: tx.Id == firstId ? dayStartSource : dayEndSource,
+                portfolioValueAfterSource: dayEndSource))
+            .ToList();
+
+        var dayIds = ordered.Select(t => t.Id).ToList();
+
+        var existing = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .Where(s => s.PortfolioId == portfolioId && dayIds.Contains(s.TransactionId))
+            .ToListAsync(cancellationToken);
+
+        if (existing.Count > 0)
+        {
+            dbContext.TransactionPortfolioSnapshots.RemoveRange(existing);
+        }
+
+        dbContext.TransactionPortfolioSnapshots.AddRange(newSnapshots);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task UpsertLegacySnapshotAsync(
+        Portfolio portfolio,
+        Guid portfolioId,
+        Guid transactionId,
+        DateTime transactionDate,
+        CancellationToken cancellationToken)
+    {
+        var snapshotDate = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc);
+
+        var beforeDate = DateOnly.FromDateTime(snapshotDate.AddDays(-1));
+        var afterDate = DateOnly.FromDateTime(snapshotDate);
+
+        var beforeValueHome = await CalculatePortfolioValueHomeAsync(
+            portfolioId,
+            beforeDate,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var afterValueHome = await CalculatePortfolioValueHomeAsync(
+            portfolioId,
+            afterDate,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var beforeValueSource = await CalculatePortfolioValueSourceAsync(
+            portfolioId,
+            beforeDate,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var afterValueSource = await CalculatePortfolioValueSourceAsync(
+            portfolioId,
+            afterDate,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        if (portfolio.BoundCurrencyLedgerId.HasValue)
+        {
+            var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+                portfolio.BoundCurrencyLedgerId.Value,
+                cancellationToken);
 
             if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
             {
@@ -108,17 +316,12 @@ public class TransactionPortfolioSnapshotService(
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.PortfolioId == portfolioId && s.TransactionId == transactionId, cancellationToken);
 
-        if (existing == null)
+        if (existing != null)
         {
-            dbContext.TransactionPortfolioSnapshots.Add(entity);
-        }
-        else
-        {
-            // Replace row (simplest approach)
             dbContext.TransactionPortfolioSnapshots.Remove(existing);
-            dbContext.TransactionPortfolioSnapshots.Add(entity);
         }
 
+        dbContext.TransactionPortfolioSnapshots.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

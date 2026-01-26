@@ -17,7 +17,6 @@ public class HistoricalPerformanceService(
     IPortfolioRepository portfolioRepository,
     IStockTransactionRepository transactionRepository,
     ICurrencyLedgerRepository currencyLedgerRepository,
-    CurrencyLedgerService currencyLedgerService,
     PortfolioCalculator portfolioCalculator,
     ICurrentUserService currentUserService,
     IHistoricalYearEndDataService historicalYearEndDataService,
@@ -505,6 +504,29 @@ public class HistoricalPerformanceService(
             .OrderBy(s => s.SnapshotDate)
             .ThenBy(s => s.CreatedAt)
             .ToList();
+
+        // 驗算：同日多筆現金流事件，快照必須可以串接（下一筆 before 應等於前一筆 after），否則 TWR 可能被多乘錯誤因子。
+        // 這裡只做最小防呆：若偵測到「同日重複但 before/after 完全相同」的情況，代表快照仍是舊格式或資料壞掉。
+        for (var i = 1; i < cashFlowEventSnapshots.Count; i++)
+        {
+            var prev = cashFlowEventSnapshots[i - 1];
+            var cur = cashFlowEventSnapshots[i];
+
+            if (prev.SnapshotDate.Date != cur.SnapshotDate.Date)
+                continue;
+
+            if (cur.PortfolioValueBeforeHome == prev.PortfolioValueBeforeHome
+                && cur.PortfolioValueAfterHome == prev.PortfolioValueAfterHome
+                && cur.PortfolioValueBeforeSource == prev.PortfolioValueBeforeSource
+                && cur.PortfolioValueAfterSource == prev.PortfolioValueAfterSource)
+            {
+                logger.LogWarning(
+                    "Detected duplicated same-day snapshots for portfolio {PortfolioId} on {Date}. Consider rebuilding snapshots.",
+                    portfolioId,
+                    cur.SnapshotDate.Date);
+                break;
+            }
+        }
 
         async Task<decimal> ConvertAmountAsync(string fromCurrency, string toCurrency, DateTime date, decimal amount)
         {
