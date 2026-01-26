@@ -19,6 +19,18 @@ public interface IYahooHistoricalPriceService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 取得指定年度的年度 Total Return（含股息）。
+    /// </summary>
+    /// <param name="symbol">Yahoo Finance 股票代號（如 VWRA.L）</param>
+    /// <param name="year">目標年度</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>年度 Total Return（百分比）；若查無資料則回傳 null。</returns>
+    Task<YahooAnnualTotalReturnResult?> GetAnnualTotalReturnAsync(
+        string symbol,
+        int year,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 取得指定日期的歷史匯率。
     /// </summary>
     /// <param name="fromCurrency">來源幣別（如 USD）</param>
@@ -52,6 +64,27 @@ public record YahooHistoricalPriceResult
     /// 幣別代碼（如 USD、EUR）。
     /// </summary>
     public required string Currency { get; init; }
+}
+
+/// <summary>
+/// Yahoo Finance 年度 Total Return 查詢結果。
+/// </summary>
+public record YahooAnnualTotalReturnResult
+{
+    /// <summary>
+    /// 年度 Total Return（含股息），百分比表示（例如 12.34 代表 12.34%）。
+    /// </summary>
+    public required decimal TotalReturnPercent { get; init; }
+
+    /// <summary>
+    /// 可選：年度 Price Return（不含股息）。
+    /// </summary>
+    public decimal? PriceReturnPercent { get; init; }
+
+    /// <summary>
+    /// 實際資料來源年度（通常等於請求 year；若 Yahoo 回傳資料有缺漏，可能用最接近的年度）。
+    /// </summary>
+    public required int Year { get; init; }
 }
 
 /// <summary>

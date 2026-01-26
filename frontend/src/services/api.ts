@@ -651,9 +651,13 @@ export const marketDataApi = {
 
   /** 取得基準指數報酬 */
   getBenchmarkReturns: (year: number) =>
-    fetchApi<{ year: number; returns: Record<string, number | null>; hasStartPrices: boolean; hasEndPrices: boolean }>(
-      `/market-data/benchmark-returns?year=${year}`
-    ),
+    fetchApi<{
+      year: number;
+      returns: Record<string, number | null>;
+      hasStartPrices: boolean;
+      hasEndPrices: boolean;
+      dataSources: Record<string, string | null>;
+    }>(`/market-data/benchmark-returns?year=${year}`),
 
   /** 手動儲存年末價格 */
   saveManualYearEndPrice: (data: {

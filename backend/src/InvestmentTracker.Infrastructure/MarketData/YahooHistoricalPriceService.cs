@@ -15,6 +15,222 @@ public class YahooHistoricalPriceService(
     HttpClient httpClient,
     ILogger<YahooHistoricalPriceService> logger) : IYahooHistoricalPriceService
 {
+    public async Task<YahooAnnualTotalReturnResult?> GetAnnualTotalReturnAsync(
+        string symbol,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (year < 2000 || year > DateTime.UtcNow.Year)
+            {
+                return null;
+            }
+
+            var yahooSymbol = symbol;
+
+            // 用於推估「年度 Total Return」：使用 Yahoo chart 的 adjclose (調整後收盤價)。
+            // adjclose 通常反映股息與分割調整，可作為 total return proxy。
+            var startDate = new DateOnly(year, 1, 1);
+            var endDate = new DateOnly(year, 12, 31);
+
+            // 取前後緩衝區間以避開週末/假日，並透過 Parse 取最接近交易日。
+            var period1 = new DateTimeOffset(startDate.AddDays(-7).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+            var period2 = new DateTimeOffset(endDate.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+            var url = $"https://query2.finance.yahoo.com/v8/finance/chart/{yahooSymbol}?period1={period1}&period2={period2}&interval=1d";
+
+            logger.LogDebug("Fetching Yahoo Finance annual total return (adjclose) from {Url}", url);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Yahoo Finance API returned {StatusCode} for annual total return {Symbol}/{Year}", response.StatusCode, yahooSymbol, year);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var parsed = ParseAnnualTotalReturnFromChart(json, startDate, endDate, yahooSymbol);
+
+            if (parsed == null)
+            {
+                return null;
+            }
+
+            return new YahooAnnualTotalReturnResult
+            {
+                TotalReturnPercent = parsed.Value.totalReturnPercent,
+                PriceReturnPercent = parsed.Value.priceReturnPercent,
+                Year = year
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error fetching Yahoo Finance annual total return for {Symbol}/{Year}", symbol, year);
+            return null;
+        }
+    }
+
+    private (decimal totalReturnPercent, decimal? priceReturnPercent)? ParseAnnualTotalReturnFromChart(
+        string json,
+        DateOnly startDate,
+        DateOnly endDate,
+        string symbol)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("chart", out var chart) &&
+                chart.TryGetProperty("error", out var error) &&
+                error.ValueKind != JsonValueKind.Null)
+            {
+                logger.LogWarning("Yahoo Finance API error: {Error}", error.GetRawText());
+                return null;
+            }
+
+            if (!chart.TryGetProperty("result", out var results) || results.GetArrayLength() == 0)
+            {
+                logger.LogWarning("Yahoo Finance: No results for {Symbol}", symbol);
+                return null;
+            }
+
+            var firstResult = results[0];
+
+            if (!firstResult.TryGetProperty("timestamp", out var timestamps) ||
+                !firstResult.TryGetProperty("indicators", out var indicators))
+            {
+                logger.LogWarning("Yahoo Finance: Missing data for {Symbol}", symbol);
+                return null;
+            }
+
+            // quote.close (price return)
+            decimal? startClose = null;
+            decimal? endClose = null;
+
+            if (indicators.TryGetProperty("quote", out var quotes) && quotes.GetArrayLength() > 0)
+            {
+                var quote = quotes[0];
+                if (quote.TryGetProperty("close", out var closes))
+                {
+                    (startClose, endClose) = FindStartEndValues(timestamps, closes, startDate, endDate);
+                }
+            }
+
+            // adjclose.adjclose (total return proxy)
+            decimal? startAdj = null;
+            decimal? endAdj = null;
+
+            if (indicators.TryGetProperty("adjclose", out var adjcloses) && adjcloses.GetArrayLength() > 0)
+            {
+                var adjclose = adjcloses[0];
+                if (adjclose.TryGetProperty("adjclose", out var adjs))
+                {
+                    (startAdj, endAdj) = FindStartEndValues(timestamps, adjs, startDate, endDate);
+                }
+            }
+
+            if (startAdj is not > 0 || endAdj is null)
+            {
+                return null;
+            }
+
+            var totalReturnPercent = (endAdj.Value - startAdj.Value) / startAdj.Value * 100m;
+            totalReturnPercent = Math.Round(totalReturnPercent, 4);
+
+            decimal? priceReturnPercent = null;
+            if (startClose is > 0 && endClose is not null)
+            {
+                var priceReturn = (endClose.Value - startClose.Value) / startClose.Value * 100m;
+                priceReturnPercent = Math.Round(priceReturn, 4);
+            }
+
+            return (totalReturnPercent, priceReturnPercent);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Failed to parse Yahoo Finance chart response for annual total return {Symbol}", symbol);
+            return null;
+        }
+    }
+
+    private static (decimal? start, decimal? end) FindStartEndValues(
+        JsonElement timestamps,
+        JsonElement values,
+        DateOnly startDate,
+        DateOnly endDate)
+    {
+        var tsArray = timestamps.EnumerateArray().ToList();
+        var vArray = values.EnumerateArray().ToList();
+
+        var startTarget = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+        var endTarget = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+        decimal? start = null;
+        decimal? end = null;
+
+        // start: first non-null at or after start date, otherwise first available
+        for (int i = 0; i < tsArray.Count && i < vArray.Count; i++)
+        {
+            var ts = tsArray[i].GetInt64();
+            if (ts < startTarget)
+                continue;
+
+            var v = vArray[i];
+            if (v.ValueKind == JsonValueKind.Null)
+                continue;
+
+            start = v.GetDecimal();
+            break;
+        }
+
+        if (start is null)
+        {
+            for (int i = 0; i < tsArray.Count && i < vArray.Count; i++)
+            {
+                var v = vArray[i];
+                if (v.ValueKind == JsonValueKind.Null)
+                    continue;
+
+                start = v.GetDecimal();
+                break;
+            }
+        }
+
+        // end: last non-null at or before end date, otherwise last available
+        for (int i = Math.Min(tsArray.Count, vArray.Count) - 1; i >= 0; i--)
+        {
+            var ts = tsArray[i].GetInt64();
+            if (ts > endTarget)
+                continue;
+
+            var v = vArray[i];
+            if (v.ValueKind == JsonValueKind.Null)
+                continue;
+
+            end = v.GetDecimal();
+            break;
+        }
+
+        if (end is null)
+        {
+            for (int i = Math.Min(tsArray.Count, vArray.Count) - 1; i >= 0; i--)
+            {
+                var v = vArray[i];
+                if (v.ValueKind == JsonValueKind.Null)
+                    continue;
+
+                end = v.GetDecimal();
+                break;
+            }
+        }
+
+        return (start, end);
+    }
     public async Task<YahooHistoricalPriceResult?> GetHistoricalPriceAsync(
         string symbol,
         DateOnly date,

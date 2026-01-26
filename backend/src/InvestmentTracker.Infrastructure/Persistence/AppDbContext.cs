@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<MonthlyNetWorthSnapshot> MonthlyNetWorthSnapshots => Set<MonthlyNetWorthSnapshot>();
     public DbSet<TransactionPortfolioSnapshot> TransactionPortfolioSnapshots => Set<TransactionPortfolioSnapshot>();
+    public DbSet<BenchmarkAnnualReturn> BenchmarkAnnualReturns => Set<BenchmarkAnnualReturn>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

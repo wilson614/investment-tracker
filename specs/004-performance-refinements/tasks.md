@@ -140,14 +140,14 @@
 
 ### Implementation for User Story 5
 
-- [ ] T046 [US5] Add `GetAnnualTotalReturnAsync` method to existing `IYahooHistoricalPriceService` interface in backend/src/InvestmentTracker.Domain/Interfaces/IYahooHistoricalPriceService.cs
-- [ ] T047 [US5] Implement `GetAnnualTotalReturnAsync` in `YahooHistoricalPriceService` - fetch from Yahoo Performance page in backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs
-- [ ] T048 [US5] Create `BenchmarkAnnualReturn` cache entity and repository for storing fetched Total Returns
-- [ ] T049 [US5] Implement fallback to existing price-based calculation when Yahoo Total Return unavailable
+- [x] T046 [US5] Add `GetAnnualTotalReturnAsync` method to existing `IYahooHistoricalPriceService` interface in backend/src/InvestmentTracker.Domain/Interfaces/IYahooHistoricalPriceService.cs
+- [x] T047 [US5] Implement `GetAnnualTotalReturnAsync` in `YahooHistoricalPriceService` - fetch from Yahoo chart (adjclose proxy) in backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs
+- [x] T048 [US5] Create `BenchmarkAnnualReturn` cache entity and repository for storing fetched Total Returns
+- [x] T049 [US5] Implement fallback to existing price-based calculation when Yahoo Total Return unavailable
 - [ ] T050 [P] [US5] Write tests in backend/tests/InvestmentTracker.Domain.Tests/Services/YahooHistoricalPriceServiceTests.cs
-- [ ] T051 [US5] Modify existing `GetBenchmarkReturns` endpoint to prefer Yahoo Total Return over price calculation in backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
-- [ ] T052 [US5] Add `DataSource` field to `BenchmarkReturnsResponse` (Yahoo / Calculated)
-- [ ] T053 [P] [US5] Update frontend to display DataSource indicator in frontend/src/pages/Performance.tsx
+- [x] T051 [US5] Modify existing `GetBenchmarkReturns` endpoint to prefer Yahoo Total Return over price calculation in backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
+- [x] T052 [US5] Add `DataSource` field to `BenchmarkReturnsResponse` (Yahoo / Calculated)
+- [x] T053 [P] [US5] Update frontend to display DataSource indicator in frontend/src/pages/Performance.tsx
 
 **Checkpoint**: Benchmark shows Yahoo Total Return - Story 5 complete
 

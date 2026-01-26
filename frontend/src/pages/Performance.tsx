@@ -114,6 +114,7 @@ export function PerformancePage() {
   const [tempSelectedBenchmarks, setTempSelectedBenchmarks] = useState<string[]>([]);
   const [showBenchmarkSettings, setShowBenchmarkSettings] = useState(false);
   const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
+  const [benchmarkReturnSources, setBenchmarkReturnSources] = useState<Record<string, string | null>>({});
   const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(true); // Start as true to prevent flash
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
   const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
@@ -190,6 +191,7 @@ export function PerformancePage() {
     setIsFetchingPrices(false);
     // Reset benchmark state to prevent stale data showing
     setBenchmarkReturns({});
+    setBenchmarkReturnSources({});
     setIsLoadingBenchmark(true);
     // Update version ref to mark state as current
     lastResetVersionRef.current = performanceVersion;
@@ -276,6 +278,7 @@ export function PerformancePage() {
 
       try {
         const newReturns: Record<string, number | null> = {};
+        const newSources: Record<string, string | null> = {};
 
         if (isCurrentYear && ytdData) {
           // Use YTD data for current year - lookup by English key (matches backend)
@@ -283,27 +286,32 @@ export function PerformancePage() {
             const benchmark = ytdData.benchmarks.find(b => b.marketKey === benchmarkKey);
             if (benchmark?.ytdReturnPercent != null) {
               newReturns[benchmarkKey] = benchmark.ytdReturnPercent;
+              newSources[benchmarkKey] = 'Calculated';
             } else {
               newReturns[benchmarkKey] = null;
+              newSources[benchmarkKey] = null;
             }
           }
         } else {
-          // For historical years, use cached benchmark returns from IndexPriceSnapshot
+          // For historical years, use cached benchmark returns (Yahoo Total Return preferred; fallback calculated)
           try {
             const benchmarkData = await marketDataApi.getBenchmarkReturns(selectedYear);
             for (const benchmarkKey of selectedBenchmarks) {
               const returnValue = benchmarkData.returns[benchmarkKey];
               newReturns[benchmarkKey] = returnValue ?? null;
+              newSources[benchmarkKey] = benchmarkData.dataSources?.[benchmarkKey] ?? null;
             }
           } catch {
-            // If the new API fails, all benchmarks get null
+            // If API fails, all benchmarks get null
             for (const benchmarkKey of selectedBenchmarks) {
               newReturns[benchmarkKey] = null;
+              newSources[benchmarkKey] = null;
             }
           }
         }
 
         setBenchmarkReturns(prev => ({ ...prev, ...newReturns }));
+        setBenchmarkReturnSources(prev => ({ ...prev, ...newSources }));
       } catch (err) {
         console.error('Failed to fetch benchmark returns:', err);
       } finally {
@@ -1477,10 +1485,12 @@ export function PerformancePage() {
                           .map(benchmarkKey => {
                             const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
                             const returnValue = benchmarkReturns[benchmarkKey]!;
+                            const source = benchmarkReturnSources[benchmarkKey];
+
                             return {
                               label: benchmarkInfo?.label ?? benchmarkKey,
                               value: returnValue,
-                              tooltip: `${selectedYear} 年度報酬率`,
+                              tooltip: `${selectedYear} 年度報酬率${source ? `（來源：${source}）` : ''}`,
                             };
                           }),
                         /* Custom user benchmarks - only show selected ones */

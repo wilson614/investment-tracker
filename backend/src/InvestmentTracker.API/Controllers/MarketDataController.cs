@@ -24,6 +24,8 @@ public class MarketDataController(
     EuronextQuoteService euronextQuoteService,
     IStooqHistoricalPriceService stooqService,
     ITwseStockHistoricalPriceService twseService,
+    IYahooHistoricalPriceService yahooHistoricalPriceService,
+    IBenchmarkAnnualReturnRepository benchmarkAnnualReturnRepository,
     IHistoricalYearEndDataService historicalYearEndDataService,
     IHistoricalYearEndDataRepository historicalYearEndDataRepository,
     ITransactionDateExchangeRateService txDateFxService,
@@ -538,101 +540,198 @@ public class MarketDataController(
             return BadRequest("Invalid year");
         }
 
+        var currentYear = DateTime.UtcNow.Year;
+        var isCompletedYear = year < currentYear;
+
         var startYearMonth = $"{year - 1}12";  // 前一年 12 月
         var endYearMonth = $"{year}12";        // 當年 12 月
         var benchmarks = MarketYtdService.SupportedBenchmarks;
 
-        // 取得兩個 year-month 的所有快取指數價格
-        // 排除 NotAvailable 的項目
-        var snapshots = await dbContext.IndexPriceSnapshots
-            .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && !s.IsNotAvailable && s.Price.HasValue)
-            .ToListAsync(cancellationToken);
-
-        var startPrices = snapshots
-            .Where(s => s.YearMonth == startYearMonth)
-            .GroupBy(s => s.MarketKey)
-            .ToDictionary(g => g.Key, g => g.First().Price!.Value);
-
-        var endPrices = snapshots
-            .Where(s => s.YearMonth == endYearMonth)
-            .GroupBy(s => s.MarketKey)
-            .ToDictionary(g => g.Key, g => g.First().Price!.Value);
-
-        // 取得 NotAvailable 標記，用於略過抓取
-        var notAvailableMarkers = await dbContext.IndexPriceSnapshots
-            .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) && s.IsNotAvailable)
-            .Select(s => new { s.MarketKey, s.YearMonth })
-            .ToListAsync(cancellationToken);
-
-        var notAvailableStart = notAvailableMarkers.Where(m => m.YearMonth == startYearMonth).Select(m => m.MarketKey).ToHashSet();
-        var notAvailableEnd = notAvailableMarkers.Where(m => m.YearMonth == endYearMonth).Select(m => m.MarketKey).ToHashSet();
-
-        // 延遲載入缺少的價格（外部 API）
-        // 同時略過已存在 NotAvailable 標記的市場
-        var missingStartMarkets = benchmarks.Keys
-            .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k))
-            .ToList();
-        var missingEndMarkets = benchmarks.Keys
-            .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k))
-            .ToList();
-
-        // 抓取缺少的起始年價格（前一年 12 月）
-        if (missingStartMarkets.Count > 0)
-        {
-            logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
-                missingStartMarkets.Count, startYearMonth);
-            await FetchAndCacheBenchmarkPricesAsync(missingStartMarkets, year - 1, startPrices, cancellationToken);
-        }
-
-        // 抓取缺少的結束年價格（當年 12 月）——僅針對已結束的年度
-        if (missingEndMarkets.Count > 0 && year < DateTime.UtcNow.Year)
-        {
-            logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
-                missingEndMarkets.Count, endYearMonth);
-            await FetchAndCacheBenchmarkPricesAsync(missingEndMarkets, year, endPrices, cancellationToken);
-        }
-
-        // 取得台灣 0050 的股票分割資料，用於調整歷史價格
-        var taiwanSplits = await dbContext.StockSplits
-            .Where(s => s.Symbol == "0050" && s.Market == StockMarket.TW)
-            .OrderBy(s => s.SplitDate)
-            .ToListAsync(cancellationToken);
-
         Dictionary<string, decimal?> returns = [];
+        Dictionary<string, string?> dataSources = [];
 
-        foreach (var (marketKey, _) in benchmarks)
+        // US5: 已結束年度優先使用 Yahoo Annual Total Return（含股息）
+        // 若 Yahoo 無資料才 fallback 回既有 IndexPriceSnapshot 價格推算。
+        var fallbackMarketKeys = new HashSet<string>(benchmarks.Keys);
+
+        if (isCompletedYear)
         {
-            if (startPrices.TryGetValue(marketKey, out var startPrice) &&
-                endPrices.TryGetValue(marketKey, out var endPrice) &&
-                startPrice > 0)
+            foreach (var (marketKey, benchmark) in benchmarks)
             {
-                // 台灣 0050：若年度中發生股票分割，需以分割比例調整起始價格
-                if (marketKey == "Taiwan 0050" && taiwanSplits.Count != 0)
+                // 台灣 0050：維持既有邏輯（TWSE + 分割調整）
+                if (benchmark.Market == StockMarket.TW)
                 {
-                    // 計算 year-1/12/31 之後、year/12/31（含）之前的累積分割比例
-                    var startDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
-                    var endDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
-
-                    var splitsDuringYear = taiwanSplits
-                        .Where(s => s.SplitDate > startDate && s.SplitDate <= endDate)
-                        .ToList();
-
-                    if (splitsDuringYear.Count != 0)
-                    {
-                        var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
-                        // 將起始價格調整到分割後的等值
-                        startPrice /= cumulativeRatio;
-                        logger.LogDebug("Adjusted Taiwan 0050 start price by split ratio {Ratio}: {Original} -> {Adjusted}",
-                            cumulativeRatio, startPrices[marketKey], startPrice);
-                    }
+                    continue;
                 }
 
-                var returnPercent = (endPrice - startPrice) / startPrice * 100;
-                returns[marketKey] = Math.Round(returnPercent, 2);
+                var yahooSymbol = YahooSymbolHelper.ConvertToYahooSymbol(benchmark.Symbol, benchmark.Market);
+
+                var cached = await benchmarkAnnualReturnRepository.GetAsync(yahooSymbol, year, cancellationToken);
+                if (cached != null)
+                {
+                    returns[marketKey] = Math.Round(cached.TotalReturnPercent, 2);
+                    dataSources[marketKey] = cached.DataSource;
+                    fallbackMarketKeys.Remove(marketKey);
+                    continue;
+                }
+
+                var yahooResult = await yahooHistoricalPriceService.GetAnnualTotalReturnAsync(
+                    yahooSymbol,
+                    year,
+                    cancellationToken);
+
+                if (yahooResult == null)
+                {
+                    continue;
+                }
+
+                var saved = await benchmarkAnnualReturnRepository.AddAsync(
+                    new BenchmarkAnnualReturn(
+                        yahooSymbol,
+                        year,
+                        yahooResult.TotalReturnPercent,
+                        dataSource: "Yahoo",
+                        fetchedAt: DateTime.UtcNow,
+                        priceReturnPercent: yahooResult.PriceReturnPercent),
+                    cancellationToken);
+
+                returns[marketKey] = Math.Round(saved.TotalReturnPercent, 2);
+                dataSources[marketKey] = saved.DataSource;
+                fallbackMarketKeys.Remove(marketKey);
             }
-            else
+        }
+
+        // Fallback：用 IndexPriceSnapshot 的年末價格推算（既有邏輯）
+        var fallbackMarkets = fallbackMarketKeys.ToList();
+
+        Dictionary<string, decimal> startPrices = [];
+        Dictionary<string, decimal> endPrices = [];
+
+        if (fallbackMarkets.Count > 0)
+        {
+            // 取得兩個 year-month 的快取指數價格（僅針對 fallback 市場）
+            // 排除 NotAvailable 的項目
+            var snapshots = await dbContext.IndexPriceSnapshots
+                .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) &&
+                    fallbackMarkets.Contains(s.MarketKey) &&
+                    !s.IsNotAvailable &&
+                    s.Price.HasValue)
+                .ToListAsync(cancellationToken);
+
+            startPrices = snapshots
+                .Where(s => s.YearMonth == startYearMonth)
+                .GroupBy(s => s.MarketKey)
+                .ToDictionary(g => g.Key, g => g.First().Price!.Value);
+
+            endPrices = snapshots
+                .Where(s => s.YearMonth == endYearMonth)
+                .GroupBy(s => s.MarketKey)
+                .ToDictionary(g => g.Key, g => g.First().Price!.Value);
+
+            // 取得 NotAvailable 標記，用於略過抓取
+            var notAvailableMarkers = await dbContext.IndexPriceSnapshots
+                .Where(s => (s.YearMonth == startYearMonth || s.YearMonth == endYearMonth) &&
+                    fallbackMarkets.Contains(s.MarketKey) &&
+                    s.IsNotAvailable)
+                .Select(s => new { s.MarketKey, s.YearMonth })
+                .ToListAsync(cancellationToken);
+
+            var notAvailableStart = notAvailableMarkers
+                .Where(m => m.YearMonth == startYearMonth)
+                .Select(m => m.MarketKey)
+                .ToHashSet();
+
+            var notAvailableEnd = notAvailableMarkers
+                .Where(m => m.YearMonth == endYearMonth)
+                .Select(m => m.MarketKey)
+                .ToHashSet();
+
+            // 延遲載入缺少的價格（外部 API）
+            // 同時略過已存在 NotAvailable 標記的市場
+            var missingStartMarkets = fallbackMarkets
+                .Where(k => !startPrices.ContainsKey(k) && !notAvailableStart.Contains(k))
+                .ToList();
+
+            var missingEndMarkets = fallbackMarkets
+                .Where(k => !endPrices.ContainsKey(k) && !notAvailableEnd.Contains(k))
+                .ToList();
+
+            // 抓取缺少的起始年價格（前一年 12 月）
+            if (missingStartMarkets.Count > 0)
+            {
+                logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
+                    missingStartMarkets.Count, startYearMonth);
+                await FetchAndCacheBenchmarkPricesAsync(missingStartMarkets, year - 1, startPrices, cancellationToken);
+            }
+
+            // 抓取缺少的結束年價格（當年 12 月）——僅針對已結束的年度
+            if (missingEndMarkets.Count > 0 && isCompletedYear)
+            {
+                logger.LogInformation("Lazy-loading {Count} missing benchmark prices for {YearMonth}",
+                    missingEndMarkets.Count, endYearMonth);
+                await FetchAndCacheBenchmarkPricesAsync(missingEndMarkets, year, endPrices, cancellationToken);
+            }
+
+            // 取得台灣 0050 的股票分割資料，用於調整歷史價格（僅在 fallback 需要時查詢）
+            List<StockSplit> taiwanSplits = [];
+            if (fallbackMarkets.Contains("Taiwan 0050"))
+            {
+                taiwanSplits = await dbContext.StockSplits
+                    .Where(s => s.Symbol == "0050" && s.Market == StockMarket.TW)
+                    .OrderBy(s => s.SplitDate)
+                    .ToListAsync(cancellationToken);
+            }
+
+            foreach (var marketKey in fallbackMarkets)
+            {
+                if (startPrices.TryGetValue(marketKey, out var startPrice) &&
+                    endPrices.TryGetValue(marketKey, out var endPrice) &&
+                    startPrice > 0)
+                {
+                    // 台灣 0050：若年度中發生股票分割，需以分割比例調整起始價格
+                    if (marketKey == "Taiwan 0050" && taiwanSplits.Count != 0)
+                    {
+                        // 計算 year-1/12/31 之後、year/12/31（含）之前的累積分割比例
+                        var startDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+                        var endDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+                        var splitsDuringYear = taiwanSplits
+                            .Where(s => s.SplitDate > startDate && s.SplitDate <= endDate)
+                            .ToList();
+
+                        if (splitsDuringYear.Count != 0)
+                        {
+                            var cumulativeRatio = splitsDuringYear.Aggregate(1.0m, (acc, s) => acc * s.SplitRatio);
+                            // 將起始價格調整到分割後的等值
+                            startPrice /= cumulativeRatio;
+                            logger.LogDebug("Adjusted Taiwan 0050 start price by split ratio {Ratio}: {Original} -> {Adjusted}",
+                                cumulativeRatio, startPrices[marketKey], startPrice);
+                        }
+                    }
+
+                    var returnPercent = (endPrice - startPrice) / startPrice * 100;
+                    returns[marketKey] = Math.Round(returnPercent, 2);
+                    dataSources[marketKey] = "Calculated";
+                }
+                else
+                {
+                    returns[marketKey] = null;
+                    dataSources[marketKey] = null;
+                }
+            }
+        }
+
+        // 確保回應包含所有系統 benchmark key（避免前端顯示不一致）
+        foreach (var (marketKey, _) in benchmarks)
+        {
+            if (!returns.ContainsKey(marketKey))
             {
                 returns[marketKey] = null;
+            }
+
+            if (!dataSources.ContainsKey(marketKey))
+            {
+                dataSources[marketKey] = returns[marketKey] is null ? null : "Calculated";
             }
         }
 
@@ -640,7 +739,8 @@ public class MarketDataController(
             year,
             returns,
             startPrices.Count > 0,
-            endPrices.Count > 0));
+            endPrices.Count > 0,
+            dataSources));
     }
 
     /// <summary>
@@ -1066,7 +1166,8 @@ public record BenchmarkReturnsResponse(
     int Year,
     Dictionary<string, decimal?> Returns,
     bool HasStartPrices,
-    bool HasEndPrices);
+    bool HasEndPrices,
+    Dictionary<string, string?> DataSources);
 
 public record IndexPriceRequest(string MarketKey, string YearMonth, decimal Price);
 
