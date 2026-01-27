@@ -10,7 +10,7 @@ import CurrencyDetail from './pages/CurrencyDetail';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { PerformancePage } from './pages/Performance';
-import { ProtectedRoute, ToastProvider } from './components/common';
+import { ProtectedRoute, ToastProvider, ScrollToTop } from './components/common';
 import { Navigation } from './components/layout/Navigation';
 import './index.css';
 
@@ -119,6 +119,7 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
         <PortfolioProvider>
           <ToastProvider>
