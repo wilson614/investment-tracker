@@ -78,7 +78,7 @@ export function HistoricalValueChart({
 
   return (
     <div className={className} style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={height} debounce={50}>
         <LineChart
           data={chartData}
           margin={{ top: 10, right: 10, left: 10, bottom: 0 }}

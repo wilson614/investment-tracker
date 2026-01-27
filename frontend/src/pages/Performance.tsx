@@ -41,7 +41,7 @@ const BENCHMARK_OPTIONS = [
   { key: 'Taiwan 0050', label: '台灣 (0050)', symbol: '0050' },
 ] as const;
 
-// Shared localStorage key with dashboard MarketYtdSection
+// 與 Dashboard MarketYtdSection 共用的 localStorage key
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 
 /**
@@ -55,7 +55,7 @@ function loadSelectedBenchmarksFromLocalStorage(): string[] {
     if (stored) {
       const keys = JSON.parse(stored) as string[];
       if (Array.isArray(keys) && keys.length > 0) {
-        // Validate keys: system benchmarks must exist in BENCHMARK_OPTIONS, custom benchmarks start with 'custom_'
+        // 驗證 key：系統基準必須存在於 BENCHMARK_OPTIONS，自訂基準以 'custom_' 開頭
         const validKeys = keys.filter(k =>
           BENCHMARK_OPTIONS.some(o => o.key === k) || k.startsWith('custom_')
         );
@@ -79,8 +79,23 @@ function saveSelectedBenchmarksToLocalStorage(keys: string[]): void {
   }
 }
 
-// Cache key for localStorage quote cache (shared with Portfolio page)
+// 報價快取 key（與 Portfolio 頁面共用）
 const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+
+/**
+ * 儲存報價至 localStorage 快取（與 Portfolio 頁面共用）
+ */
+function saveQuoteToCache(ticker: string, price: number, exchangeRate: number): void {
+  try {
+    const cacheData = {
+      quote: { price, exchangeRate },
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+  } catch {
+    // Ignore
+  }
+}
 
 /**
  * 依 ticker 格式推測市場別。
@@ -99,35 +114,233 @@ const guessMarket = (ticker: string): StockMarketType => {
   return StockMarket.US;
 };
 
+// 自訂基準報酬快取 key
+const getCustomBenchmarkCacheKey = (year: number) => `custom_benchmark_returns_${year}`;
+
+// 自訂基準列表快取 key
+const CUSTOM_BENCHMARKS_CACHE_KEY = 'custom_benchmarks_list';
+
+/**
+ * 載入自訂基準列表快取
+ */
+function loadCachedCustomBenchmarks(): UserBenchmark[] {
+  try {
+    const cached = localStorage.getItem(CUSTOM_BENCHMARKS_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch { /* 忽略 */ }
+  return [];
+}
+
+/**
+ * 儲存自訂基準列表快取
+ */
+function saveCachedCustomBenchmarks(benchmarks: UserBenchmark[]): void {
+  try {
+    localStorage.setItem(CUSTOM_BENCHMARKS_CACHE_KEY, JSON.stringify(benchmarks));
+  } catch { /* 忽略 */ }
+}
+
+/**
+ * 載入自訂基準報酬快取
+ */
+function loadCachedCustomBenchmarkReturns(year: number): Record<string, number | null> {
+  try {
+    const cached = localStorage.getItem(getCustomBenchmarkCacheKey(year));
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch { /* 忽略 */ }
+  return {};
+}
+
+/**
+ * 儲存自訂基準報酬快取
+ */
+function saveCachedCustomBenchmarkReturns(year: number, data: Record<string, number | null>): void {
+  try {
+    localStorage.setItem(getCustomBenchmarkCacheKey(year), JSON.stringify(data));
+  } catch { /* 忽略 */ }
+}
+
+// 系統基準報酬快取 key
+const getSystemBenchmarkCacheKey = (year: number) => `system_benchmark_returns_${year}`;
+
+/**
+ * 載入系統基準報酬快取
+ */
+function loadCachedSystemBenchmarkReturns(year: number): { returns: Record<string, number | null>; sources: Record<string, string | null> } {
+  try {
+    const cached = localStorage.getItem(getSystemBenchmarkCacheKey(year));
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch { /* 忽略 */ }
+  return { returns: {}, sources: {} };
+}
+
+/**
+ * 儲存系統基準報酬快取
+ */
+function saveCachedSystemBenchmarkReturns(year: number, returns: Record<string, number | null>, sources: Record<string, string | null>): void {
+  try {
+    localStorage.setItem(getSystemBenchmarkCacheKey(year), JSON.stringify({ returns, sources }));
+  } catch { /* 忽略 */ }
+}
+
 export function PerformancePage() {
-  // Use shared portfolio context (synced with Portfolio page)
+  // 使用共用的投資組合 context（與 Portfolio 頁面同步）
   const { currentPortfolio: portfolio, isLoading: isLoadingPortfolio, performanceVersion } = usePortfolio();
+
+  if (isLoadingPortfolio) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-peach)]" />
+      </div>
+    );
+  }
+
+  if (!portfolio) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-[var(--text-muted)]">找不到投資組合</div>
+      </div>
+    );
+  }
+
+  // 使用 key 強制在投資組合變更時重新掛載元件
+  // 確保 useHistoricalPerformance 的 lazy init 正確運作
+  return (
+    <PerformancePageContent
+      key={`${portfolio.id}-${performanceVersion}`}
+      portfolio={portfolio}
+    />
+  );
+}
+
+// 內部元件：僅在 portfolio 可用時掛載
+// 確保 useHistoricalPerformance 的 lazy init 能正確從快取載入
+function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnType<typeof usePortfolio>['currentPortfolio']> }) {
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
   const [dismissMissingPricesOverlay, setDismissMissingPricesOverlay] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
-  const fetchRetryCountRef = useRef<number>(0); // Limit auto-retries to prevent infinite loops
+  const fetchRetryCountRef = useRef<number>(0); // 限制自動重試次數以防止無限迴圈
 
-  // Benchmark comparison state - multi-select support, synced with dashboard
+  // 基準比較狀態 - 支援多選，與 Dashboard 同步
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarksFromLocalStorage);
   const [tempSelectedBenchmarks, setTempSelectedBenchmarks] = useState<string[]>([]);
   const [showBenchmarkSettings, setShowBenchmarkSettings] = useState(false);
-  const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
-  const [benchmarkReturnSources, setBenchmarkReturnSources] = useState<Record<string, string | null>>({});
-  const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(true); // Start as true to prevent flash
-  const [isLoadingCustomBenchmark, setIsLoadingCustomBenchmark] = useState(true); // Track custom benchmark calculation
-  const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
-  const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
 
-  // US2: currency mode for performance comparison
-  const [currencyMode, setCurrencyMode] = useState<PerformanceCurrencyMode>('source');
+  // 從快取 lazy init ytdData 以即時顯示
+  const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(() => {
+    const cached = loadCachedYtdData();
+    return cached.data ? transformYtdData(cached.data) : null;
+  });
 
-  // Custom user benchmarks state
-  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>([]);
-  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>({});
+  // 從 YTD 快取（當年度）或系統基準快取（歷史年度）lazy init benchmarkReturns
+  // 避免只有投資組合長條先顯示，基準稍後才出現的閃爍問題
+  const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>(() => {
+    const currentYear = new Date().getFullYear();
+    const savedBenchmarks = loadSelectedBenchmarksFromLocalStorage();
+    const systemBenchmarks = savedBenchmarks.filter(k => !k.startsWith('custom_'));
 
-  // Load user preferences from API on mount
+    // 優先從 YTD 快取載入（當年度）
+    const cachedYtd = loadCachedYtdData();
+    if (cachedYtd.data) {
+      const ytd = transformYtdData(cachedYtd.data);
+      const returns: Record<string, number | null> = {};
+      // 載入所有選擇的系統基準，包括值為 null 的情況
+      for (const key of systemBenchmarks) {
+        const benchmark = ytd.benchmarks.find(b => b.marketKey === key);
+        // 使用 null 表示「有快取但無資料」，undefined 表示「沒有快取」
+        returns[key] = benchmark?.ytdReturnPercent ?? null;
+      }
+      if (Object.keys(returns).length > 0) {
+        return returns;
+      }
+    }
+
+    // 備援：嘗試系統基準快取（歷史年度）
+    const systemCache = loadCachedSystemBenchmarkReturns(currentYear);
+    if (Object.keys(systemCache.returns).length > 0) {
+      // 確保所有選擇的基準都有值（即使是 null）
+      const returns: Record<string, number | null> = {};
+      for (const key of systemBenchmarks) {
+        returns[key] = systemCache.returns[key] ?? null;
+      }
+      return returns;
+    }
+
+    return {};
+  });
+  const [benchmarkReturnSources, setBenchmarkReturnSources] = useState<Record<string, string | null>>(() => {
+    const currentYear = new Date().getFullYear();
+    const systemCache = loadCachedSystemBenchmarkReturns(currentYear);
+    return systemCache.sources;
+  });
+  // 追蹤基準載入狀態，用於決定何時渲染長條圖
+  // 初始值設為 false，因為我們已經在 lazy init 中載入了快取資料
+  // 只有在確定沒有任何快取時才會設為 true
+  const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(() => {
+    // 檢查 YTD 快取（當年度主要來源）
+    const cachedYtd = loadCachedYtdData();
+    if (cachedYtd.data) {
+      return false; // 有 YTD 快取，不需要 loading
+    }
+    // 備援：檢查系統基準快取
+    const currentYear = new Date().getFullYear();
+    const systemCache = loadCachedSystemBenchmarkReturns(currentYear);
+    return Object.keys(systemCache.returns).length === 0;
+  });
+  const [isLoadingCustomBenchmark, setIsLoadingCustomBenchmark] = useState(() => {
+    const currentYear = new Date().getFullYear();
+    const cachedReturns = loadCachedCustomBenchmarkReturns(currentYear);
+    const savedBenchmarks = loadSelectedBenchmarksFromLocalStorage();
+    // 若沒有選擇自訂基準，則不需要 loading
+    const hasCustomSelection = savedBenchmarks.some(k => k.startsWith('custom_'));
+    if (!hasCustomSelection) return false;
+    // 若有快取資料則初始為 false，否則等待載入
+    return Object.keys(cachedReturns).length === 0;
+  });
+
+  // US2: 績效比較的貨幣模式 - 從 localStorage 載入
+  const [currencyMode, setCurrencyMode] = useState<PerformanceCurrencyMode>(() => {
+    try {
+      const stored = localStorage.getItem('performance_currency_mode');
+      return (stored === 'source' || stored === 'home') ? stored : 'source';
+    } catch {
+      return 'source';
+    }
+  });
+
+  // 自訂基準狀態 - 從快取載入以即時顯示
+  const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>(loadCachedCustomBenchmarks);
+  // 自訂基準報酬 - 從快取載入，預設使用當年度
+  // 確保所有選擇的自訂基準都有值（即使是 null），以便正確判斷載入狀態
+  const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>(() => {
+    const currentYear = new Date().getFullYear();
+    const cachedReturns = loadCachedCustomBenchmarkReturns(currentYear);
+    const savedBenchmarks = loadSelectedBenchmarksFromLocalStorage();
+    const cachedBenchmarkList = loadCachedCustomBenchmarks();
+
+    // 為所有選擇的自訂基準設定值
+    const returns: Record<string, number | null> = {};
+    for (const key of savedBenchmarks) {
+      if (key.startsWith('custom_')) {
+        const benchmarkId = key.replace('custom_', '');
+        // 確認這個自訂基準確實存在於快取列表中
+        if (cachedBenchmarkList.some(b => b.id === benchmarkId)) {
+          returns[benchmarkId] = cachedReturns[benchmarkId] ?? null;
+        }
+      }
+    }
+    return Object.keys(returns).length > 0 ? returns : cachedReturns;
+  });
+
+  // 元件掛載時從 API 載入使用者偏好設定
   useEffect(() => {
     const loadPreferences = async () => {
       try {
@@ -135,37 +348,37 @@ export function PerformancePage() {
         if (prefs.ytdBenchmarkPreferences) {
           const benchmarks = JSON.parse(prefs.ytdBenchmarkPreferences) as string[];
           if (Array.isArray(benchmarks) && benchmarks.length > 0) {
-            // Validate keys: system benchmarks must exist in BENCHMARK_OPTIONS, custom benchmarks start with 'custom_'
+            // 驗證 key：系統基準必須存在於 BENCHMARK_OPTIONS，自訂基準以 'custom_' 開頭
             const validKeys = benchmarks.filter(k =>
               BENCHMARK_OPTIONS.some(o => o.key === k) || k.startsWith('custom_')
             );
             if (validKeys.length > 0) {
               setSelectedBenchmarks(validKeys);
-              // Sync to localStorage for offline use
+              // 同步至 localStorage 供離線使用
               saveSelectedBenchmarksToLocalStorage(validKeys);
             }
           }
         }
       } catch (err) {
-        console.error('Failed to load preferences from API, using localStorage:', err);
-        // Keep localStorage values as fallback
+        console.error('無法從 API 載入偏好設定，使用 localStorage:', err);
+        // 保留 localStorage 的值作為備援
       }
     };
     loadPreferences();
   }, []);
 
-  // Save preferences to API
+  // 儲存偏好設定至 API
   const savePreferences = useCallback(async (keys: string[]) => {
-    // Always save to localStorage first (for immediate sync)
+    // 先儲存至 localStorage（立即同步）
     saveSelectedBenchmarksToLocalStorage(keys);
 
-    // Then save to API
+    // 再儲存至 API
     try {
       await userPreferencesApi.update({
         ytdBenchmarkPreferences: JSON.stringify(keys),
       });
     } catch (err) {
-      console.error('Failed to save preferences to API:', err);
+      console.error('無法儲存偏好設定至 API:', err);
     }
   }, []);
 
@@ -179,53 +392,42 @@ export function PerformancePage() {
     setSelectedYear,
     calculatePerformance,
   } = useHistoricalPerformance({
-    portfolioId: portfolio?.id,
+    portfolioId: portfolio.id, // Always defined in this component
     autoFetch: true,
-    version: performanceVersion, // Clear state on portfolio switch
   });
 
-  // Reset price fetch state when portfolio changes
+  // 元件掛載時重設報價抓取狀態（portfolio 透過 key 變更時會重新掛載）
+  // 無需依賴項 - 當 portfolio 變更時元件會因 key prop 重新掛載
+  // 注意：不清空 benchmarkReturns，因為 lazy init 已載入當年度快取
   useEffect(() => {
     hasFetchedForYearRef.current = null;
     fetchRetryCountRef.current = 0;
     setPriceFetchFailed(false);
     setIsFetchingPrices(false);
-    // Reset benchmark state to prevent stale data showing
-    setBenchmarkReturns({});
-    setBenchmarkReturnSources({});
-    setIsLoadingBenchmark(true);
-    setIsLoadingCustomBenchmark(true);
-    // Update version ref to mark state as current
-    lastResetVersionRef.current = performanceVersion;
-  }, [performanceVersion]);
+  }, []);
 
-  // Load YTD benchmark data for current year comparison
-  // Use cached data first for instant display, then fetch fresh data in background
+  // 載入當年度 YTD 基準資料
+  // 快取已透過 lazy init 載入，這裡只在背景抓取最新資料
   useEffect(() => {
-    // First, try to load from cache for instant display
-    const cached = loadCachedYtdData();
-    if (cached.data) {
-      setYtdData(transformYtdData(cached.data));
-    }
-
-    // Then fetch fresh data in background
     const loadFreshYtdData = async () => {
       try {
         const data = await getYtdData();
         setYtdData(transformYtdData(data));
       } catch (err) {
-        console.error('Failed to load YTD data:', err);
+        console.error('無法載入 YTD 資料:', err);
       }
     };
     loadFreshYtdData();
   }, []);
 
-  // Load user's custom benchmarks
+  // 載入使用者的自訂基準
   useEffect(() => {
     const loadCustomBenchmarks = async () => {
       try {
         const benchmarks = await userBenchmarkApi.getAll();
         setCustomBenchmarks(benchmarks);
+        // 快取以便下次載入時即時顯示
+        saveCachedCustomBenchmarks(benchmarks);
 
         // 清理已刪除的自訂基準：從 selectedBenchmarks 中移除不存在的 custom_ key
         const validCustomKeys = new Set(benchmarks.map(b => `custom_${b.id}`));
@@ -242,7 +444,7 @@ export function PerformancePage() {
           return cleaned.length > 0 ? cleaned : ['All Country'];
         });
       } catch (err) {
-        console.error('Failed to load custom benchmarks:', err);
+        console.error('無法載入自訂基準:', err);
       }
     };
     loadCustomBenchmarks();
@@ -261,29 +463,57 @@ export function PerformancePage() {
   useEffect(() => {
     const fetchBenchmarkReturns = async () => {
       if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) {
-        // Keep loading state true until we have the necessary data
+        // 在取得必要資料前保持 loading 狀態
         return;
       }
 
       const isCurrentYear = selectedYear === availableYears.currentYear;
 
-      // For current year, wait until ytdData is loaded before proceeding
-      // This ensures we show loading state while YTD API is fetching
+      // 當年度需等待 ytdData 載入完成後再繼續
+      // 確保 YTD API 抓取時顯示 loading 狀態
       if (isCurrentYear && !ytdData) {
-        // Keep loading state true - will re-run when ytdData arrives
+        // 保持 loading 狀態 - ytdData 到達時會重新執行
         setIsLoadingBenchmark(true);
         return;
       }
 
-      setIsLoadingBenchmark(true);
-      // Don't clear previous values to prevent flicker (FR-095)
+      // 歷史年度優先嘗試從快取載入以即時顯示
+      // 當年度則檢查 YTD 快取是否已包含選擇的基準
+      let hasCachedData = false;
+      if (!isCurrentYear) {
+        const cached = loadCachedSystemBenchmarkReturns(selectedYear);
+        if (Object.keys(cached.returns).length > 0) {
+          setBenchmarkReturns(prev => ({ ...prev, ...cached.returns }));
+          setBenchmarkReturnSources(prev => ({ ...prev, ...cached.sources }));
+          // 檢查所有選擇的系統基準是否都在快取中
+          const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
+          hasCachedData = systemBenchmarks.every(k => cached.returns[k] !== undefined);
+        }
+      } else {
+        // 當年度：檢查 YTD 快取是否有資料
+        const cachedYtd = loadCachedYtdData();
+        if (cachedYtd.data) {
+          const ytd = transformYtdData(cachedYtd.data);
+          const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
+          hasCachedData = systemBenchmarks.some(k => ytd.benchmarks.some(b => b.marketKey === k && b.ytdReturnPercent != null));
+        }
+      }
+
+      // 只在沒有快取資料時才顯示 loading，否則在背景更新
+      if (!hasCachedData) {
+        setIsLoadingBenchmark(true);
+      } else {
+        // 有快取資料時確保 loading 為 false（避免初始值問題）
+        setIsLoadingBenchmark(false);
+      }
+      // 不清空舊值以防止閃爍 (FR-095)
 
       try {
         const newReturns: Record<string, number | null> = {};
         const newSources: Record<string, string | null> = {};
 
         if (isCurrentYear && ytdData) {
-          // Use YTD data for current year - lookup by English key (matches backend)
+          // 當年度使用 YTD 資料 - 以英文 key 查詢（與後端一致）
           for (const benchmarkKey of selectedBenchmarks) {
             const benchmark = ytdData.benchmarks.find(b => b.marketKey === benchmarkKey);
             if (benchmark?.ytdReturnPercent != null) {
@@ -295,7 +525,7 @@ export function PerformancePage() {
             }
           }
         } else {
-          // For historical years, use cached benchmark returns (Yahoo Total Return preferred; fallback calculated)
+          // 歷史年度使用快取的基準報酬（優先 Yahoo Total Return，備援為計算值）
           try {
             const benchmarkData = await marketDataApi.getBenchmarkReturns(selectedYear);
             for (const benchmarkKey of selectedBenchmarks) {
@@ -303,8 +533,10 @@ export function PerformancePage() {
               newReturns[benchmarkKey] = returnValue ?? null;
               newSources[benchmarkKey] = benchmarkData.dataSources?.[benchmarkKey] ?? null;
             }
+            // 儲存至快取供未來使用
+            saveCachedSystemBenchmarkReturns(selectedYear, newReturns, newSources);
           } catch {
-            // If API fails, all benchmarks get null
+            // API 失敗時所有基準為 null
             for (const benchmarkKey of selectedBenchmarks) {
               newReturns[benchmarkKey] = null;
               newSources[benchmarkKey] = null;
@@ -315,7 +547,7 @@ export function PerformancePage() {
         setBenchmarkReturns(prev => ({ ...prev, ...newReturns }));
         setBenchmarkReturnSources(prev => ({ ...prev, ...newSources }));
       } catch (err) {
-        console.error('Failed to fetch benchmark returns:', err);
+        console.error('無法抓取基準報酬:', err);
       } finally {
         setIsLoadingBenchmark(false);
       }
@@ -328,8 +560,10 @@ export function PerformancePage() {
    * 計算自訂 benchmark 的年度報酬。
    *
    * 規則：
+   * - 優先使用 localStorage 快取（秒開體驗）。
    * - 抓取 year-start (上年 12/31) 和 year-end (當年 12/31 或即時) 價格
    * - 計算 (end - start) / start * 100
+   * - 更新後寫入快取。
    */
   useEffect(() => {
     const fetchCustomBenchmarkReturns = async () => {
@@ -339,82 +573,161 @@ export function PerformancePage() {
         return;
       }
 
-      setIsLoadingCustomBenchmark(true);
+      // 1. 優先嘗試從快取載入以即時回饋
+      const cachedReturns = loadCachedCustomBenchmarkReturns(selectedYear);
+      const selectedCustomBenchmarks = customBenchmarks.filter(b => selectedBenchmarks.includes(`custom_${b.id}`));
+
+      // 若沒有選擇任何自訂基準，直接完成
+      if (selectedCustomBenchmarks.length === 0) {
+        setIsLoadingCustomBenchmark(false);
+        return;
+      }
+
+      // 檢查是否有足夠的快取資料
+      let hasCachedData = false;
+      if (Object.keys(cachedReturns).length > 0) {
+        setCustomBenchmarkReturns(prev => ({ ...prev, ...cachedReturns }));
+
+        // 歷史年度（非當年度）可完全信任快取（若完整）
+        const isCurrentYear = selectedYear === availableYears.currentYear;
+        if (!isCurrentYear) {
+           // 檢查所有選擇的基準是否都在快取中
+           const allCached = selectedCustomBenchmarks.every(b => cachedReturns[b.id] !== undefined);
+
+           if (allCached) {
+             setIsLoadingCustomBenchmark(false);
+             return; // 歷史年度若快取存在則跳過網路請求
+           }
+        }
+
+        // 當年度：檢查是否有任何快取資料可先顯示
+        hasCachedData = selectedCustomBenchmarks.some(b => cachedReturns[b.id] !== undefined);
+      }
+
+      // 只在沒有快取資料時才顯示 loading，否則在背景更新
+      if (!hasCachedData && selectedCustomBenchmarks.length > 0) {
+        setIsLoadingCustomBenchmark(true);
+      } else {
+        // 有快取資料或沒有選擇自訂基準時，確保 loading 為 false
+        setIsLoadingCustomBenchmark(false);
+      }
+
       const isCurrentYear = selectedYear === availableYears.currentYear;
-      const newReturns: Record<string, number | null> = {};
 
       try {
+        // 追蹤收集到的報酬以便稍後儲存至快取
+        const collectedReturns: Record<string, number | null> = { ...cachedReturns };
+
         await Promise.all(
           customBenchmarks.map(async (benchmark) => {
-          try {
-            const yearStartDate = `${selectedYear - 1}-12-31`;
-            const yearEndDate = `${selectedYear}-12-31`;
+            // 歷史年度若不在快取中則抓取，當年度則總是刷新即時資料
+            // 我們已顯示快取資料，所以這次更新只是「刷新」
 
-            // Get year-start price
-            const startPriceData = await marketDataApi.getHistoricalPrices(
-              [benchmark.ticker],
-              yearStartDate,
-              { [benchmark.ticker]: benchmark.market }
-            );
-            const startPrice = startPriceData[benchmark.ticker]?.price;
+            let returnValue: number | null = null;
+            try {
+              const yearStartDate = `${selectedYear - 1}-12-31`;
+              const yearEndDate = `${selectedYear}-12-31`;
 
-            if (!startPrice) {
-              newReturns[benchmark.id] = null;
-              return;
-            }
-
-            let endPrice: number | undefined;
-
-            if (isCurrentYear) {
-              // For current year, get live quote
-              try {
-                // Use Euronext API for EU market (4)
-                if (benchmark.market === 4) {
-                  const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
-                  endPrice = euronextQuote?.price;
-                } else {
-                  const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
-                  endPrice = quote?.price;
-                }
-              } catch {
-                // Fallback: try Euronext if standard market fails
-                if (benchmark.market === 4) {
-                  const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
-                  endPrice = euronextQuote?.price;
-                }
-              }
-            } else {
-              // For historical year, get year-end price
-              const endPriceData = await marketDataApi.getHistoricalPrices(
+              // 取得年初價格
+              const startPriceData = await marketDataApi.getHistoricalPrices(
                 [benchmark.ticker],
-                yearEndDate,
+                yearStartDate,
                 { [benchmark.ticker]: benchmark.market }
               );
-              endPrice = endPriceData[benchmark.ticker]?.price;
+              const startPrice = startPriceData[benchmark.ticker]?.price;
+
+              if (!startPrice) {
+                returnValue = null;
+              } else {
+                let endPrice: number | undefined;
+
+                if (isCurrentYear) {
+                  // 當年度優先嘗試從快取載入以即時顯示
+                  try {
+                    const cached = localStorage.getItem(getQuoteCacheKey(benchmark.ticker));
+                    if (cached) {
+                      const data = JSON.parse(cached);
+                      if (data.quote?.price) {
+                        endPrice = data.quote.price;
+                      }
+                    }
+                  } catch {
+                    // 忽略快取錯誤
+                  }
+
+                  // 若無快取則抓取即時報價
+                  if (!endPrice) {
+                    try {
+                      // EU 市場 (4) 使用 Euronext API
+                      if (benchmark.market === 4) {
+                        const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
+                        endPrice = euronextQuote?.price;
+                        if (euronextQuote?.price && euronextQuote?.exchangeRate) {
+                          saveQuoteToCache(benchmark.ticker, euronextQuote.price, euronextQuote.exchangeRate);
+                        }
+                      } else {
+                        const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
+                        endPrice = quote?.price;
+                        if (quote?.price) {
+                          // Use 1 as default exchange rate for non-Euronext
+                          saveQuoteToCache(benchmark.ticker, quote.price, 1);
+                        }
+                      }
+                    } catch {
+                      // 備援：若標準市場失敗則嘗試 Euronext
+                      if (benchmark.market === 4) {
+                        const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(benchmark.ticker, 'TWD');
+                        endPrice = euronextQuote?.price;
+                        if (euronextQuote?.price && euronextQuote?.exchangeRate) {
+                          saveQuoteToCache(benchmark.ticker, euronextQuote.price, euronextQuote.exchangeRate);
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  // 歷史年度取得年底價格
+                  const endPriceData = await marketDataApi.getHistoricalPrices(
+                    [benchmark.ticker],
+                    yearEndDate,
+                    { [benchmark.ticker]: benchmark.market }
+                  );
+                  endPrice = endPriceData[benchmark.ticker]?.price;
+                }
+
+                if (endPrice && startPrice > 0) {
+                  returnValue = ((endPrice - startPrice) / startPrice) * 100;
+                } else {
+                  returnValue = null;
+                }
+              }
+            } catch (err) {
+              console.error(`無法計算 ${benchmark.ticker} 的報酬:`, err);
+              returnValue = null;
             }
 
-            if (endPrice && startPrice > 0) {
-              newReturns[benchmark.id] = ((endPrice - startPrice) / startPrice) * 100;
-            } else {
-              newReturns[benchmark.id] = null;
-            }
-          } catch (err) {
-            console.error(`Failed to calculate return for ${benchmark.ticker}:`, err);
-            newReturns[benchmark.id] = null;
-          }
-        })
-      );
+            // 更新本地集合
+            collectedReturns[benchmark.id] = returnValue;
 
-      setCustomBenchmarkReturns(newReturns);
-    } catch (err) {
-        console.error('Failed to calculate custom benchmark returns:', err);
+            // 每個基準完成後漸進更新狀態
+            setCustomBenchmarkReturns(prev => ({
+              ...prev,
+              [benchmark.id]: returnValue
+            }));
+          })
+        );
+
+        // 儲存完整結果至快取
+        saveCachedCustomBenchmarkReturns(selectedYear, collectedReturns);
+
+      } catch (err) {
+        console.error('無法計算自訂基準報酬:', err);
       } finally {
         setIsLoadingCustomBenchmark(false);
       }
     };
 
     fetchCustomBenchmarkReturns();
-  }, [selectedYear, availableYears, customBenchmarks]);
+  }, [selectedYear, availableYears, customBenchmarks, selectedBenchmarks]);
 
   /**
    * 從 localStorage 載入報價快取（與 Portfolio/Dashboard 共用 quote cache）。
@@ -458,7 +771,7 @@ export function PerformancePage() {
 
     await Promise.all(missingPrices.map(async (mp) => {
       try {
-        // Check if this is a Euronext ticker (market = 4)
+        // 檢查是否為 Euronext ticker (market = 4)
         if (mp.market === 4) {
           const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(mp.ticker, homeCurrency);
           if (euronextQuote?.exchangeRate) {
@@ -466,11 +779,13 @@ export function PerformancePage() {
               price: euronextQuote.price,
               exchangeRate: euronextQuote.exchangeRate,
             };
+            // 儲存至快取供未來使用
+            saveQuoteToCache(mp.ticker, euronextQuote.price, euronextQuote.exchangeRate);
           }
           return;
         }
 
-        // Standard market handling
+        // 標準市場處理
         const market = mp.market ?? guessMarket(mp.ticker);
         let quote = await stockPriceApi.getQuoteWithRate(market, mp.ticker, homeCurrency);
 
@@ -483,9 +798,11 @@ export function PerformancePage() {
             price: quote.price,
             exchangeRate: quote.exchangeRate,
           };
+          // 儲存至快取供未來使用
+          saveQuoteToCache(mp.ticker, quote.price, quote.exchangeRate);
         }
       } catch {
-        // If US fails, try UK as fallback (for ETFs like VWRA)
+        // 若 US 失敗則嘗試 UK 作為備援（適用於 VWRA 等 ETF）
         if (guessMarket(mp.ticker) === StockMarket.US) {
           try {
             const ukQuote = await stockPriceApi.getQuoteWithRate(
@@ -496,13 +813,15 @@ export function PerformancePage() {
                 price: ukQuote.price,
                 exchangeRate: ukQuote.exchangeRate,
               };
+              // 儲存至快取供未來使用
+              saveQuoteToCache(mp.ticker, ukQuote.price, ukQuote.exchangeRate);
             }
           } catch {
-            // UK also failed
-            console.error(`Failed to fetch price for ${mp.ticker} from both US and UK markets`);
+            // UK 也失敗
+            console.error(`無法從 US 和 UK 市場取得 ${mp.ticker} 的價格`);
           }
         } else {
-          console.error(`Failed to fetch price for ${mp.ticker}`);
+          console.error(`無法取得 ${mp.ticker} 的價格`);
         }
       }
     }));
@@ -529,15 +848,15 @@ export function PerformancePage() {
     const yearStartPrices: Record<string, YearEndPriceInfo> = {};
     const yearEndPrices: Record<string, YearEndPriceInfo> = {};
 
-    // Separate by price type
+    // 依價格類型分類
     const yearStartMissing = missingPrices.filter(mp => mp.priceType === 'YearStart');
     const yearEndMissing = missingPrices.filter(mp => mp.priceType === 'YearEnd');
 
-    // Collect unique currencies needed for exchange rate lookup
+    // 收集需要查詢匯率的貨幣
     const currenciesNeeded = new Set<string>();
 
-    // Fetch year-start prices from prior year Dec 31
-    // Backend handles both international (Stooq) and Taiwan (TWSE) stocks
+    // 從上一年度 12/31 取得年初價格
+    // 後端同時處理國際股（Stooq）和台股（TWSE）
     const yearStartDate = `${year - 1}-12-31`;
     if (yearStartMissing.length > 0) {
       const tickers = yearStartMissing.map(mp => mp.ticker);
@@ -559,7 +878,7 @@ export function PerformancePage() {
           }
         }
 
-        // Fetch historical exchange rates for year-start
+        // 取得年初的歷史匯率
         const yearStartRates: Record<string, number> = {};
         if (currenciesNeeded.size > 0 && homeCurrency === 'TWD') {
           const ratePromises = Array.from(currenciesNeeded).map(async (currency) => {
@@ -569,7 +888,7 @@ export function PerformancePage() {
                 yearStartRates[currency] = rate.rate;
               }
             } catch {
-              console.warn(`Failed to fetch ${currency}/${homeCurrency} rate for ${yearStartDate}`);
+              console.warn(`無法取得 ${yearStartDate} 的 ${currency}/${homeCurrency} 匯率`);
             }
           });
           await Promise.all(ratePromises);
@@ -584,7 +903,7 @@ export function PerformancePage() {
             } else if (yearStartRates[result.currency]) {
               exchangeRate = yearStartRates[result.currency];
             } else {
-              // Fallback to hardcoded rate if API fails
+              // API 失敗時使用備援匯率
               exchangeRate = getFallbackExchangeRate(result.currency, homeCurrency) ?? 1;
             }
             yearStartPrices[mp.ticker] = {
@@ -594,11 +913,11 @@ export function PerformancePage() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch year-start prices from Stooq:', err);
+        console.error('無法從 Stooq 取得年初價格:', err);
       }
     }
 
-    // Fetch year-end prices from current year Dec 31
+    // 從當年度 12/31 取得年底價格
     const yearEndDate = `${year}-12-31`;
     if (yearEndMissing.length > 0) {
       const tickers = yearEndMissing.map(mp => mp.ticker);
@@ -621,7 +940,7 @@ export function PerformancePage() {
           }
         }
 
-        // Fetch historical exchange rates for year-end
+        // 取得年底的歷史匯率
         const yearEndRates: Record<string, number> = {};
         if (yearEndCurrenciesNeeded.size > 0 && homeCurrency === 'TWD') {
           const ratePromises = Array.from(yearEndCurrenciesNeeded).map(async (currency) => {
@@ -631,7 +950,7 @@ export function PerformancePage() {
                 yearEndRates[currency] = rate.rate;
               }
             } catch {
-              console.warn(`Failed to fetch ${currency}/${homeCurrency} rate for ${yearEndDate}`);
+              console.warn(`無法取得 ${yearEndDate} 的 ${currency}/${homeCurrency} 匯率`);
             }
           });
           await Promise.all(ratePromises);
@@ -646,7 +965,7 @@ export function PerformancePage() {
             } else if (yearEndRates[result.currency]) {
               exchangeRate = yearEndRates[result.currency];
             } else {
-              // Fallback to hardcoded rate if API fails
+              // API 失敗時使用備援匯率
               exchangeRate = getFallbackExchangeRate(result.currency, homeCurrency) ?? 1;
             }
             yearEndPrices[mp.ticker] = {
@@ -656,7 +975,7 @@ export function PerformancePage() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch year-end prices from Stooq:', err);
+        console.error('無法從 Stooq 取得年底價格:', err);
       }
     }
 
@@ -707,20 +1026,20 @@ export function PerformancePage() {
     const autoFetchPrices = async () => {
       if (!performance || !portfolio || !selectedYear || !availableYears) return;
       if (performance.missingPrices.length === 0) {
-        fetchRetryCountRef.current = 0; // Reset retry count when no missing prices
+        fetchRetryCountRef.current = 0; // 無缺漏價格時重設重試計數
         return;
       }
-      if (hasFetchedForYearRef.current === selectedYear) return; // Already fetched for this year
+      if (hasFetchedForYearRef.current === selectedYear) return; // 該年度已抓取過
 
-      // Limit auto-retries to prevent infinite loops (max 2 retries)
+      // 限制自動重試次數以防止無限迴圈（最多 2 次）
       if (fetchRetryCountRef.current >= 2) {
         setPriceFetchFailed(true);
         return;
       }
 
-      // Mark as fetching in progress (use negative value to indicate in-progress)
+      // 標記為抓取中（使用負數表示進行中）
       const fetchingMarker = -selectedYear;
-      if (hasFetchedForYearRef.current === fetchingMarker) return; // Already fetching
+      if (hasFetchedForYearRef.current === fetchingMarker) return; // 已在抓取中
       hasFetchedForYearRef.current = fetchingMarker;
       fetchRetryCountRef.current += 1;
 
@@ -731,15 +1050,15 @@ export function PerformancePage() {
         let allFetched = false;
 
         if (isCurrentYear) {
-          // YTD: Use cached prices first, then fetch remaining from Sina/Euronext
+          // YTD：優先使用快取價格，再抓取剩餘的
           const tickers = performance.missingPrices.map(mp => mp.ticker);
           const cachedPrices = loadCachedPrices(tickers);
 
-          // If we have cached prices, immediately calculate with them (no loading spinner)
-          // This provides instant feedback while we fetch fresh prices in the background
+          // 若有快取價格則立即計算（不顯示 spinner）
+          // 在背景抓取新鮮價格時提供即時回饋
           const cachedCount = Object.keys(cachedPrices).length;
           if (cachedCount > 0) {
-            // Calculate immediately with cached prices (no spinner shown)
+            // 使用快取價格立即計算（不顯示 spinner）
             calculatePerformance(selectedYear, cachedPrices);
           }
 
@@ -747,7 +1066,7 @@ export function PerformancePage() {
             mp => !cachedPrices[mp.ticker]
           );
 
-          // Only show loading spinner if we need to fetch prices
+          // 只在需要抓取價格時顯示 loading spinner
           let fetchedPrices: Record<string, YearEndPriceInfo> = {};
           if (stillMissing.length > 0) {
             setIsFetchingPrices(true);
@@ -757,19 +1076,19 @@ export function PerformancePage() {
           const allPrices = { ...cachedPrices, ...fetchedPrices };
           const fetchedCount = Object.keys(allPrices).length;
 
-          // Only call calculatePerformance again if we fetched new prices
-          // (if we only had cached prices, we already calculated above)
+          // 只在抓到新價格時再次呼叫 calculatePerformance
+          // （若只有快取價格則上面已計算過）
           if (Object.keys(fetchedPrices).length > 0 && fetchedCount > 0) {
             calculatePerformance(selectedYear, allPrices);
           }
 
-          // Check if all prices fetched
+          // 檢查是否所有價格都已抓取
           allFetched = fetchedCount >= performance.missingPrices.length;
           if (!allFetched) {
             setPriceFetchFailed(true);
           }
         } else {
-          // Historical year: Use Stooq for international stocks
+          // 歷史年度：使用 Stooq 取得國際股價格
           setIsFetchingPrices(true);
           const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
             performance.missingPrices,
@@ -782,7 +1101,7 @@ export function PerformancePage() {
             calculatePerformance(selectedYear, yearEndPrices, yearStartPrices);
           }
 
-          // Check if all prices fetched
+          // 檢查是否所有價格都已抓取
           const totalFetched = Object.keys(yearEndPrices).length + Object.keys(yearStartPrices).length;
           allFetched = totalFetched >= performance.missingPrices.length;
           if (!allFetched) {
@@ -790,18 +1109,18 @@ export function PerformancePage() {
           }
         }
 
-        // Only mark as fetched if all prices were retrieved
-        // This allows retry on next render if partial fetch occurred
+        // 只在成功抓取所有價格時標記為已抓取
+        // 若只抓到部分則允許下次 render 時重試
         if (allFetched) {
           hasFetchedForYearRef.current = selectedYear;
         } else {
-          // Reset to allow retry (clear the fetching marker)
+          // 重設以允許重試（清除抓取中標記）
           hasFetchedForYearRef.current = null;
         }
       } catch (err) {
-        console.error('Failed to auto-fetch prices:', err);
+        console.error('自動抓取價格失敗:', err);
         setPriceFetchFailed(true);
-        // Reset to allow retry on error
+        // 錯誤時重設以允許重試
         hasFetchedForYearRef.current = null;
       } finally {
         setIsFetchingPrices(false);
@@ -811,21 +1130,21 @@ export function PerformancePage() {
     autoFetchPrices();
   }, [performance, portfolio, selectedYear, availableYears, loadCachedPrices, fetchCurrentPrices, fetchHistoricalPrices, calculatePerformance]);
 
-  // Manual refresh button handler
+  // 手動重新整理按鈕處理
   const handleRefreshPrices = async () => {
     if (!performance || !portfolio || !selectedYear || !availableYears) return;
     if (performance.missingPrices.length === 0) return;
 
     setIsFetchingPrices(true);
-    setDismissMissingPricesOverlay(false); // Show overlay again when manually refreshing
-    hasFetchedForYearRef.current = null; // Reset to allow re-fetch
-    fetchRetryCountRef.current = 0; // Reset retry count for manual refresh
+    setDismissMissingPricesOverlay(false); // 手動重新整理時再次顯示 overlay
+    hasFetchedForYearRef.current = null; // 重設以允許重新抓取
+    fetchRetryCountRef.current = 0; // 手動重新整理時重設重試計數
 
     try {
       const isCurrentYear = selectedYear === availableYears.currentYear;
 
       if (isCurrentYear) {
-        // YTD: Use Sina/Euronext real-time API
+        // YTD：使用 Sina/Euronext 即時 API
         const fetchedPrices = await fetchCurrentPrices(
           performance.missingPrices,
           portfolio.homeCurrency
@@ -834,7 +1153,7 @@ export function PerformancePage() {
           calculatePerformance(selectedYear, fetchedPrices);
         }
       } else {
-        // Historical: Use Stooq historical API
+        // 歷史年度：使用 Stooq 歷史 API
         const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
           performance.missingPrices,
           selectedYear,
@@ -846,7 +1165,7 @@ export function PerformancePage() {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch prices:', err);
+      console.error('抓取價格失敗:', err);
     } finally {
       setIsFetchingPrices(false);
     }
@@ -855,9 +1174,9 @@ export function PerformancePage() {
   const handleYearChange = (year: number) => {
     setSelectedYear(year);
     setPriceFetchFailed(false);
-    setDismissMissingPricesOverlay(false); // Reset overlay dismiss state for new year
-    hasFetchedForYearRef.current = null; // Reset to allow fresh fetch for new year
-    fetchRetryCountRef.current = 0; // Reset retry count for new year
+    setDismissMissingPricesOverlay(false); // 新年度重設 overlay dismiss 狀態
+    hasFetchedForYearRef.current = null; // 重設以允許新年度重新抓取
+    fetchRetryCountRef.current = 0; // 新年度重設重試計數
   };
 
   const handleMissingPricesSubmit = (prices: Record<string, YearEndPriceInfo>) => {
@@ -878,26 +1197,12 @@ export function PerformancePage() {
     return Math.round(value).toLocaleString('zh-TW');
   };
 
-  if (isLoadingPortfolio) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-peach)]" />
-      </div>
-    );
-  }
-
-  if (!portfolio) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-[var(--text-muted)]">找不到投資組合</div>
-      </div>
-    );
-  }
+  // 注意：isLoadingPortfolio 和 !portfolio 檢查現在在父元件 PerformancePage 中
 
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
+        {/* 頁首 */}
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
@@ -923,15 +1228,23 @@ export function PerformancePage() {
           </div>
         )}
 
-        {/* Performance Card */}
-        {isLoadingPerformance ? (
+        {/* 績效卡片 */}
+        {isLoadingPerformance && !performance ? (
           <div className="card-dark p-8 flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
             <span className="ml-2 text-[var(--text-muted)]">計算績效中...</span>
           </div>
         ) : performance ? (
           <>
-            {/* Missing Prices Overlay - Full screen modal when fetching or missing prices */}
+            {/* 背景更新時顯示小型 loading 指示器 */}
+            {isLoadingPerformance && (
+              <div className="fixed bottom-4 right-4 bg-[var(--bg-tertiary)] border border-[var(--border-color)] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
+                <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-peach)]" />
+                <span className="text-xs text-[var(--text-secondary)]">更新數據中...</span>
+              </div>
+            )}
+
+            {/* 缺漏價格 Overlay - 抓取中或有缺漏價格時顯示全螢幕 modal */}
             {performance.missingPrices.length > 0 && !dismissMissingPricesOverlay && priceFetchFailed && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="card-dark w-full max-w-md mx-4">
@@ -952,7 +1265,7 @@ export function PerformancePage() {
                   </div>
                   <div className="p-5">
                     {(() => {
-                      // Dedupe tickers for display
+                      // 去重 ticker 以供顯示
                       const uniqueTickers = [...new Set(performance.missingPrices.map(mp => mp.ticker))];
                       return (
                         <>
@@ -1029,7 +1342,7 @@ export function PerformancePage() {
               />
             </div>
 
-            {/* Performance Metrics - Annual Return Cards */}
+            {/* 績效指標 - 年度報酬率卡片 */}
             <div className="grid grid-cols-1 gap-6 mb-6">
               <div className={`card-dark p-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
                 <div className="flex items-center gap-2 mb-4">
@@ -1198,19 +1511,8 @@ export function PerformancePage() {
               </div>
             </div>
 
-            {/* Performance Bar Chart - Portfolio vs Benchmarks (Multi-select) */}
-            {/* FR-132/T130: For current year, show loading state until prices are ready */}
-            {selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0) && ((currencyMode === 'source' ? performance.modifiedDietzPercentageSource : performance.modifiedDietzPercentage) == null) ? (
-              <div className="card-dark p-6 mt-6">
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">績效比較</h3>
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                  <span className="ml-2 text-[var(--text-muted)]">正在取得即時股價以計算績效...</span>
-                </div>
-              </div>
-            ) : ((currencyMode === 'source'
-                  ? performance.modifiedDietzPercentageSource
-                  : performance.modifiedDietzPercentage) != null) && (
+            {/* 績效比較長條圖 - 投資組合 vs 基準（多選） */}
+            {performance && (
               <div className="card-dark p-6 mt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">
@@ -1233,7 +1535,7 @@ export function PerformancePage() {
                   </div>
                 </div>
 
-                {/* Benchmark Settings Modal - Dashboard style */}
+                {/* 基準設定 Modal - Dashboard 風格 */}
                 {showBenchmarkSettings && (
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="card-dark w-full max-w-md mx-4">
@@ -1370,24 +1672,49 @@ export function PerformancePage() {
                     </div>
                   </div>
                 )}
-                {/* Show loading if: stale version OR (loading AND no data yet) */}
-                {(lastResetVersionRef.current !== performanceVersion || ((isLoadingBenchmark || isLoadingCustomBenchmark) && Object.keys(benchmarkReturns).length === 0 && Object.keys(customBenchmarkReturns).length === 0)) ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                    <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
-                  </div>
-                ) : (
-                  <>
-                    <PerformanceBarChart
+                {/* 等待所有基準資料載入完成後才顯示長條圖，避免分批渲染閃爍 */}
+                {/* 只有當所有選擇的基準都有資料時才顯示，否則等待載入 */}
+                {(() => {
+                  // 檢查是否所有選擇的基準都有資料
+                  const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
+                  const allSystemBenchmarksReady = systemBenchmarks.length === 0 ||
+                    systemBenchmarks.every(k => benchmarkReturns[k] !== undefined);
+
+                  const selectedCustomBenchmarkIds = customBenchmarks
+                    .filter(b => selectedBenchmarks.includes(`custom_${b.id}`))
+                    .map(b => b.id);
+                  const allCustomBenchmarksReady = selectedCustomBenchmarkIds.length === 0 ||
+                    selectedCustomBenchmarkIds.every(id => customBenchmarkReturns[id] !== undefined);
+
+                  // 需要等待所有資料都準備好
+                  const allDataReady = allSystemBenchmarksReady && allCustomBenchmarksReady;
+
+                  if (!allDataReady) {
+                    return (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                        <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <PerformanceBarChart
                       data={[
-                        {
-                          label: `我的投資組合（${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency}）`,
-                          value: currencyMode === 'home'
-                            ? performance.modifiedDietzPercentage!
-                            : performance.modifiedDietzPercentageSource!,
-                          tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
-                        },
-                        /* FR-134: Filter out benchmarks with null data instead of showing 0 */
+                        // Only include portfolio return if value exists
+                        ...((currencyMode === 'home'
+                          ? performance.modifiedDietzPercentage
+                          : performance.modifiedDietzPercentageSource) != null
+                          ? [{
+                              label: `我的投資組合（${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency}）`,
+                              value: currencyMode === 'home'
+                                ? performance.modifiedDietzPercentage!
+                                : performance.modifiedDietzPercentageSource!,
+                              tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
+                            }]
+                          : []),
+                        /* FR-134: 過濾掉資料為 null 的基準，不顯示為 0 */
                         ...selectedBenchmarks
                           .filter(benchmarkKey => benchmarkReturns[benchmarkKey] != null)
                           .map(benchmarkKey => {
@@ -1401,7 +1728,7 @@ export function PerformancePage() {
                               tooltip: `${selectedYear} 年度報酬率${source ? `（來源：${source}）` : ''}`,
                             };
                           }),
-                        /* Custom user benchmarks - only show selected ones */
+                        /* 自訂使用者基準 - 僅顯示已選擇的 */
                         ...customBenchmarks
                           .filter(b => {
                             const customKey = `custom_${b.id}`;
@@ -1415,7 +1742,7 @@ export function PerformancePage() {
                       ]}
                       height={80 + (selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length + customBenchmarks.filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] != null).length) * 40}
                     />
-                    {/* FR-134: Show which benchmarks are hidden due to missing data */}
+                    {/* FR-134: 顯示因資料不可用而隱藏的基準 */}
                     {(selectedBenchmarks.some(k => !k.startsWith('custom_') && benchmarkReturns[k] == null) || customBenchmarks.some(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)) && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">
                         以下指數因資料不可用已隱藏：
@@ -1430,7 +1757,8 @@ export function PerformancePage() {
                       </p>
                     )}
                   </>
-                )}
+                  );
+                })()}
               </div>
             )}
           </>
@@ -1444,7 +1772,7 @@ export function PerformancePage() {
           </div>
         )}
 
-        {/* Missing Price Modal */}
+        {/* 缺漏價格 Modal */}
         {performance && (
           <MissingPriceModal
             isOpen={showMissingPriceModal}

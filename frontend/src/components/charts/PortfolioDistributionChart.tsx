@@ -81,8 +81,8 @@ export function PortfolioDistributionChart({
   return (
     <div className="card-dark p-6">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">資產分佈</h3>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+      <div style={{ height: 256 }}>
+        <ResponsiveContainer width="100%" height={256} debounce={50}>
           <PieChart>
             <Pie
               data={data}

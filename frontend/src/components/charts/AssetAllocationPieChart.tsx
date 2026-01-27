@@ -88,8 +88,8 @@ export function AssetAllocationPieChart({
   }
 
   return (
-    <div className="w-full h-64">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full" style={{ height: 256 }}>
+      <ResponsiveContainer width="100%" height={256} debounce={50}>
         <PieChart>
           <Pie
             data={data}
