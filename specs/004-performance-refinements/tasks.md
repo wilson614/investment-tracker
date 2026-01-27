@@ -182,12 +182,12 @@
 - [x] T063 Fix any failing tests
 - [x] T064 [P] Update Swagger/OpenAPI comments for new endpoints
 - [x] T065 Run quickstart.md verification checklist
-- [ ] T066 Manual testing: US1 - Performance page shows Modified Dietz + TWR
-- [ ] T067 [P] Manual testing: US2 - Currency toggle works and persists
-- [ ] T068 [P] Manual testing: US3 - Position detail shows source currency P&L
-- [ ] T069 [P] Manual testing: US4 - Chart shows monthly data points
-- [ ] T070 [P] Manual testing: US5 - Benchmark shows Yahoo Total Return
-- [ ] T071 Manual testing: US6 - User stays logged in for 2+ hours
+- [x] T066 Manual testing: US1 - Performance page shows Modified Dietz + TWR
+- [x] T067 [P] Manual testing: US2 - Currency toggle works and persists
+- [x] T068 [P] Manual testing: US3 - Position detail shows source currency P&L
+- [x] T069 [P] Manual testing: US4 - Chart shows monthly data points
+- [x] T070 [P] Manual testing: US5 - Benchmark shows Yahoo Total Return
+- [x] T071 Manual testing: US6 - User stays logged in for 2+ hours
 
 ---
 
