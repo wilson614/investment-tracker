@@ -116,6 +116,7 @@ export function PerformancePage() {
   const [benchmarkReturns, setBenchmarkReturns] = useState<Record<string, number | null>>({});
   const [benchmarkReturnSources, setBenchmarkReturnSources] = useState<Record<string, string | null>>({});
   const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(true); // Start as true to prevent flash
+  const [isLoadingCustomBenchmark, setIsLoadingCustomBenchmark] = useState(true); // Track custom benchmark calculation
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(null);
   const lastResetVersionRef = useRef<number>(performanceVersion); // Track version to detect stale state
 
@@ -193,6 +194,7 @@ export function PerformancePage() {
     setBenchmarkReturns({});
     setBenchmarkReturnSources({});
     setIsLoadingBenchmark(true);
+    setIsLoadingCustomBenchmark(true);
     // Update version ref to mark state as current
     lastResetVersionRef.current = performanceVersion;
   }, [performanceVersion]);
@@ -333,14 +335,17 @@ export function PerformancePage() {
     const fetchCustomBenchmarkReturns = async () => {
       if (!selectedYear || !availableYears || customBenchmarks.length === 0) {
         setCustomBenchmarkReturns({});
+        setIsLoadingCustomBenchmark(false);
         return;
       }
 
+      setIsLoadingCustomBenchmark(true);
       const isCurrentYear = selectedYear === availableYears.currentYear;
       const newReturns: Record<string, number | null> = {};
 
-      await Promise.all(
-        customBenchmarks.map(async (benchmark) => {
+      try {
+        await Promise.all(
+          customBenchmarks.map(async (benchmark) => {
           try {
             const yearStartDate = `${selectedYear - 1}-12-31`;
             const yearEndDate = `${selectedYear}-12-31`;
@@ -400,7 +405,11 @@ export function PerformancePage() {
         })
       );
 
-      setCustomBenchmarkReturns(newReturns);
+      } catch (err) {
+        console.error('Failed to calculate custom benchmark returns:', err);
+      } finally {
+        setIsLoadingCustomBenchmark(false);
+      }
     };
 
     fetchCustomBenchmarkReturns();
@@ -1010,134 +1019,68 @@ export function PerformancePage() {
               </div>
             )}
 
+            <div className="flex justify-end mb-4">
+              <CurrencyToggle
+                value={currencyMode}
+                onChange={setCurrencyMode}
+                sourceCurrency={performance.sourceCurrency}
+                homeCurrency={portfolio.homeCurrency}
+              />
+            </div>
+
             {/* Performance Metrics - Annual Return Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Source Currency (USD) */}
-              {performance.sourceCurrency && (
-                <div className="card-dark p-6 border-l-4 border-[var(--accent-peach)]">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
-                    <h3 className="text-[var(--text-muted)]">
-                      {selectedYear} 年度報酬 ({performance.sourceCurrency})
-                    </h3>
-                    <div className="relative group">
-                      <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                          原幣報酬率（不含匯率變動）
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-                    {/* 修正 Dietz 報酬率 */}
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <p className="text-sm text-[var(--text-muted)]">修正 Dietz 報酬率</p>
-                        <div className="relative group">
-                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              衡量投資人操作（加碼/減碼）
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {performance.modifiedDietzPercentageSource != null ? (
-                        <div className="flex items-center gap-2">
-                          {performance.modifiedDietzPercentageSource >= 0 ? (
-                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
-                          ) : (
-                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
-                          )}
-                          <span className={`text-3xl font-bold number-display ${
-                            performance.modifiedDietzPercentageSource >= 0 ? 'number-positive' : 'number-negative'
-                          }`}>
-                            {formatPercent(performance.modifiedDietzPercentageSource)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-2xl text-[var(--text-muted)]">—</span>
-                      )}
-                    </div>
-
-                    {/* 時間加權報酬率 */}
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
-                        <div className="relative group">
-                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              衡量資產本身表現（不受加碼/減碼影響，TWR）
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {performance.timeWeightedReturnPercentageSource != null ? (
-                        <div className="flex items-center gap-2">
-                          {performance.timeWeightedReturnPercentageSource >= 0 ? (
-                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
-                          ) : (
-                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
-                          )}
-                          <span className={`text-3xl font-bold number-display ${
-                            performance.timeWeightedReturnPercentageSource >= 0 ? 'number-positive' : 'number-negative'
-                          }`}>
-                            {formatPercent(performance.timeWeightedReturnPercentageSource)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-2xl text-[var(--text-muted)]">—</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Home Currency (TWD) */}
-              <div className="card-dark p-6">
+            <div className="grid grid-cols-1 gap-6 mb-6">
+              <div className={`card-dark p-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
                 <div className="flex items-center gap-2 mb-4">
                   <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                   <h3 className="text-[var(--text-muted)]">
-                    {selectedYear} 年度報酬 ({portfolio.homeCurrency})
+                    {selectedYear} 年度報酬 ({currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})
                   </h3>
                   <div className="relative group">
                     <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                     <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                       <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                        {performance.transactionCount} 筆交易
+                        {currencyMode === 'source'
+                          ? '原幣報酬率（不含匯率變動）'
+                          : `${performance.transactionCount} 筆交易`}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  {/* 修正 Dietz 報酬率 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 資金加權報酬率 */}
                   <div>
                     <div className="flex items-center gap-1 mb-1">
-                      <p className="text-sm text-[var(--text-muted)]">修正 Dietz 報酬率</p>
+                      <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
                       <div className="relative group">
                         <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                         <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                           <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量投資人操作（加碼/減碼）
+                            衡量投資人操作 (Modified Dietz)
                           </div>
                         </div>
                       </div>
                     </div>
-                    {performance.modifiedDietzPercentage != null ? (
+                    {(currencyMode === 'source'
+                      ? performance.modifiedDietzPercentageSource
+                      : performance.modifiedDietzPercentage) != null ? (
                       <div className="flex items-center gap-2">
-                        {performance.modifiedDietzPercentage >= 0 ? (
+                        {(currencyMode === 'source'
+                          ? performance.modifiedDietzPercentageSource!
+                          : performance.modifiedDietzPercentage!) >= 0 ? (
                           <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                         ) : (
                           <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
                         )}
                         <span className={`text-3xl font-bold number-display ${
-                          performance.modifiedDietzPercentage >= 0 ? 'number-positive' : 'number-negative'
+                          (currencyMode === 'source'
+                            ? performance.modifiedDietzPercentageSource!
+                            : performance.modifiedDietzPercentage!) >= 0 ? 'number-positive' : 'number-negative'
                         }`}>
-                          {formatPercent(performance.modifiedDietzPercentage)}
+                          {formatPercent(currencyMode === 'source'
+                            ? performance.modifiedDietzPercentageSource
+                            : performance.modifiedDietzPercentage)}
                         </span>
                       </div>
                     ) : isFetchingPrices ? (
@@ -1158,22 +1101,30 @@ export function PerformancePage() {
                         <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                         <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                           <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量資產本身表現（不受加碼/減碼影響，TWR）
+                            衡量資產本身表現 (TWR)
                           </div>
                         </div>
                       </div>
                     </div>
-                    {performance.timeWeightedReturnPercentage != null ? (
+                    {(currencyMode === 'source'
+                      ? performance.timeWeightedReturnPercentageSource
+                      : performance.timeWeightedReturnPercentage) != null ? (
                       <div className="flex items-center gap-2">
-                        {performance.timeWeightedReturnPercentage >= 0 ? (
+                        {(currencyMode === 'source'
+                          ? performance.timeWeightedReturnPercentageSource!
+                          : performance.timeWeightedReturnPercentage!) >= 0 ? (
                           <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                         ) : (
                           <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
                         )}
                         <span className={`text-3xl font-bold number-display ${
-                          performance.timeWeightedReturnPercentage >= 0 ? 'number-positive' : 'number-negative'
+                          (currencyMode === 'source'
+                            ? performance.timeWeightedReturnPercentageSource!
+                            : performance.timeWeightedReturnPercentage!) >= 0 ? 'number-positive' : 'number-negative'
                         }`}>
-                          {formatPercent(performance.timeWeightedReturnPercentage)}
+                          {formatPercent(currencyMode === 'source'
+                            ? performance.timeWeightedReturnPercentageSource
+                            : performance.timeWeightedReturnPercentage)}
                         </span>
                       </div>
                     ) : isFetchingPrices ? (
@@ -1189,68 +1140,22 @@ export function PerformancePage() {
               </div>
             </div>
 
-            {/* Value Summary - Source Currency */}
-            {/* FR-133: Always show source currency block, including first year */}
-            {performance.sourceCurrency && (
-              <div className="card-dark p-6 mb-6 border-l-4 border-[var(--accent-peach)]">
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                  {selectedYear} 年度摘要 ({performance.sourceCurrency})
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-[var(--text-muted)]">年初價值</p>
-                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                      {/* FR-133: Show "首年" when no prior holdings exist */}
-                      {performance.startValueSource == null || performance.startValueSource === 0
-                        ? '首年'
-                        : `${formatCurrency(performance.startValueSource)} ${performance.sourceCurrency}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-[var(--text-muted)]">
-                      {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
-                    </p>
-                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                      {formatCurrency(performance.endValueSource)} {performance.sourceCurrency}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-[var(--text-muted)]">淨投入</p>
-                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                      {formatCurrency(performance.netContributionsSource)} {performance.sourceCurrency}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-[var(--text-muted)]">淨獲利</p>
-                    <p className={`text-lg font-medium number-display ${
-                      (performance.endValueSource ?? 0) - (performance.startValueSource ?? 0) - (performance.netContributionsSource ?? 0) >= 0
-                        ? 'number-positive'
-                        : 'number-negative'
-                    }`}>
-                      {formatCurrency(
-                        (performance.endValueSource ?? 0) -
-                        (performance.startValueSource ?? 0) -
-                        (performance.netContributionsSource ?? 0)
-                      )} {performance.sourceCurrency}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Value Summary - Home Currency */}
-            <div className="card-dark p-6">
+            {/* Value Summary */}
+            <div className={`card-dark p-6 mb-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                {selectedYear} 年度摘要 ({portfolio.homeCurrency})
+                {selectedYear} 年度摘要 ({currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-[var(--text-muted)]">年初價值</p>
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {/* FR-133: Show "首年" when no prior holdings exist */}
-                    {performance.startValueHome == null || performance.startValueHome === 0
-                      ? '首年'
-                      : `${formatCurrency(performance.startValueHome)} ${portfolio.homeCurrency}`}
+                    {currencyMode === 'source'
+                      ? (performance.startValueSource == null || performance.startValueSource === 0
+                          ? '首年'
+                          : `${formatCurrency(performance.startValueSource)} ${performance.sourceCurrency}`)
+                      : (performance.startValueHome == null || performance.startValueHome === 0
+                          ? '首年'
+                          : `${formatCurrency(performance.startValueHome)} ${portfolio.homeCurrency}`)}
                   </p>
                 </div>
                 <div>
@@ -1258,28 +1163,36 @@ export function PerformancePage() {
                     {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
                   </p>
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {formatCurrency(performance.endValueHome)} {portfolio.homeCurrency}
+                    {currencyMode === 'source'
+                      ? `${formatCurrency(performance.endValueSource)} ${performance.sourceCurrency}`
+                      : `${formatCurrency(performance.endValueHome)} ${portfolio.homeCurrency}`}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text-muted)]">淨投入</p>
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {formatCurrency(performance.netContributionsHome)} {portfolio.homeCurrency}
+                    {currencyMode === 'source'
+                      ? `${formatCurrency(performance.netContributionsSource)} ${performance.sourceCurrency}`
+                      : `${formatCurrency(performance.netContributionsHome)} ${portfolio.homeCurrency}`}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text-muted)]">淨獲利</p>
-                  <p className={`text-lg font-medium number-display ${
-                    (performance.endValueHome ?? 0) - (performance.startValueHome ?? 0) - performance.netContributionsHome >= 0
-                      ? 'number-positive'
-                      : 'number-negative'
-                  }`}>
-                    {formatCurrency(
-                      (performance.endValueHome ?? 0) -
-                      (performance.startValueHome ?? 0) -
-                      performance.netContributionsHome
-                    )} {portfolio.homeCurrency}
-                  </p>
+                  {(() => {
+                    const profit = currencyMode === 'source'
+                      ? (performance.endValueSource ?? 0) - (performance.startValueSource ?? 0) - (performance.netContributionsSource ?? 0)
+                      : (performance.endValueHome ?? 0) - (performance.startValueHome ?? 0) - performance.netContributionsHome;
+
+                    const currencyLabel = currencyMode === 'source'
+                      ? performance.sourceCurrency
+                      : portfolio.homeCurrency;
+
+                    return (
+                      <p className={`text-lg font-medium number-display ${profit >= 0 ? 'number-positive' : 'number-negative'}`}>
+                        {formatCurrency(profit)} {currencyLabel}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1303,12 +1216,6 @@ export function PerformancePage() {
                     績效比較
                   </h3>
                   <div className="flex items-center gap-3">
-                    <CurrencyToggle
-                      value={currencyMode}
-                      onChange={setCurrencyMode}
-                      sourceCurrency={performance.sourceCurrency}
-                      homeCurrency={portfolio.homeCurrency}
-                    />
                     <div className="relative">
                       <button
                         type="button"
@@ -1463,7 +1370,7 @@ export function PerformancePage() {
                   </div>
                 )}
                 {/* Show loading if: loading state, OR version mismatch (stale data), OR no benchmark data yet */}
-                {(isLoadingBenchmark || lastResetVersionRef.current !== performanceVersion || Object.keys(benchmarkReturns).length === 0) ? (
+                {(isLoadingBenchmark || isLoadingCustomBenchmark || lastResetVersionRef.current !== performanceVersion || Object.keys(benchmarkReturns).length === 0) ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
                     <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
@@ -1477,7 +1384,7 @@ export function PerformancePage() {
                           value: currencyMode === 'home'
                             ? performance.modifiedDietzPercentage!
                             : performance.modifiedDietzPercentageSource!,
-                          tooltip: `${selectedYear} 年度報酬率（修正 Dietz 報酬率）`,
+                          tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
                         },
                         /* FR-134: Filter out benchmarks with null data instead of showing 0 */
                         ...selectedBenchmarks

@@ -129,14 +129,27 @@ export default function CurrencyDetail() {
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const hasFetchedRate = useRef(false);
   const importTriggerRef = useRef<(() => void) | null>(null);
+  const scrollYRef = useRef<number>(0);
+
+  // Track if we have data loaded (to detect refresh vs initial)
+  const isDataLoadedRef = useRef(false);
+  if (ledger) isDataLoadedRef.current = true;
 
   /**
    * 載入帳本摘要與交易清單，並在初次載入時優先套用匯率快取做顯示。
    */
   const loadData = async () => {
     if (!id) return;
+
     try {
-      setLoading(true);
+      // 只有在已經有資料的情況下（例如刪除交易後重整），才需要記住 scroll 位置
+      if (isDataLoadedRef.current) {
+        scrollYRef.current = window.scrollY;
+      } else {
+        scrollYRef.current = 0;
+        setLoading(true);
+      }
+
       const [ledgerData, txData] = await Promise.all([
         currencyLedgerApi.getById(id),
         currencyTransactionApi.getByLedger(id),
@@ -155,6 +168,12 @@ export default function CurrencyDetail() {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
+      // Restore scroll position only if we have a stored position > 0 (refresh case)
+      if (scrollYRef.current > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollYRef.current });
+        });
+      }
     }
   };
 
@@ -388,7 +407,9 @@ export default function CurrencyDetail() {
               <div className="flex items-center gap-1">
                 <span className="text-lg text-[var(--text-muted)]">@</span>
                 <span className="text-lg font-medium text-[var(--accent-peach)]">
-                  {currentRate ? formatNumber(currentRate, 2) : '-'}
+                  {currentRate ? formatNumber(currentRate, 2) : (
+                    <span className="inline-block w-16">&nbsp;</span>
+                  )}
                 </span>
                 <button
                   onClick={handleFetchRate}

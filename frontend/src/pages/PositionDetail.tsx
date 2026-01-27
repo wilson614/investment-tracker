@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
 import { portfolioApi, transactionApi, stockPriceApi } from '../services/api';
+import { Skeleton } from '../components/common/SkeletonLoader';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { FileDropdown } from '../components/common';
@@ -111,8 +112,9 @@ export function PositionDetailPage() {
   const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [position, setPosition] = useState<StockPosition | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollYRef = useRef<number>(0);
 
   // Load cached quote on init (use useRef to avoid re-creating on every render)
   const cachedDataRef = useRef(ticker ? loadCachedQuote(ticker) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType });
@@ -130,6 +132,10 @@ export function PositionDetailPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(cachedData.updatedAt);
   const [positionXirr, setPositionXirr] = useState<XirrResult | null>(cachedXirrRef.current);
 
+  // Track if we have data loaded (to detect refresh vs initial)
+  const isDataLoadedRef = useRef(false);
+  if (position) isDataLoadedRef.current = true;
+
   // Auto-fetch tracking
   const hasFetched = useRef(false);
   const hasAppliedCache = useRef(false);
@@ -143,7 +149,13 @@ export function PositionDetailPage() {
     if (!ticker) return;
 
     try {
-      setIsLoading(true);
+      // 只有在已經有資料的情況下（例如刪除交易後重整），才需要記住 scroll 位置
+      if (isDataLoadedRef.current) {
+        scrollYRef.current = window.scrollY;
+      } else {
+        scrollYRef.current = 0;
+        setIsLoading(true);
+      }
       setError(null);
 
       // Get user's portfolio
@@ -221,6 +233,12 @@ export function PositionDetailPage() {
       setError(err instanceof Error ? err.message : '載入失敗');
     } finally {
       setIsLoading(false);
+      // Restore scroll position only if we have a stored position > 0 (refresh case)
+      if (scrollYRef.current > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollYRef.current });
+        });
+      }
     }
   }, [ticker, urlMarket]);
 
@@ -255,7 +273,9 @@ export function PositionDetailPage() {
           } catch {
             // Ignore cache errors
           }
-        }).catch(() => setPositionXirr(null));
+        }).catch(() => {
+          // 保持既有值，避免 UI 閃爍成 '-'
+        });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,8 +364,7 @@ export function PositionDetailPage() {
               // Ignore cache errors
             }
           } catch {
-            // XIRR calculation failed, ignore
-            setPositionXirr(null);
+            // XIRR calculation failed - keep previous value to avoid flicker
           }
         }
       } else {
@@ -408,7 +427,7 @@ export function PositionDetailPage() {
     return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
   };
 
-  if (isLoading) {
+  if (isLoading && !position) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-[var(--text-muted)] text-lg">載入中...</div>
@@ -511,66 +530,120 @@ export function PositionDetailPage() {
 
               <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">現價</p>
-                <p className="text-xl font-bold text-[var(--text-primary)] number-display">
-                  {lastQuote ? formatNumber(lastQuote.price) : '-'}
-                </p>
-                <p className="text-sm text-[var(--text-muted)]">
-                  {lastQuote ? `${baseCurrency} · 匯率 ${formatNumber(lastQuote.exchangeRate ?? 0, 4)}` : baseCurrency}
-                </p>
+                {lastQuote ? (
+                  <>
+                    <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                      {formatNumber(lastQuote.price)}
+                    </p>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      {`${baseCurrency} · 匯率 ${formatNumber(lastQuote.exchangeRate ?? 0, 4)}`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Skeleton width="w-24" height="h-7" />
+                    <Skeleton width="w-32" height="h-5" />
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Show computed values section when we have current value (from cache or fresh quote) */}
-            {position.currentValueHome != null && (
-              <>
-                <hr className="border-[var(--border-color)] my-4" />
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="metric-card">
-                    <p className="text-sm text-[var(--text-muted)] mb-1">目前市值</p>
+            <hr className="border-[var(--border-color)] my-4" />
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">目前市值</p>
+                {position.currentValueHome != null ? (
+                  <>
                     <p className="text-xl font-bold text-[var(--text-primary)] number-display">
                       {formatTWD(position.currentValueHome)}
                     </p>
                     <p className="text-sm text-[var(--text-muted)]">{homeCurrency}</p>
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <Skeleton width="w-24" height="h-7" />
+                    <Skeleton width="w-12" height="h-5" />
+                  </>
+                )}
+              </div>
 
-                  <div className="metric-card">
-                    <p className="text-sm text-[var(--text-muted)] mb-1">未實現損益</p>
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">未實現損益</p>
+                {position.unrealizedPnlHome != null ? (
+                  <>
                     <p className={`text-xl font-bold number-display ${pnlColor}`}>
                       {formatTWD(position.unrealizedPnlHome)}
                     </p>
                     <p className={`text-sm ${pnlColor}`}>
                       {formatPercent(position.unrealizedPnlPercentage)}
                     </p>
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <Skeleton width="w-24" height="h-7" />
+                    <Skeleton width="w-16" height="h-5" />
+                  </>
+                )}
+              </div>
 
-                  {position.unrealizedPnlSource != null && position.unrealizedPnlSourcePercentage != null && (
-                    <div className="metric-card">
-                      <p className="text-sm text-[var(--text-muted)] mb-1">原幣未實現損益</p>
-                      <p className={`text-xl font-bold number-display ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
-                        {formatSignedNumber(position.unrealizedPnlSource, 2)}
-                      </p>
-                      <p className={`text-sm ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
-                        {formatPercent(position.unrealizedPnlSourcePercentage)}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="metric-card">
-                    <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
-                    {positionXirr?.xirrPercentage != null ? (
-                      <p className={`text-xl font-bold number-display ${positionXirr.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
-                        {formatPercent(positionXirr.xirrPercentage)}
-                      </p>
-                    ) : (
-                      <p className="text-xl font-bold text-[var(--text-primary)] number-display">-</p>
-                    )}
-                    <p className="text-sm text-[var(--text-muted)]">
-                      {positionXirr?.cashFlowCount ? `含 ${positionXirr.cashFlowCount} 筆現金流` : ''}
-                    </p>
-                  </div>
+              {position.unrealizedPnlSource != null ? (
+                <div className="metric-card">
+                  <p className="text-sm text-[var(--text-muted)] mb-1">原幣未實現損益</p>
+                  <p className={`text-xl font-bold number-display ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
+                    {formatSignedNumber(position.unrealizedPnlSource, 2)}
+                  </p>
+                  <p className={`text-sm ${position.unrealizedPnlSource >= 0 ? 'number-positive' : 'number-negative'}`}>
+                    {formatPercent(position.unrealizedPnlSourcePercentage)}
+                  </p>
                 </div>
-              </>
-            )}
+              ) : (
+                <div className="metric-card">
+                  <p className="text-sm text-[var(--text-muted)] mb-1">原幣未實現損益</p>
+                  {position.unrealizedPnlSourcePercentage != null ? (
+                     // Should not happen if source null, but for completeness
+                     null
+                  ) : (
+                    <>
+                      <Skeleton width="w-24" height="h-7" />
+                      <Skeleton width="w-16" height="h-5" />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Only show this placeholder if we expect source PnL but don't have it yet?
+                  Actually, logic above is: if unPnlSource != null show card.
+                  If it is null, we might be loading OR it might be local stock.
+                  We need to know if we SHOULD show it.
+                  If local stock, unPnlSource might be null/undefined forever.
+
+                  Let's check the logic:
+                  If isLoading, we show Skeletons.
+                  If loaded, we conditionally render.
+
+                  Wait, if I change the grid to cols-4, and I have 3 items (local stock), I get 1 empty slot.
+                  That is fine.
+
+                  The issue is "XIRR on its own row".
+                  If I have 4 items, cols-3 puts XIRR on row 2.
+                  So cols-4 fixes that.
+              */}
+
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
+                {positionXirr?.xirrPercentage != null ? (
+                  <p className={`text-xl font-bold number-display ${positionXirr.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
+                    {formatPercent(positionXirr.xirrPercentage)}
+                  </p>
+                ) : (
+                  <Skeleton width="w-24" height="h-7" />
+                )}
+                <p className="text-sm text-[var(--text-muted)]">
+                  {positionXirr?.cashFlowCount ? `含 ${positionXirr.cashFlowCount} 筆現金流` : ''}
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="card-dark p-8 text-center mb-6">

@@ -26,7 +26,8 @@ interface CachedQuote {
   market: StockMarketType;
 }
 
-const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+const getQuoteCacheKey = (ticker: string, market?: StockMarketType) =>
+  `quote_cache_${ticker}_${market ?? 'default'}`;
 
 /**
  * 從 localStorage 載入指定 ticker 的快取報價。
@@ -35,16 +36,27 @@ const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
  * - 不設定時效限制：先用快取讓 UI 立即有數字，再由使用者/自動更新取得最新報價。
  * - 只有在快取資料包含 exchangeRate 時，才會回填到 currentPrices。
  */
-const loadCachedPrices = (tickers: string[]): Record<string, CurrentPriceInfo> => {
+const guessMarketForCache = (ticker: string): StockMarketType => {
+  if (/^\d+[A-Za-z]*$/.test(ticker)) {
+    return StockMarket.TW;
+  }
+  if (ticker.endsWith('.L')) {
+    return StockMarket.UK;
+  }
+  return StockMarket.US;
+};
+
+const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType }[]): Record<string, CurrentPriceInfo> => {
   const prices: Record<string, CurrentPriceInfo> = {};
 
-  for (const ticker of tickers) {
+  for (const pos of positions) {
     try {
-      const cached = localStorage.getItem(getQuoteCacheKey(ticker));
+      const market = pos.market ?? guessMarketForCache(pos.ticker);
+      const cached = localStorage.getItem(getQuoteCacheKey(pos.ticker, market));
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
         if (data.quote.exchangeRate) {
-          prices[ticker] = {
+          prices[pos.ticker] = {
             price: data.quote.price,
             exchangeRate: data.quote.exchangeRate,
           };
@@ -104,6 +116,7 @@ export function DashboardPage() {
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  const [isPriceDataPending, setIsPriceDataPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
@@ -119,6 +132,14 @@ export function DashboardPage() {
   useEffect(() => {
     if (!isLoading && portfolio && summary && shouldAutoFetch.current) {
       shouldAutoFetch.current = false;
+
+      // 若沒有任何報價快取（例如登出已清除），這段期間不顯示 0 / '-' 的估值結果
+      // 直到抓到即時報價並重新計算 summary/XIRR。
+      const hasAnyCachedPrices = Object.keys(currentPricesRef.current).length > 0;
+      if (summary.positions.length > 0 && !hasAnyCachedPrices) {
+        setIsPriceDataPending(true);
+      }
+
       handleFetchAllPrices();
     }
   }, [isLoading, portfolio, summary]);
@@ -183,8 +204,7 @@ export function DashboardPage() {
         transactionApi.getByPortfolio(p.id),
       ]);
 
-      const tickers = basicSummary.positions.map(pos => pos.ticker);
-      const cachedPrices = loadCachedPrices(tickers);
+      const cachedPrices = loadCachedPrices(basicSummary.positions);
       currentPricesRef.current = cachedPrices;
 
       // Get most recent 5 transactions
@@ -264,7 +284,7 @@ export function DashboardPage() {
                 updatedAt: new Date().toISOString(),
                 market: StockMarket.EU as StockMarketType,
               };
-              localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+              localStorage.setItem(getQuoteCacheKey(position.ticker, StockMarket.EU as StockMarketType), JSON.stringify(cacheData));
               return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
             }
             return null;
@@ -286,7 +306,7 @@ export function DashboardPage() {
               updatedAt: new Date().toISOString(),
               market: finalMarket,
             };
-            localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+            localStorage.setItem(getQuoteCacheKey(position.ticker, finalMarket), JSON.stringify(cacheData));
             return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
           }
           return null;
@@ -302,7 +322,7 @@ export function DashboardPage() {
                   updatedAt: new Date().toISOString(),
                   market: StockMarket.UK,
                 };
-                localStorage.setItem(getQuoteCacheKey(position.ticker), JSON.stringify(cacheData));
+                localStorage.setItem(getQuoteCacheKey(position.ticker, StockMarket.UK), JSON.stringify(cacheData));
                 return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
               }
             } catch {
@@ -338,6 +358,7 @@ export function DashboardPage() {
         setXirrResult(xirr);
       }
     } finally {
+      setIsPriceDataPending(false);
       setIsFetchingPrices(false);
     }
   };
@@ -442,7 +463,8 @@ export function DashboardPage() {
   }
 
   const hasValueData = summary?.totalValueHome != null;
-  const returnPercentage = hasValueData && summary?.totalCostHome
+  const isSummaryReady = hasValueData && !isPriceDataPending;
+  const returnPercentage = isSummaryReady && summary?.totalCostHome
     ? ((summary.totalUnrealizedPnlHome ?? 0) / summary.totalCostHome) * 100
     : null;
 
@@ -476,34 +498,58 @@ export function DashboardPage() {
 
         {/* Portfolio Summary */}
         <div className="card-dark p-6 mb-6">
-          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">投資組合總覽</h2>
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">投資組合總覽</h2>
+            {isPriceDataPending && (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-peach)]" />
+                <span>計算中...</span>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">總成本</p>
               <p className="text-xl font-bold text-[var(--text-primary)] number-display">
-                {formatTWD(summary?.totalCostHome)}
+                {isPriceDataPending ? (
+                  <Skeleton width="w-24" height="h-7" className="mt-1" />
+                ) : (
+                  formatTWD(summary?.totalCostHome)
+                )}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">目前市值</p>
               <p className="text-xl font-bold text-[var(--text-primary)] number-display">
-                {hasValueData ? formatTWD(summary?.totalValueHome) : '-'}
+                {isSummaryReady ? (
+                  formatTWD(summary?.totalValueHome)
+                ) : (
+                  <Skeleton width="w-24" height="h-7" className="mt-1" />
+                )}
               </p>
               <p className="text-[var(--text-muted)] text-sm">TWD</p>
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">未實現損益</p>
-              <p className={`text-xl font-bold number-display ${(summary?.totalUnrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : 'number-negative'}`}>
-                {hasValueData ? formatTWD(summary?.totalUnrealizedPnlHome) : '-'}
+              <p className={`text-xl font-bold number-display ${isSummaryReady && (summary?.totalUnrealizedPnlHome ?? 0) >= 0 ? 'number-positive' : isSummaryReady ? 'number-negative' : ''}`}>
+                {isSummaryReady ? (
+                  formatTWD(summary?.totalUnrealizedPnlHome)
+                ) : (
+                  <Skeleton width="w-24" height="h-7" className="mt-1" />
+                )}
               </p>
               <p className={`text-sm ${returnPercentage != null && returnPercentage >= 0 ? 'number-positive' : returnPercentage != null ? 'number-negative' : 'text-[var(--text-muted)]'}`}>
-                {formatPercent(returnPercentage)}
+                {isSummaryReady && returnPercentage != null ? (
+                  formatPercent(returnPercentage)
+                ) : (
+                  <Skeleton width="w-16" height="h-4" className="mt-1" />
+                )}
               </p>
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
-              {xirrResult?.xirrPercentage != null ? (
+              {isSummaryReady && xirrResult?.xirrPercentage != null ? (
                 <div className="flex items-center gap-1">
                   <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
                     {formatPercent(xirrResult.xirrPercentage)}
@@ -514,9 +560,9 @@ export function DashboardPage() {
                   />
                 </div>
               ) : (
-                <p className="text-xl font-bold text-[var(--text-muted)]">-</p>
+                <Skeleton width="w-16" height="h-7" className="mt-1" />
               )}
-              {xirrResult && xirrResult.cashFlowCount > 1 && (
+              {isSummaryReady && xirrResult && xirrResult.cashFlowCount > 1 && (
                 <p className="text-sm text-[var(--text-muted)]">
                   {xirrResult.cashFlowCount - 1} 筆交易
                 </p>
@@ -560,7 +606,7 @@ export function DashboardPage() {
           </div>
 
           {/* Position Performance - FR-131: Show PnL (TWD) and PnL % */}
-          <div className="card-dark p-6">
+          <div className="card-dark p-6 flex flex-col">
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">持倉績效</h2>
             {topPerformers.length > 0 ? (
               <div className="space-y-3">
@@ -586,9 +632,11 @@ export function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-[var(--text-muted)] text-center py-4">
-                獲取報價後顯示持倉績效
-              </p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[var(--text-muted)] text-center">
+                  獲取報價後顯示持倉績效
+                </p>
+              </div>
             )}
           </div>
         </div>

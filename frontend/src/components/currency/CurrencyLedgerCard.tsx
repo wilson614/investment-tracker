@@ -10,6 +10,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { stockPriceApi } from '../../services/api';
 import type { CurrencyLedgerSummary } from '../../types';
+import { Skeleton } from '../common';
 
 interface CurrencyLedgerCardProps {
   /** 要顯示的帳本摘要 */
@@ -105,18 +106,21 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
   return (
     <div
       className="card-dark p-5 cursor-pointer hover:border-[var(--border-hover)] transition-all"
+      style={{ minHeight: 212 }}
       onClick={onClick}
     >
       {/* Header: Currency @ Rate */}
       <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           <h3 className="text-lg font-bold text-[var(--accent-cream)]">
             {ledger.ledger.currencyCode}
           </h3>
-          {currentRate && (
+          {currentRate ? (
             <span className="text-sm text-[var(--text-muted)]">
               @ {formatNumber(currentRate, 2)}
             </span>
+          ) : (
+            <Skeleton width="w-16" height="h-5" />
           )}
         </div>
         {rateUpdatedAt && (
@@ -131,11 +135,15 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
         <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
           {formatNumber(ledger.balance, 2)}
         </p>
-        {twdEquivalent !== null && (
+        {twdEquivalent !== null ? (
           <p className="text-sm text-[var(--text-muted)] mt-1">
             ≈ {formatTWD(twdEquivalent)} TWD
           </p>
-        )}
+        ) : ledger.balance > 0 ? (
+          <div className="mt-1">
+            <Skeleton width="w-24" height="h-5" />
+          </div>
+        ) : null}
       </div>
 
       {/* Metrics */}

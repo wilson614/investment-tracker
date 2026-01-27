@@ -594,7 +594,7 @@ export function PortfolioPage() {
             summary={summary}
             xirrResult={xirrResult}
             homeCurrency={summary.portfolio.homeCurrency}
-            isLoading={isCalculating}
+            isLoading={false}
             portfolioId={currentPortfolioId ?? undefined}
           />
         </div>

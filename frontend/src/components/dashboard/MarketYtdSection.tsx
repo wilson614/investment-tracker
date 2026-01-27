@@ -13,6 +13,7 @@ import { useMarketYtdData } from '../../hooks/useMarketYtdData';
 import { userBenchmarkApi, stockPriceApi, marketDataApi, userPreferencesApi } from '../../services/api';
 import { Skeleton } from '../common/SkeletonLoader';
 import type { MarketYtdReturn, UserBenchmark } from '../../types';
+import { StockMarket } from '../../types';
 
 type YtdSortKey = 'ytd-desc' | 'ytd-asc' | 'name-asc' | 'name-desc';
 
@@ -41,7 +42,14 @@ const BENCHMARK_LABELS: Record<string, string> = {
   'Europe': '歐洲',
   'Japan': '日本',
   'China': '中國',
-  'Taiwan 0050': '台灣 (0050)',
+  'Taiwan 0050': '台灣',
+};
+
+const STOCK_MARKET_LABELS: Record<number, string> = {
+  [StockMarket.TW]: '台股',
+  [StockMarket.US]: '美股',
+  [StockMarket.UK]: '英股',
+  [StockMarket.EU]: '歐股',
 };
 
 /**
@@ -139,8 +147,10 @@ function YtdCardSkeleton() {
   );
 }
 
+type YtdCardItem = MarketYtdReturn & { isCustom?: boolean; market?: number };
+
 interface YtdCardProps {
-  item: MarketYtdReturn & { isCustom?: boolean };
+  item: YtdCardItem;
 }
 
 function YtdCard({ item }: YtdCardProps) {
@@ -152,6 +162,10 @@ function YtdCard({ item }: YtdCardProps) {
   const displayLabel = item.isCustom
     ? item.symbol
     : (BENCHMARK_LABELS[item.marketKey] || item.marketKey);
+
+  const customMarketLabel = item.isCustom
+    ? (STOCK_MARKET_LABELS[item.market as number] ?? '市場')
+    : null;
 
   return (
     <div className={`bg-[var(--bg-tertiary)] rounded-lg px-2 py-4 text-center ${item.isCustom ? 'border border-[var(--accent-peach)]/30' : ''}`}>
@@ -167,9 +181,9 @@ function YtdCard({ item }: YtdCardProps) {
       ) : (
         <div className="text-base text-[var(--text-muted)] my-1">--</div>
       )}
-      {/* 系統基準顯示 symbol，自訂基準顯示「自訂」標籤 */}
+      {/* 系統基準顯示 symbol，自訂基準顯示市場 */}
       {item.isCustom ? (
-        <div className="text-xs text-[var(--accent-peach)]">自訂</div>
+        <div className="text-xs text-[var(--accent-peach)]">{customMarketLabel}</div>
       ) : (
         <div className="font-mono text-xs text-[var(--text-muted)]">{item.symbol}</div>
       )}
@@ -399,12 +413,12 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
         default:
           return 0;
       }
-    });
+    }) as YtdCardItem[];
   }, [data?.benchmarks, selectedBenchmarks, sortKey]);
 
   // Combine system benchmarks with custom benchmarks for display
   const allDisplayItems = useMemo(() => {
-    const items: Array<MarketYtdReturn & { isCustom?: boolean }> = [];
+    const items: YtdCardItem[] = [];
 
     // Add system benchmarks
     if (filteredAndSorted) {
@@ -431,6 +445,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
           fetchedAt: null,
           error: null,
           isCustom: true,
+          market: b.market,
         });
       });
     }

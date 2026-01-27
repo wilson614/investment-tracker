@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { stockPriceApi, marketDataApi, etfClassificationApi } from '../../services/api';
 import type { StockPosition, StockMarket as StockMarketType, StockQuoteResponse, EtfClassificationResult } from '../../types';
 import { StockMarket } from '../../types';
-import { StaleQuoteIndicator, EtfTypeBadge } from '../common';
+import { StaleQuoteIndicator, EtfTypeBadge, Skeleton } from '../common';
 import type { EtfType } from '../common';
 
 interface PositionCardProps {
@@ -254,9 +254,13 @@ export function PositionCard({
     }
   }, [autoFetch, handleFetchQuote, lastQuote, onPriceUpdate, position.ticker]);
 
-  const pnlColor = (position.unrealizedPnlHome ?? 0) >= 0
+  const hasValuation = position.currentValueHome != null;
+
+  const pnlColor = hasValuation && (position.unrealizedPnlHome ?? 0) >= 0
     ? 'number-positive'
-    : 'number-negative';
+    : hasValuation
+      ? 'number-negative'
+      : '';
 
   // 優先使用 position.currency（從後端交易資料取得），否則根據市場推測
   const marketCurrency = position.currency ?? getMarketCurrency(selectedMarket);
@@ -312,8 +316,13 @@ export function PositionCard({
                 />
               )}
             </>
+          ) : fetchStatus === 'loading' ? (
+            <div className="flex flex-col items-end gap-1">
+              <Skeleton width="w-24" height="h-7" />
+              <Skeleton width="w-16" height="h-5" />
+            </div>
           ) : (
-            <div className="text-xl text-[var(--text-muted)]">-</div>
+            <div className="text-xl text-[var(--text-muted)]"></div>
           )}
           {fetchStatus === 'error' && (
             <div className="text-xs text-[var(--color-danger)]">{error}</div>
@@ -343,7 +352,7 @@ export function PositionCard({
         <div className="flex justify-between">
           <span className="text-[var(--text-muted)]">現值:</span>
           <span className="font-medium text-[var(--text-primary)] number-display">
-            {hasCurrentValue ? `${formatHomeCurrency(position.currentValueHome)} ${homeCurrency}` : '-'}
+            {hasCurrentValue ? `${formatHomeCurrency(position.currentValueHome)} ${homeCurrency}` : ''}
           </span>
         </div>
 
@@ -359,7 +368,7 @@ export function PositionCard({
                   </span>
                 )}
               </>
-            ) : '-'}
+            ) : ''}
           </span>
         </div>
       </div>
