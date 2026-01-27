@@ -56,8 +56,8 @@ Frontend runs on `http://localhost:3000`
 | `Domain/Services/SimpleReturnCalculator.cs` | NEW | Simple return calculation logic |
 | `Domain/Entities/MonthlyNetWorthSnapshot.cs` | NEW | Entity for monthly snapshots |
 | `Domain/Entities/BenchmarkAnnualReturn.cs` | NEW | Entity for cached benchmark returns |
-| `Application/DTOs/PerformanceDtos.cs` | MODIFY | Add SimpleReturn fields to YearPerformanceDto |
-| `Application/Services/HistoricalPerformanceService.cs` | MODIFY | Use SimpleReturnCalculator |
+| `Application/DTOs/PerformanceDtos.cs` | MODIFY | Add Modified Dietz + TWR fields to YearPerformanceDto |
+| `Application/Services/HistoricalPerformanceService.cs` | MODIFY | Use ReturnCalculator |
 | `Application/Interfaces/IMonthlySnapshotService.cs` | NEW | Interface for snapshot service |
 | `Infrastructure/Services/MonthlySnapshotService.cs` | NEW | Implementation |
 | `Infrastructure/MarketData/YahooAnnualReturnService.cs` | NEW | Yahoo Total Return fetcher |
@@ -72,7 +72,7 @@ Frontend runs on `http://localhost:3000`
 | `services/api.ts` | MODIFY | Add token refresh, new API methods |
 | `components/performance/CurrencyToggle.tsx` | NEW | Toggle component |
 | `components/dashboard/HistoricalValueChart.tsx` | MODIFY | Support monthly data |
-| `pages/Performance.tsx` | MODIFY | Use SimpleReturn, add toggle |
+| `pages/Performance.tsx` | MODIFY | Use Modified Dietz + TWR, add toggle |
 | `pages/PositionDetail.tsx` | MODIFY | Display source currency P&L |
 | `types/index.ts` | MODIFY | Add new type definitions |
 
@@ -143,8 +143,8 @@ environment:
 
 ## Verification Checklist
 
-### User Story 1: Annual Simple Return
-- [ ] Performance page shows "Simple Return" instead of XIRR
+### User Story 1: Annual Returns (Modified Dietz + TWR)
+- [ ] Performance page shows Modified Dietz and TWR
 - [ ] Both source and home currency returns displayed
 - [ ] Formula correctly calculates for mid-year start
 

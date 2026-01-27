@@ -20,11 +20,11 @@
 **Purpose**: Database migrations and DI registration for new entities
 
 - [x] T001 Create `MonthlyNetWorthSnapshot` entity in backend/src/InvestmentTracker.Domain/Entities/MonthlyNetWorthSnapshot.cs
-- [ ] T002 [P] Create `BenchmarkAnnualReturn` entity in backend/src/InvestmentTracker.Domain/Entities/BenchmarkAnnualReturn.cs
-- [ ] T003 Add DbSet properties and configure entity mappings in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs *(MonthlyNetWorthSnapshot / TransactionPortfolioSnapshot 已完成；BenchmarkAnnualReturn 待 US5)*
-- [ ] T004 Create entity configurations in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/ *(MonthlyNetWorthSnapshot / TransactionPortfolioSnapshot 已完成；BenchmarkAnnualReturn 待 US5)*
+- [x] T002 [P] Create `BenchmarkAnnualReturn` entity in backend/src/InvestmentTracker.Domain/Entities/BenchmarkAnnualReturn.cs
+- [x] T003 Add DbSet properties and configure entity mappings in backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs *(MonthlyNetWorthSnapshot / TransactionPortfolioSnapshot 已完成；BenchmarkAnnualReturn 待 US5)*
+- [x] T004 Create entity configurations in backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/ *(MonthlyNetWorthSnapshot / TransactionPortfolioSnapshot 已完成；BenchmarkAnnualReturn 待 US5)*
 - [x] T005 Generate migration: `AddMonthlyNetWorthSnapshots` (backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/20260123003208_AddMonthlyNetWorthSnapshots.cs)
-- [ ] T006 Apply migration to development database and verify indexes
+- [x] T006 Apply migration to development database and verify indexes
 
 ---
 
@@ -177,11 +177,11 @@
 
 **Purpose**: Final validation and documentation
 
-- [ ] T061 [P] Run backend tests: `dotnet test`
-- [ ] T062 [P] Run frontend tests: `npm test`
-- [ ] T063 Fix any failing tests
-- [ ] T064 [P] Update Swagger/OpenAPI comments for new endpoints
-- [ ] T065 Run quickstart.md verification checklist
+- [x] T061 [P] Run backend tests: `dotnet test`
+- [x] T062 [P] Run frontend tests: `npm test`
+- [x] T063 Fix any failing tests
+- [x] T064 [P] Update Swagger/OpenAPI comments for new endpoints
+- [x] T065 Run quickstart.md verification checklist
 - [ ] T066 Manual testing: US1 - Performance page shows Modified Dietz + TWR
 - [ ] T067 [P] Manual testing: US2 - Currency toggle works and persists
 - [ ] T068 [P] Manual testing: US3 - Position detail shows source currency P&L
