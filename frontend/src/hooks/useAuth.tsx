@@ -60,28 +60,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 清除所有使用者相關的快取資料，防止帳號間資料洩漏
     // - quote_cache_: 報價快取
-    // - perf_cache_: 績效快取
+    // - perf_cache_: 績效快取（舊格式）
+    // - perf_years_: 績效年份快取
+    // - perf_data_: 績效資料快取
     // - xirr_cache_: XIRR 快取
     // - rate_cache_: 匯率快取
+    // - custom_benchmark_returns_: 自訂基準報酬快取
+    // - system_benchmark_returns_: 系統基準報酬快取
     removeLocalStorageByPrefixes([
       'quote_cache_',
       'perf_cache_',
+      'perf_years_',
+      'perf_data_',
       'xirr_cache_',
       'rate_cache_',
+      'custom_benchmark_returns_',
+      'system_benchmark_returns_',
     ]);
 
-    // 清除市場資料快取（登入時應重新取得）
-    localStorage.removeItem('ytd_data_cache');
-    localStorage.removeItem('cape_data_cache');
+    // 清除使用者專屬市場資料快取
     localStorage.removeItem('custom_benchmark_ytd_cache');
+    localStorage.removeItem('custom_benchmarks_list');
+    localStorage.removeItem('performance_currency_mode');
+
+    // 注意：ytd_data_cache 和 cape_data_cache 是公開市場資料，不含使用者私人資訊
+    // 不需要在登出時清除，可以跨帳號共用以加速載入
 
     // 移除導覽快取（不應跨帳號保留）
     localStorage.removeItem('default_portfolio_id');
     localStorage.removeItem('selected_portfolio_id');
 
-    // 使用者偏好設定（ytd_benchmark_preferences, cape_region_preferences）
-    // 現在存在後端 database，但 localStorage 也有快取副本
-    // 這裡不清除 localStorage 副本，讓 API 同步來處理
+    // 清除使用者偏好設定快取（防止不同帳號間資料洩漏）
+    localStorage.removeItem('ytd_benchmark_preferences');
+    localStorage.removeItem('cape_region_preferences');
+
+    // 清除外幣帳本快取（使用者專屬資料）
+    localStorage.removeItem('currency_ledgers_cache');
 
     setUser(null);
   }, []);

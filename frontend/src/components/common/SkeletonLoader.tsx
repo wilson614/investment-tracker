@@ -25,9 +25,9 @@ export function Skeleton({
   className = '',
 }: SkeletonProps) {
   return (
-    <div
+    <span
       className={`
-        animate-pulse bg-[var(--bg-tertiary)]
+        inline-block animate-pulse bg-[var(--bg-tertiary)]
         ${circle ? 'rounded-full' : 'rounded'}
         ${width} ${height}
         ${className}

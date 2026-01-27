@@ -284,7 +284,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
   // 追蹤基準載入狀態，用於決定何時渲染長條圖
   // 初始值設為 false，因為我們已經在 lazy init 中載入了快取資料
   // 只有在確定沒有任何快取時才會設為 true
-  const [isLoadingBenchmark, setIsLoadingBenchmark] = useState(() => {
+  const [, setIsLoadingBenchmark] = useState(() => {
     // 檢查 YTD 快取（當年度主要來源）
     const cachedYtd = loadCachedYtdData();
     if (cachedYtd.data) {
@@ -295,7 +295,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
     const systemCache = loadCachedSystemBenchmarkReturns(currentYear);
     return Object.keys(systemCache.returns).length === 0;
   });
-  const [isLoadingCustomBenchmark, setIsLoadingCustomBenchmark] = useState(() => {
+  const [, setIsLoadingCustomBenchmark] = useState(() => {
     const currentYear = new Date().getFullYear();
     const cachedReturns = loadCachedCustomBenchmarkReturns(currentYear);
     const savedBenchmarks = loadSelectedBenchmarksFromLocalStorage();

@@ -1,12 +1,6 @@
-import { useEffect } from 'react';
-
 export type PerformanceCurrencyMode = 'source' | 'home';
 
 const DEFAULT_STORAGE_KEY = 'performance_currency_mode';
-
-function isPerformanceCurrencyMode(value: string | null): value is PerformanceCurrencyMode {
-  return value === 'source' || value === 'home';
-}
 
 interface CurrencyToggleProps {
   value: PerformanceCurrencyMode;
@@ -27,16 +21,8 @@ export function CurrencyToggle({
   className = '',
   disabled = false,
 }: CurrencyToggleProps) {
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (isPerformanceCurrencyMode(stored) && stored !== value) {
-        onChange(stored);
-      }
-    } catch {
-      // Ignore
-    }
-  }, [storageKey, value, onChange]);
+  // 注意：父元件應從 localStorage lazy-init 以避免閃爍
+  // 此元件不再於掛載時同步以防止重新渲染
 
   const sourceLabel = sourceCurrency ? `原幣 (${sourceCurrency})` : '原幣';
   const homeLabel = `本位幣 (${homeCurrency})`;
@@ -47,7 +33,7 @@ export function CurrencyToggle({
     try {
       localStorage.setItem(storageKey, mode);
     } catch {
-      // Ignore
+      // 忽略
     }
 
     onChange(mode);

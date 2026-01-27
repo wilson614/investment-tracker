@@ -83,10 +83,10 @@ function clearAuthData(): void {
   // 清除所有使用者相關的快取資料，防止帳號間資料洩漏
   removeLocalStorageByPrefixes(['quote_cache_', 'perf_cache_', 'xirr_cache_', 'rate_cache_']);
 
-  // 清除市場資料快取（登入時應重新取得）
-  localStorage.removeItem('ytd_data_cache');
-  localStorage.removeItem('cape_data_cache');
+  // 清除使用者專屬市場資料快取
   localStorage.removeItem('custom_benchmark_ytd_cache');
+
+  // 注意：ytd_data_cache 和 cape_data_cache 是公開市場資料，不需要清除
 
   // 導覽快取（不應跨帳號保留）
   localStorage.removeItem('default_portfolio_id');

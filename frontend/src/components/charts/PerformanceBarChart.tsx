@@ -37,8 +37,8 @@ export function PerformanceBarChart({
 }: PerformanceBarChartProps) {
   const { normalizedData } = useMemo(() => {
     const values = data.map(d => d.value);
-    // 以絕對值最大者作為基準，避免除以 0（至少 0.01）。
-    const max = Math.max(...values.map(Math.abs), 0.01); // Avoid division by zero
+    // 以絕對值最大者作為基準，避免除以 0（至少 0.01）
+    const max = Math.max(...values.map(Math.abs), 0.01);
 
     return {
       normalizedData: data.map(d => ({
@@ -48,7 +48,8 @@ export function PerformanceBarChart({
     };
   }, [data]);
 
-  const formatValue = (value: number) => {
+  const formatValue = (value: number | null | undefined) => {
+    if (value == null) return '-';
     const sign = value >= 0 ? '+' : '';
     return `${sign}${value.toFixed(2)}%`;
   };
@@ -78,7 +79,7 @@ export function PerformanceBarChart({
               className="group relative"
               title={item.tooltip || `${item.label}: ${formatValue(item.value)}`}
             >
-              {/* Label and Value Row */}
+              {/* 標籤與數值列 */}
               <div className="flex justify-between items-center mb-1">
                 <span className="text-sm text-[var(--text-secondary)]">{item.label}</span>
                 {showValues && (
@@ -90,12 +91,12 @@ export function PerformanceBarChart({
                 )}
               </div>
               
-              {/* Bar Container */}
+              {/* 長條容器 */}
               <div className="relative h-6 bg-[var(--bg-tertiary)] rounded overflow-hidden">
-                {/* Center line for bidirectional chart */}
+                {/* 雙向圖表的中心線 */}
                 <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--border-color)]" />
-                
-                {/* Bar */}
+
+                {/* 長條 */}
                 <div
                   className={`absolute top-0 bottom-0 transition-all duration-300 ${
                     isPositive
@@ -107,11 +108,11 @@ export function PerformanceBarChart({
                   }}
                 />
                 
-                {/* Hover highlight */}
+                {/* Hover 高亮效果 */}
                 <div className="absolute inset-0 bg-white/0 group-hover:bg-white/5 transition-colors" />
               </div>
-              
-              {/* Tooltip on hover */}
+
+              {/* Hover 時顯示 tooltip */}
               <div className="absolute left-1/2 -translate-x-1/2 -top-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                 <div className="bg-[var(--bg-primary)] border border-[var(--border-color)] rounded px-2 py-1 text-xs shadow-lg whitespace-nowrap">
                   {item.tooltip || `${item.label}: ${formatValue(item.value)}`}
