@@ -405,7 +405,8 @@ export function PerformancePage() {
         })
       );
 
-      } catch (err) {
+      setCustomBenchmarkReturns(newReturns);
+    } catch (err) {
         console.error('Failed to calculate custom benchmark returns:', err);
       } finally {
         setIsLoadingCustomBenchmark(false);
