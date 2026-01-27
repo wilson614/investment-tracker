@@ -932,7 +932,7 @@ export function PerformancePage() {
         ) : performance ? (
           <>
             {/* Missing Prices Overlay - Full screen modal when fetching or missing prices */}
-            {performance.missingPrices.length > 0 && !dismissMissingPricesOverlay && (
+            {performance.missingPrices.length > 0 && !dismissMissingPricesOverlay && priceFetchFailed && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="card-dark w-full max-w-md mx-4">
                   <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
@@ -1200,7 +1200,7 @@ export function PerformancePage() {
 
             {/* Performance Bar Chart - Portfolio vs Benchmarks (Multi-select) */}
             {/* FR-132/T130: For current year, show loading state until prices are ready */}
-            {selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0) ? (
+            {selectedYear === availableYears?.currentYear && (isFetchingPrices || performance.missingPrices.length > 0) && ((currencyMode === 'source' ? performance.modifiedDietzPercentageSource : performance.modifiedDietzPercentage) == null) ? (
               <div className="card-dark p-6 mt-6">
                 <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">績效比較</h3>
                 <div className="flex items-center justify-center py-8">
