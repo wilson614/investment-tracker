@@ -1370,8 +1370,8 @@ export function PerformancePage() {
                     </div>
                   </div>
                 )}
-                {/* Show loading if: loading state, OR version mismatch (stale data), OR no benchmark data yet */}
-                {(isLoadingBenchmark || isLoadingCustomBenchmark || lastResetVersionRef.current !== performanceVersion || Object.keys(benchmarkReturns).length === 0) ? (
+                {/* Show loading if: stale version OR (loading AND no data yet) */}
+                {(lastResetVersionRef.current !== performanceVersion || ((isLoadingBenchmark || isLoadingCustomBenchmark) && Object.keys(benchmarkReturns).length === 0 && Object.keys(customBenchmarkReturns).length === 0)) ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
                     <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
