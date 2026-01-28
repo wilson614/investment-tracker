@@ -327,3 +327,27 @@
 | 4 | 4.1 Performance & Regression | 3 + 1 verification | ⬜ Pending |
 
 **Total**: 52 tasks + 6 verification steps
+
+---
+
+## Known Issues (Non-Critical, Deferred)
+
+以下為多模型審查時發現的非關鍵問題，暫時延後處理：
+
+### CRIT-1: 非原子寫入
+- **位置**: `CreateStockTransactionUseCase.cs`, `UpdateStockTransactionUseCase.cs`
+- **問題**: StockTransaction 和 CurrencyTransaction 分開寫入，若中途失敗可能導致資料不一致
+- **建議**: 使用 Unit of Work pattern 或 DB transaction 包裝
+- **優先級**: Low（目前單一使用者場景，失敗機率低）
+
+### CRIT-2: 使用 Market 而非 Currency 判斷台股
+- **位置**: `CreateStockTransactionUseCase.cs` (line 86-88)
+- **問題**: 目前使用 `Currency.TWD` 判斷是否為台股，但 Currency 可手動覆寫
+- **建議**: 改用 `Market == StockMarket.TW` 判斷更準確
+- **優先級**: Low（實際使用情境中不太可能錯誤設定）
+
+### CRIT-3: FundSource 語意問題
+- **位置**: `CreateStockTransactionUseCase.cs`
+- **問題**: Portfolio 綁定 TWD Ledger 時，FundSource 仍為 None（未明確指向 CurrencyLedger）
+- **建議**: 考慮新增 `FundSource.BoundLedger` 狀態，或在 StockTransaction 記錄實際連動的 LedgerId
+- **優先級**: Low（目前功能正常，僅語意不夠明確）
