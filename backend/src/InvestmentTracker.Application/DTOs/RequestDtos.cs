@@ -67,17 +67,13 @@ public record CreateStockTransactionRequest
 
     /// <summary>
     /// 兌換成本位幣用的匯率。
-    /// 當 FundSource 為 CurrencyLedger 時可選填；若未提供，會以帳本的加權平均成本推算。
+    /// 若未提供，交易成本僅會以原始幣別追蹤。
     /// </summary>
     [Range(0, double.MaxValue)]
     public decimal? ExchangeRate { get; init; }
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
-
-    public FundSource FundSource { get; init; } = FundSource.None;
-
-    public Guid? CurrencyLedgerId { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }
@@ -125,10 +121,6 @@ public record UpdateStockTransactionRequest
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
-
-    public FundSource FundSource { get; init; } = FundSource.None;
-
-    public Guid? CurrencyLedgerId { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }

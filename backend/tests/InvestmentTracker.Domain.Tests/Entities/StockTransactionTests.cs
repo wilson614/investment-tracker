@@ -281,50 +281,10 @@ public class StockTransactionTests
 
     #endregion
 
-    #region Fund Source Tests
+    #region CurrencyLedgerId Tests
 
     [Fact]
-    public void SetFundSource_CurrencyLedgerWithoutId_ThrowsArgumentException()
-    {
-        // Arrange
-        var transaction = new StockTransaction(
-            _portfolioId,
-            DateTime.UtcNow,
-            "VWRA",
-            TransactionType.Buy,
-            10m,
-            100m,
-            31.5m);
-
-        // Act & Assert
-        var exception = Assert.Throws<ArgumentException>(() =>
-            transaction.SetFundSource(FundSource.CurrencyLedger));
-
-        Assert.Contains("Currency ledger ID is required", exception.Message);
-    }
-
-    [Fact]
-    public void SetFundSource_NoneWithId_ThrowsArgumentException()
-    {
-        // Arrange
-        var transaction = new StockTransaction(
-            _portfolioId,
-            DateTime.UtcNow,
-            "VWRA",
-            TransactionType.Buy,
-            10m,
-            100m,
-            31.5m);
-
-        // Act & Assert
-        var exception = Assert.Throws<ArgumentException>(() =>
-            transaction.SetFundSource(FundSource.None, Guid.NewGuid()));
-
-        Assert.Contains("should only be set when fund source is CurrencyLedger", exception.Message);
-    }
-
-    [Fact]
-    public void SetFundSource_ValidCurrencyLedger_SetsCorrectly()
+    public void SetCurrencyLedgerId_SetsValue()
     {
         // Arrange
         var ledgerId = Guid.NewGuid();
@@ -338,11 +298,32 @@ public class StockTransactionTests
             31.5m);
 
         // Act
-        transaction.SetFundSource(FundSource.CurrencyLedger, ledgerId);
+        transaction.SetCurrencyLedgerId(ledgerId);
 
         // Assert
-        Assert.Equal(FundSource.CurrencyLedger, transaction.FundSource);
         Assert.Equal(ledgerId, transaction.CurrencyLedgerId);
+    }
+
+    [Fact]
+    public void SetCurrencyLedgerId_NullValue_ClearsValue()
+    {
+        // Arrange
+        var ledgerId = Guid.NewGuid();
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VWRA",
+            TransactionType.Buy,
+            10m,
+            100m,
+            31.5m,
+            currencyLedgerId: ledgerId);
+
+        // Act
+        transaction.SetCurrencyLedgerId(null);
+
+        // Assert
+        Assert.Null(transaction.CurrencyLedgerId);
     }
 
     #endregion

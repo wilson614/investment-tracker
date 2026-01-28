@@ -38,6 +38,18 @@ public class UpdateStockTransactionUseCase(
         if (portfolio.UserId != currentUserService.UserId)
             throw new AccessDeniedException();
 
+        // 載入 Portfolio 綁定的 CurrencyLedger
+        var boundLedger = await currencyLedgerRepository.GetByIdAsync(
+            portfolio.BoundCurrencyLedgerId, cancellationToken)
+            ?? throw new EntityNotFoundException("CurrencyLedger", portfolio.BoundCurrencyLedgerId);
+
+        // 推斷交易幣別
+        var resolvedMarket = request.Market ?? StockTransaction.GuessMarketFromTicker(request.Ticker);
+        var resolvedCurrency = request.Currency ?? StockTransaction.GuessCurrencyFromMarket(resolvedMarket);
+
+        // FR-005: 驗證股票幣別與綁定帳本幣別一致
+        StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(resolvedCurrency, boundLedger);
+
         // 保留原始值供後續計算使用
         var originalType = transaction.TransactionType;
         var originalTransactionDate = transaction.TransactionDate;
@@ -73,7 +85,7 @@ public class UpdateStockTransactionUseCase(
         transaction.SetPricePerShare(request.PricePerShare);
         transaction.SetExchangeRate(exchangeRate);
         transaction.SetFees(request.Fees);
-        transaction.SetFundSource(request.FundSource, request.CurrencyLedgerId);
+        transaction.SetCurrencyLedgerId(portfolio.BoundCurrencyLedgerId);
         transaction.SetNotes(request.Notes);
         if (request.Market.HasValue)
             transaction.SetMarket(request.Market.Value);
@@ -239,7 +251,6 @@ public class UpdateStockTransactionUseCase(
             PricePerShare = transaction.PricePerShare,
             ExchangeRate = transaction.ExchangeRate,
             Fees = transaction.Fees,
-            FundSource = transaction.FundSource,
             CurrencyLedgerId = transaction.CurrencyLedgerId,
             Notes = transaction.Notes,
             TotalCostSource = transaction.TotalCostSource,

@@ -149,7 +149,7 @@ public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
                         && t.TransactionDate.Date >= fromDate.Date
                         && t.TransactionDate.Date <= toDate.Date
                         && t.TransactionType is TransactionType.Buy or TransactionType.Sell
-                        && !(t.FundSource == FundSource.CurrencyLedger && t.CurrencyLedgerId == boundLedgerId))
+                        && t.CurrencyLedgerId != boundLedgerId)
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.CreatedAt)
             .Select(t =>

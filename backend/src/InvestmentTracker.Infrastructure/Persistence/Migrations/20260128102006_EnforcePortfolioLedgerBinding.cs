@@ -11,6 +11,63 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Step 0: Drop unique constraint on UserId+CurrencyCode to allow multiple ledgers per currency
+            migrationBuilder.DropIndex(
+                name: "IX_CurrencyLedger_UserId_CurrencyCode",
+                table: "currency_ledgers");
+
+            // Step 1: Bind portfolios to existing USD ledgers where possible (first portfolio gets first ledger)
+            migrationBuilder.Sql(@"
+                UPDATE portfolios p
+                SET ""BoundCurrencyLedgerId"" = (
+                    SELECT cl.""Id""
+                    FROM currency_ledgers cl
+                    WHERE cl.""UserId"" = p.""UserId""
+                      AND NOT EXISTS (
+                          SELECT 1 FROM portfolios p2
+                          WHERE p2.""BoundCurrencyLedgerId"" = cl.""Id""
+                            AND p2.""Id"" != p.""Id""
+                      )
+                    ORDER BY cl.""CreatedAt"" ASC
+                    LIMIT 1
+                )
+                WHERE p.""BoundCurrencyLedgerId"" IS NULL;
+            ");
+
+            // Step 2: For remaining portfolios, create new USD ledgers
+            migrationBuilder.Sql(@"
+                INSERT INTO currency_ledgers (""Id"", ""UserId"", ""CurrencyCode"", ""Name"", ""HomeCurrency"", ""IsActive"", ""CreatedAt"", ""UpdatedAt"")
+                SELECT
+                    gen_random_uuid(),
+                    p.""UserId"",
+                    'USD',
+                    'Auto-created for portfolio #' || ROW_NUMBER() OVER (PARTITION BY p.""UserId"" ORDER BY p.""CreatedAt""),
+                    'TWD',
+                    true,
+                    NOW(),
+                    NOW()
+                FROM portfolios p
+                WHERE p.""BoundCurrencyLedgerId"" IS NULL;
+            ");
+
+            // Step 3: Bind the newly created ledgers to remaining portfolios
+            migrationBuilder.Sql(@"
+                UPDATE portfolios p
+                SET ""BoundCurrencyLedgerId"" = (
+                    SELECT cl.""Id""
+                    FROM currency_ledgers cl
+                    WHERE cl.""UserId"" = p.""UserId""
+                      AND cl.""Name"" LIKE 'Auto-created for portfolio #%'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM portfolios p2
+                          WHERE p2.""BoundCurrencyLedgerId"" = cl.""Id""
+                      )
+                    ORDER BY cl.""CreatedAt"" DESC
+                    LIMIT 1
+                )
+                WHERE p.""BoundCurrencyLedgerId"" IS NULL;
+            ");
+
             migrationBuilder.DropForeignKey(
                 name: "FK_portfolios_currency_ledgers_BoundCurrencyLedgerId",
                 table: "portfolios");
@@ -74,6 +131,13 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                 principalTable: "currency_ledgers",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.SetNull);
+
+            // Restore unique index on UserId+CurrencyCode
+            migrationBuilder.CreateIndex(
+                name: "IX_CurrencyLedger_UserId_CurrencyCode",
+                table: "currency_ledgers",
+                columns: new[] { "UserId", "CurrencyCode" },
+                unique: true);
         }
     }
 }

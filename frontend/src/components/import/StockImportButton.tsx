@@ -1,16 +1,17 @@
 /**
  * StockImportButton
  *
- * 股票交易 CSV 匯入按鈕：封裝「選擇是否使用外幣帳本 → 開啟 CSVImportModal → 逐列解析/驗證 → 呼叫交易 API」流程。
+ * 股票交易 CSV 匯入按鈕：開啟 CSVImportModal → 逐列解析/驗證 → 呼叫交易 API。
  *
  * 重要行為：
  * - 會先將 CSV rows 依日期排序，避免出現 sell-before-buy 的計算/驗證問題。
- * - 可選擇使用外幣帳本（currency ledger）輔助：非台股時可讓 backend 自動計算匯率。
+ * - 交易會自動連結到 Portfolio 綁定的帳本（FR-001）。
+ * - 匯率欄位為可選：若 CSV 未提供，backend 會自動從交易日期抓取。
  */
-import { useState, useEffect } from 'react';
-import { Upload, Wallet } from 'lucide-react';
+import { useState } from 'react';
+import { Upload } from 'lucide-react';
 import { CSVImportModal, type FieldDefinition } from './CSVImportModal';
-import { transactionApi, currencyLedgerApi } from '../../services/api';
+import { transactionApi } from '../../services/api';
 import {
   getRowValue,
   parseDate,
@@ -20,8 +21,8 @@ import {
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
-import { FundSource, StockMarket, Currency } from '../../types';
-import type { CreateStockTransactionRequest, TransactionType, CurrencyLedgerSummary, StockMarket as StockMarketType, Currency as CurrencyType } from '../../types';
+import { StockMarket, Currency } from '../../types';
+import type { CreateStockTransactionRequest, TransactionType, StockMarket as StockMarketType, Currency as CurrencyType } from '../../types';
 
 interface StockImportButtonProps {
   /** 目標 portfolio ID */
@@ -37,81 +38,71 @@ interface StockImportButtonProps {
 /**
  * 股票交易 CSV 欄位定義。
  *
- * 設計：當使用外幣帳本（currency ledger）時，非台股可讓 backend 依帳本交易推導匯率，因此匯率欄位會被隱藏。
+ * 匯率欄位為選填：若 CSV 未提供，backend 會自動從交易日期抓取。
+ * 台股會自動設為匯率 = 1。
  */
-const getStockFields = (useCurrencyLedger: boolean): FieldDefinition[] => {
-  const fields: FieldDefinition[] = [
-    {
-      name: 'date',
-      label: '日期',
-      aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
-      required: true,
-    },
-    {
-      name: 'ticker',
-      label: '股票代號',
-      aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票', '股票代號'],
-      required: true,
-    },
-    {
-      name: 'type',
-      label: '交易類型',
-      aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
-      required: true,
-    },
-    {
-      name: 'market',
-      label: '市場',
-      aliases: ['Market', 'exchange', 'Exchange', '市場', '交易所'],
-      required: true,
-    },
-    {
-      name: 'currency',
-      label: '幣別',
-      aliases: ['Currency', 'currencyCode', 'currency_code', '幣別', '貨幣'],
-      required: true,
-    },
-    {
-      name: 'shares',
-      label: '股數',
-      aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數', '股數'],
-      required: true,
-    },
-    {
-      name: 'price',
-      label: '每股價格',
-      aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
-      required: true,
-    },
-  ];
-
-  // Only include exchange rate field when not using currency ledger
-  if (!useCurrencyLedger) {
-    fields.push({
-      name: 'exchangeRate',
-      label: '匯率',
-      aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
-      required: true,
-    });
-  }
-
-  fields.push(
-    {
-      name: 'fees',
-      label: '手續費',
-      aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
-      required: false,
-    },
-    {
-      name: 'notes',
-      label: '備註',
-      aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
-      required: false,
-    }
-  );
-
-  return fields;
-};
+const stockFields: FieldDefinition[] = [
+  {
+    name: 'date',
+    label: '日期',
+    aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
+    required: true,
+  },
+  {
+    name: 'ticker',
+    label: '股票代號',
+    aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票', '股票代號'],
+    required: true,
+  },
+  {
+    name: 'type',
+    label: '交易類型',
+    aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
+    required: true,
+  },
+  {
+    name: 'market',
+    label: '市場',
+    aliases: ['Market', 'exchange', 'Exchange', '市場', '交易所'],
+    required: true,
+  },
+  {
+    name: 'currency',
+    label: '幣別',
+    aliases: ['Currency', 'currencyCode', 'currency_code', '幣別', '貨幣'],
+    required: true,
+  },
+  {
+    name: 'shares',
+    label: '股數',
+    aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數', '股數'],
+    required: true,
+  },
+  {
+    name: 'price',
+    label: '每股價格',
+    aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
+    required: true,
+  },
+  {
+    name: 'exchangeRate',
+    label: '匯率（選填）',
+    aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', '匯率'],
+    required: false,
+  },
+  {
+    name: 'fees',
+    label: '手續費',
+    aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
+    required: false,
+  },
+  {
+    name: 'notes',
+    label: '備註',
+    aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
+    required: false,
+  },
+];
 
 /**
  * 將 CSV 內的交易類型文字轉成 enum。
@@ -222,34 +213,11 @@ export function StockImportButton({
   renderTrigger,
 }: StockImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSelectingLedger, setIsSelectingLedger] = useState(false);
-  const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
-  const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
-  const [useCurrencyLedger, setUseCurrencyLedger] = useState(false);
-
-  // 當使用者進入「選擇外幣帳本」步驟時，載入帳本清單供選擇。
-  useEffect(() => {
-    if (isSelectingLedger) {
-      currencyLedgerApi.getAll().then(setCurrencyLedgers).catch(console.error);
-    }
-  }, [isSelectingLedger]);
 
   /**
-   * 開啟匯入流程：先讓使用者決定是否使用外幣帳本。
+   * 開啟匯入 modal。
    */
   const handleOpenImport = () => {
-    setIsSelectingLedger(true);
-  };
-
-  /**
-   * 選擇外幣帳本（或不使用帳本），然後開啟 CSVImportModal。
-   *
-   * @param ledgerId 選擇的 ledgerId；`null` 表示不使用外幣帳本
-   */
-  const handleSelectLedger = (ledgerId: string | null) => {
-    setSelectedLedgerId(ledgerId);
-    setUseCurrencyLedger(ledgerId !== null);
-    setIsSelectingLedger(false);
     setIsModalOpen(true);
   };
 
@@ -258,7 +226,8 @@ export function StockImportButton({
    *
    * 設計重點：
    * - 先依日期排序，避免 sell-before-buy 的順序問題。
-   * - 台股（ticker 以數字開頭）一律不使用外幣帳本，並要求有匯率（通常為 1）。
+   * - 台股自動設定匯率 = 1。
+   * - 非台股若無匯率，backend 會自動從交易日期抓取。
    */
   const handleImport = async (
     csvData: ParsedCSV,
@@ -308,7 +277,6 @@ export function StockImportButton({
         }
         const normalizedTicker = ticker.toUpperCase().trim();
         const isTaiwanStock = normalizedTicker !== '' && /^\d/.test(normalizedTicker);
-        const useLedgerForRow = useCurrencyLedger && !isTaiwanStock;
 
         // Parse type
         const typeStr = getRowValue(row, csvData.headers, mapping, 'type');
@@ -370,9 +338,9 @@ export function StockImportButton({
           continue;
         }
 
-        // Parse exchange rate
-        // - Taiwan stocks always require exchange rate (typically 1)
-        // - When using currency ledger, exchange rate is optional for non-TW tickers (backend will calculate)
+        // Parse exchange rate (optional)
+        // - Taiwan stocks always use exchange rate = 1
+        // - Non-TW stocks: if not provided, backend will auto-fetch from transaction date
         const exchangeRateStr = getRowValue(row, csvData.headers, mapping, 'exchangeRate');
         let exchangeRate: number | undefined;
 
@@ -386,10 +354,9 @@ export function StockImportButton({
         } else if (isTaiwanStock) {
           // Taiwan stocks are priced in TWD; always use exchange rate = 1
           exchangeRate = 1;
-        } else if (!useLedgerForRow) {
-          errors.push({ row: rowNum, column: '匯率', message: '匯率為必填欄位（未選擇外幣帳本時）' });
-          continue;
         }
+        // For non-TW stocks without exchange rate, leave undefined - backend will auto-fetch
+
         // Parse optional fields
         const feesStr = getRowValue(row, csvData.headers, mapping, 'fees');
         const notes = getRowValue(row, csvData.headers, mapping, 'notes');
@@ -404,10 +371,8 @@ export function StockImportButton({
           transactionDate: formatDateISO(parsedDate),
           shares: Math.abs(shares),
           pricePerShare: Math.abs(price),
-          exchangeRate, // undefined only when using currency ledger for non-TW tickers
+          exchangeRate,
           fees,
-          fundSource: useLedgerForRow ? FundSource.CurrencyLedger : FundSource.None,
-          currencyLedgerId: useLedgerForRow ? (selectedLedgerId ?? undefined) : undefined,
           notes: notes || undefined,
           market,
           currency,
@@ -451,66 +416,11 @@ export function StockImportButton({
         </button>
       )}
 
-      {/* Currency Ledger Selection Modal */}
-      {isSelectingLedger && (
-        <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
-          <div className="card-dark p-6 w-full max-w-md m-4">
-            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">選擇匯率來源</h2>
-            <p className="text-[var(--text-muted)] mb-2">
-              您可以選擇從外幣帳本自動計算匯率，或在 CSV 中手動提供匯率。
-            </p>
-            <p className="text-xs text-[var(--text-muted)] mb-4 bg-[var(--bg-tertiary)] p-2 rounded">
-              <strong>注意：</strong>CSV 檔案需包含「市場」（TW/US/UK/EU）及「幣別」（TWD/USD/GBP/EUR）欄位。
-            </p>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => handleSelectLedger(null)}
-                className="w-full p-4 border border-[var(--border-color)] rounded-lg hover:bg-[var(--bg-hover)] text-left transition-colors"
-              >
-                <div className="font-medium text-[var(--text-primary)]">手動提供匯率</div>
-                <div className="text-sm text-[var(--text-muted)]">CSV 中需包含匯率欄位</div>
-              </button>
-
-              {currencyLedgers.length > 0 && (
-                <div className="border-t border-[var(--border-color)] pt-3">
-                  <div className="text-sm text-[var(--text-muted)] mb-2">或從外幣帳本自動計算：</div>
-                  {currencyLedgers.map((ledgerSummary) => (
-                    <button
-                      key={ledgerSummary.ledger.id}
-                      onClick={() => handleSelectLedger(ledgerSummary.ledger.id)}
-                      className="w-full p-4 border border-[var(--border-color)] rounded-lg hover:bg-[var(--accent-peach-soft)] hover:border-[var(--accent-peach)] text-left flex items-center gap-3 mb-2 transition-colors"
-                    >
-                      <Wallet className="w-5 h-5 text-[var(--accent-peach)]" />
-                      <div>
-                        <div className="font-medium text-[var(--text-primary)]">{ledgerSummary.ledger.currencyCode}</div>
-                        <div className="text-sm text-[var(--text-muted)]">{ledgerSummary.ledger.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => setIsSelectingLedger(false)}
-              className="w-full mt-4 py-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              取消
-            </button>
-          </div>
-        </div>
-      )}
-
       <CSVImportModal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedLedgerId(null);
-          setUseCurrencyLedger(false);
-        }}
-        title={useCurrencyLedger ? "匯入股票交易（自動計算匯率）" : "匯入股票交易"}
-        fields={getStockFields(useCurrencyLedger)}
+        onClose={() => setIsModalOpen(false)}
+        title="匯入股票交易"
+        fields={stockFields}
         onImport={handleImport}
       />
     </>

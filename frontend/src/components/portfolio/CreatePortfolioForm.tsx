@@ -12,8 +12,9 @@ const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'TWD'];
 
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
   const [displayName, setDisplayName] = useState('');
-  const [baseCurrency, setBaseCurrency] = useState('USD');
+  const [currencyCode, setCurrencyCode] = useState('USD');
   const [homeCurrency, setHomeCurrency] = useState('TWD');
+  const [initialBalance, setInitialBalance] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +27,10 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
     try {
       const request: CreatePortfolioRequest = {
         displayName: displayName.trim() || undefined,
-        baseCurrency,
+        currencyCode,
         homeCurrency,
         description: description.trim() || undefined,
+        initialBalance: initialBalance ? parseFloat(initialBalance) : undefined,
       };
 
       const portfolio = await portfolioApi.create(request);
@@ -90,11 +92,11 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           <div className="grid gap-4 grid-cols-2">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                資產幣別
+                投資組合幣別
               </label>
               <select
-                value={baseCurrency}
-                onChange={(e) => setBaseCurrency(e.target.value)}
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
                 className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
               >
                 {COMMON_CURRENCIES.map((currency) => (
@@ -103,6 +105,9 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-[var(--text-muted)]">
+                系統將自動建立對應幣別的帳本
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -121,6 +126,22 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Initial Balance (optional) */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)]">
+              初始餘額 <span className="text-[var(--text-muted)]">(選填)</span>
+            </label>
+            <input
+              type="number"
+              value={initialBalance}
+              onChange={(e) => setInitialBalance(e.target.value)}
+              placeholder="0"
+              min="0"
+              step="0.01"
+              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
+            />
           </div>
 
           {/* Description */}

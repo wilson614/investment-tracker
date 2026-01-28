@@ -40,10 +40,6 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
             .HasPrecision(18, 2)
             .HasDefaultValue(0m);
 
-        builder.Property(t => t.FundSource)
-            .IsRequired()
-            .HasDefaultValue(FundSource.None);
-
         builder.Property(t => t.Notes)
             .HasMaxLength(500);
 

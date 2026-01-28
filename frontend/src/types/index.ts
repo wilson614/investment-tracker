@@ -32,16 +32,17 @@ export interface Portfolio {
   homeCurrency: string;
   isActive: boolean;
   displayName?: string;
-  boundCurrencyLedgerId?: string;
+  boundCurrencyLedgerId: string; // Required - 1:1 binding with ledger
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreatePortfolioRequest {
+  currencyCode: string; // Required - the currency for this portfolio (e.g., "USD", "TWD")
   description?: string;
-  baseCurrency: string;
-  homeCurrency: string;
   displayName?: string;
+  homeCurrency?: string; // Defaults to "TWD"
+  initialBalance?: number; // Optional initial balance for the bound ledger
 }
 
 export interface UpdatePortfolioRequest {
@@ -73,8 +74,7 @@ export interface StockTransaction {
   pricePerShare: number;
   exchangeRate?: number; // Nullable - when null, cost is tracked in source currency only
   fees: number;
-  fundSource: FundSource;
-  currencyLedgerId?: string;
+  currencyLedgerId?: string; // Auto-set from portfolio's bound ledger
   notes?: string;
   totalCostSource: number;
   totalCostHome?: number; // Nullable - null when no exchange rate
@@ -98,10 +98,8 @@ export interface CreateStockTransactionRequest {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate?: number; // Optional when using CurrencyLedger - auto-calculated from ledger
+  exchangeRate?: number; // Optional - auto-calculated from transaction date if not provided
   fees: number;
-  fundSource?: FundSource;
-  currencyLedgerId?: string;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -115,8 +113,6 @@ export interface UpdateStockTransactionRequest {
   pricePerShare: number;
   exchangeRate?: number; // Optional - if not provided, transaction cost tracked in source currency only
   fees: number;
-  fundSource?: FundSource;
-  currencyLedgerId?: string;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;

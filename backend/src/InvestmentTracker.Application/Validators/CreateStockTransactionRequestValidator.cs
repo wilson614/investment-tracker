@@ -39,9 +39,6 @@ public class CreateStockTransactionRequestValidator : AbstractValidator<CreateSt
             .NotEmpty().WithMessage("Transaction date is required")
             .LessThanOrEqualTo(DateTime.UtcNow.AddDays(1)).WithMessage("Transaction date cannot be in the future");
 
-        RuleFor(x => x.FundSource)
-            .IsInEnum().WithMessage("Invalid fund source");
-
         RuleFor(x => x.Notes)
             .MaximumLength(500).WithMessage("Notes cannot exceed 500 characters")
             .When(x => !string.IsNullOrEmpty(x.Notes));

@@ -10,8 +10,8 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Loader2, Settings } from 'lucide-react';
-import { portfolioApi, stockPriceApi, marketDataApi, currencyLedgerApi } from '../services/api';
+import { RefreshCw, Loader2 } from 'lucide-react';
+import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
@@ -24,7 +24,7 @@ import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
-import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse, CurrencyLedgerSummary } from '../types';
+import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
 /**
@@ -129,35 +129,6 @@ export function PortfolioPage() {
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
-  const [showSettings, setShowSettings] = useState(false);
-  const [ledgers, setLedgers] = useState<CurrencyLedgerSummary[]>([]);
-  const [bindingLedgerId, setBindingLedgerId] = useState<string>('');
-
-  const handleOpenSettings = async () => {
-    setShowSettings(true);
-    setBindingLedgerId(portfolio?.boundCurrencyLedgerId || '');
-    try {
-      const data = await currencyLedgerApi.getAll();
-      setLedgers(data);
-    } catch (err) {
-      console.error("Failed to load ledgers", err);
-    }
-  };
-
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!portfolio) return;
-    try {
-      const updated = await portfolioApi.update(portfolio.id, {
-        boundCurrencyLedgerId: bindingLedgerId || null
-      });
-      setPortfolio(updated);
-      setShowSettings(false);
-    } catch (err) {
-      console.error("Failed to save settings", err);
-      setError("Failed to save settings");
-    }
-  };
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
@@ -226,7 +197,7 @@ export function PortfolioPage() {
       if (portfolios.length === 0) {
         // Create default portfolio for new users
         currentPortfolio = await portfolioApi.create({
-          baseCurrency: 'USD',
+          currencyCode: 'USD',
           homeCurrency: 'TWD',
         });
       } else {
@@ -359,8 +330,6 @@ export function PortfolioPage() {
         pricePerShare: data.pricePerShare,
         exchangeRate: data.exchangeRate,
         fees: data.fees,
-        fundSource: data.fundSource,
-        currencyLedgerId: data.currencyLedgerId,
         notes: data.notes,
         market: data.market,
         currency: data.currency,
@@ -596,15 +565,6 @@ export function PortfolioPage() {
             {/* FR-130: Export Positions button removed - only Export Transactions remains in transaction history section */}
             <button
               type="button"
-              onClick={handleOpenSettings}
-              className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm"
-              title="設定"
-            >
-              <Settings className="w-4 h-4" />
-              設定
-            </button>
-            <button
-              type="button"
               onClick={handleFetchAllPrices}
               disabled={isFetchingAll || isCalculating || summary.positions.length === 0}
               className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
@@ -710,56 +670,6 @@ export function PortfolioPage() {
           )}
         </div>
 
-        {/* Settings Modal */}
-        {showSettings && (
-          <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
-            <div className="card-dark p-6 w-full max-w-md m-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-[var(--text-primary)]">投資組合設定</h3>
-                <button onClick={() => setShowSettings(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">✕</button>
-              </div>
-              
-              <form onSubmit={handleSaveSettings}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                    綁定外幣帳戶 (TWD Ledger)
-                  </label>
-                  <select
-                    value={bindingLedgerId}
-                    onChange={(e) => setBindingLedgerId(e.target.value)}
-                    className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded p-2 text-[var(--text-primary)]"
-                  >
-                    <option value="">無</option>
-                    {ledgers.map(l => (
-                      <option key={l.ledger.id} value={l.ledger.id}>
-                        {l.ledger.name} ({l.ledger.currencyCode})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    綁定後，可將此投資組合與特定外幣帳戶連結。
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowSettings(false)}
-                    className="px-4 py-2 rounded text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-accent px-4 py-2"
-                  >
-                    儲存
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Add Transaction Modal */}
         {showForm && (

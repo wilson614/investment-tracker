@@ -12,7 +12,7 @@ public record PortfolioDto
     public string BaseCurrency { get; init; } = "USD";
     public string HomeCurrency { get; init; } = "TWD";
     public bool IsActive { get; init; }
-    public Guid? BoundCurrencyLedgerId { get; init; }
+    public Guid BoundCurrencyLedgerId { get; init; }
     public string? DisplayName { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
@@ -32,7 +32,6 @@ public record StockTransactionDto
     public decimal PricePerShare { get; init; }
     public decimal? ExchangeRate { get; init; }
     public decimal Fees { get; init; }
-    public FundSource FundSource { get; init; }
     public Guid? CurrencyLedgerId { get; init; }
     public string? Notes { get; init; }
     public decimal TotalCostSource { get; init; }

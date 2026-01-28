@@ -16,7 +16,6 @@ public class StockTransaction : BaseEntity
     public decimal PricePerShare { get; private set; }
     public decimal? ExchangeRate { get; private set; }
     public decimal Fees { get; private set; }
-    public FundSource FundSource { get; private set; } = FundSource.None;
     public Guid? CurrencyLedgerId { get; private set; }
     public string? Notes { get; private set; }
     public bool IsDeleted { get; private set; }
@@ -73,7 +72,6 @@ public class StockTransaction : BaseEntity
         decimal pricePerShare,
         decimal? exchangeRate,
         decimal fees = 0m,
-        FundSource fundSource = FundSource.None,
         Guid? currencyLedgerId = null,
         string? notes = null,
         StockMarket? market = null,
@@ -90,7 +88,7 @@ public class StockTransaction : BaseEntity
         SetPricePerShare(pricePerShare);
         SetExchangeRate(exchangeRate);
         SetFees(fees);
-        SetFundSource(fundSource, currencyLedgerId);
+        CurrencyLedgerId = currencyLedgerId;
         SetNotes(notes);
         var resolvedMarket = market ?? GuessMarketFromTicker(ticker);
         SetMarket(resolvedMarket);
@@ -150,15 +148,8 @@ public class StockTransaction : BaseEntity
         Fees = Math.Round(fees, 2);
     }
 
-    public void SetFundSource(FundSource fundSource, Guid? currencyLedgerId = null)
+    public void SetCurrencyLedgerId(Guid? currencyLedgerId)
     {
-        if (fundSource == FundSource.CurrencyLedger && !currencyLedgerId.HasValue)
-            throw new ArgumentException("Currency ledger ID is required when fund source is CurrencyLedger");
-
-        if (fundSource != FundSource.CurrencyLedger && currencyLedgerId.HasValue)
-            throw new ArgumentException("Currency ledger ID should only be set when fund source is CurrencyLedger");
-
-        FundSource = fundSource;
         CurrencyLedgerId = currencyLedgerId;
     }
 

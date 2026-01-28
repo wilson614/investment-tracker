@@ -16,6 +16,7 @@ namespace InvestmentTracker.API.Tests.Integration;
 
 /// <summary>
 /// Integration tests for atomic stock purchase with currency ledger deduction.
+/// Updated for Story 0.2: Portfolio-Ledger 1:1 binding model.
 /// </summary>
 public class AtomicTransactionTests : IDisposable
 {
@@ -80,14 +81,14 @@ public class AtomicTransactionTests : IDisposable
         typeof(User).GetProperty("Id")!.SetValue(user, _testUserId);
         _dbContext.Users.Add(user);
 
-        // Create portfolio
-        var portfolio = new Portfolio(_testUserId, Guid.NewGuid());
-        portfolio.SetDescription("Test Portfolio");
-        await _portfolioRepository.AddAsync(portfolio);
-
         // Create currency ledger with initial balance
         var ledger = new CurrencyLedger(_testUserId, "USD", "美金帳戶");
         await _currencyLedgerRepository.AddAsync(ledger);
+
+        // Create portfolio bound to the ledger (Story 0.2: 1:1 binding)
+        var portfolio = new Portfolio(_testUserId, ledger.Id);
+        portfolio.SetDescription("Test Portfolio");
+        await _portfolioRepository.AddAsync(portfolio);
 
         // Add initial currency transaction (exchange buy) to have balance
         var initialTransaction = new CurrencyTransaction(
@@ -106,7 +107,7 @@ public class AtomicTransactionTests : IDisposable
     }
 
     [Fact]
-    public async Task BuyStock_WithCurrencyLedger_ShouldDeductFromLedger()
+    public async Task BuyStock_WithBoundLedger_ShouldDeductFromLedger()
     {
         // Arrange
         var (portfolio, ledger) = await SetupTestDataAsync();
@@ -133,8 +134,7 @@ public class AtomicTransactionTests : IDisposable
             PricePerShare = 50m, // Total: 500 USD + fees
             ExchangeRate = 31.5m,
             Fees = 5m,
-            FundSource = FundSource.CurrencyLedger,
-            CurrencyLedgerId = ledger.Id
+            Currency = Currency.USD
         };
 
         // Act
@@ -143,7 +143,7 @@ public class AtomicTransactionTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.Ticker.Should().Be("VWRA");
-        result.FundSource.Should().Be(FundSource.CurrencyLedger);
+        result.CurrencyLedgerId.Should().Be(ledger.Id);
 
         // Verify currency ledger balance was deducted
         var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
@@ -187,14 +187,13 @@ public class AtomicTransactionTests : IDisposable
             PricePerShare = 50m, // Total: 5000 USD - exceeds 1000 USD balance
             ExchangeRate = 31.5m,
             Fees = 5m,
-            FundSource = FundSource.CurrencyLedger,
-            CurrencyLedgerId = ledger.Id
+            Currency = Currency.USD
         };
 
         // Act & Assert
         var act = async () => await useCase.ExecuteAsync(request);
         await act.Should().ThrowAsync<BusinessRuleException>()
-            .WithMessage("*Insufficient balance*");
+            .WithMessage("*帳本餘額不足*");
 
         // Verify no spend transaction was created
         var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
@@ -202,61 +201,11 @@ public class AtomicTransactionTests : IDisposable
     }
 
     [Fact]
-    public async Task BuyStock_WithExternalFunding_ShouldNotAffectLedger()
+    public async Task BuyStock_WithCurrencyMismatch_ShouldThrowException()
     {
-        // Arrange
-        var (portfolio, ledger) = await SetupTestDataAsync();
-
-        var useCase = new CreateStockTransactionUseCase(
-            _stockTransactionRepository,
-            _portfolioRepository,
-            _currencyLedgerRepository,
-            _currencyTransactionRepository,
-            _portfolioCalculator,
-            _currencyLedgerService,
-            _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
-
-        var request = new CreateStockTransactionRequest
-        {
-            PortfolioId = portfolio.Id,
-            TransactionDate = DateTime.UtcNow,
-            Ticker = "VWRA",
-            TransactionType = TransactionType.Buy,
-            Shares = 10,
-            PricePerShare = 50m,
-            ExchangeRate = 31.5m,
-            Fees = 5m,
-            FundSource = FundSource.None // External funding
-        };
-
-        // Act
-        var result = await useCase.ExecuteAsync(request);
-
-        // Assert
-        result.Should().NotBeNull();
-        result.FundSource.Should().Be(FundSource.None);
-
-        // Verify currency ledger balance was NOT deducted
-        var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
-        var balance = _currencyLedgerService.CalculateBalance(transactions);
-        balance.Should().Be(1000m); // Original balance unchanged
-    }
-
-    [Fact]
-    public async Task BuyStock_WithWrongUserLedger_ShouldThrowNotFound()
-    {
-        // Arrange
+        // Arrange - Portfolio bound to USD ledger
         var (portfolio, _) = await SetupTestDataAsync();
 
-        // Create ledger for different user (will not be found due to global query filter)
-        var otherUserId = Guid.NewGuid();
-        var otherLedger = new CurrencyLedger(otherUserId, "USD", "Other User Ledger");
-        await _currencyLedgerRepository.AddAsync(otherLedger);
-        await _dbContext.SaveChangesAsync();
-
         var useCase = new CreateStockTransactionUseCase(
             _stockTransactionRepository,
             _portfolioRepository,
@@ -269,25 +218,23 @@ public class AtomicTransactionTests : IDisposable
             _monthlySnapshotServiceMock.Object,
             _txSnapshotServiceMock.Object);
 
+        // Try to buy TWD stock with USD ledger
         var request = new CreateStockTransactionRequest
         {
             PortfolioId = portfolio.Id,
             TransactionDate = DateTime.UtcNow,
-            Ticker = "VWRA",
+            Ticker = "2330", // Taiwan stock
             TransactionType = TransactionType.Buy,
             Shares = 10,
-            PricePerShare = 50m,
-            ExchangeRate = 31.5m,
+            PricePerShare = 500m,
             Fees = 0,
-            FundSource = FundSource.CurrencyLedger,
-            CurrencyLedgerId = otherLedger.Id
+            Currency = Currency.TWD
         };
 
         // Act & Assert
-        // Due to global query filter, ledger belongs to other user won't be found
         var act = async () => await useCase.ExecuteAsync(request);
-        await act.Should().ThrowAsync<EntityNotFoundException>()
-            .WithMessage("*not found*");
+        await act.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*does not match*");
     }
 
     [Fact]
@@ -319,8 +266,7 @@ public class AtomicTransactionTests : IDisposable
             PricePerShare = 100m,
             ExchangeRate = 31.5m,
             Fees = 0,
-            FundSource = FundSource.CurrencyLedger,
-            CurrencyLedgerId = ledger.Id
+            Currency = Currency.USD
         };
 
         // Second purchase: 300 USD
@@ -334,8 +280,7 @@ public class AtomicTransactionTests : IDisposable
             PricePerShare = 100m,
             ExchangeRate = 31.5m,
             Fees = 0,
-            FundSource = FundSource.CurrencyLedger,
-            CurrencyLedgerId = ledger.Id
+            Currency = Currency.USD
         };
 
         // Act
@@ -349,5 +294,71 @@ public class AtomicTransactionTests : IDisposable
         // Initial: 1000 USD, Spent: 200 + 300 = 500 USD, Remaining: 500 USD
         balance.Should().Be(500m);
         transactions.Should().HaveCount(3); // 1 initial + 2 spends
+    }
+
+    [Fact]
+    public async Task SellStock_ShouldAddToLedger()
+    {
+        // Arrange
+        var (portfolio, ledger) = await SetupTestDataAsync();
+
+        var useCase = new CreateStockTransactionUseCase(
+            _stockTransactionRepository,
+            _portfolioRepository,
+            _currencyLedgerRepository,
+            _currencyTransactionRepository,
+            _portfolioCalculator,
+            _currencyLedgerService,
+            _currentUserServiceMock.Object,
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
+
+        // First buy some shares
+        var buyRequest = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            Ticker = "VWRA",
+            TransactionType = TransactionType.Buy,
+            Shares = 10,
+            PricePerShare = 50m,
+            ExchangeRate = 31.5m,
+            Fees = 0,
+            Currency = Currency.USD
+        };
+        await useCase.ExecuteAsync(buyRequest);
+
+        // Now sell some
+        var sellRequest = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow,
+            Ticker = "VWRA",
+            TransactionType = TransactionType.Sell,
+            Shares = 5,
+            PricePerShare = 60m, // Sell at higher price
+            ExchangeRate = 31.5m,
+            Fees = 5m,
+            Currency = Currency.USD
+        };
+
+        // Act
+        var result = await useCase.ExecuteAsync(sellRequest);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.TransactionType.Should().Be(TransactionType.Sell);
+
+        var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
+        var balance = _currencyLedgerService.CalculateBalance(transactions);
+
+        // Initial: 1000, Buy: -500, Sell: +(5*60-5)=295 = 795 USD
+        balance.Should().Be(795m);
+
+        // Verify OtherIncome transaction was created for sell
+        var incomeTx = transactions.FirstOrDefault(t => t.TransactionType == CurrencyTransactionType.OtherIncome);
+        incomeTx.Should().NotBeNull();
+        incomeTx!.ForeignAmount.Should().Be(295m); // 5*60 - 5 fees
     }
 }
