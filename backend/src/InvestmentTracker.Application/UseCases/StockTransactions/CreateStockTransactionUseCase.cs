@@ -74,7 +74,47 @@ public class CreateStockTransactionUseCase(
                 exchangeRate = calculatedRate;
             }
         }
-        else if (exchangeRate is not > 0)
+
+        // FR-007/FR-008: 預先驗證 TWD Ledger 餘額（必須在 StockTransaction 保存前）
+        Domain.Entities.CurrencyLedger? boundTwdLedger = null;
+        decimal? twdBuyAmount = null;
+        if (currencyLedger == null && // 未使用明確的 CurrencyLedger
+            portfolio.BoundCurrencyLedgerId.HasValue &&
+            request.TransactionType == TransactionType.Buy)
+        {
+            // 暫時使用 request 推斷幣別（正式判斷在 StockTransaction 建立後）
+            var inferredCurrency = request.Currency ??
+                (request.Market == StockMarket.TW ? Currency.TWD :
+                 (!string.IsNullOrEmpty(request.Ticker) && char.IsDigit(request.Ticker[0]) ? Currency.TWD : null));
+
+            if (inferredCurrency == Currency.TWD)
+            {
+                boundTwdLedger = await currencyLedgerRepository.GetByIdAsync(
+                    portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+
+                if (boundTwdLedger != null && boundTwdLedger.CurrencyCode == "TWD" &&
+                    boundTwdLedger.UserId == currentUserService.UserId)
+                {
+                    var subtotal = Math.Floor(request.Shares * request.PricePerShare);
+                    twdBuyAmount = subtotal + request.Fees;
+
+                    // CRIT-4: 驗證金額 > 0（flooring 可能產生 0）
+                    if (twdBuyAmount.Value <= 0)
+                        throw new BusinessRuleException("交易金額必須大於 0");
+
+                    var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                        boundTwdLedger.Id, cancellationToken);
+                    if (!currencyLedgerService.ValidateSpend(ledgerTransactions, twdBuyAmount.Value))
+                        throw new BusinessRuleException("TWD 帳本餘額不足");
+                }
+                else
+                {
+                    boundTwdLedger = null; // 不符合條件，清除
+                }
+            }
+        }
+
+        if (exchangeRate is not > 0)
         {
             // 未使用外幣帳本且未提供匯率，需自動取得
             // 台股以數字開頭（如 0050、2330），匯率為 1.0
@@ -164,15 +204,74 @@ public class CreateStockTransactionUseCase(
         // 股票交易建立後（取得 ID），再建立連動的外幣交易
         if (currencyLedger != null && requiredAmount.HasValue)
         {
+            // FR-004: 本幣帳本（如 TWD）需強制 exchangeRate=1.0, homeAmount=foreignAmount
+            decimal? linkedHomeAmount = null;
+            decimal? linkedExchangeRate = null;
+            if (currencyLedger.CurrencyCode == currencyLedger.HomeCurrency)
+            {
+                linkedExchangeRate = 1.0m;
+                linkedHomeAmount = requiredAmount.Value;
+            }
+
             var currencyTransaction = new CurrencyTransaction(
                 currencyLedger.Id,
                 request.TransactionDate,
                 CurrencyTransactionType.Spend,
                 requiredAmount.Value,
+                homeAmount: linkedHomeAmount,
+                exchangeRate: linkedExchangeRate,
                 relatedStockTransactionId: transaction.Id,
                 notes: $"買入 {request.Ticker} × {request.Shares}");
 
             await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+        }
+        // FR-007/FR-008: 透過 Portfolio 綁定的 TWD Ledger 自動連動台股交易（僅 Buy/Sell）
+        // Buy 的餘額已在前面預先驗證
+        else if (transaction.Currency == Currency.TWD &&
+                 (request.TransactionType == TransactionType.Buy || request.TransactionType == TransactionType.Sell))
+        {
+            if (request.TransactionType == TransactionType.Buy && boundTwdLedger != null && twdBuyAmount.HasValue)
+            {
+                // 使用預先驗證時取得的資料，直接建立連動交易
+                var currencyTransaction = new CurrencyTransaction(
+                    boundTwdLedger.Id,
+                    request.TransactionDate,
+                    CurrencyTransactionType.Spend,
+                    twdBuyAmount.Value,
+                    homeAmount: twdBuyAmount.Value,
+                    exchangeRate: 1.0m,
+                    relatedStockTransactionId: transaction.Id,
+                    notes: $"買入 {request.Ticker} × {request.Shares}");
+
+                await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+            }
+            else if (request.TransactionType == TransactionType.Sell && portfolio.BoundCurrencyLedgerId.HasValue)
+            {
+                // Sell 不需要餘額驗證，在此處載入 Ledger
+                var boundLedger = boundTwdLedger ?? await currencyLedgerRepository.GetByIdAsync(
+                    portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+
+                if (boundLedger != null && boundLedger.CurrencyCode == "TWD" &&
+                    boundLedger.UserId == currentUserService.UserId)
+                {
+                    var subtotal = Math.Floor(request.Shares * request.PricePerShare);
+                    var proceeds = subtotal - request.Fees;
+                    if (proceeds > 0)
+                    {
+                        var currencyTransaction = new CurrencyTransaction(
+                            boundLedger.Id,
+                            request.TransactionDate,
+                            CurrencyTransactionType.OtherIncome,
+                            proceeds,
+                            homeAmount: proceeds,
+                            exchangeRate: 1.0m,
+                            relatedStockTransactionId: transaction.Id,
+                            notes: $"賣出 {request.Ticker} × {request.Shares}");
+
+                        await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+                    }
+                }
+            }
         }
 
         // US1: 寫入交易日快照（before/after），供 Dietz/TWR 計算使用
