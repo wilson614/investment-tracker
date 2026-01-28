@@ -2,112 +2,170 @@
 
 **Feature Branch**: `005-twd-ledger-and-bank-accounts`
 **Created**: 2026-01-28
-**Status**: Ready for Implementation
+**Status**: Refactoring to 1:1 Binding Model
 
 ---
 
-## Phase 1: TWD Ledger (P1)
+## Phase 0: Data Model Refactoring (1:1 Binding)
 
-### Story 1.1: Create TWD Ledger and Record Deposits
+### Story 0.1: Enforce Portfolio-Ledger 1:1 Binding
 
 #### Backend Tasks
 
-- [x] **T1.1.1** Confirm CreateCurrencyLedgerUseCase supports TWD
+- [ ] **T0.1.1** Update Portfolio Entity
+  - File: `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+  - Change:
+    - Make `BoundCurrencyLedgerId` required (Guid, not Guid?)
+    - Remove `BindCurrencyLedger()` method
+    - Update constructor to require CurrencyLedgerId
+  - Impact: Breaking change, requires data wipe
+
+- [ ] **T0.1.2** Add Unique Index on BoundCurrencyLedgerId
+  - File: `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/PortfolioConfiguration.cs`
+  - Change: Add `.HasIndex(p => p.BoundCurrencyLedgerId).IsUnique()`
+  - Purpose: One ledger can only be bound to one portfolio
+
+- [ ] **T0.1.3** Update CreatePortfolioUseCase
+  - File: `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CreatePortfolioUseCase.cs`
+  - Change:
+    - Require `CurrencyCode` in request (not CurrencyLedgerId)
+    - Auto-create CurrencyLedger with the specified currency
+    - Support optional `InitialBalance` parameter
+    - If InitialBalance > 0, create initial Deposit transaction
+    - Validate user doesn't already have a portfolio with this currency
+
+- [ ] **T0.1.4** Remove FundSource from StockTransaction
+  - Files:
+    - `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`
+    - `backend/src/InvestmentTracker.Domain/Enums/FundSource.cs`
+  - Change: Remove FundSource property and enum (no longer needed)
+  - Note: Keep CurrencyLedgerId on StockTransaction for reference
+
+- [ ] **T0.1.5** Database Migration
+  - Run: `dotnet ef migrations add EnforcePortfolioLedgerBinding`
+  - Changes:
+    - ALTER portfolios.BoundCurrencyLedgerId to NOT NULL
+    - ADD UNIQUE INDEX on BoundCurrencyLedgerId
+    - DROP FundSource column from stock_transactions (if exists)
+
+---
+
+### Story 0.2: Simplify Stock Transaction Linking
+
+#### Backend Tasks
+
+- [ ] **T0.2.1** Refactor CreateStockTransactionUseCase
+  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
+  - Changes:
+    - Remove complex currency inference logic (lines 86-88)
+    - Get bound ledger directly: `portfolio.BoundCurrencyLedgerId` (always exists)
+    - Validate: `stock.Currency == boundLedger.CurrencyCode`
+    - Always create linked transaction for Buy/Sell
+    - Remove all FundSource parameter handling
+    - Remove balance validation (no BusinessRuleException for insufficient balance)
+    - Add `autoDeposit` parameter: if true and balance insufficient, auto-create Deposit for shortfall
+  - Target: ~50% code reduction in this file
+
+- [ ] **T0.2.2** Refactor UpdateStockTransactionUseCase
+  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs`
+  - Change: Same simplification as CreateStockTransactionUseCase
+
+- [ ] **T0.2.3** Verify DeleteStockTransactionUseCase
+  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs`
+  - Verify: Linked deletion already works via RelatedStockTransactionId
+  - No changes expected
+
+- [ ] **T0.2.4** Update Request DTOs
+  - Files:
+    - `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionRequest.cs`
+  - Change: Remove FundSource and CurrencyLedgerId from request (auto-determined by portfolio)
+
+- [ ] **T0.2.5** Add Currency Mismatch Validation Tests
+  - New File: `tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/CurrencyMismatchTests.cs`
+  - Test Cases:
+    - USD Portfolio + USD Stock → OK
+    - USD Portfolio + TWD Stock → BusinessRuleException
+    - TWD Portfolio + USD Stock → BusinessRuleException
+
+#### Frontend Tasks
+
+- [ ] **T0.2.6** Update TransactionForm
+  - File: `frontend/src/components/transactions/TransactionForm.tsx`
+  - Changes:
+    - Remove FundSource dropdown
+    - Remove CurrencyLedger selection
+    - Always show: "Will deduct from [Ledger Name]" for Buy
+    - Always show: "Will credit to [Ledger Name]" for Sell
+    - Validate stock currency matches portfolio's bound ledger
+    - Add insufficient balance handling:
+      - Check balance before submit
+      - If insufficient, show modal with options:
+        - "Auto-deposit [shortfall] and proceed"
+        - "Proceed without deposit (balance will be negative)"
+      - Pass `autoDeposit` flag to API based on user choice
+
+- [ ] **T0.2.7** Update Portfolio Creation
+  - File: `frontend/src/pages/Portfolio.tsx` (or modal component)
+  - Changes:
+    - Creating portfolio requires selecting a Currency (TWD, USD, etc.)
+    - System auto-creates bound CurrencyLedger
+    - Support optional InitialBalance input
+    - Validate user doesn't already have portfolio with this currency
+
+- [ ] **T0.2.8** Remove Portfolio Settings Modal
+  - File: `frontend/src/pages/Portfolio.tsx`
+  - Change: Remove settings button and modal (binding is permanent)
+  - Show bound ledger info in portfolio header instead
+
+- [ ] **T0.2.9** Update API types
+  - File: `frontend/src/types/index.ts`
+  - Change: Remove FundSource type, update Portfolio and Transaction types
+
+- [ ] **T0.2.10** Add negative balance visual indicator
+  - Files: `CurrencyDetail.tsx`, `CurrencyLedgerCard.tsx`
+  - Change: When balance < 0, display in red with tooltip "餘額為負，請補記入金"
+
+#### Verification
+
+- [ ] **V0.2** Manual test: Create Portfolio with Ledger → Buy stock (same currency) → Verify linked transaction → Try add mismatched currency stock → Verify rejection
+
+---
+
+## Phase 1: Home Currency Ledger Support
+
+### Story 1.1: Create Home Currency Ledger (e.g., TWD)
+
+#### Backend Tasks
+
+- [x] **T1.1.1** Confirm CreateCurrencyLedgerUseCase supports any currency
   - File: `backend/src/InvestmentTracker.Application/UseCases/CurrencyLedger/CreateCurrencyLedgerUseCase.cs`
-  - Verify: No logic blocking TWD, remove if exists
-  - Test: Add unit test confirming TWD can be created
+  - Verify: No logic blocking any currency code
   - ✅ Verified: No blocking logic exists
 
-- [x] **T1.1.2** CurrencyLedgerService TWD special handling
-  - File: `backend/src/InvestmentTracker.Domain/Services/CurrencyLedgerService.cs`
+- [x] **T1.1.2** Home Currency special handling
+  - Files: `CreateCurrencyTransactionUseCase.cs`, `UpdateCurrencyTransactionUseCase.cs`
   - Change: When CurrencyCode == HomeCurrency, ExchangeRate = 1.0, HomeAmount = ForeignAmount
-  - Test: Add unit test verifying TWD transactions skip exchange P&L
-  - ✅ Implemented in CreateCurrencyTransactionUseCase.cs, UpdateCurrencyTransactionUseCase.cs, CreateStockTransactionUseCase.cs
+  - ✅ Implemented
 
 - [x] **T1.1.3** Confirm Unique Index (UserId, CurrencyCode) exists
   - File: `backend/src/InvestmentTracker.Infrastructure/Data/AppDbContext.cs`
-  - Verify: Ensure each user can only have one TWD ledger
   - ✅ Verified: Index exists
-
-- [x] **T1.1.3b** Verify TWD ledger supports all transaction types (FR-003)
-  - New File: `tests/InvestmentTracker.Application.Tests/UseCases/CurrencyLedger/TwdLedgerTransactionTypesTests.cs`
-  - Test Cases: Deposit, Withdraw, Interest, Spend, OtherIncome, OtherExpense all work correctly
-  - ✅ Created: 7 tests all pass
 
 #### Frontend Tasks
 
 - [x] **T1.1.4** Add TWD to supported currencies
   - File: `frontend/src/pages/Currency.tsx`
-  - Change: Add 'TWD' to SUPPORTED_CURRENCIES
   - ✅ Implemented
 
-- [x] **T1.1.5** TWD ledger hide irrelevant fields
-  - File: `frontend/src/pages/CurrencyDetail.tsx`
-  - Change: When currencyCode === 'TWD' hide average rate, realized P&L, unrealized P&L
-  - ✅ Implemented with isHomeCurrencyLedger check
-
-- [x] **T1.1.6** TWD ledger card hide irrelevant fields
-  - File: `frontend/src/components/currency/CurrencyLedgerCard.tsx`
-  - Change: When currencyCode === 'TWD' hide exchange rate related fields
+- [x] **T1.1.5** Home currency ledger hide irrelevant fields
+  - Files: `CurrencyDetail.tsx`, `CurrencyLedgerCard.tsx`
+  - Change: When CurrencyCode == HomeCurrency, hide exchange rate fields
   - ✅ Implemented with isHomeCurrencyLedger check
 
 #### Verification
 
 - [x] **V1.1** Manual test: Create TWD ledger → Add Deposit → Verify balance
   - ✅ All code implemented and builds successfully
-  - Backend: TWD handling in CreateCurrencyTransactionUseCase, UpdateCurrencyTransactionUseCase, CreateStockTransactionUseCase
-  - Frontend: TWD in SUPPORTED_CURRENCIES, isHomeCurrencyLedger conditional rendering
-  - Tests: 7 unit tests pass
-
----
-
-### Story 1.2: TW Stock Transaction Linked with TWD Ledger
-
-#### Backend Tasks
-
-- [x] **T1.2.1** CreateStockTransactionUseCase TWD linking
-  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
-  - Change:
-    - When Portfolio.BoundCurrencyLedgerId points to TWD Ledger
-    - And Stock.Currency == "TWD"
-    - Buy creates Spend transaction
-    - Sell creates OtherIncome transaction
-  - Test: Integration test verifying linking
-  - ✅ Implemented with pre-validation before StockTransaction save
-
-- [x] **T1.2.2** DeleteStockTransactionUseCase linked deletion
-  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs`
-  - Change: Delete stock transaction syncs delete corresponding ledger transaction
-  - Test: Integration test verifying linked deletion
-  - ✅ Already implemented (uses GetByStockTransactionIdAsync + SoftDeleteAsync)
-
-- [x] **T1.2.3** UpdateStockTransactionUseCase linked update
-  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs`
-  - Change: Update stock transaction syncs update corresponding ledger transaction amount
-  - Test: Integration test verifying linked update
-  - ✅ Implemented with ownership validation
-
-- [x] **T1.2.4** Insufficient balance validation
-  - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
-  - Change: On buy, check TWD Ledger balance is sufficient, throw BusinessRuleException if not
-  - Test: Unit test verifying insufficient balance error
-  - ✅ Implemented with pre-validation and amount > 0 check
-
-#### Frontend Tasks
-
-- [x] **T1.2.5** StockTransactionForm show linking info
-  - File: `frontend/src/components/transactions/TransactionForm.tsx`
-  - Change: When Portfolio bound to TWD Ledger and is TW stock, show deduction notice
-  - ✅ Implemented: isTwBound logic, auto fund source setting, deduction/income notice
-
-- [x] **T1.2.6** PortfolioSettings ledger binding options
-  - File: `frontend/src/pages/Portfolio.tsx`
-  - Change: Settings modal with ledger binding dropdown (includes TWD Ledger option)
-  - ✅ Implemented: Settings button, modal with ledger dropdown, save to boundCurrencyLedgerId
-
-#### Verification
-
-- [ ] **V1.2** Manual test: Bind Portfolio → Buy TW stock → Verify ledger deduction → Delete transaction → Verify balance restored
 
 ---
 
@@ -203,7 +261,6 @@
 
 - [ ] **T2.2.2** Update GetBankAccountsUseCase
   - Change: Response includes interest estimation
-  - Or add GetBankAccountsWithInterestUseCase
 
 - [ ] **T2.2.3** InterestEstimationService unit tests
   - New File: `tests/InvestmentTracker.Domain.Tests/Services/InterestEstimationServiceTests.cs`
@@ -240,12 +297,6 @@
 
 - [ ] **T3.1.2** Create TotalAssetsService
   - New File: `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs`
-  - Calculate:
-    - Stock market value
-    - TWD ledger balance
-    - Foreign ledger balance (converted to TWD)
-    - Bank account total assets
-    - Percentages
 
 - [ ] **T3.1.3** Create GetTotalAssetsSummaryUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/Assets/GetTotalAssetsSummaryUseCase.cs`
@@ -267,7 +318,6 @@
 
 - [ ] **T3.1.8** Create TotalAssetsBanner component
   - New File: `frontend/src/features/total-assets/components/TotalAssetsBanner.tsx`
-  - Display: Total assets number
 
 - [ ] **T3.1.9** Create AssetsBreakdownPieChart component
   - New File: `frontend/src/features/total-assets/components/AssetsBreakdownPieChart.tsx`
@@ -275,7 +325,6 @@
 
 - [ ] **T3.1.10** Create AssetCategorySummary component
   - New File: `frontend/src/features/total-assets/components/AssetCategorySummary.tsx`
-  - Display: Investment/Bank breakdown
 
 - [ ] **T3.1.11** Create TotalAssetsDashboard page
   - New File: `frontend/src/features/total-assets/pages/TotalAssetsDashboard.tsx`
@@ -299,15 +348,12 @@
 
 - [ ] **T4.1.1** Performance verification (SC-004)
   - Verify: Total assets page load time < 2 seconds
-  - Method: Manual test or Lighthouse evaluation
 
 - [ ] **T4.1.2** Regression testing (SC-005)
-  - Verify: No regression in existing foreign currency ledger and foreign stock functionality
-  - Method: Run existing integration tests + manual verification of foreign currency ledger CRUD
+  - Verify: No regression in existing functionality
 
 - [ ] **T4.1.3** Test coverage check
   - Target: Domain layer >80%, financial calculation methods 100%
-  - Method: `dotnet test --collect:"XPlat Code Coverage"`
 
 #### Verification
 
@@ -319,35 +365,31 @@
 
 | Phase | Story | Tasks | Status |
 |-------|-------|-------|--------|
-| 1 | 1.1 Create TWD Ledger | 7 + 1 verification | ✅ Complete |
-| 1 | 1.2 TW Stock Linking | 6 + 1 verification | ✅ Complete |
+| 0 | 0.1 Enforce 1:1 Binding | 5 tasks | ⬜ Pending |
+| 0 | 0.2 Simplify Linking | 9 + 1 verification | ⬜ Pending |
+| 1 | 1.1 Home Currency Ledger | 5 + 1 verification | ✅ Complete |
 | 2 | 2.1 Bank Account CRUD | 19 + 1 verification | ⬜ Pending |
 | 2 | 2.2 Interest Estimation | 5 + 1 verification | ⬜ Pending |
 | 3 | 3.1 Total Assets Dashboard | 12 + 1 verification | ⬜ Pending |
 | 4 | 4.1 Performance & Regression | 3 + 1 verification | ⬜ Pending |
 
-**Total**: 52 tasks + 6 verification steps
+**Total**: ~58 tasks + 7 verification steps
+
+---
+
+## Deprecated Tasks (From Previous Design)
+
+The following tasks from the previous design are deprecated and should be deleted:
+
+- ~~T1.2.1-T1.2.6~~ - Replaced by Phase 0 tasks (simplified linking)
+- ~~V1.2~~ - Replaced by V0.2
 
 ---
 
 ## Known Issues (Non-Critical, Deferred)
 
-以下為多模型審查時發現的非關鍵問題，暫時延後處理：
+### RESOLVED by New Design
 
-### CRIT-1: 非原子寫入
-- **位置**: `CreateStockTransactionUseCase.cs`, `UpdateStockTransactionUseCase.cs`
-- **問題**: StockTransaction 和 CurrencyTransaction 分開寫入，若中途失敗可能導致資料不一致
-- **建議**: 使用 Unit of Work pattern 或 DB transaction 包裝
-- **優先級**: Low（目前單一使用者場景，失敗機率低）
-
-### CRIT-2: 使用 Market 而非 Currency 判斷台股
-- **位置**: `CreateStockTransactionUseCase.cs` (line 86-88)
-- **問題**: 目前使用 `Currency.TWD` 判斷是否為台股，但 Currency 可手動覆寫
-- **建議**: 改用 `Market == StockMarket.TW` 判斷更準確
-- **優先級**: Low（實際使用情境中不太可能錯誤設定）
-
-### CRIT-3: FundSource 語意問題
-- **位置**: `CreateStockTransactionUseCase.cs`
-- **問題**: Portfolio 綁定 TWD Ledger 時，FundSource 仍為 None（未明確指向 CurrencyLedger）
-- **建議**: 考慮新增 `FundSource.BoundLedger` 狀態，或在 StockTransaction 記錄實際連動的 LedgerId
-- **優先級**: Low（目前功能正常，僅語意不夠明確）
+- ~~CRIT-1: Non-atomic writes~~ - Still exists, but simplified logic reduces failure scenarios
+- ~~CRIT-2: Using Currency instead of Market~~ - **RESOLVED**: Now validate Stock.Currency == Ledger.CurrencyCode directly
+- ~~CRIT-3: FundSource semantic issue~~ - **RESOLVED**: FundSource removed entirely

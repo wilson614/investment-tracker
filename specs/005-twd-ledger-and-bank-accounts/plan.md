@@ -2,11 +2,94 @@
 
 **Feature Branch**: `005-twd-ledger-and-bank-accounts`
 **Created**: 2026-01-28
-**Status**: Ready for Implementation
+**Status**: Refactoring Phase 1 (1:1 Binding Model)
 
 ---
 
-## Phase 1: TWD Ledger (P1)
+## Design Change Summary
+
+### Previous Design (Complex)
+- Portfolio optionally binds Ledger
+- Complex currency inference logic to determine if linking should happen
+- TWD-specific handling in CreateStockTransactionUseCase
+
+### New Design (Simplified 1:1 Model)
+- **Portfolio : CurrencyLedger = 1:1 mandatory binding**
+- **Stock.Currency must match Ledger.CurrencyCode** (validation)
+- **All Buy/Sell auto-link** (no currency inference needed)
+- **Binding is permanent** (no unbind)
+
+---
+
+## Phase 0: Data Model Refactoring (NEW)
+
+### 0.1 Backend - Enforce 1:1 Binding
+
+#### 0.1.1 Portfolio Entity Changes
+- **File**: `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
+- **Changes**:
+  - Make `BoundCurrencyLedgerId` required (not nullable)
+  - Remove `BindCurrencyLedger()` method (binding happens at creation)
+  - Add constructor that requires CurrencyLedgerId
+
+#### 0.1.2 CurrencyLedger Unique Constraint
+- **File**: `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/PortfolioConfiguration.cs`
+- **Change**: Add unique index on `BoundCurrencyLedgerId` (one ledger = one portfolio)
+
+#### 0.1.3 CreatePortfolioUseCase Changes
+- **File**: `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CreatePortfolioUseCase.cs`
+- **Changes**:
+  - Require `CurrencyLedgerId` in request
+  - Validate ledger exists and belongs to user
+  - Validate ledger is not already bound to another portfolio
+
+#### 0.1.4 Remove FundSource Logic
+- **Files**: Multiple Use Cases
+- **Change**: Remove `FundSource` enum usage, all transactions auto-link to bound ledger
+
+### 0.2 Backend - Simplify Stock Transaction Linking
+
+#### 0.2.1 CreateStockTransactionUseCase Refactor
+- **File**: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
+- **Changes**:
+  - Remove complex currency inference logic (lines 86-88)
+  - Get bound ledger from Portfolio.BoundCurrencyLedgerId (always exists)
+  - Validate `Stock.Currency == Ledger.CurrencyCode`
+  - Always create linked transaction (Buy=Spend, Sell=OtherIncome)
+  - Remove FundSource parameter handling
+
+#### 0.2.2 UpdateStockTransactionUseCase Refactor
+- **File**: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs`
+- **Change**: Same simplification as Create
+
+#### 0.2.3 DeleteStockTransactionUseCase
+- **File**: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs`
+- **Verify**: Linked deletion already works via RelatedStockTransactionId
+
+### 0.3 Database Migration
+
+#### 0.3.1 Migration Script
+- Make `BoundCurrencyLedgerId` NOT NULL (requires data wipe or migration)
+- Add unique index on `BoundCurrencyLedgerId`
+- Remove FundSource column from StockTransactions (if exists)
+
+### 0.4 Frontend - Simplify UI
+
+#### 0.4.1 Remove FundSource Selection
+- **File**: `frontend/src/components/transactions/TransactionForm.tsx`
+- **Change**: Remove FundSource dropdown, always show "Will deduct from [Ledger Name]"
+
+#### 0.4.2 Portfolio Creation Flow
+- **File**: `frontend/src/pages/Portfolio.tsx` (or CreatePortfolioModal)
+- **Change**: Must select/create a CurrencyLedger when creating portfolio
+
+#### 0.4.3 Remove Currency-Specific Logic
+- **Files**: Various components
+- **Change**: Remove TWD-specific conditionals, use generic "home currency" check
+
+---
+
+## Phase 1: Home Currency Ledger Support (Simplified)
 
 ### 1.1 Backend - TWD Ledger Support
 
@@ -29,13 +112,10 @@
   ```
 - **Scope**: `AddTransaction`, `RecalculateLedgerTotals` methods
 
-#### 1.1.3 TW Stock Transaction Linking
-- **File**: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
-- **Change**:
-  - When Portfolio.BoundCurrencyLedgerId points to TWD Ledger and stock currency is TWD
-  - Auto-create Spend transaction (buy) or OtherIncome transaction (sell)
-  - Handle TW stock amount decimal rounding (TW stocks priced per share, ensure integer total)
-- **New Use Case**: `DeleteStockTransactionUseCase` needs to sync delete linked transaction
+#### 1.1.3 Home Currency Special Handling
+- **File**: `backend/src/InvestmentTracker.Application/UseCases/CurrencyLedger/CreateCurrencyTransactionUseCase.cs`
+- **Change**: When Ledger.CurrencyCode == HomeCurrency, set ExchangeRate=1.0, HomeAmount=ForeignAmount
+- **Already Implemented**: Verify existing logic works for any home currency
 
 ### 1.2 Frontend - TWD Ledger UI
 
@@ -52,9 +132,12 @@
   - Unrealized P&L
   - Realized P&L
 
-#### 1.2.3 Portfolio Bind TWD Ledger
-- **File**: `frontend/src/pages/PortfolioSettings.tsx`
-- **Change**: Dropdown includes TWD Ledger option (existing logic should support)
+#### 1.2.3 Portfolio-Ledger Binding UI
+- **File**: `frontend/src/pages/Portfolio.tsx`
+- **Change**:
+  - Creating portfolio requires selecting a CurrencyLedger
+  - Display bound ledger info in portfolio header
+  - Remove settings modal (binding is permanent)
 
 ---
 

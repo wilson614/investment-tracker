@@ -15,6 +15,35 @@ Currently, the system only has foreign currency ledger functionality for trackin
 
 ## Architecture Design
 
+### Portfolio-Ledger Binding Model (1:1)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ONE USER'S INVESTMENT SYSTEM                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+    ┌─────────────────────────┼─────────────────────────┐
+    ▼                         ▼                         ▼
+┌─────────────┐       ┌─────────────┐           ┌─────────────┐
+│ TWD Portfolio│       │ USD Portfolio│           │ Bank Accounts│
+│ (台股)       │       │ (美股)       │           │ (存款)       │
+└──────┬──────┘       └──────┬──────┘           └─────────────┘
+       │ 1:1 Bind            │ 1:1 Bind
+       ▼                     ▼
+┌─────────────┐       ┌─────────────┐
+│ TWD Ledger  │       │ USD Ledger  │
+│ (投資資金)   │       │ (投資資金)   │
+└─────────────┘       └─────────────┘
+```
+
+**Core Rules**:
+- **1:1 Binding**: One Portfolio binds exactly one CurrencyLedger (mandatory, permanent)
+- **One Currency Per User**: Each user can only have one ledger per currency (existing constraint)
+- **Currency Match**: Stock transactions in a portfolio must match the bound ledger's currency
+- **Auto-Linking**: All Buy/Sell transactions auto-create linked ledger transactions
+
+### Total Assets View
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Total Assets                              │
@@ -63,19 +92,21 @@ User wants to create a TWD ledger to track investment-purpose TWD funds. After t
 
 ---
 
-### User Story 2 - TW Stock Transaction Linked with TWD Ledger (Priority: P1)
+### User Story 2 - Stock Transaction Auto-Linked with Bound Ledger (Priority: P1)
 
-When user buys TW stocks, system automatically deducts the corresponding amount from TWD ledger, similar to foreign currency ledger linking.
+When user buys/sells stocks, system automatically deducts/credits the corresponding amount from/to the bound ledger.
 
-**Why this priority**: This is the core value of TWD ledger, allowing users to track investment fund flows.
+**Why this priority**: This is the core value of the 1:1 binding model, allowing users to track investment fund flows.
 
-**Independent Test**: Bind Portfolio to TWD Ledger, create TW stock buy transaction, verify automatic Spend transaction creation.
+**Independent Test**: Create Portfolio with bound Ledger, create stock buy transaction, verify automatic Spend transaction creation.
 
 **Acceptance Scenarios**:
 
-1. **Given** Portfolio bound to TWD Ledger with balance 100,000 TWD, **When** user buys 0050 for 50,000 TWD, **Then** TWD Ledger auto-creates Spend transaction of 50,000, balance becomes 50,000 TWD
-2. **Given** Portfolio bound to TWD Ledger with balance 30,000 TWD, **When** user attempts to buy stock for 50,000 TWD, **Then** system displays insufficient balance error
-3. **Given** user deletes a TW stock transaction, **When** that transaction has corresponding Spend record, **Then** corresponding Spend transaction is also deleted, balance restored
+1. **Given** Portfolio bound to USD Ledger with balance $10,000, **When** user buys AAPL for $5,000, **Then** USD Ledger auto-creates Spend transaction of $5,000, balance becomes $5,000
+2. **Given** Portfolio bound to TWD Ledger with balance 100,000 TWD, **When** user buys 0050 for 50,000 TWD, **Then** TWD Ledger auto-creates Spend transaction of 50,000, balance becomes 50,000 TWD
+3. **Given** Portfolio bound to Ledger with insufficient balance, **When** user attempts to buy stock exceeding balance, **Then** system displays insufficient balance error
+4. **Given** user deletes a stock transaction, **When** that transaction has corresponding Spend/OtherIncome record, **Then** corresponding ledger transaction is also deleted, balance restored
+5. **Given** Portfolio bound to USD Ledger, **When** user attempts to add TWD stock, **Then** system rejects with currency mismatch error
 
 ---
 
@@ -128,10 +159,12 @@ User wants to see on one page: Investment (stocks + ledgers) + Bank Assets = Tot
 
 ### Edge Cases
 
-- **TWD Ledger Exchange Rate**: When CurrencyCode=TWD and HomeCurrency=TWD, rate is fixed at 1.0, no exchange P&L calculation
+- **Home Currency Exchange Rate**: When CurrencyCode == HomeCurrency (e.g., TWD), rate is fixed at 1.0, no exchange P&L calculation
+- **Currency Mismatch**: When adding stock with different currency than bound ledger, system rejects the transaction
 - **Empty Ledgers/Accounts**: When no data, total assets shows 0, should not error
 - **Bank Rate is 0**: Allow setting 0 rate (like regular savings), interest estimation shows 0
 - **Cap Greater Than TotalAssets**: Use smaller value (TotalAssets) when calculating interest
+- **Portfolio Without Binding**: Not allowed - each portfolio must have a bound ledger
 
 ---
 
@@ -139,29 +172,39 @@ User wants to see on one page: Investment (stocks + ledgers) + Bank Assets = Tot
 
 ### Functional Requirements
 
-**TWD Ledger**
-- **FR-001**: System MUST allow users to create ledger with CurrencyCode=TWD
-- **FR-002**: System MUST ensure each user can only have one TWD ledger (globally unique)
-- **FR-003**: TWD ledger MUST support all existing transaction types (Deposit, Withdraw, Interest, Spend, etc.)
-- **FR-004**: When CurrencyCode == HomeCurrency, system MUST fix exchange rate at 1.0
-- **FR-005**: When CurrencyCode == HomeCurrency, UI MUST hide exchange rate related fields (average rate, unrealized P&L)
+**Portfolio-Ledger Binding (1:1 Model)**
+- **FR-001**: Each Portfolio MUST be bound to exactly one CurrencyLedger (mandatory)
+- **FR-002**: Each CurrencyLedger MUST be bound to exactly one Portfolio (1:1)
+- **FR-002a**: CurrencyLedger MUST be created together with Portfolio (no standalone ledgers)
+- **FR-002b**: When creating Portfolio, user MAY set an initial balance for the ledger
+- **FR-003**: Binding is permanent and cannot be unbound
+- **FR-004**: Each user can only have one Portfolio per currency (one TWD portfolio, one USD portfolio, etc.)
+- **FR-005**: Stock transactions in a portfolio MUST have Currency == bound Ledger's CurrencyCode
 
-**TW Stock Linking**
-- **FR-006**: Portfolio MUST be able to bind TWD Ledger (existing BoundCurrencyLedgerId field)
-- **FR-007**: When buying TW stocks, system MUST auto-create linked Spend transaction (like foreign currency ledger)
-- **FR-008**: When selling TW stocks, system MUST auto-create linked OtherIncome transaction (return funds)
-- **FR-009**: When deleting/updating stock transaction, system MUST sync update/delete linked ledger transaction
+**Home Currency Ledger (TWD)**
+- **FR-006**: System MUST allow creating ledger with CurrencyCode=TWD (home currency)
+- **FR-007**: When CurrencyCode == HomeCurrency, system MUST fix exchange rate at 1.0
+- **FR-008**: When CurrencyCode == HomeCurrency, UI MUST hide exchange rate related fields
+
+**Stock-Ledger Auto-Linking**
+- **FR-009**: When buying stocks, system MUST auto-create linked Spend transaction in bound ledger
+- **FR-010**: When selling stocks, system MUST auto-create linked OtherIncome transaction
+- **FR-011**: When deleting/updating stock transaction, system MUST sync update/delete linked ledger transaction
+- **FR-012**: When ledger balance is insufficient for Buy, system MUST prompt user to choose:
+  - Option A: Auto-create Deposit transaction for the shortfall amount
+  - Option B: Proceed without deposit (allow negative balance)
+- **FR-012a**: System MUST NOT block transactions due to insufficient balance
 
 **Bank Accounts**
-- **FR-010**: System MUST provide BankAccount CRUD functionality
-- **FR-011**: BankAccount MUST include: bank name, total assets, annual rate (%), interest cap
-- **FR-012**: BankAccount and CurrencyLedger have no FK relationship
-- **FR-013**: System MUST calculate interest estimation: Min(TotalAssets, Cap) × Rate / 12
+- **FR-013**: System MUST provide BankAccount CRUD functionality
+- **FR-014**: BankAccount MUST include: bank name, total assets, annual rate (%), interest cap
+- **FR-015**: BankAccount and CurrencyLedger have no FK relationship
+- **FR-016**: System MUST calculate interest estimation: Min(TotalAssets, Cap) × Rate / 12
 
 **Total Assets**
-- **FR-014**: System MUST calculate Investment = Stock Value + Σ Ledger Balance (converted to TWD)
-- **FR-015**: System MUST calculate Total Assets = Investment + Σ Bank Account TotalAssets
-- **FR-016**: System SHOULD display investment vs bank ratio pie chart
+- **FR-017**: System MUST calculate Investment = Stock Value + Σ Ledger Balance (converted to TWD)
+- **FR-018**: System MUST calculate Total Assets = Investment + Σ Bank Account TotalAssets
+- **FR-019**: System SHOULD display investment vs bank ratio pie chart
 
 ### Key Entities
 
