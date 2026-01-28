@@ -17,7 +17,7 @@ public class Portfolio : BaseEntity
     /// 綁定的外幣帳本（Ledger CF 模式用）。
     /// 一個 Portfolio 明確綁定一個 CurrencyLedger。
     /// </summary>
-    public Guid? BoundCurrencyLedgerId { get; private set; }
+    public Guid BoundCurrencyLedgerId { get; private set; }
 
     /// <summary>
     /// 顯示名稱（例如：「美股投資組合」）
@@ -26,6 +26,7 @@ public class Portfolio : BaseEntity
 
     // 導覽屬性
     public User User { get; private set; } = null!;
+    public CurrencyLedger BoundCurrencyLedger { get; private set; } = null!;
 
     private readonly List<StockTransaction> _transactions = [];
     public IReadOnlyCollection<StockTransaction> Transactions => _transactions.AsReadOnly();
@@ -33,12 +34,22 @@ public class Portfolio : BaseEntity
     // EF Core 必要的無參數建構子
     private Portfolio() { }
 
-    public Portfolio(Guid userId, string baseCurrency = "USD", string homeCurrency = "TWD", string? displayName = null)
+    public Portfolio(
+        Guid userId,
+        Guid boundCurrencyLedgerId,
+        string baseCurrency = "USD",
+        string homeCurrency = "TWD",
+        string? displayName = null)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
 
         UserId = userId;
+
+        if (boundCurrencyLedgerId == Guid.Empty)
+            throw new ArgumentException("Bound currency ledger ID is required", nameof(boundCurrencyLedgerId));
+
+        BoundCurrencyLedgerId = boundCurrencyLedgerId;
         SetCurrencies(baseCurrency, homeCurrency);
         SetDisplayName(displayName);
     }
@@ -69,11 +80,6 @@ public class Portfolio : BaseEntity
 
         BaseCurrency = baseCurrency.ToUpperInvariant();
         HomeCurrency = homeCurrency.ToUpperInvariant();
-    }
-
-    public void BindCurrencyLedger(Guid? currencyLedgerId)
-    {
-        BoundCurrencyLedgerId = currencyLedgerId;
     }
 
     public void Deactivate() => IsActive = false;

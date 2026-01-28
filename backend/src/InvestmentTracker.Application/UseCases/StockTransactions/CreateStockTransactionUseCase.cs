@@ -79,7 +79,6 @@ public class CreateStockTransactionUseCase(
         Domain.Entities.CurrencyLedger? boundTwdLedger = null;
         decimal? twdBuyAmount = null;
         if (currencyLedger == null && // 未使用明確的 CurrencyLedger
-            portfolio.BoundCurrencyLedgerId.HasValue &&
             request.TransactionType == TransactionType.Buy)
         {
             // 暫時使用 request 推斷幣別（正式判斷在 StockTransaction 建立後）
@@ -90,7 +89,7 @@ public class CreateStockTransactionUseCase(
             if (inferredCurrency == Currency.TWD)
             {
                 boundTwdLedger = await currencyLedgerRepository.GetByIdAsync(
-                    portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+                    portfolio.BoundCurrencyLedgerId, cancellationToken);
 
                 if (boundTwdLedger != null && boundTwdLedger.CurrencyCode == "TWD" &&
                     boundTwdLedger.UserId == currentUserService.UserId)
@@ -245,11 +244,11 @@ public class CreateStockTransactionUseCase(
 
                 await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
             }
-            else if (request.TransactionType == TransactionType.Sell && portfolio.BoundCurrencyLedgerId.HasValue)
+            else if (request.TransactionType == TransactionType.Sell)
             {
                 // Sell 不需要餘額驗證，在此處載入 Ledger
                 var boundLedger = boundTwdLedger ?? await currencyLedgerRepository.GetByIdAsync(
-                    portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+                    portfolio.BoundCurrencyLedgerId, cancellationToken);
 
                 if (boundLedger != null && boundLedger.CurrencyCode == "TWD" &&
                     boundLedger.UserId == currentUserService.UserId)

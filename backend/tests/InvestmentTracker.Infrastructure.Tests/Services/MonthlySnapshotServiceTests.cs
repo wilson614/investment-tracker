@@ -19,7 +19,7 @@ public class MonthlySnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -93,7 +93,7 @@ public class MonthlySnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "TWD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "TWD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -164,7 +164,7 @@ public class MonthlySnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -253,7 +253,7 @@ public class MonthlySnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -323,7 +323,7 @@ public class MonthlySnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);

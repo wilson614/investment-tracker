@@ -27,7 +27,7 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
     public async Task Create_ReturnsCreatedPortfolio()
     {
         // Arrange
-        var request = new { Description = "My Test Portfolio" };
+        var request = new { Description = "My Test Portfolio", CurrencyCode = "USD" };
 
         // Act
         var response = await Client.PostAsJsonAsync("/api/portfolios", request);

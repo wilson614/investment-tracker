@@ -211,7 +211,7 @@ public class CalculateXirrUseCaseTests
 
     private Portfolio CreatePortfolio()
     {
-        return new Portfolio(_userId, "USD", "TWD", "Test Portfolio");
+        return new Portfolio(_userId, Guid.NewGuid(), "USD", "TWD", "Test Portfolio");
     }
 
     private StockTransaction CreateTransaction(

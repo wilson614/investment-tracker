@@ -17,6 +17,7 @@ public class AuthController(
     IUserRepository userRepository,
     IRefreshTokenRepository refreshTokenRepository,
     IPortfolioRepository portfolioRepository,
+    ICurrencyLedgerRepository currencyLedgerRepository,
     IJwtTokenService jwtTokenService) : ControllerBase
 {
     /// <summary>
@@ -42,7 +43,14 @@ public class AuthController(
         await userRepository.AddAsync(user, cancellationToken);
 
         // 為新使用者建立預設投資組合
-        var portfolio = new Portfolio(user.Id);
+        var ledger = new CurrencyLedger(user.Id, "USD", "USD Ledger", homeCurrency: "TWD");
+        await currencyLedgerRepository.AddAsync(ledger, cancellationToken);
+
+        var portfolio = new Portfolio(
+            user.Id,
+            ledger.Id,
+            baseCurrency: ledger.CurrencyCode,
+            homeCurrency: ledger.HomeCurrency);
         await portfolioRepository.AddAsync(portfolio, cancellationToken);
 
         // 產生 Token

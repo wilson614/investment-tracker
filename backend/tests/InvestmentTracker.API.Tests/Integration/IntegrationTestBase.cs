@@ -87,7 +87,7 @@ public abstract class IntegrationTestBase : IClassFixture<CustomWebApplicationFa
     /// </summary>
     protected async Task<PortfolioDto> CreateTestPortfolioAsync(string description = "Test Portfolio")
     {
-        var request = new { Description = description };
+        var request = new { Description = description, CurrencyCode = "USD" };
         var response = await Client.PostAsJsonAsync("/api/portfolios", request);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<PortfolioDto>())!;

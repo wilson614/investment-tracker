@@ -464,16 +464,13 @@ public class HistoricalPerformanceService(
         IReadOnlyList<CurrencyLedger> ledgers = [];
         IReadOnlyList<CurrencyTransaction> currencyTransactions = [];
 
-        if (portfolio.BoundCurrencyLedgerId.HasValue)
-        {
-            var boundLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
-                portfolio.BoundCurrencyLedgerId.Value, cancellationToken);
+        var boundLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId, cancellationToken);
 
-            if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
-            {
-                ledgers = [boundLedger];
-                currencyTransactions = boundLedger.Transactions.ToList();
-            }
+        if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
+        {
+            ledgers = [boundLedger];
+            currencyTransactions = boundLedger.Transactions.ToList();
         }
 
         var cashFlowStrategy = cashFlowStrategyProvider.GetStrategy(

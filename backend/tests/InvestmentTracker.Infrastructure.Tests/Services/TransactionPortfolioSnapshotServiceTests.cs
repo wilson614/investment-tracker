@@ -19,7 +19,7 @@ public class TransactionPortfolioSnapshotServiceTests
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Test");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -68,6 +68,9 @@ public class TransactionPortfolioSnapshotServiceTests
             .ReturnsAsync([tx1, tx2]);
 
         var currencyLedgerRepository = new Mock<ICurrencyLedgerRepository>(MockBehavior.Strict);
+        currencyLedgerRepository
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
 
         var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
         var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);

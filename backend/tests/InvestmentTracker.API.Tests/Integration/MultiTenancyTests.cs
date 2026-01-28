@@ -46,19 +46,19 @@ public class MultiTenancyTests : IDisposable
         
         context.Users.AddRange(user1, user2);
 
-        // Create portfolios for each user
-        var portfolio1 = new Portfolio(_user1Id);
-        portfolio1.SetDescription("User1 Portfolio");
-
-        var portfolio2 = new Portfolio(_user2Id);
-        portfolio2.SetDescription("User2 Portfolio");
-
-        context.Portfolios.AddRange(portfolio1, portfolio2);
-
         // Create currency ledgers for each user
         var ledger1 = new CurrencyLedger(_user1Id, "USD", "User1 USD Account");
         var ledger2 = new CurrencyLedger(_user2Id, "USD", "User2 USD Account");
         context.CurrencyLedgers.AddRange(ledger1, ledger2);
+
+        // Create portfolios for each user
+        var portfolio1 = new Portfolio(_user1Id, ledger1.Id);
+        portfolio1.SetDescription("User1 Portfolio");
+
+        var portfolio2 = new Portfolio(_user2Id, ledger2.Id);
+        portfolio2.SetDescription("User2 Portfolio");
+
+        context.Portfolios.AddRange(portfolio1, portfolio2);
 
         context.SaveChanges();
 

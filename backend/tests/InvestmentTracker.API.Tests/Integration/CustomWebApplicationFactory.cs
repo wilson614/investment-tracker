@@ -75,12 +75,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             if (currentUserServiceDescriptor != null)
                 services.Remove(currentUserServiceDescriptor);
 
-            // Capture TestUserId at this point
-            var userId = _testUserId;
             services.AddScoped<ICurrentUserService>(_ =>
             {
                 var mock = new Mock<ICurrentUserService>();
-                mock.Setup(x => x.UserId).Returns(userId);
+                mock.Setup(x => x.UserId).Returns(() => _testUserId);
                 return mock.Object;
             });
         });

@@ -178,20 +178,17 @@ public class TransactionPortfolioSnapshotService(
             portfolio.HomeCurrency,
             cancellationToken);
 
-        if (portfolio.BoundCurrencyLedgerId.HasValue)
+        var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId,
+            cancellationToken);
+
+        if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
         {
-            var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
-                portfolio.BoundCurrencyLedgerId.Value,
-                cancellationToken);
+            dayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            dayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
 
-            if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
-            {
-                dayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
-                dayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
-
-                dayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
-                dayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
-            }
+            dayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            dayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
         }
 
         await ReplaceStockSnapshotsForDateAsync(
@@ -287,20 +284,17 @@ public class TransactionPortfolioSnapshotService(
             portfolio.HomeCurrency,
             cancellationToken);
 
-        if (portfolio.BoundCurrencyLedgerId.HasValue)
+        var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId,
+            cancellationToken);
+
+        if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
         {
-            var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
-                portfolio.BoundCurrencyLedgerId.Value,
-                cancellationToken);
+            beforeValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            afterValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, afterDate, cancellationToken);
 
-            if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
-            {
-                beforeValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
-                afterValueHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, afterDate, cancellationToken);
-
-                beforeValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
-                afterValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, afterDate, cancellationToken);
-            }
+            beforeValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            afterValueSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, afterDate, cancellationToken);
         }
 
         var entity = new TransactionPortfolioSnapshot(

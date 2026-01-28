@@ -81,7 +81,7 @@ public class AtomicTransactionTests : IDisposable
         _dbContext.Users.Add(user);
 
         // Create portfolio
-        var portfolio = new Portfolio(_testUserId);
+        var portfolio = new Portfolio(_testUserId, Guid.NewGuid());
         portfolio.SetDescription("Test Portfolio");
         await _portfolioRepository.AddAsync(portfolio);
 

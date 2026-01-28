@@ -11,8 +11,12 @@ public record CreatePortfolioRequest
     [StringLength(500)]
     public string? Description { get; init; }
 
+    [Required]
     [StringLength(3, MinimumLength = 3)]
-    public string BaseCurrency { get; init; } = "USD";
+    public required string CurrencyCode { get; init; }
+
+    [Range(0, double.MaxValue)]
+    public decimal? InitialBalance { get; init; }
 
     [StringLength(3, MinimumLength = 3)]
     public string HomeCurrency { get; init; } = "TWD";

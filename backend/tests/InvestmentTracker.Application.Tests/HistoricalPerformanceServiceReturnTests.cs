@@ -62,6 +62,7 @@ public class HistoricalPerformanceServiceReturnTests
 
         var portfolio = new Portfolio(
             userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");
@@ -141,6 +142,7 @@ public class HistoricalPerformanceServiceReturnTests
 
         var portfolio = new Portfolio(
             userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");
@@ -252,6 +254,7 @@ public class HistoricalPerformanceServiceReturnTests
 
         var portfolio = new Portfolio(
             userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");
@@ -375,6 +378,7 @@ public class HistoricalPerformanceServiceReturnTests
 
         var portfolio = new Portfolio(
             userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
             baseCurrency: "USD",
             homeCurrency: "TWD",
             displayName: "Test Portfolio");

@@ -10,7 +10,6 @@ namespace InvestmentTracker.Application.UseCases.Portfolio;
 /// </summary>
 public class UpdatePortfolioUseCase(
     IPortfolioRepository portfolioRepository,
-    ICurrencyLedgerRepository currencyLedgerRepository,
     ICurrentUserService currentUserService)
 {
     public async Task<PortfolioDto> ExecuteAsync(
@@ -29,16 +28,11 @@ public class UpdatePortfolioUseCase(
 
         portfolio.SetDescription(request.Description);
 
-        if (request.BoundCurrencyLedgerId.HasValue)
+        if (request.BoundCurrencyLedgerId.HasValue &&
+            request.BoundCurrencyLedgerId.Value != portfolio.BoundCurrencyLedgerId)
         {
-            var ledger = await currencyLedgerRepository.GetByIdAsync(request.BoundCurrencyLedgerId.Value, cancellationToken)
-                ?? throw new EntityNotFoundException("CurrencyLedger", request.BoundCurrencyLedgerId.Value);
-
-            if (ledger.UserId != userId)
-                throw new AccessDeniedException();
+            throw new BusinessRuleException("Bound currency ledger cannot be changed");
         }
-
-        portfolio.BindCurrencyLedger(request.BoundCurrencyLedgerId);
 
         await portfolioRepository.UpdateAsync(portfolio, cancellationToken);
 

@@ -110,8 +110,7 @@ public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
         IReadOnlyList<StockTransaction> stockTransactions,
         IReadOnlyList<CurrencyLedger> ledgers)
     {
-        return portfolio.BoundCurrencyLedgerId.HasValue
-               && ledgers.Any(l => l.Id == portfolio.BoundCurrencyLedgerId.Value && l.IsActive);
+        return ledgers.Any(l => l.Id == portfolio.BoundCurrencyLedgerId && l.IsActive);
     }
 
     public IReadOnlyList<ReturnCashFlowEvent> GetCashFlowEvents(
@@ -122,10 +121,7 @@ public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
         IReadOnlyList<CurrencyLedger> ledgers,
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
-        if (!portfolio.BoundCurrencyLedgerId.HasValue)
-            return [];
-
-        var boundLedgerId = portfolio.BoundCurrencyLedgerId.Value;
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId;
         var boundLedgerCurrency = ledgers.FirstOrDefault(l => l.Id == boundLedgerId)?.CurrencyCode
                                   ?? portfolio.BaseCurrency;
 
@@ -191,12 +187,7 @@ public class ReturnCashFlowStrategyProvider(
         IReadOnlyList<CurrencyLedger> ledgers,
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
-        if (!portfolio.BoundCurrencyLedgerId.HasValue)
-        {
-            return stockStrategy;
-        }
-
-        var boundLedgerId = portfolio.BoundCurrencyLedgerId.Value;
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId;
 
         var hasExternalInOut = currencyTransactions.Any(t =>
             t.CurrencyLedgerId == boundLedgerId
