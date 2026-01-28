@@ -22,6 +22,19 @@
 
 ---
 
+## Phase 0: Portfolio-Ledger Binding & Auto-Linking (Story 0.2)
+
+**Purpose**: Enforce mandatory 1:1 Portfolio-Ledger binding and simplify stock transaction linking (FR-001, FR-005).
+
+- [x] T255 Enforce 1:1 Portfolio-Ledger binding (schema + API contracts)
+- [x] T256 Add currency mismatch validation between stock and bound ledger (FR-005)
+- [x] T257 Frontend: remove FundSource/ledger selection and rely on bound ledger auto-linking
+- [x] T258 Remove any UI that allows changing the bound ledger (binding is permanent)
+
+**Checkpoint**: Stock transactions always link to the portfolio's bound ledger; user cannot manually override the binding.
+
+---
+
 ## Phase 1: Setup (Project Initialization)
 
 **Purpose**: Create project structure, configure tooling, and establish development environment

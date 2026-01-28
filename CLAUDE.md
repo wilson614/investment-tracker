@@ -50,9 +50,11 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 
 ## Development Rules
 
-### Spec-Driven Development (SDD) 工作流程 - 使用 Speckit
+### Spec-Driven Development (SDD) Workflow
 
-**⚠️ 強制性流程** - 任何涉及功能/架構變更的請求，**必須**依照以下 Speckit 標準流程執行：
+> **Workflow Selection**: This section applies to **Standard Mode** (Speckit). If using **CCG Mode** (`/ccg:*` commands), follow CCG's spec workflow (`ccg:spec-init`, `ccg:spec-plan`, `ccg:spec-impl`) instead.
+
+**Standard Mode Trigger** - For feature/architecture changes, follow Speckit workflow:
 
 #### 檔案位置
 - 規格文件存放於 `specs/<module-name>/` 目錄
@@ -99,12 +101,15 @@ C# .NET 8 (Backend), TypeScript 5.x (Frontend): Follow standard conventions
 - UI/UX 流程變更
 - Cache 策略變更
 
-### 其他規則
+### General Rules (All Modes)
 
-- **規格優先**：spec.md 是需求的唯一真實來源 (Single Source of Truth)
-- **同步更新**：任何影響功能行為的修改都必須反映在 spec.md
-- **不要跳過**：即使是「簡單的重構」也要先確認 spec.md
-- **不要隨意修改**：沒有經過 Speckit 流程確認，不得直接修改功能程式碼
+- **Spec as Source of Truth**: `spec.md` is the single source of truth for requirements
+- **Keep Specs Updated**: Any change affecting feature behavior must be reflected in spec.md
+- **Verify Before Refactoring**: Even "simple refactoring" should confirm spec.md first
+
+### Standard Mode Only Rules
+
+- **No Direct Code Changes**: In Standard Mode, do not modify feature code without going through Speckit workflow
 
 ## 錯誤處理規範
 
