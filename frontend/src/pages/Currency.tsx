@@ -2,9 +2,6 @@
  * Currency Page
  *
  * 外幣帳本首頁：列出使用者的外幣帳本摘要，並提供建立新帳本的入口。
- *
- * 目前限制：
- * - `SUPPORTED_CURRENCIES` 目前僅包含 USD（後續可擴充）。
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -15,10 +12,9 @@ import type { CurrencyLedgerSummary, CreateCurrencyLedgerRequest } from '../type
 
 /**
  * 可建立的幣別清單。
- *
- * 目前僅提供 USD，未來可視需求擴充。
  */
 const SUPPORTED_CURRENCIES = [
+  { code: 'TWD', name: '台幣' },
   { code: 'USD', name: '美金' },
 ];
 
@@ -51,7 +47,7 @@ export default function Currency() {
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Create form state - 預設選擇第一個可用的幣別
-  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [selectedCurrency, setSelectedCurrency] = useState('TWD');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
@@ -163,7 +159,14 @@ export default function Currency() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">外幣帳本</h1>
           <button
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => {
+              // Set default to first available currency
+              const firstAvailable = SUPPORTED_CURRENCIES.find(c => !existingCurrencies.has(c.code));
+              if (firstAvailable) {
+                setSelectedCurrency(firstAvailable.code);
+              }
+              setShowCreateForm(true);
+            }}
             disabled={!canCreateNew}
             className="btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
             title={!canCreateNew ? '所有幣別已建立' : undefined}

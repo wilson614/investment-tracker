@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
-import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket, Currency } from '../../types';
+import type { CreateStockTransactionRequest, StockTransaction, TransactionType, FundSource, CurrencyLedgerSummary, StockMarket, Currency, Portfolio } from '../../types';
 import { FundSource as FundSourceEnum, StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
 
 /**
@@ -46,6 +46,8 @@ const guessCurrencyFromMarket = (market: StockMarket): Currency => {
 interface TransactionFormProps {
   /** 目標 portfolio ID */
   portfolioId: string;
+  /** 投資組合資訊 (用來判斷 TWD Ledger 綁定) */
+  portfolio?: Portfolio | null;
   /** 編輯模式的初始資料 */
   initialData?: StockTransaction;
   /** 送出表單 callback */
@@ -54,7 +56,7 @@ interface TransactionFormProps {
   onCancel?: () => void;
 }
 
-export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }: TransactionFormProps) {
+export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currencyLedgers, setCurrencyLedgers] = useState<CurrencyLedgerSummary[]>([]);
@@ -109,6 +111,27 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
   // Derived state: is current market Taiwan?
   // 匯率框隱藏邏輯跟著市場選擇，而非 ticker 格式
   const isTW = formData.market === StockMarketEnum.TW;
+
+  // Derived state: TWD Ledger 綁定狀態
+  // 當 Portfolio 有綁定 TWD Ledger 且當前為台股時，強制連結
+  const isTwBound = !!(portfolio?.boundCurrencyLedgerId && isTW);
+
+  // Effect: 當符合 TWD Ledger 綁定條件時，自動設定資金來源
+  useEffect(() => {
+    if (isTwBound && portfolio?.boundCurrencyLedgerId) {
+      setFormData(prev => {
+        // 如果已經是正確狀態，則不更新避免無窮迴圈
+        if (prev.fundSource === FundSourceEnum.CurrencyLedger && prev.currencyLedgerId === portfolio.boundCurrencyLedgerId) {
+          return prev;
+        }
+        return {
+          ...prev,
+          fundSource: FundSourceEnum.CurrencyLedger,
+          currencyLedgerId: portfolio.boundCurrencyLedgerId!
+        };
+      });
+    }
+  }, [isTwBound, portfolio?.boundCurrencyLedgerId]);
 
   // Derived state: is using currency ledger for non-TW stock?
   const useCurrencyLedger = formData.fundSource === FundSourceEnum.CurrencyLedger && !isTW;
@@ -528,43 +551,65 @@ export function TransactionForm({ portfolioId, initialData, onSubmit, onCancel }
       {/* Fund Source Section */}
       <div className="border-t border-[var(--border-color)] pt-5 mt-5">
         <h4 className="text-base font-medium text-[var(--text-secondary)] mb-4">資金來源</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              來源
-            </label>
-            <select
-              name="fundSource"
-              value={formData.fundSource}
-              onChange={handleFundSourceChange}
-              className="input-dark w-full"
-            >
-              <option value={FundSourceEnum.None}>外部資金（不追蹤）</option>
-              <option value={FundSourceEnum.CurrencyLedger}>外幣帳本</option>
-            </select>
-          </div>
 
-          {formData.fundSource === FundSourceEnum.CurrencyLedger && (
+        {isTwBound ? (
+          <div className="space-y-4">
+            <div className="p-3 bg-[var(--accent-cyan-soft)] border border-[var(--accent-cyan)] rounded-lg text-[var(--accent-cyan)] text-sm font-medium">
+              {Number(formData.transactionType) === 1
+                ? '此筆交易將自動從 TWD 帳本扣款'
+                : '此筆交易款項將自動存入 TWD 帳本'}
+            </div>
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                外幣帳本
+                已連結帳本
+              </label>
+              <input
+                type="text"
+                value={selectedLedger?.ledger.name || selectedLedger?.ledger.currencyCode || 'Loading...'}
+                disabled
+                className="input-dark w-full opacity-75 cursor-not-allowed"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+                來源
               </label>
               <select
-                name="currencyLedgerId"
-                value={formData.currencyLedgerId}
-                onChange={handleChange}
-                required
+                name="fundSource"
+                value={formData.fundSource}
+                onChange={handleFundSourceChange}
                 className="input-dark w-full"
               >
-                {currencyLedgers.map((ledger) => (
-                  <option key={ledger.ledger.id} value={ledger.ledger.id}>
-                    {ledger.ledger.currencyCode}
-                  </option>
-                ))}
+                <option value={FundSourceEnum.None}>外部資金（不追蹤）</option>
+                <option value={FundSourceEnum.CurrencyLedger}>外幣帳本</option>
               </select>
             </div>
-          )}
-        </div>
+
+            {formData.fundSource === FundSourceEnum.CurrencyLedger && (
+              <div>
+                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+                  外幣帳本
+                </label>
+                <select
+                  name="currencyLedgerId"
+                  value={formData.currencyLedgerId}
+                  onChange={handleChange}
+                  required
+                  className="input-dark w-full"
+                >
+                  {currencyLedgers.map((ledger) => (
+                    <option key={ledger.ledger.id} value={ledger.ledger.id}>
+                      {ledger.ledger.currencyCode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Balance Display */}
         {selectedLedger && (

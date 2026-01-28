@@ -32,13 +32,22 @@ public class CreateCurrencyTransactionUseCase(
         // 備註：Spend 與 ExchangeSell 可能導致帳本餘額為負
         // IB 等券商支援融資/槓桿交易
 
+        var homeAmount = request.HomeAmount;
+        var exchangeRate = request.ExchangeRate;
+
+        if (ledger.CurrencyCode == ledger.HomeCurrency)
+        {
+            exchangeRate = 1.0m;
+            homeAmount = request.ForeignAmount;
+        }
+
         var transaction = new CurrencyTransaction(
             request.CurrencyLedgerId,
             request.TransactionDate,
             request.TransactionType,
             request.ForeignAmount,
-            request.HomeAmount,
-            request.ExchangeRate,
+            homeAmount,
+            exchangeRate,
             request.RelatedStockTransactionId,
             request.Notes);
 

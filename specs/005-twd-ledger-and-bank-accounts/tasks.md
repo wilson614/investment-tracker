@@ -95,13 +95,15 @@
 
 #### Frontend Tasks
 
-- [ ] **T1.2.5** StockTransactionForm show linking info
-  - File: `frontend/src/components/stock/StockTransactionForm.tsx`
+- [x] **T1.2.5** StockTransactionForm show linking info
+  - File: `frontend/src/components/transactions/TransactionForm.tsx`
   - Change: When Portfolio bound to TWD Ledger and is TW stock, show deduction notice
+  - ✅ Implemented: isTwBound logic, auto fund source setting, deduction/income notice
 
-- [ ] **T1.2.6** PortfolioSettings ledger binding options
-  - File: `frontend/src/pages/PortfolioSettings.tsx`
-  - Change: Confirm dropdown includes TWD Ledger option
+- [x] **T1.2.6** PortfolioSettings ledger binding options
+  - File: `frontend/src/pages/Portfolio.tsx`
+  - Change: Settings modal with ledger binding dropdown (includes TWD Ledger option)
+  - ✅ Implemented: Settings button, modal with ledger dropdown, save to boundCurrencyLedgerId
 
 #### Verification
 
@@ -318,7 +320,7 @@
 | Phase | Story | Tasks | Status |
 |-------|-------|-------|--------|
 | 1 | 1.1 Create TWD Ledger | 7 + 1 verification | ✅ Complete |
-| 1 | 1.2 TW Stock Linking | 6 + 1 verification | ⬜ Pending |
+| 1 | 1.2 TW Stock Linking | 6 + 1 verification | ✅ Complete |
 | 2 | 2.1 Bank Account CRUD | 19 + 1 verification | ⬜ Pending |
 | 2 | 2.2 Interest Estimation | 5 + 1 verification | ⬜ Pending |
 | 3 | 3.1 Total Assets Dashboard | 12 + 1 verification | ⬜ Pending |

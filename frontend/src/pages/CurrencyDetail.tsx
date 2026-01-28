@@ -216,6 +216,9 @@ export default function CurrencyDetail() {
   // Auto-fetch rate when ledger loads (always fetch fresh, use cache only for initial display)
   useEffect(() => {
     if (ledger && !hasFetchedRate.current) {
+      // Skip fetch for home currency
+      if (ledger.ledger.currencyCode === ledger.ledger.homeCurrency) return;
+
       hasFetchedRate.current = true;
       handleFetchRate();
     }
@@ -374,6 +377,7 @@ export default function CurrencyDetail() {
     );
   }
 
+  const isHomeCurrencyLedger = ledger.ledger.currencyCode === ledger.ledger.homeCurrency;
   const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length;
 
   return (
@@ -404,24 +408,26 @@ export default function CurrencyDetail() {
               <h1 className="text-2xl font-bold text-[var(--accent-cream)]">
                 {ledger.ledger.currencyCode}
               </h1>
-              <div className="flex items-center gap-1">
-                <span className="text-lg text-[var(--text-muted)]">@</span>
-                <span className="text-lg font-medium text-[var(--accent-peach)]">
-                  {currentRate ? formatNumber(currentRate, 2) : (
-                    <span className="inline-block w-16">&nbsp;</span>
-                  )}
-                </span>
-                <button
-                  onClick={handleFetchRate}
-                  disabled={isFetchingRate}
-                  className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] transition-colors disabled:opacity-50"
-                  title="更新匯率"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isFetchingRate ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+              {!isHomeCurrencyLedger && (
+                <div className="flex items-center gap-1">
+                  <span className="text-lg text-[var(--text-muted)]">@</span>
+                  <span className="text-lg font-medium text-[var(--accent-peach)]">
+                    {currentRate ? formatNumber(currentRate, 2) : (
+                      <span className="inline-block w-16">&nbsp;</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={handleFetchRate}
+                    disabled={isFetchingRate}
+                    className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-butter)] transition-colors disabled:opacity-50"
+                    title="更新匯率"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isFetchingRate ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              )}
             </div>
-            {rateUpdatedAt && (
+            {!isHomeCurrencyLedger && rateUpdatedAt && (
               <span className="text-sm text-[var(--text-muted)]">
                 匯率更新於 {formatTime(rateUpdatedAt)}
               </span>
@@ -435,24 +441,28 @@ export default function CurrencyDetail() {
               <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
                 {formatNumber(ledger.balance, 2)} {ledger.ledger.currencyCode}
               </p>
-              {currentRate && ledger.balance > 0 && (
+              {!isHomeCurrencyLedger && currentRate && ledger.balance > 0 && (
                 <p className="text-xs text-[var(--text-muted)] mt-1">
                   ≈ {formatTWD(ledger.balance * currentRate)} TWD
                 </p>
               )}
             </div>
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">換匯均價</p>
-              <p className="text-lg font-bold text-[var(--text-primary)] number-display">
-                {formatNumber(ledger.averageExchangeRate, 4)}
-              </p>
-            </div>
-            <div className="metric-card">
-              <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
-              <p className="text-lg font-bold text-[var(--text-primary)] number-display">
-                {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
-              </p>
-            </div>
+            {!isHomeCurrencyLedger && (
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">換匯均價</p>
+                <p className="text-lg font-bold text-[var(--text-primary)] number-display">
+                  {formatNumber(ledger.averageExchangeRate, 4)}
+                </p>
+              </div>
+            )}
+            {!isHomeCurrencyLedger && (
+              <div className="metric-card">
+                <p className="text-sm text-[var(--text-muted)] mb-1">淨投入</p>
+                <p className="text-lg font-bold text-[var(--text-primary)] number-display">
+                  {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
+                </p>
+              </div>
+            )}
             {(ledger.totalInterest ?? 0) > 0 && (
               <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">利息收入</p>

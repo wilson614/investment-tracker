@@ -38,12 +38,21 @@ public class UpdateCurrencyTransactionUseCase(
 
         var wasExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
 
+        var homeAmount = request.HomeAmount;
+        var exchangeRate = request.ExchangeRate;
+
+        if (ledger.CurrencyCode == ledger.HomeCurrency)
+        {
+            exchangeRate = 1.0m;
+            homeAmount = request.ForeignAmount;
+        }
+
         transaction.SetTransactionDate(request.TransactionDate);
         transaction.SetAmounts(
             request.TransactionType,
             request.ForeignAmount,
-            request.HomeAmount,
-            request.ExchangeRate);
+            homeAmount,
+            exchangeRate);
         transaction.SetNotes(request.Notes);
 
         await transactionRepository.UpdateAsync(transaction, cancellationToken);

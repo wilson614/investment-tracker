@@ -32,6 +32,7 @@ export interface Portfolio {
   homeCurrency: string;
   isActive: boolean;
   displayName?: string;
+  boundCurrencyLedgerId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +46,7 @@ export interface CreatePortfolioRequest {
 
 export interface UpdatePortfolioRequest {
   description?: string;
+  boundCurrencyLedgerId?: string | null;
 }
 
 export const TransactionType = {

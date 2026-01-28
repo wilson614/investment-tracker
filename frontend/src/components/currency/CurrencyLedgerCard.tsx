@@ -45,6 +45,8 @@ const loadCachedRate = (from: string, to: string): CachedRate | null => {
 };
 
 export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps) {
+  const isHomeCurrencyLedger = ledger.ledger.currencyCode === ledger.ledger.homeCurrency;
+
   // 先用快取初始化，避免初次 render 因等待 API 而閃爍。
   const cachedData = loadCachedRate(ledger.ledger.currencyCode, ledger.ledger.homeCurrency);
   const [currentRate, setCurrentRate] = useState<number | null>(cachedData?.rate ?? null);
@@ -73,6 +75,8 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
   // 掛載後抓取即時匯率（失敗時會保留快取值）。
   useEffect(() => {
+    if (isHomeCurrencyLedger) return;
+
     if (!hasFetchedRate.current) {
       hasFetchedRate.current = true;
       stockPriceApi.getExchangeRate(ledger.ledger.currencyCode, ledger.ledger.homeCurrency)
@@ -96,10 +100,10 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
           // Silently fail, keep cached value
         });
     }
-  }, [ledger.ledger.currencyCode, ledger.ledger.homeCurrency]);
+  }, [ledger.ledger.currencyCode, ledger.ledger.homeCurrency, isHomeCurrencyLedger]);
 
   // 依目前匯率計算約當台幣（只在 balance > 0 時顯示）。
-  const twdEquivalent = currentRate && ledger.balance > 0
+  const twdEquivalent = !isHomeCurrencyLedger && currentRate && ledger.balance > 0
     ? ledger.balance * currentRate
     : null;
 
@@ -115,15 +119,17 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
           <h3 className="text-lg font-bold text-[var(--accent-cream)]">
             {ledger.ledger.currencyCode}
           </h3>
-          {currentRate ? (
-            <span className="text-sm text-[var(--text-muted)]">
-              @ {formatNumber(currentRate, 2)}
-            </span>
-          ) : (
-            <Skeleton width="w-16" height="h-5" />
+          {!isHomeCurrencyLedger && (
+            currentRate ? (
+              <span className="text-sm text-[var(--text-muted)]">
+                @ {formatNumber(currentRate, 2)}
+              </span>
+            ) : (
+              <Skeleton width="w-16" height="h-5" />
+            )
           )}
         </div>
-        {rateUpdatedAt && (
+        {!isHomeCurrencyLedger && rateUpdatedAt && (
           <span className="text-xs text-[var(--text-muted)]">
             {formatTime(rateUpdatedAt)}
           </span>
@@ -139,7 +145,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
           <p className="text-sm text-[var(--text-muted)] mt-1">
             ≈ {formatTWD(twdEquivalent)} TWD
           </p>
-        ) : ledger.balance > 0 ? (
+        ) : (!isHomeCurrencyLedger && ledger.balance > 0) ? (
           <div className="mt-1">
             <Skeleton width="w-24" height="h-5" />
           </div>
@@ -148,19 +154,23 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
       {/* Metrics */}
       <div className="space-y-2 text-base">
-        <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">淨投入:</span>
-          <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
-          </span>
-        </div>
+        {!isHomeCurrencyLedger && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-[var(--text-muted)]">淨投入:</span>
+              <span className="font-medium text-[var(--text-primary)] number-display">
+                {formatTWD(ledger.totalExchanged)} {ledger.ledger.homeCurrency}
+              </span>
+            </div>
 
-        <div className="flex justify-between">
-          <span className="text-[var(--text-muted)]">換匯均價:</span>
-          <span className="font-medium text-[var(--text-primary)] number-display">
-            {formatNumber(ledger.averageExchangeRate, 4)}
-          </span>
-        </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--text-muted)]">換匯均價:</span>
+              <span className="font-medium text-[var(--text-primary)] number-display">
+                {formatNumber(ledger.averageExchangeRate, 4)}
+              </span>
+            </div>
+          </>
+        )}
 
         {(ledger.totalInterest ?? 0) > 0 && (
           <div className="flex justify-between">
