@@ -47,7 +47,7 @@ describe('CurrencyToggle', () => {
     expect(onChange).toHaveBeenCalledWith('home');
   });
 
-  it('reads stored value on mount and triggers onChange when different', () => {
+  it('does not trigger onChange on mount even when stored value differs', () => {
     localStorage.setItem(STORAGE_KEY, 'home');
 
     const onChange = vi.fn();
@@ -61,7 +61,7 @@ describe('CurrencyToggle', () => {
       />
     );
 
-    expect(onChange).toHaveBeenCalledWith('home');
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('does not call onChange on mount when stored value matches', () => {
