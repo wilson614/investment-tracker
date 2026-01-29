@@ -3,14 +3,17 @@
  *
  * 交易紀錄列表頁：提供依股票代號與交易類型的前端篩選，並支援刪除交易。
  *
- * 注意：目前仍以單一投資組合模式運作，會取 `portfolioApi.getAll()` 的第一筆作為目標 portfolio。
+ * 注意：目前會跟隨 PortfolioContext 的 currentPortfolioId，顯示選定投資組合的交易。
  */
 import { useState, useEffect } from 'react';
-import { transactionApi, portfolioApi } from '../services/api';
+import { transactionApi } from '../services/api';
 import { TransactionList } from '../components/transactions/TransactionList';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import type { StockTransaction } from '../types';
 
 export function TransactionsPage() {
+  const { currentPortfolioId } = usePortfolio();
+
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,16 +26,15 @@ export function TransactionsPage() {
     const loadTransactions = async () => {
       try {
         setIsLoading(true);
+        setError(null);
 
-        // Get user's portfolio
-        const portfolios = await portfolioApi.getAll();
-        if (portfolios.length === 0) {
-          setError('找不到投資組合');
+        if (!currentPortfolioId) {
+          setTransactions([]);
+          setIsLoading(false);
           return;
         }
-        const portfolioId = portfolios[0].id;
 
-        const data = await transactionApi.getByPortfolio(portfolioId);
+        const data = await transactionApi.getByPortfolio(currentPortfolioId);
         setTransactions(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load transactions');
@@ -42,7 +44,7 @@ export function TransactionsPage() {
     };
 
     loadTransactions();
-  }, []);
+  }, [currentPortfolioId]);
 
   /**
    * 刪除交易。
@@ -81,6 +83,19 @@ export function TransactionsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-[var(--color-danger)] text-lg">{error}</div>
+      </div>
+    );
+  }
+
+  if (!currentPortfolioId) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">交易紀錄</h1>
+          <div className="card-dark p-8 text-center">
+            <p className="text-[var(--text-muted)] text-lg">尚無投資組合，請先建立一個投資組合。</p>
+          </div>
+        </div>
       </div>
     );
   }

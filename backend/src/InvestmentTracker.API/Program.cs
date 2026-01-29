@@ -10,6 +10,8 @@ using InvestmentTracker.Application.UseCases.Benchmark;
 using InvestmentTracker.Application.UseCases.UserPreferences;
 using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
+using InvestmentTracker.Application.UseCases.Assets;
+using InvestmentTracker.Application.UseCases.BankAccount;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -147,6 +149,7 @@ builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();
 builder.Services.AddScoped<IStockTransactionRepository, StockTransactionRepository>();
 builder.Services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>();
 builder.Services.AddScoped<ICurrencyTransactionRepository, CurrencyTransactionRepository>();
+builder.Services.AddScoped<IBankAccountRepository, BankAccountRepository>();
 builder.Services.AddScoped<IStockSplitRepository, StockSplitRepository>();
 builder.Services.AddScoped<IUserBenchmarkRepository, UserBenchmarkRepository>();
 builder.Services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
@@ -169,6 +172,8 @@ builder.Services.AddScoped<IReturnCalculator, ReturnCalculator>();
 builder.Services.AddScoped<StockTransactionCashFlowStrategy>();
 builder.Services.AddScoped<CurrencyLedgerCashFlowStrategy>();
 builder.Services.AddScoped<ReturnCashFlowStrategyProvider>();
+builder.Services.AddScoped<InterestEstimationService>();
+builder.Services.AddScoped<TotalAssetsService>();
 
 // Register Use Cases
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
@@ -196,6 +201,12 @@ builder.Services.AddScoped<AddUserBenchmarkUseCase>();
 builder.Services.AddScoped<DeleteUserBenchmarkUseCase>();
 builder.Services.AddScoped<GetUserPreferencesUseCase>();
 builder.Services.AddScoped<UpdateUserPreferencesUseCase>();
+builder.Services.AddScoped<CreateBankAccountUseCase>();
+builder.Services.AddScoped<UpdateBankAccountUseCase>();
+builder.Services.AddScoped<DeleteBankAccountUseCase>();
+builder.Services.AddScoped<GetBankAccountsUseCase>();
+builder.Services.AddScoped<GetBankAccountUseCase>();
+builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 
 // Stock Price Service
 builder.Services.AddSingleton<ITwseRateLimiter, TwseRateLimiter>(); // Singleton to share rate limit across all requests

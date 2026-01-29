@@ -15,6 +15,7 @@ import { Skeleton } from '../components/common/SkeletonLoader';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { FileDropdown } from '../components/common';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket } from '../types';
 import type {
   Portfolio,
@@ -105,6 +106,8 @@ const loadCachedXirr = (portfolioId: string, ticker: string): XirrResult | null 
 };
 
 export function PositionDetailPage() {
+  const { currentPortfolioId } = usePortfolio();
+
   const { ticker, market: marketParam } = useParams<{ ticker: string; market?: string }>();
   // Parse market from URL param (if provided)
   const urlMarket: StockMarketType | undefined = marketParam ? parseInt(marketParam, 10) as StockMarketType : undefined;
@@ -158,13 +161,13 @@ export function PositionDetailPage() {
       }
       setError(null);
 
-      // Get user's portfolio
-      const portfolios = await portfolioApi.getAll();
-      if (portfolios.length === 0) {
+      if (!currentPortfolioId) {
         setError('找不到投資組合');
+        setPortfolio(null);
+        setPosition(null);
+        setTransactions([]);
         return;
       }
-      const currentPortfolioId = portfolios[0].id;
       setPortfolioId(currentPortfolioId);
 
       // Load cached XIRR now that we have portfolioId
@@ -240,7 +243,7 @@ export function PositionDetailPage() {
         });
       }
     }
-  }, [ticker, urlMarket]);
+  }, [ticker, urlMarket, currentPortfolioId]);
 
   useEffect(() => {
     loadData();

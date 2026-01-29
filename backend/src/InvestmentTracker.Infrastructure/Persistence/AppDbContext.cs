@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<StockTransaction> StockTransactions => Set<StockTransaction>();
     public DbSet<CurrencyLedger> CurrencyLedgers => Set<CurrencyLedger>();
     public DbSet<CurrencyTransaction> CurrencyTransactions => Set<CurrencyTransaction>();
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<CapeDataSnapshot> CapeDataSnapshots => Set<CapeDataSnapshot>();
     public DbSet<IndexPriceSnapshot> IndexPriceSnapshots => Set<IndexPriceSnapshot>();
     public DbSet<StockSplit> StockSplits => Set<StockSplit>();
@@ -73,6 +74,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<CurrencyLedger>()
             .HasQueryFilter(cl => cl.IsActive &&
                 (_currentUserService == null || cl.UserId == _currentUserService.UserId));
+
+        // BankAccount：依使用者過濾 + 啟用狀態
+        modelBuilder.Entity<BankAccount>()
+            .HasQueryFilter(ba => ba.IsActive &&
+                (_currentUserService == null || ba.UserId == _currentUserService.UserId));
 
         // StockTransaction：軟刪除過濾
         modelBuilder.Entity<StockTransaction>()

@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { PositionDetailPage } from './pages/PositionDetail';
 import { TransactionsPage } from './pages/Transactions';
+import { BankAccountsPage } from './pages/BankAccounts';
 import Currency from './pages/Currency';
 import CurrencyDetail from './pages/CurrencyDetail';
 import Settings from './pages/Settings';
@@ -67,6 +68,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <TransactionsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bank-accounts"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <BankAccountsPage />
             </AppLayout>
           </ProtectedRoute>
         }

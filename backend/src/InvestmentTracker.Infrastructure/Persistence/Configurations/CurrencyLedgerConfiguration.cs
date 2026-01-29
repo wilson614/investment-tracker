@@ -39,8 +39,9 @@ public class CurrencyLedgerConfiguration : IEntityTypeConfiguration<CurrencyLedg
         builder.HasIndex(cl => cl.UserId)
             .HasDatabaseName("IX_CurrencyLedger_UserId");
 
-        // Note: Unique constraint on UserId+CurrencyCode removed to support 1:1 Portfolio-Ledger binding
-        // where each portfolio needs its own dedicated ledger
+        builder.HasIndex(cl => new { cl.UserId, cl.CurrencyCode })
+            .IsUnique()
+            .HasDatabaseName("IX_CurrencyLedger_UserId_CurrencyCode");
 
         // Relationships
         builder.HasMany(cl => cl.Transactions)

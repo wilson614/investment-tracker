@@ -34,19 +34,21 @@
     - If InitialBalance > 0, create initial Deposit transaction
     - Validate user doesn't already have a portfolio with this currency
 
-- [ ] **T0.1.4** Remove FundSource from StockTransaction
+- [x] **T0.1.4** Remove FundSource from StockTransaction
   - Files:
     - `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`
     - `backend/src/InvestmentTracker.Domain/Enums/FundSource.cs`
   - Change: Remove FundSource property and enum (no longer needed)
   - Note: Keep CurrencyLedgerId on StockTransaction for reference
+  - ✅ Deleted FundSource.cs, created migration to drop column
 
-- [ ] **T0.1.5** Database Migration
+- [x] **T0.1.5** Database Migration
   - Run: `dotnet ef migrations add EnforcePortfolioLedgerBinding`
   - Changes:
     - ALTER portfolios.BoundCurrencyLedgerId to NOT NULL
     - ADD UNIQUE INDEX on BoundCurrencyLedgerId
     - DROP FundSource column from stock_transactions (if exists)
+  - ✅ Created CleanupFundSourceAndRestoreUniqueIndex migration
 
 ---
 
@@ -54,7 +56,7 @@
 
 #### Backend Tasks
 
-- [ ] **T0.2.1** Refactor CreateStockTransactionUseCase
+- [x] **T0.2.1** Refactor CreateStockTransactionUseCase
   - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
   - Changes:
     - Remove complex currency inference logic (lines 86-88)
@@ -66,14 +68,14 @@
     - Add `autoDeposit` parameter: if true and balance insufficient, auto-create Deposit for shortfall
   - Target: ~50% code reduction in this file
 
-- [ ] **T0.2.2** Refactor UpdateStockTransactionUseCase
+- [x] **T0.2.2** Refactor UpdateStockTransactionUseCase
   - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/UpdateStockTransactionUseCase.cs`
   - Change: Same simplification as CreateStockTransactionUseCase
 
-- [ ] **T0.2.3** Verify DeleteStockTransactionUseCase
+- [x] **T0.2.3** Verify DeleteStockTransactionUseCase
   - File: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/DeleteStockTransactionUseCase.cs`
-  - Verify: Linked deletion already works via RelatedStockTransactionId
-  - No changes expected
+  - Verify: Linked deletion works via RelatedStockTransactionId
+  - Updated: Supports deleting multiple linked CurrencyTransactions (Spend/OtherIncome + AutoDeposit Deposit)
 
 - [ ] **T0.2.4** Update Request DTOs
   - Files:
@@ -89,7 +91,7 @@
 
 #### Frontend Tasks
 
-- [ ] **T0.2.6** Update TransactionForm
+- [x] **T0.2.6** Update TransactionForm
   - File: `frontend/src/components/transactions/TransactionForm.tsx`
   - Changes:
     - Remove FundSource dropdown
@@ -104,26 +106,29 @@
         - "Proceed without deposit (balance will be negative)"
       - Pass `autoDeposit` flag to API based on user choice
 
-- [ ] **T0.2.7** Update Portfolio Creation
+- [x] **T0.2.7** Update Portfolio Creation
   - File: `frontend/src/pages/Portfolio.tsx` (or modal component)
   - Changes:
     - Creating portfolio requires selecting a Currency (TWD, USD, etc.)
     - System auto-creates bound CurrencyLedger
     - Support optional InitialBalance input
     - Validate user doesn't already have portfolio with this currency
+  - ✅ Enabled CreatePortfolioForm modal with currency selection
 
 - [ ] **T0.2.8** Remove Portfolio Settings Modal
   - File: `frontend/src/pages/Portfolio.tsx`
   - Change: Remove settings button and modal (binding is permanent)
   - Show bound ledger info in portfolio header instead
 
-- [ ] **T0.2.9** Update API types
+- [x] **T0.2.9** Update API types
   - File: `frontend/src/types/index.ts`
   - Change: Remove FundSource type, update Portfolio and Transaction types
+  - ✅ Removed FundSource type and related code
 
-- [ ] **T0.2.10** Add negative balance visual indicator
+- [x] **T0.2.10** Add negative balance visual indicator
   - Files: `CurrencyDetail.tsx`, `CurrencyLedgerCard.tsx`
   - Change: When balance < 0, display in red with tooltip "餘額為負，請補記入金"
+  - ✅ Implemented red text (--color-danger) + hover tooltip
 
 #### Verification
 
@@ -365,8 +370,8 @@
 
 | Phase | Story | Tasks | Status |
 |-------|-------|-------|--------|
-| 0 | 0.1 Enforce 1:1 Binding | 5 tasks | ⬜ Pending |
-| 0 | 0.2 Simplify Linking | 9 + 1 verification | ⬜ Pending |
+| 0 | 0.1 Enforce 1:1 Binding | 5 tasks | 🔄 In Progress (3/5 done) |
+| 0 | 0.2 Simplify Linking | 9 + 1 verification | 🔄 In Progress (7/9 done) |
 | 1 | 1.1 Home Currency Ledger | 5 + 1 verification | ✅ Complete |
 | 2 | 2.1 Bank Account CRUD | 19 + 1 verification | ⬜ Pending |
 | 2 | 2.2 Interest Estimation | 5 + 1 verification | ⬜ Pending |

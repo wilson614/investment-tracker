@@ -138,7 +138,10 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
 
       {/* Balance (large) */}
       <div className="mb-4">
-        <p className="text-2xl font-bold text-[var(--accent-peach)] number-display">
+        <p
+          className={`text-2xl font-bold number-display ${ledger.balance < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'}`}
+          title={ledger.balance < 0 ? '餘額為負' : undefined}
+        >
           {formatNumber(ledger.balance, 2)}
         </p>
         {twdEquivalent !== null ? (

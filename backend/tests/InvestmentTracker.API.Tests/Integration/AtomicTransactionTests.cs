@@ -160,7 +160,7 @@ public class AtomicTransactionTests : IDisposable
     }
 
     [Fact]
-    public async Task BuyStock_WithInsufficientBalance_ShouldThrowException()
+    public async Task BuyStock_WithInsufficientBalance_ShouldAllowNegativeBalance()
     {
         // Arrange
         var (portfolio, ledger) = await SetupTestDataAsync();
@@ -184,20 +184,78 @@ public class AtomicTransactionTests : IDisposable
             Ticker = "VWRA",
             TransactionType = TransactionType.Buy,
             Shares = 100,
-            PricePerShare = 50m, // Total: 5000 USD - exceeds 1000 USD balance
+            PricePerShare = 50m, // Total: 5000 USD + fees
             ExchangeRate = 31.5m,
             Fees = 5m,
             Currency = Currency.USD
         };
 
-        // Act & Assert
-        var act = async () => await useCase.ExecuteAsync(request);
-        await act.Should().ThrowAsync<BusinessRuleException>()
-            .WithMessage("*帳本餘額不足*");
+        // Act
+        var result = await useCase.ExecuteAsync(request);
 
-        // Verify no spend transaction was created
+        // Assert
+        result.Should().NotBeNull();
+
         var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
-        transactions.Should().HaveCount(1); // Only initial buy
+        var balance = _currencyLedgerService.CalculateBalance(transactions);
+
+        // Initial: 1000 USD, Spent: 5005 USD, Remaining: -4005 USD
+        balance.Should().Be(-4005m);
+
+        transactions.Should().HaveCount(2); // 1 initial + 1 spend
+        transactions.Count(t => t.TransactionType == CurrencyTransactionType.Spend).Should().Be(1);
+        transactions.Count(t => t.TransactionType == CurrencyTransactionType.Deposit).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task BuyStock_WithInsufficientBalance_AutoDeposit_ShouldCreateDepositForShortfall()
+    {
+        // Arrange
+        var (portfolio, ledger) = await SetupTestDataAsync();
+
+        var useCase = new CreateStockTransactionUseCase(
+            _stockTransactionRepository,
+            _portfolioRepository,
+            _currencyLedgerRepository,
+            _currencyTransactionRepository,
+            _portfolioCalculator,
+            _currencyLedgerService,
+            _currentUserServiceMock.Object,
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object);
+
+        var request = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow,
+            Ticker = "VWRA",
+            TransactionType = TransactionType.Buy,
+            Shares = 100,
+            PricePerShare = 50m, // Total: 5000 USD + fees
+            ExchangeRate = 31.5m,
+            Fees = 5m,
+            Currency = Currency.USD,
+            AutoDeposit = true
+        };
+
+        // Act
+        _ = await useCase.ExecuteAsync(request);
+
+        // Assert
+        var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
+        var balance = _currencyLedgerService.CalculateBalance(transactions);
+
+        // AutoDeposit should top up the ledger to cover the spend
+        balance.Should().Be(0m);
+
+        transactions.Should().HaveCount(3); // 1 initial + 1 deposit + 1 spend
+
+        var depositTx = transactions.First(t => t.TransactionType == CurrencyTransactionType.Deposit);
+        depositTx.ForeignAmount.Should().Be(4005m);
+
+        var spendTx = transactions.First(t => t.TransactionType == CurrencyTransactionType.Spend);
+        spendTx.ForeignAmount.Should().Be(5005m);
     }
 
     [Fact]

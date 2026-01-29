@@ -11,10 +11,6 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Step 0: Drop unique constraint on UserId+CurrencyCode to allow multiple ledgers per currency
-            migrationBuilder.DropIndex(
-                name: "IX_CurrencyLedger_UserId_CurrencyCode",
-                table: "currency_ledgers");
 
             // Step 1: Bind portfolios to existing USD ledgers where possible (first portfolio gets first ledger)
             migrationBuilder.Sql(@"
@@ -132,12 +128,6 @@ namespace InvestmentTracker.Infrastructure.Persistence.Migrations
                 principalColumn: "Id",
                 onDelete: ReferentialAction.SetNull);
 
-            // Restore unique index on UserId+CurrencyCode
-            migrationBuilder.CreateIndex(
-                name: "IX_CurrencyLedger_UserId_CurrencyCode",
-                table: "currency_ledgers",
-                columns: new[] { "UserId", "CurrencyCode" },
-                unique: true);
         }
     }
 }

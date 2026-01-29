@@ -28,12 +28,6 @@ public class UpdatePortfolioUseCase(
 
         portfolio.SetDescription(request.Description);
 
-        if (request.BoundCurrencyLedgerId.HasValue &&
-            request.BoundCurrencyLedgerId.Value != portfolio.BoundCurrencyLedgerId)
-        {
-            throw new BusinessRuleException("Bound currency ledger cannot be changed");
-        }
-
         await portfolioRepository.UpdateAsync(portfolio, cancellationToken);
 
         return portfolio.ToDto();

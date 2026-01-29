@@ -55,16 +55,11 @@ public class CreateStockTransactionUseCase(
             subtotal = Math.Floor(subtotal);
         var buyAmount = subtotal + request.Fees;
 
-        // FR-012a: Buy 交易預先驗證帳本餘額
+        // FR-012a: Buy 交易不得因餘額不足而阻擋
         if (request.TransactionType == TransactionType.Buy)
         {
             if (buyAmount <= 0)
                 throw new BusinessRuleException("交易金額必須大於 0");
-
-            var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                boundLedger.Id, cancellationToken);
-            if (!currencyLedgerService.ValidateSpend(ledgerTransactions, buyAmount))
-                throw new BusinessRuleException($"{boundLedger.CurrencyCode} 帳本餘額不足");
         }
 
         // 取得匯率
@@ -155,6 +150,46 @@ public class CreateStockTransactionUseCase(
 
         if (linkedSpec != null)
         {
+            // FR-012: 若 Buy 且餘額不足，AutoDeposit=true 時自動建立 Deposit 補足差額
+            if (request.TransactionType == TransactionType.Buy && request.AutoDeposit)
+            {
+                var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                    boundLedger.Id, cancellationToken);
+
+                var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);
+                var shortfall = linkedSpec.Amount - currentBalance;
+
+                if (shortfall > 0)
+                {
+                    decimal? depositHomeAmount = null;
+                    decimal? depositExchangeRate = null;
+                    if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
+                    {
+                        depositExchangeRate = 1.0m;
+                        depositHomeAmount = shortfall;
+                    }
+
+                    var depositTx = new CurrencyTransaction(
+                        boundLedger.Id,
+                        request.TransactionDate,
+                        CurrencyTransactionType.Deposit,
+                        shortfall,
+                        homeAmount: depositHomeAmount,
+                        exchangeRate: depositExchangeRate,
+                        relatedStockTransactionId: transaction.Id,
+                        notes: $"自動入金補足買入 {request.Ticker} × {request.Shares}");
+
+                    await currencyTransactionRepository.AddAsync(depositTx, cancellationToken);
+
+                    // Deposit 是 external cash flow，需要寫入快照
+                    await txSnapshotService.UpsertSnapshotAsync(
+                        request.PortfolioId,
+                        depositTx.Id,
+                        depositTx.TransactionDate,
+                        cancellationToken);
+                }
+            }
+
             // 本幣帳本強制 exchangeRate=1.0
             decimal? linkedHomeAmount = null;
             decimal? linkedExchangeRate = null;

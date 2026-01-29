@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,28 @@ public class CurrencyTransactionRepository(AppDbContext context) : ICurrencyTran
             .FirstOrDefaultAsync(ct => ct.Id == id, cancellationToken);
     }
 
-    public async Task<CurrencyTransaction?> GetByStockTransactionIdAsync(Guid stockTransactionId, CancellationToken cancellationToken = default)
+    public async Task<CurrencyTransaction?> GetByStockTransactionIdAsync(
+        Guid stockTransactionId,
+        CancellationToken cancellationToken = default)
+    {
+        // Linked stock transactions should resolve to the auto-linked Spend/OtherIncome row.
+        // AutoDeposit may introduce an additional Deposit row with the same RelatedStockTransactionId.
+        return await context.CurrencyTransactions
+            .Where(ct => ct.RelatedStockTransactionId == stockTransactionId)
+            .Where(ct => ct.TransactionType == CurrencyTransactionType.Spend || ct.TransactionType == CurrencyTransactionType.OtherIncome)
+            .OrderByDescending(ct => ct.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CurrencyTransaction>> GetByStockTransactionIdAllAsync(
+        Guid stockTransactionId,
+        CancellationToken cancellationToken = default)
     {
         return await context.CurrencyTransactions
-            .FirstOrDefaultAsync(ct => ct.RelatedStockTransactionId == stockTransactionId, cancellationToken);
+            .Where(ct => ct.RelatedStockTransactionId == stockTransactionId)
+            .OrderBy(ct => ct.TransactionDate)
+            .ThenBy(ct => ct.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdAsync(Guid ledgerId, CancellationToken cancellationToken = default)

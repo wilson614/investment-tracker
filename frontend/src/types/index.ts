@@ -47,7 +47,6 @@ export interface CreatePortfolioRequest {
 
 export interface UpdatePortfolioRequest {
   description?: string;
-  boundCurrencyLedgerId?: string | null;
 }
 
 export const TransactionType = {
@@ -58,11 +57,6 @@ export const TransactionType = {
 } as const;
 export type TransactionType = (typeof TransactionType)[keyof typeof TransactionType];
 
-export const FundSource = {
-  None: 0,
-  CurrencyLedger: 1,
-} as const;
-export type FundSource = (typeof FundSource)[keyof typeof FundSource];
 
 export interface StockTransaction {
   id: string;
@@ -100,6 +94,7 @@ export interface CreateStockTransactionRequest {
   pricePerShare: number;
   exchangeRate?: number; // Optional - auto-calculated from transaction date if not provided
   fees: number;
+  autoDeposit?: boolean;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -113,6 +108,7 @@ export interface UpdateStockTransactionRequest {
   pricePerShare: number;
   exchangeRate?: number; // Optional - if not provided, transaction cost tracked in source currency only
   fees: number;
+  autoDeposit?: boolean;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -480,4 +476,35 @@ export interface UpdateStockSplitRequest {
   splitDate: string;
   splitRatio: number;
   description?: string;
+}
+
+// Bank Account Types
+export interface BankAccount {
+  id: string;
+  userId: string;
+  bankName: string;
+  totalAssets: number;
+  interestRate: number;      // Annual interest rate %
+  interestCap: number;       // Preferential interest cap
+  note?: string;
+  monthlyInterest: number;   // Calculated monthly interest
+  yearlyInterest: number;    // Calculated annual interest
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBankAccountRequest {
+  bankName: string;
+  totalAssets: number;
+  interestRate: number;
+  interestCap: number;
+  note?: string;
+}
+
+export interface UpdateBankAccountRequest {
+  bankName: string;
+  totalAssets: number;
+  interestRate: number;
+  interestCap: number;
+  note?: string;
 }

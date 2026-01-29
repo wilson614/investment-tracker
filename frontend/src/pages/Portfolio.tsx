@@ -11,20 +11,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
-import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
+import { portfolioApi, stockPriceApi, marketDataApi, currencyLedgerApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
 // Single portfolio mode (FR-080): PortfolioSelector and CreatePortfolioForm are hidden
 // import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
-// import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
+import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
-import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
+import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse, CurrencyLedger } from '../types';
 import { transactionApi } from '../services/api';
 
 /**
@@ -113,6 +113,7 @@ export function PortfolioPage() {
   // Single portfolio mode (FR-080): refreshPortfolios removed as multi-portfolio UI is hidden
   const { currentPortfolioId, selectPortfolio, clearPerformanceState } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [boundLedger, setBoundLedger] = useState<CurrencyLedger | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
   // Note: We use loadCachedPrices (individual quote cache) instead of loadCachedPerformance
@@ -126,6 +127,7 @@ export function PortfolioPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   // Single portfolio mode (FR-080): showCreatePortfolio removed
+  const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
@@ -183,7 +185,7 @@ export function PortfolioPage() {
   /**
    * 載入目前使用者的投資組合（若不存在則建立預設投資組合），並取得 summary / 交易。
    *
-   * 單一投資組合模式：只使用第一個 portfolio，並透過 `selectPortfolio` 同步到全域 context。
+   * 單一投資組合模式：目前仍會以 portfolios[0] 作為預設 portfolio。
    */
   const loadData = useCallback(async () => {
     try {
@@ -204,7 +206,9 @@ export function PortfolioPage() {
         currentPortfolio = portfolios[0];
       }
 
-      selectPortfolio(currentPortfolio.id);
+      if (!currentPortfolioId) {
+        selectPortfolio(currentPortfolio.id);
+      }
 
       setPortfolio(currentPortfolio);
       const portfolioId = currentPortfolio.id;
@@ -235,13 +239,17 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectPortfolio]);
+  }, [currentPortfolioId, selectPortfolio]);
 
   const hasFetchedOnLoad = useRef(false);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (currentPortfolioId) {
+      loadDataForPortfolio(currentPortfolioId);
+    } else {
+      loadData();
+    }
+  }, [currentPortfolioId, loadDataForPortfolio, loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
   useEffect(() => {
@@ -250,6 +258,24 @@ export function PortfolioPage() {
       handleFetchAllPrices();
     }
   }, [summary, isLoading]);
+
+  // Fetch bound ledger info
+  useEffect(() => {
+    const fetchBoundLedger = async () => {
+      if (portfolio?.boundCurrencyLedgerId) {
+        try {
+          const summary = await currencyLedgerApi.getById(portfolio.boundCurrencyLedgerId);
+          setBoundLedger(summary.ledger);
+        } catch (err) {
+          console.error('Failed to fetch bound ledger:', err);
+          setBoundLedger(null);
+        }
+      } else {
+        setBoundLedger(null);
+      }
+    };
+    fetchBoundLedger();
+  }, [portfolio?.boundCurrencyLedgerId]);
 
   /**
    * 取得單一 ticker 的報價（含匯率），並用最新 prices 更新 summary。
@@ -330,6 +356,7 @@ export function PortfolioPage() {
         pricePerShare: data.pricePerShare,
         exchangeRate: data.exchangeRate,
         fees: data.fees,
+        autoDeposit: data.autoDeposit,
         notes: data.notes,
         market: data.market,
         currency: data.currency,
@@ -557,11 +584,26 @@ export function PortfolioPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex justify-between items-start mb-6">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
+              {boundLedger && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-primary)]">
+                  <span className="text-xs text-[var(--text-muted)]">連結帳本</span>
+                  <span className="text-sm font-medium text-[var(--text-primary)]">{boundLedger.name}</span>
+                  <span className="text-xs text-[var(--accent-teal)]">{boundLedger.currencyCode}</span>
+                </div>
+              )}
+            </div>
             {/* Single portfolio mode (FR-080): PortfolioSelector hidden */}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreatePortfolio(true)}
+              className="btn-accent px-3 py-1.5 text-sm"
+            >
+              + 建立
+            </button>
             {/* FR-130: Export Positions button removed - only Export Transactions remains in transaction history section */}
             <button
               type="button"
@@ -670,6 +712,17 @@ export function PortfolioPage() {
           )}
         </div>
 
+
+        {/* Create Portfolio Form */}
+        {showCreatePortfolio && (
+          <CreatePortfolioForm
+            onSuccess={(newId) => {
+              setShowCreatePortfolio(false);
+              selectPortfolio(newId);
+            }}
+            onClose={() => setShowCreatePortfolio(false)}
+          />
+        )}
 
         {/* Add Transaction Modal */}
         {showForm && (

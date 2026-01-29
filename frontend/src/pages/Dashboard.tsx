@@ -14,6 +14,7 @@ import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../compon
 import { AssetAllocationPieChart } from '../components/charts';
 import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
 import { Skeleton } from '../components/common/SkeletonLoader';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
 import { refreshCapeData } from '../services/capeApi';
@@ -108,6 +109,8 @@ interface HistoricalMonthValue {
 }
 
 export function DashboardPage() {
+  const { currentPortfolioId } = usePortfolio();
+
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [xirrResult, setXirrResult] = useState<XirrResult | null>(null);
@@ -124,9 +127,17 @@ export function DashboardPage() {
   // Track if we need to auto-fetch prices after initial load
   const shouldAutoFetch = useRef(true);
 
+  // When switching portfolio, allow auto-fetch again
+  useEffect(() => {
+    shouldAutoFetch.current = true;
+    currentPricesRef.current = {};
+    setIsPriceDataPending(false);
+    setXirrResult(null);
+  }, [currentPortfolioId]);
+
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [currentPortfolioId]);
 
   // Auto-fetch prices after initial data load
   useEffect(() => {
@@ -168,13 +179,13 @@ export function DashboardPage() {
     };
 
     loadHistoricalData();
-  }, [portfolio]);
+  }, [portfolio?.id]);
 
   /**
    * 取得 Dashboard 需要的初始資料。
    *
    * 流程：
-   * 1) 取得投資組合清單（目前設計為單一投資組合模式，取第一個）
+   * 1) 取得目前選定的投資組合（由 PortfolioContext 提供 currentPortfolioId）
    * 2) 並行載入 summary 與交易清單
    * 3) 讀取快取報價並先用快取重新計算 summary / XIRR（若快取存在）
    */
@@ -183,19 +194,18 @@ export function DashboardPage() {
       setIsLoading(true);
       setError(null);
 
-      const portfolios = await portfolioApi.getAll();
-      if (portfolios.length === 0) {
-        // No portfolio yet - that's okay, we'll still show market data
+      if (!currentPortfolioId) {
         setPortfolio(null);
         setSummary(null);
         setXirrResult(null);
         setRecentTransactions([]);
+        setHistoricalData([]);
+        setIsLoadingHistorical(false);
         setIsLoading(false);
         return;
       }
 
-      // Use first portfolio (system designed for single portfolio)
-      const p = portfolios[0];
+      const p = await portfolioApi.getById(currentPortfolioId);
       setPortfolio(p);
 
       // Load summary and transactions in parallel

@@ -190,6 +190,29 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         exchangeRateValue = !formData.exchangeRate || isNaN(parsed) ? undefined : parsed;
       }
 
+      const requiredAmount = (() => {
+        const shares = parseFloat(formData.shares) || 0;
+        const price = parseFloat(formData.pricePerShare) || 0;
+        const fees = parseFloat(formData.fees) || 0;
+        return (shares * price) + fees;
+      })();
+      const originalAmount = initialData
+        ? (initialData.shares * initialData.pricePerShare + initialData.fees)
+        : 0;
+      const effectiveBalance = boundLedger
+        ? boundLedger.balance + originalAmount
+        : 0;
+      const hasInsufficientBalance = boundLedger
+        && Number(formData.transactionType) === 1
+        && requiredAmount > effectiveBalance;
+
+      let autoDeposit: boolean | undefined;
+      if (hasInsufficientBalance) {
+        autoDeposit = window.confirm(
+          `帳本餘額不足（差額 ${(requiredAmount - effectiveBalance).toLocaleString('zh-TW', { maximumFractionDigits: 4 })} ${boundLedger?.ledger.currencyCode}）。\n\n按「確定」= 自動建立入金補足差額並繼續。\n按「取消」= 直接繼續（允許餘額為負）。`
+        );
+      }
+
       const request: CreateStockTransactionRequest = {
         portfolioId,
         ticker: formData.ticker.toUpperCase(),
@@ -199,6 +222,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         pricePerShare: parseFloat(formData.pricePerShare),
         exchangeRate: exchangeRateValue,
         fees: parseFloat(formData.fees) || 0,
+        autoDeposit,
         notes: formData.notes || undefined,
         market: formData.market,
         currency: formData.currency,

@@ -168,7 +168,7 @@ async function refreshAccessToken(): Promise<boolean> {
  * - 401 時嘗試 refresh token 後重試一次
  * - refresh 失敗才清除 session 並導向登入
  */
-async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const canUseAuthHeader = shouldAttachAuthHeader(endpoint);
 
   const execute = async (authToken: string | null): Promise<Response> => {

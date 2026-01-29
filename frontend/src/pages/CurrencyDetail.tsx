@@ -438,7 +438,10 @@ export default function CurrencyDetail() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             <div className="metric-card">
               <p className="text-sm text-[var(--text-muted)] mb-1">餘額</p>
-              <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
+              <p
+                className={`text-lg font-bold number-display ${ledger.balance < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'}`}
+                title={ledger.balance < 0 ? '餘額為負' : undefined}
+              >
                 {formatNumber(ledger.balance, 2)} {ledger.ledger.currencyCode}
               </p>
               {!isHomeCurrencyLedger && currentRate && ledger.balance > 0 && (

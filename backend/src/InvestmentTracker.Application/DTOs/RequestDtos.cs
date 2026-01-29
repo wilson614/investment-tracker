@@ -35,8 +35,6 @@ public record UpdatePortfolioRequest
 {
     [StringLength(500)]
     public string? Description { get; init; }
-
-    public Guid? BoundCurrencyLedgerId { get; init; }
 }
 
 /// <summary>
@@ -74,6 +72,8 @@ public record CreateStockTransactionRequest
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
+
+    public bool AutoDeposit { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }
@@ -121,6 +121,8 @@ public record UpdateStockTransactionRequest
 
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
+
+    public bool AutoDeposit { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }
@@ -201,4 +203,52 @@ public record CurrentPriceInfo
 {
     public decimal Price { get; init; }
     public decimal ExchangeRate { get; init; }
+}
+
+/// <summary>
+/// Create bank account request DTO.
+/// </summary>
+public record CreateBankAccountRequest
+{
+    [Required]
+    [StringLength(100)]
+    public required string BankName { get; init; }
+
+    [Range(0, double.MaxValue)]
+    public decimal TotalAssets { get; init; }
+
+    /// <summary>Annual interest rate (percentage).</summary>
+    [Range(0, double.MaxValue)]
+    public decimal InterestRate { get; init; }
+
+    /// <summary>Preferential cap (0 means no cap).</summary>
+    [Range(0, double.MaxValue)]
+    public decimal InterestCap { get; init; }
+
+    [StringLength(500)]
+    public string? Note { get; init; }
+}
+
+/// <summary>
+/// Update bank account request DTO.
+/// </summary>
+public record UpdateBankAccountRequest
+{
+    [Required]
+    [StringLength(100)]
+    public required string BankName { get; init; }
+
+    [Range(0, double.MaxValue)]
+    public decimal TotalAssets { get; init; }
+
+    /// <summary>Annual interest rate (percentage).</summary>
+    [Range(0, double.MaxValue)]
+    public decimal InterestRate { get; init; }
+
+    /// <summary>Preferential cap (0 means no cap).</summary>
+    [Range(0, double.MaxValue)]
+    public decimal InterestCap { get; init; }
+
+    [StringLength(500)]
+    public string? Note { get; init; }
 }

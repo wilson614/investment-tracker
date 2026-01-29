@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 
@@ -27,12 +28,24 @@ public class DeleteStockTransactionUseCase(
         if (portfolio.UserId != currentUserService.UserId)
             throw new AccessDeniedException();
 
-        // 找出並刪除連動的外幣交易（若存在）
-        var linkedCurrencyTransaction = await currencyTransactionRepository.GetByStockTransactionIdAsync(
+        // 找出並刪除連動的外幣交易（可能多筆：Spend/OtherIncome + AutoDeposit Deposit）
+        var linkedCurrencyTransactions = await currencyTransactionRepository.GetByStockTransactionIdAllAsync(
             transactionId, cancellationToken);
-        if (linkedCurrencyTransaction != null)
+
+        foreach (var linked in linkedCurrencyTransactions)
         {
-            await currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
+            await currencyTransactionRepository.SoftDeleteAsync(linked.Id, cancellationToken);
+
+            // Deposit/Withdraw/InitialBalance 會作為 External Cash Flow，會有 TransactionPortfolioSnapshot
+            if (linked.TransactionType is CurrencyTransactionType.InitialBalance
+                or CurrencyTransactionType.Deposit
+                or CurrencyTransactionType.Withdraw)
+            {
+                await txSnapshotService.DeleteSnapshotAsync(
+                    transaction.PortfolioId,
+                    linked.Id,
+                    cancellationToken);
+            }
         }
 
         // 軟刪除股票交易

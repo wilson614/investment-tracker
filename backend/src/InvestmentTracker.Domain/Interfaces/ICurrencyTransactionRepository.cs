@@ -9,6 +9,7 @@ public interface ICurrencyTransactionRepository
 {
     Task<CurrencyTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<CurrencyTransaction?> GetByStockTransactionIdAsync(Guid stockTransactionId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CurrencyTransaction>> GetByStockTransactionIdAllAsync(Guid stockTransactionId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdAsync(Guid ledgerId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdOrderedAsync(Guid ledgerId, CancellationToken cancellationToken = default);
     Task<CurrencyTransaction> AddAsync(CurrencyTransaction transaction, CancellationToken cancellationToken = default);

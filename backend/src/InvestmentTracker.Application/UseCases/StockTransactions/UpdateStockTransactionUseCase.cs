@@ -151,93 +151,212 @@ public class UpdateStockTransactionUseCase(
             transaction.TransactionDate,
             cancellationToken);
 
-        // FR-009: 同步更新連動的 CurrencyTransaction（若存在）
+        // FR-009: 同步更新連動的 CurrencyTransaction
+        // - AutoDeposit 可能導致同一筆 StockTransaction 產生多筆 CurrencyTransaction（Deposit + Spend/OtherIncome）
+        // - GetByStockTransactionIdAsync 會只回傳 Spend/OtherIncome，以避免抓到 Deposit
         var linkedCurrencyTransaction = await currencyTransactionRepository.GetByStockTransactionIdAsync(
             transaction.Id, cancellationToken);
 
-        if (linkedCurrencyTransaction != null)
+        var linkedCurrencyTransactions = await currencyTransactionRepository.GetByStockTransactionIdAllAsync(
+            transaction.Id, cancellationToken);
+
+        var linkedDeposit = linkedCurrencyTransactions
+            .FirstOrDefault(t => t.TransactionType == CurrencyTransactionType.Deposit);
+
+        // 取得連動帳本（以 Portfolio 綁定帳本為準）
+        var linkedLedger = boundLedger;
+
+        // 若交易不再是 Buy/Sell，刪除所有連動交易（包含 Deposit）
+        if (request.TransactionType is not (TransactionType.Buy or TransactionType.Sell))
         {
-            // 取得連動帳本以判斷是否為 TWD 帳本
-            var linkedLedger = await currencyLedgerRepository.GetByIdAsync(
-                linkedCurrencyTransaction.CurrencyLedgerId, cancellationToken);
-
-            // CRIT-5: 驗證連動帳本所有權
-            if (linkedLedger != null && linkedLedger.UserId != currentUserService.UserId)
-                throw new AccessDeniedException();
-
-            if (linkedLedger != null)
+            foreach (var linked in linkedCurrencyTransactions)
             {
-                // 計算新金額
-                decimal newAmount;
-                CurrencyTransactionType newType;
-                string newNotes;
+                await currencyTransactionRepository.SoftDeleteAsync(linked.Id, cancellationToken);
 
-                if (linkedLedger.CurrencyCode == "TWD")
+                if (linked.TransactionType is CurrencyTransactionType.InitialBalance
+                    or CurrencyTransactionType.Deposit
+                    or CurrencyTransactionType.Withdraw)
                 {
-                    // TWD 帳本使用 flooring
-                    var subtotal = Math.Floor(request.Shares * request.PricePerShare);
+                    await txSnapshotService.DeleteSnapshotAsync(
+                        transaction.PortfolioId,
+                        linked.Id,
+                        cancellationToken);
+                }
+            }
 
-                    if (request.TransactionType == TransactionType.Buy)
-                    {
-                        newAmount = subtotal + request.Fees;
-                        newType = CurrencyTransactionType.Spend;
-                        newNotes = $"買入 {request.Ticker} × {request.Shares}";
+            return new StockTransactionDto
+            {
+                Id = transaction.Id,
+                PortfolioId = transaction.PortfolioId,
+                TransactionDate = transaction.TransactionDate,
+                Ticker = transaction.Ticker,
+                TransactionType = transaction.TransactionType,
+                Shares = transaction.Shares,
+                PricePerShare = transaction.PricePerShare,
+                ExchangeRate = transaction.ExchangeRate,
+                Fees = transaction.Fees,
+                CurrencyLedgerId = transaction.CurrencyLedgerId,
+                Notes = transaction.Notes,
+                TotalCostSource = transaction.TotalCostSource,
+                TotalCostHome = transaction.TotalCostHome,
+                HasExchangeRate = transaction.HasExchangeRate,
+                RealizedPnlHome = transaction.RealizedPnlHome,
+                Market = transaction.Market,
+                Currency = transaction.Currency,
+                CreatedAt = transaction.CreatedAt,
+                UpdatedAt = transaction.UpdatedAt
+            };
+        }
 
-                        // 驗證餘額（排除當前連動交易後的餘額）
-                        var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                            linkedLedger.Id, cancellationToken);
-                        var balanceWithoutCurrent = currencyLedgerService.CalculateBalance(
-                            ledgerTransactions.Where(t => t.Id != linkedCurrencyTransaction.Id));
-                        if (balanceWithoutCurrent < newAmount)
-                            throw new BusinessRuleException("TWD 帳本餘額不足");
-                    }
-                    else if (request.TransactionType == TransactionType.Sell)
-                    {
-                        newAmount = subtotal - request.Fees;
-                        newType = CurrencyTransactionType.OtherIncome;
-                        newNotes = $"賣出 {request.Ticker} × {request.Shares}";
+        // 計算新金額（依市場規則：台股 flooring）
+        decimal newAmount;
+        CurrencyTransactionType newType;
+        string newNotes;
 
-                        // Sell 金額為 0 或負時刪除連動交易
-                        if (newAmount <= 0)
-                        {
-                            await currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
-                            linkedCurrencyTransaction = null;
-                        }
-                    }
-                    else
-                    {
-                        // Split/Adjustment 改動時刪除連動交易
-                        await currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
-                        linkedCurrencyTransaction = null;
-                        newAmount = 0;
-                        newType = CurrencyTransactionType.Spend;
-                        newNotes = "";
-                    }
+        if (request.TransactionType == TransactionType.Buy)
+        {
+            var subtotal = request.Shares * request.PricePerShare;
+            if (resolvedMarket == StockMarket.TW)
+                subtotal = Math.Floor(subtotal);
 
-                    if (linkedCurrencyTransaction != null && newAmount > 0)
-                    {
-                        linkedCurrencyTransaction.SetTransactionDate(request.TransactionDate);
-                        linkedCurrencyTransaction.SetAmounts(newType, newAmount, homeAmount: newAmount, exchangeRate: 1.0m);
-                        linkedCurrencyTransaction.SetNotes(newNotes);
-                        await currencyTransactionRepository.UpdateAsync(linkedCurrencyTransaction, cancellationToken);
-                    }
+            newAmount = subtotal + request.Fees;
+            newType = CurrencyTransactionType.Spend;
+            newNotes = $"買入 {request.Ticker} × {request.Shares}";
+        }
+        else
+        {
+            var subtotal = request.Shares * request.PricePerShare;
+            if (resolvedMarket == StockMarket.TW)
+                subtotal = Math.Floor(subtotal);
+
+            newAmount = subtotal - request.Fees;
+            newType = CurrencyTransactionType.OtherIncome;
+            newNotes = $"賣出 {request.Ticker} × {request.Shares}";
+        }
+
+        // Buy/Sell：確保 linked spend/income 存在並同步
+        if (newType == CurrencyTransactionType.OtherIncome && newAmount <= 0)
+        {
+            // Sell 淨收入為 0 或負時刪除連動交易
+            if (linkedCurrencyTransaction != null)
+            {
+                await currencyTransactionRepository.SoftDeleteAsync(linkedCurrencyTransaction.Id, cancellationToken);
+                linkedCurrencyTransaction = null;
+            }
+        }
+        else
+        {
+            if (linkedCurrencyTransaction == null)
+            {
+                decimal? linkedHomeAmount = null;
+                decimal? linkedExchangeRate = null;
+                if (linkedLedger.CurrencyCode == linkedLedger.HomeCurrency)
+                {
+                    linkedExchangeRate = 1.0m;
+                    linkedHomeAmount = newAmount;
+                }
+
+                linkedCurrencyTransaction = new CurrencyTransaction(
+                    linkedLedger.Id,
+                    request.TransactionDate,
+                    newType,
+                    newAmount,
+                    homeAmount: linkedHomeAmount,
+                    exchangeRate: linkedExchangeRate,
+                    relatedStockTransactionId: transaction.Id,
+                    notes: newNotes);
+
+                await currencyTransactionRepository.AddAsync(linkedCurrencyTransaction, cancellationToken);
+            }
+            else
+            {
+                linkedCurrencyTransaction.SetTransactionDate(request.TransactionDate);
+
+                if (linkedLedger.CurrencyCode == linkedLedger.HomeCurrency)
+                {
+                    linkedCurrencyTransaction.SetAmounts(newType, newAmount, homeAmount: newAmount, exchangeRate: 1.0m);
                 }
                 else
                 {
-                    // 外幣帳本：金額計算方式與原有邏輯一致
-                    newAmount = request.Shares * request.PricePerShare + request.Fees;
-                    newNotes = $"買入 {request.Ticker} × {request.Shares}";
-
-                    linkedCurrencyTransaction.SetTransactionDate(request.TransactionDate);
                     linkedCurrencyTransaction.SetAmounts(
-                        linkedCurrencyTransaction.TransactionType,
+                        newType,
                         newAmount,
                         linkedCurrencyTransaction.HomeAmount,
                         linkedCurrencyTransaction.ExchangeRate);
-                    linkedCurrencyTransaction.SetNotes(newNotes);
-                    await currencyTransactionRepository.UpdateAsync(linkedCurrencyTransaction, cancellationToken);
                 }
+
+                linkedCurrencyTransaction.SetNotes(newNotes);
+                await currencyTransactionRepository.UpdateAsync(linkedCurrencyTransaction, cancellationToken);
             }
+        }
+
+        // FR-012: AutoDeposit（僅 Buy 且餘額不足）
+        if (request.TransactionType == TransactionType.Buy && request.AutoDeposit)
+        {
+            var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                linkedLedger.Id, cancellationToken);
+
+            // 排除與本交易關聯的所有交易後再算餘額，得到「不含本交易」的可用餘額
+            var balanceWithoutLinked = currencyLedgerService.CalculateBalance(
+                ledgerTransactions.Where(t => t.RelatedStockTransactionId != transaction.Id));
+
+            var shortfall = newAmount - balanceWithoutLinked;
+
+            if (shortfall > 0)
+            {
+                decimal? depositHomeAmount = null;
+                decimal? depositExchangeRate = null;
+                if (linkedLedger.CurrencyCode == linkedLedger.HomeCurrency)
+                {
+                    depositExchangeRate = 1.0m;
+                    depositHomeAmount = shortfall;
+                }
+
+                if (linkedDeposit == null)
+                {
+                    linkedDeposit = new CurrencyTransaction(
+                        linkedLedger.Id,
+                        request.TransactionDate,
+                        CurrencyTransactionType.Deposit,
+                        shortfall,
+                        homeAmount: depositHomeAmount,
+                        exchangeRate: depositExchangeRate,
+                        relatedStockTransactionId: transaction.Id,
+                        notes: $"自動入金補足買入 {request.Ticker} × {request.Shares}");
+
+                    await currencyTransactionRepository.AddAsync(linkedDeposit, cancellationToken);
+                }
+                else
+                {
+                    linkedDeposit.SetTransactionDate(request.TransactionDate);
+                    linkedDeposit.SetAmounts(CurrencyTransactionType.Deposit, shortfall, depositHomeAmount, depositExchangeRate);
+                    linkedDeposit.SetNotes($"自動入金補足買入 {request.Ticker} × {request.Shares}");
+                    await currencyTransactionRepository.UpdateAsync(linkedDeposit, cancellationToken);
+                }
+
+                await txSnapshotService.UpsertSnapshotAsync(
+                    transaction.PortfolioId,
+                    linkedDeposit.Id,
+                    linkedDeposit.TransactionDate,
+                    cancellationToken);
+            }
+            else if (linkedDeposit != null)
+            {
+                await currencyTransactionRepository.SoftDeleteAsync(linkedDeposit.Id, cancellationToken);
+                await txSnapshotService.DeleteSnapshotAsync(
+                    transaction.PortfolioId,
+                    linkedDeposit.Id,
+                    cancellationToken);
+            }
+        }
+        else if (linkedDeposit != null)
+        {
+            // 非 Buy 或未啟用 AutoDeposit：刪除既有 Deposit
+            await currencyTransactionRepository.SoftDeleteAsync(linkedDeposit.Id, cancellationToken);
+            await txSnapshotService.DeleteSnapshotAsync(
+                transaction.PortfolioId,
+                linkedDeposit.Id,
+                cancellationToken);
         }
 
         return new StockTransactionDto
