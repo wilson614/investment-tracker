@@ -1,38 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronDown, Plus, DollarSign } from 'lucide-react';
 import type { Portfolio } from '../../types';
-import { portfolioApi } from '../../services/api';
+import { usePortfolio } from '../../contexts/PortfolioContext';
 
 interface PortfolioSelectorProps {
-  currentPortfolioId: string | null;
-  onPortfolioChange: (portfolioId: string) => void;
   onCreateNew: () => void;
+  className?: string;
 }
 
 export function PortfolioSelector({
-  currentPortfolioId,
-  onPortfolioChange,
   onCreateNew,
+  className = '',
 }: PortfolioSelectorProps) {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const { portfolios, currentPortfolioId, selectPortfolio, isLoading } = usePortfolio();
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    loadPortfolios();
-  }, []);
-
-  const loadPortfolios = async () => {
-    try {
-      setIsLoading(true);
-      const data = await portfolioApi.getAll();
-      setPortfolios(data);
-    } catch (error) {
-      console.error('Failed to load portfolios:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const currentPortfolio = portfolios.find((p) => p.id === currentPortfolioId);
 
@@ -42,14 +23,14 @@ export function PortfolioSelector({
     return displayName + currencyLabel;
   };
 
-  if (isLoading) {
+  if (isLoading && portfolios.length === 0) {
     return (
       <div className="h-10 w-48 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
     );
   }
 
   return (
-    <div className="relative">
+    <div className={`relative ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-primary)] transition-colors"
@@ -77,7 +58,7 @@ export function PortfolioSelector({
                 <button
                   key={portfolio.id}
                   onClick={() => {
-                    onPortfolioChange(portfolio.id);
+                    selectPortfolio(portfolio.id);
                     setIsOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors ${

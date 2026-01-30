@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { Portfolio } from '../types';
 import { portfolioApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -40,6 +40,12 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [performanceVersion, setPerformanceVersion] = useState(0);
 
+  // Ref to track current ID for refresh logic without triggering re-creation
+  const currentPortfolioIdRef = useRef(currentPortfolioId);
+  useEffect(() => {
+    currentPortfolioIdRef.current = currentPortfolioId;
+  }, [currentPortfolioId]);
+
   const currentPortfolio = portfolios.find(p => p.id === currentPortfolioId) ?? null;
 
   const refreshPortfolios = useCallback(async () => {
@@ -49,11 +55,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setPortfolios(data);
 
       // If no portfolio selected or selected portfolio no longer exists, select first one
+      const currentId = currentPortfolioIdRef.current;
       if (data.length > 0) {
-        const selectedExists = currentPortfolioId && data.some(p => p.id === currentPortfolioId);
+        const selectedExists = currentId && data.some(p => p.id === currentId);
         if (!selectedExists) {
-          setCurrentPortfolioId(data[0].id);
-          localStorage.setItem(SELECTED_PORTFOLIO_KEY, data[0].id);
+          const newId = data[0].id;
+          setCurrentPortfolioId(newId);
+          localStorage.setItem(SELECTED_PORTFOLIO_KEY, newId);
         }
       } else {
         setCurrentPortfolioId(null);
@@ -64,7 +72,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPortfolioId]);
+  }, []);
 
   const selectPortfolio = useCallback((portfolioId: string) => {
     if (portfolioId === currentPortfolioId) return;
