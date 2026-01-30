@@ -277,7 +277,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
   return (
     <form onSubmit={handleSubmit} className="card-dark space-y-5 p-6">
-      <h3 className="text-lg font-bold text-[var(--text-primary)]">{initialData ? 'Edit Transaction' : 'Add Transaction'}</h3>
+      <h3 className="text-lg font-bold text-[var(--text-primary)]">{initialData ? '編輯交易' : '新增交易'}</h3>
 
       {error && (
         <div className="p-3 bg-[var(--color-danger-soft)] border border-[var(--color-danger)] text-[var(--color-danger)] rounded-lg text-base">{error}</div>
@@ -286,8 +286,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Ticker
-            {isTW && <span className="ml-2 text-xs text-[var(--accent-peach)]">Taiwan Stock</span>}
+            股票代號
+            {isTW && <span className="ml-2 text-xs text-[var(--accent-peach)]">台股</span>}
           </label>
           <input
             type="text"
@@ -302,7 +302,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Transaction Type
+            交易類型
           </label>
           <select
             name="transactionType"
@@ -310,18 +310,18 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
             onChange={handleChange}
             className="input-dark w-full"
           >
-            <option value={1}>Buy</option>
-            <option value={2}>Sell</option>
+            <option value={1}>買入</option>
+            <option value={2}>賣出</option>
           </select>
         </div>
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Market
+            市場
             {isDetectingMarket && (
               <span className="ml-2 text-xs text-[var(--text-muted)] inline-flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Detecting...
+                偵測中...
               </span>
             )}
           </label>
@@ -352,7 +352,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         {!isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              Currency
+              幣別
             </label>
             <select
               name="currency"
@@ -377,7 +377,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Date
+            交易日期
           </label>
           <input
             type="date"
@@ -391,7 +391,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Shares
+            股數
           </label>
           <input
             type="number"
@@ -407,7 +407,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Price
+            價格
           </label>
           <input
             type="number"
@@ -424,8 +424,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         {!isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              Exchange Rate (Optional)
-              <span className="ml-2 text-xs text-[var(--text-muted)]">Auto-fetch if empty</span>
+              匯率 (選填)
+              <span className="ml-2 text-xs text-[var(--text-muted)]">留空自動抓取</span>
             </label>
             <input
               type="number"
@@ -435,14 +435,14 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
               min="0.000001"
               step="0.000001"
               className="input-dark w-full"
-              placeholder="Leave empty for auto"
+              placeholder="留空自動抓取"
             />
           </div>
         )}
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            Fees
+            手續費
           </label>
           <input
             type="number"
@@ -461,24 +461,24 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         <div className="border-t border-[var(--border-color)] pt-5 mt-5">
           <h4 className="text-base font-medium text-[var(--text-secondary)] mb-4 flex items-center gap-2">
             <Info className="w-4 h-4" />
-            Linked Ledger
+            連結帳本
           </h4>
           <div className="p-3 bg-[var(--accent-cyan-soft)] border border-[var(--accent-cyan)] rounded-lg text-[var(--accent-cyan)] text-sm font-medium">
             {Number(formData.transactionType) === 1
-              ? `This transaction will deduct from ${boundLedger.ledger.currencyCode} ledger`
-              : `Proceeds will be credited to ${boundLedger.ledger.currencyCode} ledger`}
+              ? `此交易將從 ${boundLedger.ledger.currencyCode} 帳本扣款`
+              : `款項將存入 ${boundLedger.ledger.currencyCode} 帳本`}
           </div>
 
           <div className={`mt-4 p-4 rounded-lg ${hasInsufficientBalance ? 'bg-[var(--color-warning-soft)] border border-[var(--color-warning)]' : 'bg-[var(--accent-sand-soft)] border border-[var(--accent-sand)]'}`}>
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-base text-[var(--text-muted)]">Available Balance</p>
+                <p className="text-base text-[var(--text-muted)]">可用餘額</p>
                 <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--accent-sand)]'}`}>
                   {effectiveBalance.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {boundLedger.ledger.currencyCode}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-base text-[var(--text-muted)]">Required Amount</p>
+                <p className="text-base text-[var(--text-muted)]">所需金額</p>
                 <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--text-primary)]'}`}>
                   {requiredAmount.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {boundLedger.ledger.currencyCode}
                 </p>
@@ -486,7 +486,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
             </div>
             {hasInsufficientBalance && (
               <p className="text-base text-[var(--color-warning)] mt-3">
-                Note: Balance will become negative
+                注意：餘額將變成負數
               </p>
             )}
           </div>
@@ -495,7 +495,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-          Notes (Optional)
+          備註 (選填)
         </label>
         <textarea
           name="notes"
@@ -513,7 +513,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           disabled={isSubmitting}
           className="btn-accent flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? 'Processing...' : (initialData ? 'Save' : 'Add Transaction')}
+          {isSubmitting ? '處理中...' : (initialData ? '儲存' : '新增交易')}
         </button>
         {onCancel && (
           <button
@@ -521,7 +521,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
             onClick={onCancel}
             className="btn-dark px-6 py-3"
           >
-            Cancel
+            取消
           </button>
         )}
       </div>

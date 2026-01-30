@@ -148,8 +148,8 @@ export function CurrencyTransactionForm({
             <>
               <option value={CurrencyTxType.ExchangeBuy}>換匯買入</option>
               <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
-              <option value={CurrencyTxType.Deposit}>存入（入金）</option>
-              <option value={CurrencyTxType.Withdraw}>提領（出金）</option>
+              <option value={CurrencyTxType.Deposit}>存入</option>
+              <option value={CurrencyTxType.Withdraw}>提領</option>
               <option value={CurrencyTxType.Interest}>利息收入</option>
               <option value={CurrencyTxType.Spend}>消費支出</option>
               <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
