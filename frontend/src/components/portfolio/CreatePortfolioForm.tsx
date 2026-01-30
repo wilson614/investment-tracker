@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, DollarSign } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { CreatePortfolioRequest } from '../../types';
 import { portfolioApi } from '../../services/api';
 
@@ -8,7 +8,7 @@ interface CreatePortfolioFormProps {
   onSuccess: (portfolioId: string) => void;
 }
 
-const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'TWD'];
+const COMMON_CURRENCIES = ['USD', 'TWD'];
 
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
   const [displayName, setDisplayName] = useState('');
@@ -60,19 +60,6 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Portfolio Type Indicator */}
-          <div className="flex items-center gap-3 p-4 rounded-lg border-2 border-[var(--accent-teal)] bg-[var(--accent-teal)]/10">
-            <DollarSign className="w-5 h-5 text-[var(--accent-teal)]" />
-            <div className="text-left">
-              <div className="text-sm font-medium text-[var(--text-primary)]">
-                主要投資組合
-              </div>
-              <div className="text-xs text-[var(--text-muted)]">
-                含匯率轉換
-              </div>
-            </div>
-          </div>
-
           {/* Display Name */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
@@ -82,7 +69,6 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="例如：美股投資組合"
               className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
               maxLength={100}
             />
@@ -131,13 +117,12 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           {/* Initial Balance (optional) */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              初始餘額 <span className="text-[var(--text-muted)]">(選填)</span>
+              初始餘額 <span className="text-[var(--text-muted)]">（選填）</span>
             </label>
             <input
               type="number"
               value={initialBalance}
               onChange={(e) => setInitialBalance(e.target.value)}
-              placeholder="0"
               min="0"
               step="0.01"
               className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
@@ -147,12 +132,11 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           {/* Description */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              備註 <span className="text-[var(--text-muted)]">(選填)</span>
+              備註 <span className="text-[var(--text-muted)]">（選填）</span>
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="投資組合說明..."
               rows={2}
               className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)] resize-none"
               maxLength={500}
