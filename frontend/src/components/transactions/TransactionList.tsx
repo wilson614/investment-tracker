@@ -16,7 +16,7 @@ interface TransactionListProps {
   /** 要顯示的交易清單 */
   transactions: StockTransaction[];
   /** 刪除 callback（若提供則顯示刪除按鈕） */
-  onDelete?: (id: string) => Promise<void>;
+  onDelete?: (id: string) => Promise<void> | void;
   /** 編輯 callback（若提供則顯示編輯按鈕） */
   onEdit?: (transaction: StockTransaction) => void;
 }

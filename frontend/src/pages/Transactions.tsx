@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { transactionApi } from '../services/api';
 import { TransactionList } from '../components/transactions/TransactionList';
+import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import type { StockTransaction } from '../types';
 
@@ -21,6 +22,10 @@ export function TransactionsPage() {
     ticker: '',
     type: '',
   });
+
+  // Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTransactions = async () => {
@@ -47,15 +52,22 @@ export function TransactionsPage() {
   }, [currentPortfolioId]);
 
   /**
-   * 刪除交易。
-   * @param id 交易 ID
+   * 觸發刪除確認對話框
    */
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('確定要刪除此交易紀錄嗎？')) {
-      return;
-    }
-    await transactionApi.delete(id);
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+  const handleDeleteClick = (id: string) => {
+    setDeletingTransactionId(id);
+    setShowDeleteModal(true);
+  };
+
+  /**
+   * 執行刪除
+   */
+  const handleConfirmDelete = async () => {
+    if (!deletingTransactionId) return;
+
+    await transactionApi.delete(deletingTransactionId);
+    setTransactions((prev) => prev.filter((t) => t.id !== deletingTransactionId));
+    setDeletingTransactionId(null);
   };
 
   // 交易篩選邏輯：
@@ -146,9 +158,20 @@ export function TransactionsPage() {
         <div className="card-dark overflow-hidden">
           <TransactionList
             transactions={filteredTransactions}
-            onDelete={handleDelete}
+            onDelete={handleDeleteClick}
           />
         </div>
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleConfirmDelete}
+          title="刪除交易"
+          message="確定要刪除此交易紀錄嗎？此動作無法復原。"
+          confirmText="刪除"
+          isDestructive={true}
+        />
       </div>
     </div>
   );

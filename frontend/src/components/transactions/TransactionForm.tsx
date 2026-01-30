@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Info } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
+import { ConfirmationModal } from '../modals/ConfirmationModal';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, CurrencyLedgerSummary, StockMarket, Currency, Portfolio } from '../../types';
 import { StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
 
@@ -55,6 +56,10 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const [isDetectingMarket, setIsDetectingMarket] = useState(false);
   const [userSelectedMarket, setUserSelectedMarket] = useState(false);
   const detectMarketTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Modal state
+  const [showAutoDepositModal, setShowAutoDepositModal] = useState(false);
+  const [insufficientAmount, setInsufficientAmount] = useState<number>(0);
 
   const [formData, setFormData] = useState(() => {
     const initialMarket = initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '');
@@ -176,8 +181,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmit = async (autoDeposit: boolean) => {
     setError(null);
     setIsSubmitting(true);
 
@@ -190,29 +194,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         exchangeRateValue = !formData.exchangeRate || isNaN(parsed) ? undefined : parsed;
       }
 
-      const requiredAmount = (() => {
-        const shares = parseFloat(formData.shares) || 0;
-        const price = parseFloat(formData.pricePerShare) || 0;
-        const fees = parseFloat(formData.fees) || 0;
-        return (shares * price) + fees;
-      })();
-      const originalAmount = initialData
-        ? (initialData.shares * initialData.pricePerShare + initialData.fees)
-        : 0;
-      const effectiveBalance = boundLedger
-        ? boundLedger.balance + originalAmount
-        : 0;
-      const hasInsufficientBalance = boundLedger
-        && Number(formData.transactionType) === 1
-        && requiredAmount > effectiveBalance;
-
-      let autoDeposit: boolean | undefined;
-      if (hasInsufficientBalance) {
-        autoDeposit = window.confirm(
-          `帳本餘額不足（差額 ${(requiredAmount - effectiveBalance).toLocaleString('zh-TW', { maximumFractionDigits: 4 })} ${boundLedger?.ledger.currencyCode}）。\n\n按「確定」= 自動建立入金補足差額並繼續。\n按「取消」= 直接繼續（允許餘額為負）。`
-        );
-      }
-
       const request: CreateStockTransactionRequest = {
         portfolioId,
         ticker: formData.ticker.toUpperCase(),
@@ -222,7 +203,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         pricePerShare: parseFloat(formData.pricePerShare),
         exchangeRate: exchangeRateValue,
         fees: parseFloat(formData.fees) || 0,
-        autoDeposit,
+        autoDeposit: autoDeposit ? true : undefined,
         notes: formData.notes || undefined,
         market: formData.market,
         currency: formData.currency,
@@ -248,6 +229,34 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const requiredAmount = (() => {
+      const shares = parseFloat(formData.shares) || 0;
+      const price = parseFloat(formData.pricePerShare) || 0;
+      const fees = parseFloat(formData.fees) || 0;
+      return (shares * price) + fees;
+    })();
+    const originalAmount = initialData
+      ? (initialData.shares * initialData.pricePerShare + initialData.fees)
+      : 0;
+    const effectiveBalance = boundLedger
+      ? boundLedger.balance + originalAmount
+      : 0;
+    const hasInsufficientBalance = boundLedger
+      && Number(formData.transactionType) === 1
+      && requiredAmount > effectiveBalance;
+
+    if (hasInsufficientBalance) {
+      setInsufficientAmount(requiredAmount - effectiveBalance);
+      setShowAutoDepositModal(true);
+      return;
+    }
+
+    await executeSubmit(false);
   };
 
   // Calculate required amount for display
@@ -516,6 +525,29 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           </button>
         )}
       </div>
+
+      {/* Auto Deposit Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showAutoDepositModal}
+        onClose={() => setShowAutoDepositModal(false)}
+        onConfirm={() => executeSubmit(true)}
+        onCancel={() => executeSubmit(false)}
+        title="帳本餘額不足"
+        message={
+          <>
+            <p className="mb-2">
+              帳本餘額不足（差額 {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedger?.ledger.currencyCode}）。
+            </p>
+            <p>
+              按「自動補足」= 自動建立入金補足差額並繼續。
+              <br />
+              按「直接繼續」= 允許餘額為負並繼續。
+            </p>
+          </>
+        }
+        confirmText="自動補足"
+        cancelText="直接繼續"
+      />
     </form>
   );
 }

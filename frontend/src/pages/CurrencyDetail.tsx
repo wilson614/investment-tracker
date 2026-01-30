@@ -15,6 +15,7 @@ import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
 import { CurrencyImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
+import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
 import { CurrencyTransactionType } from '../types';
 
@@ -121,7 +122,9 @@ export default function CurrencyDetail() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSingleDeleteModal, setShowSingleDeleteModal] = useState(false);
+  const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<CurrencyTransaction | null>(null);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [currentRate, setCurrentRate] = useState<number | null>(null);
@@ -296,12 +299,20 @@ export default function CurrencyDetail() {
   };
 
   const handleDeleteSingle = async (txId: string) => {
-    if (!confirm('確定要刪除這筆交易嗎？')) return;
+    setDeletingTransactionId(txId);
+    setShowSingleDeleteModal(true);
+  };
+
+  const confirmDeleteSingle = async () => {
+    if (!deletingTransactionId) return;
     try {
-      await currencyTransactionApi.delete(txId);
+      await currencyTransactionApi.delete(deletingTransactionId);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setShowSingleDeleteModal(false);
+      setDeletingTransactionId(null);
     }
   };
 
@@ -538,6 +549,17 @@ export default function CurrencyDetail() {
             </div>
           </div>
         )}
+
+        {/* Single Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showSingleDeleteModal}
+          onClose={() => setShowSingleDeleteModal(false)}
+          onConfirm={confirmDeleteSingle}
+          title="確認刪除"
+          message="您確定要刪除這筆交易嗎？此動作無法復原。"
+          confirmText="確認刪除"
+          isDestructive={true}
+        />
 
         {/* Edit Transaction Modal */}
         {editingTransaction && (

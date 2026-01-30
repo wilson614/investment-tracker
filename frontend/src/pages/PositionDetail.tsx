@@ -14,6 +14,7 @@ import { portfolioApi, transactionApi, stockPriceApi } from '../services/api';
 import { Skeleton } from '../components/common/SkeletonLoader';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { TransactionList } from '../components/transactions/TransactionList';
+import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { FileDropdown } from '../components/common';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket } from '../types';
@@ -118,6 +119,10 @@ export function PositionDetailPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollYRef = useRef<number>(0);
+
+  // Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
 
   // Load cached quote on init (use useRef to avoid re-creating on every render)
   const cachedDataRef = useRef(ticker ? loadCachedQuote(ticker) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType });
@@ -379,13 +384,22 @@ export function PositionDetailPage() {
   };
 
   /**
-   * 刪除單筆交易後重新載入頁面資料。
-   * @param transactionId 交易 ID
+   * 觸發刪除確認對話框
    */
-  const handleDeleteTransaction = async (transactionId: string) => {
-    if (!window.confirm('確定要刪除此交易紀錄嗎？')) return;
-    await transactionApi.delete(transactionId);
+  const handleDeleteClick = (transactionId: string) => {
+    setDeletingTransactionId(transactionId);
+    setShowDeleteModal(true);
+  };
+
+  /**
+   * 執行刪除
+   */
+  const handleConfirmDelete = async () => {
+    if (!deletingTransactionId) return;
+
+    await transactionApi.delete(deletingTransactionId);
     await loadData();
+    setDeletingTransactionId(null);
   };
 
   /**
@@ -668,7 +682,7 @@ export function PositionDetailPage() {
           {transactions.length > 0 ? (
             <TransactionList
               transactions={transactions}
-              onDelete={handleDeleteTransaction}
+              onDelete={handleDeleteClick}
             />
           ) : (
             <div className="p-8 text-center text-[var(--text-muted)]">
@@ -677,6 +691,17 @@ export function PositionDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        title="刪除交易"
+        message="確定要刪除此交易紀錄嗎？此動作無法復原。"
+        confirmText="刪除"
+        isDestructive={true}
+      />
     </div>
   );
 }

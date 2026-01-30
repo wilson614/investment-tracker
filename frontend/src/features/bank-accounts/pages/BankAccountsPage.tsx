@@ -5,6 +5,7 @@ import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
 import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
+import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
 export function BankAccountsPage() {
@@ -22,6 +23,10 @@ export function BankAccountsPage() {
   const [editingAccount, setEditingAccount] = useState<BankAccount | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+
   const totalAssets = bankAccounts.reduce((sum, acc) => sum + acc.totalAssets, 0);
   const totalYearlyInterest = bankAccounts.reduce((sum, acc) => sum + acc.yearlyInterest, 0);
   const totalMonthlyInterest = bankAccounts.reduce((sum, acc) => sum + acc.monthlyInterest, 0);
@@ -36,9 +41,15 @@ export function BankAccountsPage() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('確定要刪除此銀行帳戶嗎？此動作無法復原。')) {
-      await deleteBankAccount(id);
+  const handleDeleteClick = (id: string) => {
+    setDeletingAccountId(id);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deletingAccountId) {
+      await deleteBankAccount(deletingAccountId);
+      setDeletingAccountId(null);
     }
   };
 
@@ -52,7 +63,7 @@ export function BankAccountsPage() {
       }
       setShowForm(false);
       return true;
-    } catch (err) {
+    } catch {
       // Error is handled by hook's onError toast
       return false;
     } finally {
@@ -136,7 +147,7 @@ export function BankAccountsPage() {
               key={account.id}
               account={account}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteClick}
             />
           ))}
         </div>
@@ -151,6 +162,17 @@ export function BankAccountsPage() {
           isLoading={isSubmitting}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        title="刪除銀行帳戶"
+        message="確定要刪除此銀行帳戶嗎？此動作無法復原。"
+        confirmText="刪除"
+        isDestructive={true}
+      />
     </div>
   );
 }
