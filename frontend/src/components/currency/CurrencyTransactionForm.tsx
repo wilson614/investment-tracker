@@ -4,6 +4,7 @@ import { CurrencyTransactionType as CurrencyTxType } from '../../types';
 
 interface CurrencyTransactionFormProps {
   ledgerId: string;
+  currencyCode: string;
   initialData?: CurrencyTransaction;
   onSubmit: (data: CreateCurrencyTransactionRequest) => Promise<void>;
   onCancel: () => void;
@@ -11,6 +12,7 @@ interface CurrencyTransactionFormProps {
 
 export function CurrencyTransactionForm({
   ledgerId,
+  currencyCode,
   initialData,
   onSubmit,
   onCancel,
@@ -34,14 +36,20 @@ export function CurrencyTransactionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isTwd = currencyCode === 'TWD';
+
   // Exchange types need both home amount and exchange rate
+  // For TWD ledger, exchange types usually don't make sense or are 1:1, so we treat them differently
   const isExchangeType =
-    transactionType === CurrencyTxType.ExchangeBuy ||
-    transactionType === CurrencyTxType.ExchangeSell;
+    !isTwd &&
+    (transactionType === CurrencyTxType.ExchangeBuy ||
+    transactionType === CurrencyTxType.ExchangeSell);
 
   // Initial balance needs home amount (cost basis) but not exchange rate
+  // For TWD, home amount is same as foreign amount (amount itself), so we don't need separate input
   const needsHomeCost =
-    isExchangeType || transactionType === CurrencyTxType.InitialBalance;
+    !isTwd &&
+    (isExchangeType || transactionType === CurrencyTxType.InitialBalance);
 
   // Auto-calculate exchange rate when foreign and home amounts change (only for exchange types)
   useEffect(() => {
@@ -56,6 +64,13 @@ export function CurrencyTransactionForm({
       setExchangeRate('');
     }
   }, [foreignAmount, homeAmount, isExchangeType]);
+
+  // Ensure valid transaction type for TWD
+  useEffect(() => {
+    if (isTwd && (transactionType === CurrencyTxType.ExchangeBuy || transactionType === CurrencyTxType.ExchangeSell)) {
+      setTransactionType(CurrencyTxType.Deposit);
+    }
+  }, [isTwd, transactionType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,12 +93,12 @@ export function CurrencyTransactionForm({
         transactionDate,
         transactionType,
         foreignAmount: parseFloat(foreignAmount),
-        homeAmount: homeAmount ? parseFloat(homeAmount) : undefined,
-        exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
+        homeAmount: isTwd ? parseFloat(foreignAmount) : (homeAmount ? parseFloat(homeAmount) : undefined),
+        exchangeRate: isTwd ? 1 : (exchangeRate ? parseFloat(exchangeRate) : undefined),
         notes: notes || undefined,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create transaction');
+      setError(err instanceof Error ? err.message : '新增交易失敗');
     } finally {
       setIsSubmitting(false);
     }
@@ -117,21 +132,37 @@ export function CurrencyTransactionForm({
           onChange={(e) => setTransactionType(Number(e.target.value) as CurrencyTransactionType)}
           className="input-dark w-full"
         >
-          <option value={CurrencyTxType.ExchangeBuy}>換匯買入</option>
-          <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
-          <option value={CurrencyTxType.Deposit}>存入（入金）</option>
-          <option value={CurrencyTxType.Withdraw}>提領（出金）</option>
-          <option value={CurrencyTxType.Interest}>利息收入</option>
-          <option value={CurrencyTxType.Spend}>消費支出</option>
-          <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
-          <option value={CurrencyTxType.OtherIncome}>其他收入</option>
-          <option value={CurrencyTxType.OtherExpense}>其他支出</option>
+          {isTwd ? (
+             /* TWD-specific transaction types */
+             <>
+               <option value={CurrencyTxType.Deposit}>存入</option>
+               <option value={CurrencyTxType.Withdraw}>提領</option>
+               <option value={CurrencyTxType.Interest}>利息收入</option>
+               <option value={CurrencyTxType.Spend}>消費支出</option>
+               <option value={CurrencyTxType.InitialBalance}>初始餘額</option>
+               <option value={CurrencyTxType.OtherIncome}>其他收入</option>
+               <option value={CurrencyTxType.OtherExpense}>其他支出</option>
+             </>
+          ) : (
+            /* Foreign currency transaction types */
+            <>
+              <option value={CurrencyTxType.ExchangeBuy}>換匯買入</option>
+              <option value={CurrencyTxType.ExchangeSell}>換匯賣出</option>
+              <option value={CurrencyTxType.Deposit}>存入（入金）</option>
+              <option value={CurrencyTxType.Withdraw}>提領（出金）</option>
+              <option value={CurrencyTxType.Interest}>利息收入</option>
+              <option value={CurrencyTxType.Spend}>消費支出</option>
+              <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
+              <option value={CurrencyTxType.OtherIncome}>其他收入</option>
+              <option value={CurrencyTxType.OtherExpense}>其他支出</option>
+            </>
+          )}
         </select>
       </div>
 
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-          外幣金額
+          {isTwd ? '金額' : '外幣金額'}
         </label>
         <input
           type="number"

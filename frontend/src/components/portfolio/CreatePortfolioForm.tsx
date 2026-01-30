@@ -36,7 +36,12 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
       const portfolio = await portfolioApi.create(request);
       onSuccess(portfolio.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '創建投資組合失敗');
+      const errorMessage = err instanceof Error ? err.message : '創建投資組合失敗';
+      if (errorMessage.includes('A portfolio for TWD already exists')) {
+        setError('台幣 (TWD) 投資組合已存在');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsSubmitting(false);
     }

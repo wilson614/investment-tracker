@@ -502,6 +502,7 @@ export default function CurrencyDetail() {
               <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">新增交易</h2>
               <CurrencyTransactionForm
                 ledgerId={ledger.ledger.id}
+                currencyCode={ledger.ledger.currencyCode}
                 onSubmit={handleAddTransaction}
                 onCancel={() => setShowAddForm(false)}
               />
@@ -545,6 +546,7 @@ export default function CurrencyDetail() {
               <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">編輯交易</h2>
               <CurrencyTransactionForm
                 ledgerId={ledger.ledger.id}
+                currencyCode={ledger.ledger.currencyCode}
                 initialData={editingTransaction}
                 onSubmit={handleEditTransaction}
                 onCancel={() => setEditingTransaction(null)}
