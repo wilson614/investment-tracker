@@ -21,7 +21,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
       setBankName(initialData.bankName);
       setTotalAssets(initialData.totalAssets.toString());
       setInterestRate(initialData.interestRate.toString());
-      setInterestCap(initialData.interestCap.toString());
+      setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
       setNote(initialData.note || '');
     }
   }, [initialData]);
@@ -31,9 +31,9 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
 
     const assets = parseFloat(totalAssets);
     const rate = parseFloat(interestRate);
-    const cap = parseFloat(interestCap);
+    const cap = interestCap === '' ? undefined : parseFloat(interestCap);
 
-    if (!bankName || isNaN(assets) || isNaN(rate) || isNaN(cap)) {
+    if (!bankName || isNaN(assets) || isNaN(rate) || (cap !== undefined && isNaN(cap))) {
       return;
     }
 
@@ -118,12 +118,11 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
                 value={interestCap}
                 onChange={(e) => setInterestCap(e.target.value)}
                 className="input-dark w-full"
-                required
                 min="0"
                 step="1"
-                placeholder="0 為無上限"
+                placeholder="留空為無上限"
               />
-              <p className="text-xs text-[var(--text-muted)] mt-1">若無上限請填 0</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">留空表示無優惠上限</p>
             </div>
           </div>
 

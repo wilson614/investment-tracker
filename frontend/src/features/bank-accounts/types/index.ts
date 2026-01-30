@@ -6,7 +6,7 @@ export interface BankAccount {
   bankName: string;
   totalAssets: number;
   interestRate: number;      // Annual interest rate %
-  interestCap: number;       // Preferential interest cap
+  interestCap?: number;       // Preferential interest cap
   note?: string;
   monthlyInterest: number;   // Calculated monthly interest
   yearlyInterest: number;    // Calculated annual interest
@@ -19,7 +19,7 @@ export interface CreateBankAccountRequest {
   bankName: string;
   totalAssets: number;
   interestRate: number;
-  interestCap: number;
+  interestCap?: number;
   note?: string;
 }
 
@@ -27,7 +27,7 @@ export interface UpdateBankAccountRequest {
   bankName: string;
   totalAssets: number;
   interestRate: number;
-  interestCap: number;
+  interestCap?: number;
   note?: string;
 }
 
