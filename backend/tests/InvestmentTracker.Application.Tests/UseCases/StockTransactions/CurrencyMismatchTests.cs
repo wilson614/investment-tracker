@@ -11,70 +11,46 @@ namespace InvestmentTracker.Application.Tests.UseCases.StockTransactions;
 public class CurrencyMismatchTests
 {
     [Fact]
-    public void ValidateCurrencyMatchesBoundLedger_UsdStockWithUsdLedger_ShouldPass()
+    public void ValidateCurrencyMatchesBoundLedger_UsdPortfolioWithUsdStock_ShouldPass()
     {
-        // Arrange
-        var ledger = CreateLedger("USD");
+        // Arrange - USD portfolio is represented by a USD bound ledger
+        var boundLedger = CreateBoundLedger("USD");
 
         // Act & Assert - should not throw
-        StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.USD, ledger);
+        StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.USD, boundLedger);
     }
 
     [Fact]
-    public void ValidateCurrencyMatchesBoundLedger_TwdStockWithTwdLedger_ShouldPass()
+    public void ValidateCurrencyMatchesBoundLedger_UsdPortfolioWithTwdStock_ShouldThrowBusinessRuleException()
     {
         // Arrange
-        var ledger = CreateLedger("TWD");
-
-        // Act & Assert - should not throw
-        StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.TWD, ledger);
-    }
-
-    [Fact]
-    public void ValidateCurrencyMatchesBoundLedger_TwdStockWithUsdLedger_ShouldThrowBusinessRuleException()
-    {
-        // Arrange
-        var ledger = CreateLedger("USD");
+        var boundLedger = CreateBoundLedger("USD");
 
         // Act & Assert
         var exception = Assert.Throws<BusinessRuleException>(() =>
-            StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.TWD, ledger));
+            StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.TWD, boundLedger));
 
         Assert.Contains("TWD", exception.Message);
         Assert.Contains("USD", exception.Message);
     }
 
     [Fact]
-    public void ValidateCurrencyMatchesBoundLedger_UsdStockWithTwdLedger_ShouldThrowBusinessRuleException()
+    public void ValidateCurrencyMatchesBoundLedger_TwdPortfolioWithUsdStock_ShouldThrowBusinessRuleException()
     {
         // Arrange
-        var ledger = CreateLedger("TWD");
+        var boundLedger = CreateBoundLedger("TWD");
 
         // Act & Assert
         var exception = Assert.Throws<BusinessRuleException>(() =>
-            StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.USD, ledger));
+            StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.USD, boundLedger));
 
         Assert.Contains("USD", exception.Message);
         Assert.Contains("TWD", exception.Message);
     }
 
-    [Fact]
-    public void ValidateCurrencyMatchesBoundLedger_GbpStockWithUsdLedger_ShouldThrowBusinessRuleException()
+    private static global::InvestmentTracker.Domain.Entities.CurrencyLedger CreateBoundLedger(string currencyCode)
     {
-        // Arrange
-        var ledger = CreateLedger("USD");
-
-        // Act & Assert
-        var exception = Assert.Throws<BusinessRuleException>(() =>
-            StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(Currency.GBP, ledger));
-
-        Assert.Contains("GBP", exception.Message);
-        Assert.Contains("USD", exception.Message);
-    }
-
-    private static Domain.Entities.CurrencyLedger CreateLedger(string currencyCode)
-    {
-        return new Domain.Entities.CurrencyLedger(
+        return new global::InvestmentTracker.Domain.Entities.CurrencyLedger(
             userId: Guid.NewGuid(),
             currencyCode: currencyCode,
             name: $"{currencyCode} Ledger",

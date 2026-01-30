@@ -224,26 +224,26 @@
 
 #### Frontend Tasks
 
-- [ ] **T2.1.13** Create BankAccount type definitions
+- [x] **T2.1.13** Create BankAccount type definitions
   - New File: `frontend/src/features/bank-accounts/types/index.ts`
 
-- [ ] **T2.1.14** Create bankAccountsApi
+- [x] **T2.1.14** Create bankAccountsApi
   - New File: `frontend/src/features/bank-accounts/api/bankAccountsApi.ts`
 
-- [ ] **T2.1.15** Create useBankAccounts hook
+- [x] **T2.1.15** Create useBankAccounts hook
   - New File: `frontend/src/features/bank-accounts/hooks/useBankAccounts.ts`
   - Use TanStack Query
 
-- [ ] **T2.1.16** Create BankAccountCard component
+- [x] **T2.1.16** Create BankAccountCard component
   - New File: `frontend/src/features/bank-accounts/components/BankAccountCard.tsx`
 
-- [ ] **T2.1.17** Create BankAccountForm component
+- [x] **T2.1.17** Create BankAccountForm component
   - New File: `frontend/src/features/bank-accounts/components/BankAccountForm.tsx`
 
-- [ ] **T2.1.18** Create BankAccountsPage
+- [x] **T2.1.18** Create BankAccountsPage
   - New File: `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
 
-- [ ] **T2.1.19** Add routing and navigation
+- [x] **T2.1.19** Add routing and navigation
   - File: `frontend/src/App.tsx`
   - Change: Add /bank-accounts route
   - File: `frontend/src/components/layout/Sidebar.tsx`
@@ -373,7 +373,7 @@
 | 0 | 0.1 Enforce 1:1 Binding | 5 tasks | 🔄 In Progress (3/5 done) |
 | 0 | 0.2 Simplify Linking | 9 + 1 verification | 🔄 In Progress (7/9 done) |
 | 1 | 1.1 Home Currency Ledger | 5 + 1 verification | ✅ Complete |
-| 2 | 2.1 Bank Account CRUD | 19 + 1 verification | ⬜ Pending |
+| 2 | 2.1 Bank Account CRUD | 19 + 1 verification | 🔄 In Progress (7/19 done) |
 | 2 | 2.2 Interest Estimation | 5 + 1 verification | ⬜ Pending |
 | 3 | 3.1 Total Assets Dashboard | 12 + 1 verification | ⬜ Pending |
 | 4 | 4.1 Performance & Regression | 3 + 1 verification | ⬜ Pending |

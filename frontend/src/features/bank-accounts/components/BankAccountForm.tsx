@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Building2 } from 'lucide-react';
-import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../../types';
+import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
 interface BankAccountFormProps {
   initialData?: BankAccount;

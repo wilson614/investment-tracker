@@ -1,4 +1,4 @@
-import { fetchApi } from '../services/api';
+import { fetchApi } from '../../../services/api';
 import type {
   BankAccount,
   CreateBankAccountRequest,
@@ -6,27 +6,27 @@ import type {
 } from '../types';
 
 export const bankAccountsApi = {
-  /** Get all bank accounts */
+  /** 取得所有銀行帳戶 */
   getAll: () => fetchApi<BankAccount[]>('/bank-accounts'),
 
-  /** Get bank account by ID */
+  /** 依 ID 取得銀行帳戶 */
   getById: (id: string) => fetchApi<BankAccount>(`/bank-accounts/${id}`),
 
-  /** Create new bank account */
+  /** 建立新銀行帳戶 */
   create: (data: CreateBankAccountRequest) =>
     fetchApi<BankAccount>('/bank-accounts', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  /** Update bank account */
+  /** 更新銀行帳戶 */
   update: (id: string, data: UpdateBankAccountRequest) =>
     fetchApi<BankAccount>(`/bank-accounts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
-  /** Delete bank account */
+  /** 刪除銀行帳戶 */
   delete: (id: string) =>
     fetchApi<void>(`/bank-accounts/${id}`, { method: 'DELETE' }),
 };

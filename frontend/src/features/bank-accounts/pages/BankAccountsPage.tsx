@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Plus, Wallet, AlertCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
-import { BankAccountCard } from '../components/bank-accounts/BankAccountCard';
-import { BankAccountForm } from '../components/bank-accounts/BankAccountForm';
-import { LoadingSpinner, ErrorDisplay } from '../components/common';
+import { BankAccountCard } from '../components/BankAccountCard';
+import { BankAccountForm } from '../components/BankAccountForm';
+import { InterestEstimationCard } from '../components/InterestEstimationCard';
+import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
 export function BankAccountsPage() {
@@ -35,20 +36,28 @@ export function BankAccountsPage() {
     setShowForm(true);
   };
 
+  const handleDelete = async (id: string) => {
+    if (window.confirm('確定要刪除此銀行帳戶嗎？此動作無法復原。')) {
+      await deleteBankAccount(id);
+    }
+  };
+
   const handleSubmit = async (data: CreateBankAccountRequest | UpdateBankAccountRequest) => {
     setIsSubmitting(true);
-    let success = false;
-    if (editingAccount) {
-      success = await updateBankAccount(editingAccount.id, data as UpdateBankAccountRequest);
-    } else {
-      success = await createBankAccount(data as CreateBankAccountRequest);
-    }
-    setIsSubmitting(false);
-
-    if (success) {
+    try {
+      if (editingAccount) {
+        await updateBankAccount(editingAccount.id, data as UpdateBankAccountRequest);
+      } else {
+        await createBankAccount(data as CreateBankAccountRequest);
+      }
       setShowForm(false);
+      return true;
+    } catch (err) {
+      // Error is handled by hook's onError toast
+      return false;
+    } finally {
+      setIsSubmitting(false);
     }
-    return success;
   };
 
   const formatCurrency = (val: number) => {
@@ -85,7 +94,7 @@ export function BankAccountsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="metric-card metric-card-peach">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-[var(--accent-peach)] rounded-lg text-[var(--bg-primary)]">
@@ -95,32 +104,15 @@ export function BankAccountsPage() {
               總資產
             </span>
           </div>
-          <div className="text-2xl font-bold text-[var(--text-primary)]">
+          <div className="text-3xl font-bold text-[var(--text-primary)] mt-4">
             {formatCurrency(totalAssets)}
           </div>
         </div>
 
-        <div className="metric-card metric-card-cream">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm font-medium text-[var(--accent-cream)] uppercase tracking-wider">
-              預估年利息
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-[var(--text-primary)]">
-            {formatCurrency(totalYearlyInterest)}
-          </div>
-        </div>
-
-        <div className="metric-card metric-card-sand">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm font-medium text-[var(--accent-sand)] uppercase tracking-wider">
-              平均月利息
-            </span>
-          </div>
-          <div className="text-2xl font-bold text-[var(--text-primary)]">
-            {formatCurrency(totalMonthlyInterest)}
-          </div>
-        </div>
+        <InterestEstimationCard
+          yearlyInterest={totalYearlyInterest}
+          monthlyInterest={totalMonthlyInterest}
+        />
       </div>
 
       {/* Account Grid */}
@@ -144,7 +136,7 @@ export function BankAccountsPage() {
               key={account.id}
               account={account}
               onEdit={handleEdit}
-              onDelete={deleteBankAccount}
+              onDelete={handleDelete}
             />
           ))}
         </div>

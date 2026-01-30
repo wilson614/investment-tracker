@@ -11,7 +11,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { authApi } from '../../services/api';
-import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings, Landmark } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings, Landmark, PieChart } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // App version - auto-read from git tag at build time
@@ -267,6 +267,7 @@ export function Navigation() {
                 投資組合
               </a>
               <NavLink to="/currency" icon={Wallet}>外幣帳本</NavLink>
+              <NavLink to="/assets" icon={PieChart}>總資產</NavLink>
               <NavLink to="/bank-accounts" icon={Landmark}>銀行帳戶</NavLink>
               <NavLink to="/performance" icon={BarChart3}>績效分析</NavLink>
             </nav>
@@ -371,6 +372,9 @@ export function Navigation() {
             </a>
             <MobileNavLink to="/currency" icon={Wallet} onClick={closeMobileMenu}>
               外幣帳本
+            </MobileNavLink>
+            <MobileNavLink to="/assets" icon={PieChart} onClick={closeMobileMenu}>
+              總資產
             </MobileNavLink>
             <MobileNavLink to="/bank-accounts" icon={Landmark} onClick={closeMobileMenu}>
               銀行帳戶

@@ -478,33 +478,9 @@ export interface UpdateStockSplitRequest {
   description?: string;
 }
 
-// Bank Account Types
-export interface BankAccount {
-  id: string;
-  userId: string;
-  bankName: string;
-  totalAssets: number;
-  interestRate: number;      // Annual interest rate %
-  interestCap: number;       // Preferential interest cap
-  note?: string;
-  monthlyInterest: number;   // Calculated monthly interest
-  yearlyInterest: number;    // Calculated annual interest
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateBankAccountRequest {
-  bankName: string;
-  totalAssets: number;
-  interestRate: number;
-  interestCap: number;
-  note?: string;
-}
-
-export interface UpdateBankAccountRequest {
-  bankName: string;
-  totalAssets: number;
-  interestRate: number;
-  interestCap: number;
-  note?: string;
-}
+// Bank Account Types - Now using feature-based types
+export type {
+  BankAccount,
+  CreateBankAccountRequest,
+  UpdateBankAccountRequest
+} from '../features/bank-accounts/types';

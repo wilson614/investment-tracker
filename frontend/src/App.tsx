@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './hooks/useAuth';
 import { PortfolioProvider } from './contexts/PortfolioContext';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { PositionDetailPage } from './pages/PositionDetail';
 import { TransactionsPage } from './pages/Transactions';
-import { BankAccountsPage } from './pages/BankAccounts';
+import { BankAccountsPage } from './features/bank-accounts/pages/BankAccountsPage';
+import { TotalAssetsDashboard } from './features/total-assets/pages/TotalAssetsDashboard';
 import Currency from './pages/Currency';
 import CurrencyDetail from './pages/CurrencyDetail';
 import Settings from './pages/Settings';
@@ -14,6 +16,15 @@ import { PerformancePage } from './pages/Performance';
 import { ProtectedRoute, ToastProvider, ScrollToTop } from './components/common';
 import { Navigation } from './components/layout/Navigation';
 import './index.css';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -83,6 +94,16 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/assets"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <TotalAssetsDashboard />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/currency"
         element={
           <ProtectedRoute>
@@ -131,13 +152,15 @@ function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      <AuthProvider>
-        <PortfolioProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </PortfolioProvider>
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <PortfolioProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </PortfolioProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </BrowserRouter>
   );
 }
