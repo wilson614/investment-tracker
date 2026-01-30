@@ -61,7 +61,7 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
               {formatNumber(account.interestRate)}%
             </span>
             <span className="text-xs text-[var(--text-muted)]">
-              (上限 {account.interestCap ? formatCurrency(account.interestCap) : '無上限'})
+              (額度: {account.interestCap ? `NT$${formatCurrency(account.interestCap)}` : '無上限'})
             </span>
           </div>
         </div>
