@@ -16,8 +16,7 @@ import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
 import { PerformanceMetrics } from '../components/portfolio/PerformanceMetrics';
-// Single portfolio mode (FR-080): PortfolioSelector and CreatePortfolioForm are hidden
-// import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
+import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { CreatePortfolioForm } from '../components/portfolio/CreatePortfolioForm';
 import { StockImportButton } from '../components/import';
 import { FileDropdown } from '../components/common';
@@ -608,7 +607,9 @@ export function PortfolioPage() {
                 </div>
               )}
             </div>
-            {/* Single portfolio mode (FR-080): PortfolioSelector hidden */}
+            <PortfolioSelector
+              onCreateNew={() => setShowCreatePortfolio(true)}
+            />
           </div>
           <div className="flex items-center gap-2">
             <button

@@ -32,6 +32,7 @@ export function PortfolioSelector({
   return (
     <div className={`relative ${className}`}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-primary)] transition-colors"
       >
@@ -56,6 +57,7 @@ export function PortfolioSelector({
             <div className="max-h-64 overflow-y-auto">
               {portfolios.map((portfolio) => (
                 <button
+                  type="button"
                   key={portfolio.id}
                   onClick={() => {
                     selectPortfolio(portfolio.id);
@@ -81,6 +83,7 @@ export function PortfolioSelector({
             </div>
             <div className="border-t border-[var(--border-primary)]">
               <button
+                type="button"
                 onClick={() => {
                   onCreateNew();
                   setIsOpen(false);

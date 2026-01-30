@@ -65,6 +65,13 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Error Message - Moved to top */}
+          {error && (
+            <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-lg text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
           {/* Display Name */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
@@ -148,13 +155,6 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             />
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="p-3 bg-[var(--color-error)]/10 border border-[var(--color-error)]/30 rounded-lg text-sm text-[var(--color-error)]">
-              {error}
-            </div>
-          )}
-
           {/* Buttons */}
           <div className="flex gap-3 pt-2">
             <button
@@ -168,7 +168,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-4 py-2.5 bg-[var(--accent-teal)] hover:bg-[var(--accent-teal)]/90 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-lg shadow-blue-900/20"
             >
               {isSubmitting ? '創建中...' : '創建'}
             </button>
