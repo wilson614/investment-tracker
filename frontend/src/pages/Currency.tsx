@@ -115,7 +115,7 @@ export default function Currency() {
       <div className="min-h-screen py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">外幣帳本</h1>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">帳本</h1>
             <Skeleton width="w-24" height="h-10" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -157,7 +157,7 @@ export default function Currency() {
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">外幣帳本</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">帳本</h1>
           <button
             onClick={() => {
               // Set default to first available currency
@@ -186,7 +186,7 @@ export default function Currency() {
         {showCreateForm && (
           <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
             <div className="card-dark p-6 w-full max-w-md m-4">
-              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">新增外幣帳本</h2>
+              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-6">新增帳本</h2>
               <form onSubmit={handleCreate} className="space-y-5">
                 <div>
                   <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
@@ -236,8 +236,8 @@ export default function Currency() {
         {/* Ledger List */}
         {ledgers.length === 0 ? (
           <div className="card-dark p-12 text-center">
-            <p className="text-[var(--text-muted)] text-lg">尚無外幣帳本</p>
-            <p className="text-base text-[var(--text-muted)] mt-2">點擊「新增帳本」開始追蹤您的外幣資產</p>
+            <p className="text-[var(--text-muted)] text-lg">尚無帳本</p>
+            <p className="text-base text-[var(--text-muted)] mt-2">點擊「新增帳本」開始追蹤您的資產</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

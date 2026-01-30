@@ -389,7 +389,7 @@ export default function CurrencyDetail() {
           className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-6 text-base transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
-          返回外幣帳本
+          返回帳本
         </button>
 
         {/* Error Alert */}
