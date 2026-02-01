@@ -49,6 +49,8 @@ interface TransactionFormProps {
   onCancel?: () => void;
 }
 
+import { getErrorMessage } from '../../utils/errorMapping';
+
 export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +227,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         currency: CurrencyEnum.USD as Currency,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create transaction');
+      setError(getErrorMessage(err instanceof Error ? err.message : 'Failed to create transaction'));
     } finally {
       setIsSubmitting(false);
     }

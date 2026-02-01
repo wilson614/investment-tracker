@@ -81,7 +81,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              總資產 (TWD)
+              總資產（TWD）
             </label>
             <input
               type="number"
@@ -97,7 +97,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                年利率 (%)
+                年利率（%）
               </label>
               <input
                 type="number"
@@ -111,7 +111,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
             </div>
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                優惠上限 (TWD)
+                優惠上限（TWD）
               </label>
               <input
                 type="number"
@@ -128,7 +128,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              備註 (選填)
+              備註
             </label>
             <textarea
               value={note}

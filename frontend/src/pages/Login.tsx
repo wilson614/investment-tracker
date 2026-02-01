@@ -12,6 +12,8 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
+import { getErrorMessage } from '../utils/errorMapping';
+
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -51,7 +53,7 @@ export default function Login() {
       }
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(getErrorMessage(err instanceof Error ? err.message : 'An error occurred'));
     } finally {
       setIsSubmitting(false);
     }

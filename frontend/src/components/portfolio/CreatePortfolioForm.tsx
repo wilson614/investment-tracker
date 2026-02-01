@@ -9,6 +9,8 @@ interface CreatePortfolioFormProps {
   onSuccess: (portfolioId: string) => void;
 }
 
+import { getErrorMessage } from '../../utils/errorMapping';
+
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [homeCurrency] = useState('TWD');
@@ -41,7 +43,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
         const label = CURRENCY_LABELS[currency] || currency;
         setError(`${label}（${currency}）投資組合已存在`);
       } else {
-        setError(errorMessage);
+        setError(getErrorMessage(errorMessage));
       }
     } finally {
       setIsSubmitting(false);
