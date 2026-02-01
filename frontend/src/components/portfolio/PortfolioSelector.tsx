@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, Plus, DollarSign } from 'lucide-react';
 import type { Portfolio } from '../../types';
 import { usePortfolio } from '../../contexts/PortfolioContext';
+import { CURRENCY_LABELS } from '../../constants';
 
 interface PortfolioSelectorProps {
   onCreateNew: () => void;
@@ -18,9 +19,8 @@ export function PortfolioSelector({
   const currentPortfolio = portfolios.find((p) => p.id === currentPortfolioId);
 
   const getPortfolioLabel = (portfolio: Portfolio) => {
-    const displayName = portfolio.displayName || portfolio.description || '投資組合';
-    const currencyLabel = ` (${portfolio.baseCurrency}→${portfolio.homeCurrency})`;
-    return displayName + currencyLabel;
+    const name = CURRENCY_LABELS[portfolio.baseCurrency];
+    return name ? `${name}（${portfolio.baseCurrency}）` : portfolio.baseCurrency;
   };
 
   if (isLoading && portfolios.length === 0) {
@@ -72,10 +72,7 @@ export function PortfolioSelector({
                   <DollarSign className="w-4 h-4 text-[var(--accent-butter)]" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-                      {portfolio.displayName || portfolio.description || '投資組合'}
-                    </div>
-                    <div className="text-xs text-[var(--text-muted)]">
-                      {`${portfolio.baseCurrency}/${portfolio.homeCurrency}`}
+                      {getPortfolioLabel(portfolio)}
                     </div>
                   </div>
                 </button>

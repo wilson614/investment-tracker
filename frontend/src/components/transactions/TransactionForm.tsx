@@ -342,10 +342,10 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
             className="input-dark w-full"
             disabled={isDetectingMarket}
           >
-            <option value={StockMarketEnum.TW}>Taiwan</option>
-            <option value={StockMarketEnum.US}>US</option>
-            <option value={StockMarketEnum.UK}>UK</option>
-            <option value={StockMarketEnum.EU}>EU</option>
+            <option value={StockMarketEnum.TW}>台股</option>
+            <option value={StockMarketEnum.US}>美股</option>
+            <option value={StockMarketEnum.UK}>英股</option>
+            <option value={StockMarketEnum.EU}>歐股</option>
           </select>
         </div>
 
@@ -424,8 +424,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         {!isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              匯率 (選填)
-              <span className="ml-2 text-xs text-[var(--text-muted)]">留空自動抓取</span>
+              匯率
             </label>
             <input
               type="number"
@@ -495,7 +494,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-          備註 (選填)
+          備註
         </label>
         <textarea
           name="notes"
@@ -539,9 +538,9 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
               帳本餘額不足（差額 {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedger?.ledger.currencyCode}）。
             </p>
             <p>
-              按「自動補足」= 自動建立入金補足差額並繼續。
+              按「自動補足」＝ 自動建立入金補足差額並繼續。
               <br />
-              按「直接繼續」= 允許餘額為負並繼續。
+              按「直接繼續」＝ 允許餘額為負並繼續。
             </p>
           </>
         }

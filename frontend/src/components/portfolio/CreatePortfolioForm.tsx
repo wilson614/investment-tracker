@@ -2,18 +2,16 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { CreatePortfolioRequest } from '../../types';
 import { portfolioApi } from '../../services/api';
+import { COMMON_CURRENCIES, CURRENCY_LABELS } from '../../constants';
 
 interface CreatePortfolioFormProps {
   onClose: () => void;
   onSuccess: (portfolioId: string) => void;
 }
 
-const COMMON_CURRENCIES = ['USD', 'TWD'];
-
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
-  const [displayName, setDisplayName] = useState('');
   const [currencyCode, setCurrencyCode] = useState('USD');
-  const [homeCurrency, setHomeCurrency] = useState('TWD');
+  const [homeCurrency] = useState('TWD');
   const [initialBalance, setInitialBalance] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +24,6 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
 
     try {
       const request: CreatePortfolioRequest = {
-        displayName: displayName.trim() || undefined,
         currencyCode,
         homeCurrency,
         description: description.trim() || undefined,
@@ -37,8 +34,12 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
       onSuccess(portfolio.id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '創建投資組合失敗';
-      if (errorMessage.includes('A portfolio for TWD already exists')) {
-        setError('台幣 (TWD) 投資組合已存在');
+      const duplicateMatch = errorMessage.match(/A portfolio for (\w+) already exists/);
+
+      if (duplicateMatch) {
+        const currency = duplicateMatch[1];
+        const label = CURRENCY_LABELS[currency] || currency;
+        setError(`${label}（${currency}）投資組合已存在`);
       } else {
         setError(errorMessage);
       }
@@ -72,20 +73,6 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             </div>
           )}
 
-          {/* Display Name */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              名稱
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
-              maxLength={100}
-            />
-          </div>
-
           {/* Currency Selection */}
           <div className="grid gap-4 grid-cols-2">
             <div className="space-y-2">
@@ -112,24 +99,16 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
               <label className="block text-sm font-medium text-[var(--text-secondary)]">
                 本國幣別
               </label>
-              <select
-                value={homeCurrency}
-                onChange={(e) => setHomeCurrency(e.target.value)}
-                className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
-              >
-                {COMMON_CURRENCIES.map((currency) => (
-                  <option key={currency} value={currency}>
-                    {currency}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-muted)] cursor-not-allowed">
+                台幣（TWD）
+              </div>
             </div>
           </div>
 
           {/* Initial Balance (optional) */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              初始餘額 <span className="text-[var(--text-muted)]">（選填）</span>
+              初始餘額
             </label>
             <input
               type="number"
@@ -144,7 +123,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           {/* Description */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              備註 <span className="text-[var(--text-muted)]">（選填）</span>
+              備註
             </label>
             <textarea
               value={description}
@@ -168,7 +147,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-lg shadow-blue-900/20"
+              className="flex-1 px-4 py-2.5 bg-[var(--accent-teal)] hover:brightness-110 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-lg shadow-[var(--accent-teal)]/20"
             >
               {isSubmitting ? '創建中...' : '創建'}
             </button>
