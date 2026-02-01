@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
-import { portfolioApi, stockPriceApi, marketDataApi, currencyLedgerApi } from '../services/api';
+import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
@@ -24,7 +24,7 @@ import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { exportTransactionsToCsv } from '../services/csvExport';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
-import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse, CurrencyLedger } from '../types';
+import type { Portfolio, PortfolioSummary, CreateStockTransactionRequest, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockTransaction, StockQuoteResponse } from '../types';
 import { transactionApi } from '../services/api';
 
 /**
@@ -113,7 +113,6 @@ export function PortfolioPage() {
   // Single portfolio mode (FR-080): refreshPortfolios removed as multi-portfolio UI is hidden
   const { currentPortfolioId, selectPortfolio, clearPerformanceState } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [boundLedger, setBoundLedger] = useState<CurrencyLedger | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
   // Note: We use loadCachedPrices (individual quote cache) instead of loadCachedPerformance
@@ -261,24 +260,6 @@ export function PortfolioPage() {
       handleFetchAllPrices();
     }
   }, [summary, isLoading]);
-
-  // Fetch bound ledger info
-  useEffect(() => {
-    const fetchBoundLedger = async () => {
-      if (portfolio?.boundCurrencyLedgerId) {
-        try {
-          const summary = await currencyLedgerApi.getById(portfolio.boundCurrencyLedgerId);
-          setBoundLedger(summary.ledger);
-        } catch (err) {
-          console.error('Failed to fetch bound ledger:', err);
-          setBoundLedger(null);
-        }
-      } else {
-        setBoundLedger(null);
-      }
-    };
-    fetchBoundLedger();
-  }, [portfolio?.boundCurrencyLedgerId]);
 
   /**
    * 取得單一 ticker 的報價（含匯率），並用最新 prices 更新 summary。
@@ -599,13 +580,6 @@ export function PortfolioPage() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-[var(--text-primary)]">投資組合</h1>
-              {boundLedger && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-primary)]">
-                  <span className="text-xs text-[var(--text-muted)]">連結帳本</span>
-                  <span className="text-sm font-medium text-[var(--text-primary)]">{boundLedger.name}</span>
-                  <span className="text-xs text-[var(--accent-teal)]">{boundLedger.currencyCode}</span>
-                </div>
-              )}
             </div>
             <PortfolioSelector
               onCreateNew={() => setShowCreatePortfolio(true)}

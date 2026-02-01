@@ -50,6 +50,7 @@ interface TransactionFormProps {
 }
 
 import { getErrorMessage } from '../../utils/errorMapping';
+import { CURRENCY_LABELS } from '../../constants/currencies';
 
 export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -466,8 +467,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           </h4>
           <div className="p-3 bg-[var(--accent-cyan-soft)] border border-[var(--accent-cyan)] rounded-lg text-[var(--accent-cyan)] text-sm font-medium">
             {Number(formData.transactionType) === 1
-              ? `此交易將從 ${boundLedger.ledger.currencyCode} 帳本扣款`
-              : `款項將存入 ${boundLedger.ledger.currencyCode} 帳本`}
+              ? `此交易將從 ${CURRENCY_LABELS[boundLedger.ledger.currencyCode] || boundLedger.ledger.currencyCode} 帳本扣款`
+              : `款項將存入 ${CURRENCY_LABELS[boundLedger.ledger.currencyCode] || boundLedger.ledger.currencyCode} 帳本`}
           </div>
 
           <div className={`mt-4 p-4 rounded-lg ${hasInsufficientBalance ? 'bg-[var(--color-warning-soft)] border border-[var(--color-warning)]' : 'bg-[var(--accent-sand-soft)] border border-[var(--accent-sand)]'}`}>

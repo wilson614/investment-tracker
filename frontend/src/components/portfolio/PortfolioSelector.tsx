@@ -19,8 +19,7 @@ export function PortfolioSelector({
   const currentPortfolio = portfolios.find((p) => p.id === currentPortfolioId);
 
   const getPortfolioLabel = (portfolio: Portfolio) => {
-    const name = CURRENCY_LABELS[portfolio.baseCurrency];
-    return name ? `${name}（${portfolio.baseCurrency}）` : portfolio.baseCurrency;
+    return CURRENCY_LABELS[portfolio.baseCurrency] || portfolio.baseCurrency;
   };
 
   if (isLoading && portfolios.length === 0) {

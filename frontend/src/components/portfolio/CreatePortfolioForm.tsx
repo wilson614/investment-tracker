@@ -76,35 +76,24 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
           )}
 
           {/* Currency Selection */}
-          <div className="grid gap-4 grid-cols-2">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                投資組合幣別
-              </label>
-              <select
-                value={currencyCode}
-                onChange={(e) => setCurrencyCode(e.target.value)}
-                className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
-              >
-                {COMMON_CURRENCIES.map((currency) => (
-                  <option key={currency} value={currency}>
-                    {currency}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-[var(--text-muted)]">
-                系統將自動建立對應幣別的帳本
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                本國幣別
-              </label>
-              <div className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-muted)] cursor-not-allowed">
-                台幣（TWD）
-              </div>
-            </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-[var(--text-secondary)]">
+              投資組合幣別
+            </label>
+            <select
+              value={currencyCode}
+              onChange={(e) => setCurrencyCode(e.target.value)}
+              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
+            >
+              {COMMON_CURRENCIES.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[var(--text-muted)]">
+              系統將自動建立對應幣別的帳本
+            </p>
           </div>
 
           {/* Initial Balance (optional) */}

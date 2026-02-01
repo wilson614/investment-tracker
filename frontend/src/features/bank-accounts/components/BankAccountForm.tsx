@@ -75,7 +75,6 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               onChange={(e) => setBankName(e.target.value)}
               className="input-dark w-full"
               required
-              placeholder="例如：台新 Richart"
             />
           </div>
 
@@ -97,7 +96,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                年利率（%）
+                年利率 (%)
               </label>
               <input
                 type="number"
@@ -122,7 +121,6 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
                 step="1"
                 placeholder="留空為無上限"
               />
-              <p className="text-xs text-[var(--text-muted)] mt-1">留空表示無優惠上限</p>
             </div>
           </div>
 
@@ -134,7 +132,6 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="input-dark w-full h-24 resize-none"
-              placeholder="關於此帳戶的備註..."
             />
           </div>
 

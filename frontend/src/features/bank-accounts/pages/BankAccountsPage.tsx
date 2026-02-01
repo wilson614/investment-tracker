@@ -134,7 +134,7 @@ export function BankAccountsPage() {
           <p className="text-[var(--text-muted)] mb-6">新增您的第一個銀行帳戶以開始追蹤利息收益</p>
           <button
             onClick={handleCreate}
-            className="btn-dark inline-flex items-center gap-2"
+            className="btn-accent inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             新增帳戶
