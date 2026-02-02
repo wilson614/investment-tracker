@@ -140,7 +140,7 @@ function normalizeHeader(header: string): string {
   return header
     .replace(/^\uFEFF/, '')
     .toLowerCase()
-    // Remove unit/currency suffix like (USD) / （USD） for matching
+    // Remove unit/currency suffix like (USD) / (USD) for matching
     .replace(/\([^)]*\)/g, '')
     .replace(/（[^）]*）/g, '')
     .replace(/\[[^\]]*\]/g, '')

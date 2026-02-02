@@ -10,7 +10,7 @@ interface StaleQuoteIndicatorProps {
   isStale: boolean;
   /** 是否來自快取（即使未過期也可能想顯示） */
   fromCache?: boolean;
-  /** 報價取得時間（ISO string） */
+  /** 報價取得時間 (ISO string) */
   fetchedAt?: string;
   /** 額外 className */
   className?: string;

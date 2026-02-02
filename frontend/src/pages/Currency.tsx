@@ -206,7 +206,7 @@ export default function Currency() {
                           value={currency.code}
                           disabled={isDisabled}
                         >
-                          {currency.code} - {currency.name}{isDisabled ? ' (已建立)' : ''}
+                          {currency.code} - {currency.name}{isDisabled ? ' （已建立）' : ''}
                         </option>
                       );
                     })}

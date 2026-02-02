@@ -84,7 +84,7 @@ export function PortfolioSelector({
                   onCreateNew();
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--accent-teal)]"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--accent-peach)]"
               >
                 <Plus className="w-4 h-4" />
                 <span className="text-sm font-medium">新增投資組合</span>

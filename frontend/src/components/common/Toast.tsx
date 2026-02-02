@@ -1,7 +1,7 @@
 /**
  * Toast
  *
- * 全站通知系統（Toast）：透過 React Context 提供 `success/error/warning/info` API。
+ * 全站通知系統 (Toast)：透過 React Context 提供 `success/error/warning/info` API。
  *
  * 行為重點：
  * - `addToast` 會建立唯一 id，並在 duration > 0 時自動移除。
@@ -18,7 +18,7 @@ interface Toast {
   type: ToastType;
   /** 顯示訊息 */
   message: string;
-  /** 自動關閉時間（ms）；<= 0 表示不自動關閉 */
+  /** 自動關閉時間 (ms)；<= 0 表示不自動關閉 */
   duration?: number;
 }
 

@@ -2,7 +2,7 @@
  * HistoricalValueChart
  *
  * 折線圖：顯示投資組合歷年淨值變化。
- * X 軸為年份，Y 軸為期末價值（home currency）。
+ * X 軸為年份，Y 軸為期末價值 (home currency)。
  */
 import { useMemo } from 'react';
 import {

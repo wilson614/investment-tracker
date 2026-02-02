@@ -4,7 +4,7 @@
  * 外幣交易 CSV 匯入按鈕：使用通用 `CSVImportModal` 解析 CSV，逐列驗證後呼叫 `currencyTransactionApi.create`。
  *
  * 重要行為：
- * - 換匯/期初餘額等類型需要 `homeAmount`（台幣金額）才能推導成本。
+ * - 換匯/期初餘額等類型需要 `homeAmount` （台幣金額）才能推導成本。
  * - 換匯類型會由 `homeAmount / foreignAmount` 自動計算 exchangeRate。
  */
 import { useState } from 'react';
@@ -26,9 +26,9 @@ import type { CreateCurrencyTransactionRequest } from '../../types';
 interface CurrencyImportButtonProps {
   /** 目標 ledger ID */
   ledgerId: string;
-  /** 匯入完成後 callback（通常用於重新載入頁面資料） */
+  /** 匯入完成後 callback （通常用於重新載入頁面資料） */
   onImportComplete: () => void;
-  /** 若提供，改用自訂 trigger（常用於搭配 FileDropdown） */
+  /** 若提供，改用自訂 trigger （常用於搭配 FileDropdown） */
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 

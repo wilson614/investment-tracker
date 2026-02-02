@@ -561,7 +561,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
    *
    * 規則：
    * - 優先使用 localStorage 快取（秒開體驗）。
-   * - 抓取 year-start (上年 12/31) 和 year-end (當年 12/31 或即時) 價格
+   * - 抓取 year-start （上年 12/31）和 year-end （當年 12/31 或即時）價格
    * - 計算 (end - start) / start * 100
    * - 更新後寫入快取。
    */
@@ -1707,7 +1707,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
                           ? performance.modifiedDietzPercentage
                           : performance.modifiedDietzPercentageSource) != null
                           ? [{
-                              label: `我的投資組合（${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency}）`,
+                              label: `我的投資組合 (${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})`,
                               value: currencyMode === 'home'
                                 ? performance.modifiedDietzPercentage!
                                 : performance.modifiedDietzPercentageSource!,

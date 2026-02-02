@@ -1,7 +1,7 @@
 /**
  * MarketContext
  *
- * 市場估值指標卡片：顯示各區域的 CAPE（Shiller P/E）、中位數與歷史百分位，並提供排序/篩選與顯示區域設定。
+ * 市場估值指標卡片：顯示各區域的 CAPE (Shiller P/E)、中位數與歷史百分位，並提供排序/篩選與顯示區域設定。
  */
 
 import { useState, useMemo } from 'react';
@@ -21,7 +21,7 @@ const CAPE_SORT_OPTIONS: { value: CapeSortKey; label: string }[] = [
 ];
 
 interface ValuationBadgeProps {
-  /** 估值分類（cheap/fair/expensive） */
+  /** 估值分類 (cheap/fair/expensive) */
   valuation: CapeValuation;
 }
 
@@ -109,7 +109,7 @@ interface CapeRowProps {
 }
 
 function CapeRow({ item }: CapeRowProps) {
-  // 若有 adjusted CAPE（例如排除通膨/結構差異調整），則用調整後數值；否則使用原始 CAPE。
+  // 若有 adjusted CAPE （例如排除通膨/結構差異調整），則用調整後數值；否則使用原始 CAPE。
   const displayCape = item.adjustedCape ?? item.cape;
   const hasAdjusted = item.adjustedCape != null;
 

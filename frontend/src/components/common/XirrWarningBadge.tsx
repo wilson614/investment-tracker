@@ -7,9 +7,9 @@ import { AlertTriangle } from 'lucide-react';
  * 短期計算的 XIRR 年化報酬率可能會有較大誤差。
  */
 interface XirrWarningBadgeProps {
-  /** 最早的交易日期（ISO string） */
+  /** 最早的交易日期 (ISO string) */
   earliestTransactionDate: string | null;
-  /** 計算基準日期（ISO string） */
+  /** 計算基準日期 (ISO string) */
   asOfDate: string;
   /** 額外 className */
   className?: string;

@@ -5,7 +5,7 @@
  *
  * 注意：
  * - `AssetAllocationData` 加上 index signature 是為了符合 Recharts 內部的型別需求。
- * - label 會過濾過小扇區（< 5%）避免文字擁擠。
+ * - label 會過濾過小扇區 (< 5%) 避免文字擁擠。
  */
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { getChartColor } from '../../constants/chartColors';
@@ -18,7 +18,7 @@ export interface AssetAllocationData {
 }
 
 interface AssetAllocationPieChartProps {
-  /** 資產配置資料（ticker/value/percentage） */
+  /** 資產配置資料 (ticker/value/percentage) */
   data: AssetAllocationData[];
   /** 顯示用的本位幣（預設 TWD） */
   homeCurrency?: string;

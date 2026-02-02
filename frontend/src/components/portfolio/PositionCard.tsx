@@ -65,7 +65,7 @@ export function PositionCard({
 }: PositionCardProps) {
   // Load cached data on init
   const loadCachedQuote = (): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
-    // 優先使用 position.market（從後端交易資料取得）
+    // 優先使用 position.market （從後端交易資料取得）
     const positionMarket = position.market ?? guessMarket(position.ticker);
 
     try {
@@ -262,7 +262,7 @@ export function PositionCard({
       ? 'number-negative'
       : '';
 
-  // 優先使用 position.currency（從後端交易資料取得），否則根據市場推測
+  // 優先使用 position.currency （從後端交易資料取得），否則根據市場推測
   const marketCurrency = position.currency ?? getMarketCurrency(selectedMarket);
   const hasCurrentValue = position.currentValueHome !== undefined && position.currentValueHome !== null;
 

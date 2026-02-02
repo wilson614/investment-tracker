@@ -8,7 +8,7 @@ interface ErrorDisplayProps {
   title?: string;
   /** 錯誤訊息 */
   message: string;
-  /** 重試 callback（若提供則顯示按鈕） */
+  /** 重試 callback （若提供則顯示按鈕） */
   onRetry?: () => void;
   /** 是否以較大的 full page 版型顯示 */
   fullPage?: boolean;
@@ -73,7 +73,7 @@ export function ErrorDisplay({
 interface InlineErrorProps {
   /** 錯誤訊息 */
   message: string;
-  /** 關閉 callback（若提供則顯示關閉按鈕） */
+  /** 關閉 callback （若提供則顯示關閉按鈕） */
   onDismiss?: () => void;
 }
 

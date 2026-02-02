@@ -348,7 +348,7 @@ export function CSVImportModal({
                     ) : (
                       <ChevronDown className="w-4 h-4" />
                     )}
-                    <span>查看錯誤詳情 ({importResult.errors.length} 筆)</span>
+                    <span>查看錯誤詳情（{importResult.errors.length} 筆）</span>
                   </button>
 
                   {showErrors && (

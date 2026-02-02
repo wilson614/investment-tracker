@@ -20,7 +20,7 @@ interface PerformanceBarChartProps {
   data: PerformanceData[];
   /** 可選標題 */
   title?: string;
-  /** 最小高度（px） */
+  /** 最小高度 (px) */
   height?: number;
   /** 是否顯示右側數值 */
   showValues?: boolean;
@@ -37,7 +37,7 @@ export function PerformanceBarChart({
 }: PerformanceBarChartProps) {
   const { normalizedData } = useMemo(() => {
     const values = data.map(d => d.value);
-    // 以絕對值最大者作為基準，避免除以 0（至少 0.01）
+    // 以絕對值最大者作為基準，避免除以 0 （至少 0.01）
     const max = Math.max(...values.map(Math.abs), 0.01);
 
     return {

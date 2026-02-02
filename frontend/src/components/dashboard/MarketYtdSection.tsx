@@ -1,9 +1,9 @@
 /**
  * MarketYtdSection
  *
- * 年初至今報酬（YTD）卡片：顯示多個 benchmark 的 YTD 報酬率，並提供排序與「最多 10 個」的選擇設定。
+ * 年初至今報酬 (YTD) 卡片：顯示多個 benchmark 的 YTD 報酬率，並提供排序與「最多 10 個」的選擇設定。
  *
- * 設定會寫入 localStorage（與 Performance 頁面的 benchmark 選擇相互呼應）。
+ * 設定會寫入 localStorage （與 Performance 頁面的 benchmark 選擇相互呼應）。
  * 也支援用戶自訂基準（從 UserBenchmark API 載入）。
  */
 
@@ -54,7 +54,7 @@ const STOCK_MARKET_LABELS: Record<number, string> = {
 
 /**
  * 系統內建 benchmark 列表（完整 11 個，與後端 MarketYtdService.Benchmarks 一致）。
- * 用於確保 availableBenchmarks 一定包含所有系統 benchmark（即使 API 暫時抓取失敗）。
+ * 用於確保 availableBenchmarks 一定包含所有系統 benchmark （即使 API 暫時抓取失敗）。
  */
 const SYSTEM_BENCHMARKS = [
   'All Country', 'US Large', 'US Small', 'Developed Markets Large', 'Developed Markets Small',
@@ -68,9 +68,9 @@ const DEFAULT_BENCHMARKS = [
 ];
 
 /**
- * 從 localStorage 讀取使用者選擇的 benchmarks（fallback 用）。
+ * 從 localStorage 讀取使用者選擇的 benchmarks （fallback 用）。
  *
- * 回傳英文 key（例如 `All Country`），以符合 API 回傳與其他頁面的同步。
+ * 回傳英文 key （例如 `All Country`），以符合 API 回傳與其他頁面的同步。
  */
 function getSelectedBenchmarksFromLocalStorage(): string[] {
   try {
@@ -88,7 +88,7 @@ function getSelectedBenchmarksFromLocalStorage(): string[] {
 }
 
 /**
- * 將 benchmarks 寫入 localStorage（fallback 用）。
+ * 將 benchmarks 寫入 localStorage （fallback 用）。
  */
 function saveSelectedBenchmarksToLocalStorage(benchmarks: string[]): void {
   try {
@@ -317,7 +317,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
         return;
       }
 
-      // 只在沒有快取資料時才顯示 loading（有快取時背景靜默更新）
+      // 只在沒有快取資料時才顯示 loading （有快取時背景靜默更新）
       if (!hasCachedDataRef.current) {
         setIsLoadingCustom(true);
       }
@@ -546,7 +546,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
             <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
             <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
               <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                報酬率 = (現價 - 年初基準價) / 年初基準價 × 100
+                報酬率 = （現價 - 年初基準價） / 年初基準價 × 100
                 （年初基準價採前一年 12 月收盤價）
               </div>
             </div>

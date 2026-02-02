@@ -24,7 +24,7 @@ interface NavLinkProps {
   children: React.ReactNode;
   /** 可選 icon */
   icon?: LucideIcon;
-  /** click handler（常用於關閉 mobile menu） */
+  /** click handler （常用於關閉 mobile menu） */
   onClick?: () => void;
 }
 
@@ -175,7 +175,7 @@ export function Navigation() {
   };
 
   /**
-   * 送出個人資料更新（displayName/email），成功後會短暫顯示成功狀態並自動關閉 modal。
+   * 送出個人資料更新 (displayName/email)，成功後會短暫顯示成功狀態並自動關閉 modal。
    */
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

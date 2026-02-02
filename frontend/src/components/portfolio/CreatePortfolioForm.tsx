@@ -39,7 +39,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
       if (duplicateMatch) {
         const currency = duplicateMatch[1];
         const label = CURRENCY_LABELS[currency] || currency;
-        setError(`${label}（${currency}）投資組合已存在`);
+        setError(`${label} (${currency}) 投資組合已存在`);
       } else {
         setError(getErrorMessage(errorMessage));
       }

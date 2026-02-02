@@ -1,7 +1,7 @@
 /**
  * BenchmarkSettings Component
  *
- * 讓使用者管理自訂基準標的（UserBenchmark）。
+ * 讓使用者管理自訂基準標的 (UserBenchmark)。
  * 可新增任意 ticker/market 組合，用於 Performance 頁面的績效比較。
  */
 import { useState, useEffect, useCallback } from 'react';

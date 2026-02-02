@@ -1,7 +1,7 @@
 /**
  * StockSplitSettings Component
  *
- * 讓使用者管理全域股票分割（StockSplit）資料。
+ * 讓使用者管理全域股票分割 (StockSplit) 資料。
  * 可新增、編輯、刪除股票分割，系統會自動調整歷史交易的股數與價格。
  */
 import { useState, useEffect } from 'react';

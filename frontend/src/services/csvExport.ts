@@ -98,8 +98,8 @@ export function generateTransactionsCsv(
     '手續費（原幣）',
     '匯率',
     '總成本（原幣）',
-    `總成本（${homeCurrency}）`,
-    `已實現損益（${homeCurrency}）`,
+    `總成本 (${homeCurrency})`,
+    `已實現損益 (${homeCurrency})`,
     '備註',
   ];
 
@@ -144,11 +144,11 @@ export function generatePositionsCsv(
     '股票代號',
     '持股數量',
     '平均成本（原幣）',
-    `總成本（${homeCurrency}）`,
+    `總成本 (${homeCurrency})`,
     '現價（原幣）',
-    `市值（${homeCurrency}）`,
-    `未實現損益（${homeCurrency}）`,
-    '報酬率（%）',
+    `市值 (${homeCurrency})`,
+    `未實現損益 (${homeCurrency})`,
+    '報酬率 (%)',
   ];
 
   // Generate rows
