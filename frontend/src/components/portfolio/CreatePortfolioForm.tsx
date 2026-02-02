@@ -14,8 +14,7 @@ import { getErrorMessage } from '../../utils/errorMapping';
 export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormProps) {
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [homeCurrency] = useState('TWD');
-  const [initialBalance, setInitialBalance] = useState('');
-  const [description, setDescription] = useState('');
+  const [description] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,11 +28,10 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
         currencyCode,
         homeCurrency,
         description: description.trim() || undefined,
-        initialBalance: initialBalance ? parseFloat(initialBalance) : undefined,
       };
 
       const portfolio = await portfolioApi.create(request);
-      onSuccess(portfolio.id);
+      await onSuccess(portfolio.id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '創建投資組合失敗';
       const duplicateMatch = errorMessage.match(/A portfolio for (\w+) already exists/);
@@ -96,34 +94,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             </p>
           </div>
 
-          {/* Initial Balance (optional) */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              初始餘額
-            </label>
-            <input
-              type="number"
-              value={initialBalance}
-              onChange={(e) => setInitialBalance(e.target.value)}
-              min="0"
-              step="0.01"
-              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
-            />
-          </div>
-
-          {/* Description */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              備註
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)] resize-none"
-              maxLength={500}
-            />
-          </div>
+          {/* Description (Removed Notes field) */}
 
           {/* Buttons */}
           <div className="flex gap-3 pt-2">
@@ -138,7 +109,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-4 py-2.5 bg-[var(--accent-teal)] hover:brightness-110 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-lg shadow-[var(--accent-teal)]/20"
+              className="flex-1 btn-accent disabled:opacity-50 shadow-lg shadow-blue-500/20"
             >
               {isSubmitting ? '創建中...' : '創建'}
             </button>

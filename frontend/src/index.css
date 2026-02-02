@@ -28,6 +28,15 @@
   --accent-caramel: #d4a860;
   --accent-caramel-soft: rgba(212, 168, 96, 0.15);
 
+  /* Primary theme (indigo/blue) */
+  --accent-blue: #90caf9;
+  --accent-blue-soft: rgba(144, 202, 249, 0.15);
+  --accent-blue-hover: #60a5fa;
+
+  /* Backward-compatible aliases (some components still reference teal) */
+  --accent-teal: var(--accent-blue);
+  --accent-teal-soft: var(--accent-blue-soft);
+
   /* Status Colors */
   --color-success: #9abe8c;
   --color-success-soft: rgba(154, 190, 140, 0.15);
@@ -38,6 +47,7 @@
 
   /* Border */
   --border-color: #3d3830;
+  --border-primary: var(--border-color);
   --border-hover: #4d473d;
 
   /* Shadows */
@@ -239,7 +249,7 @@ select.input-dark option {
 }
 
 .btn-accent {
-  background-color: var(--accent-peach);
+  background-color: var(--accent-blue);
   border: none;
   border-radius: var(--radius-md);
   color: var(--bg-primary);
@@ -251,7 +261,7 @@ select.input-dark option {
 }
 
 .btn-accent:hover {
-  background-color: var(--accent-caramel);
+  background-color: var(--accent-blue-hover);
 }
 
 .btn-danger {

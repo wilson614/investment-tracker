@@ -111,7 +111,7 @@ const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType 
 export function PortfolioPage() {
   // Use shared portfolio context for cross-page synchronization
   // Single portfolio mode (FR-080): refreshPortfolios removed as multi-portfolio UI is hidden
-  const { currentPortfolioId, selectPortfolio, clearPerformanceState } = usePortfolio();
+  const { currentPortfolioId, selectPortfolio, refreshPortfolios, clearPerformanceState } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
@@ -704,9 +704,17 @@ export function PortfolioPage() {
         {/* Create Portfolio Form */}
         {showCreatePortfolio && (
           <CreatePortfolioForm
-            onSuccess={(newId) => {
-              setShowCreatePortfolio(false);
-              selectPortfolio(newId);
+            onSuccess={async (newId) => {
+              try {
+                // FR-132: Refresh list then select new portfolio to update dropdown immediately
+                await refreshPortfolios();
+                selectPortfolio(newId);
+              } catch (error) {
+                console.error('Failed to refresh portfolios after creation:', error);
+                // Optionally show a toast here
+              } finally {
+                setShowCreatePortfolio(false);
+              }
             }}
             onClose={() => setShowCreatePortfolio(false)}
           />
