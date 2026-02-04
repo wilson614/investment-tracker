@@ -249,7 +249,7 @@ select.input-dark option {
 }
 
 .btn-accent {
-  background-color: var(--accent-blue);
+  background-color: var(--accent-peach);
   border: none;
   border-radius: var(--radius-md);
   color: var(--bg-primary);
@@ -261,7 +261,7 @@ select.input-dark option {
 }
 
 .btn-accent:hover {
-  background-color: var(--accent-blue-hover);
+  background-color: var(--accent-caramel);
 }
 
 .btn-danger {

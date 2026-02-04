@@ -81,7 +81,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             <select
               value={currencyCode}
               onChange={(e) => setCurrencyCode(e.target.value)}
-              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-teal)]/50 focus:border-[var(--accent-teal)]"
+              className="w-full px-4 py-2.5 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]/50 focus:border-[var(--accent-peach)]"
             >
               {COMMON_CURRENCIES.map((currency) => (
                 <option key={currency} value={currency}>

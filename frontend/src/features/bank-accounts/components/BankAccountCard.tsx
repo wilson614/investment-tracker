@@ -25,7 +25,7 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
       <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={() => onEdit(account)}
-          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
+          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
           title="編輯"
         >
           <Edit size={16} />
@@ -57,7 +57,7 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
         <div>
           <p className="text-[var(--text-muted)] mb-1">活存利率</p>
           <div className="flex items-center gap-2">
-            <span className="font-medium text-[var(--accent-teal)] number-display">
+            <span className="font-medium text-[var(--accent-peach)] number-display">
               {formatNumber(account.interestRate)}%
             </span>
             <span className="text-xs text-[var(--text-muted)]">
