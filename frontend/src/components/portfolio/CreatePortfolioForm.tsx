@@ -39,7 +39,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
       if (duplicateMatch) {
         const currency = duplicateMatch[1];
         const label = CURRENCY_LABELS[currency] || currency;
-        setError(`${label} (${currency}) 投資組合已存在`);
+        setError(`${label}投資組合已存在`);
       } else {
         setError(getErrorMessage(errorMessage));
       }
@@ -85,7 +85,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             >
               {COMMON_CURRENCIES.map((currency) => (
                 <option key={currency} value={currency}>
-                  {currency}
+                  {CURRENCY_LABELS[currency] || currency}
                 </option>
               ))}
             </select>
@@ -109,7 +109,7 @@ export function CreatePortfolioForm({ onClose, onSuccess }: CreatePortfolioFormP
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 btn-accent disabled:opacity-50 shadow-lg shadow-blue-500/20"
+              className="flex-1 btn-accent disabled:opacity-50 shadow-lg shadow-[var(--accent-peach)]/20"
             >
               {isSubmitting ? '創建中...' : '創建'}
             </button>
