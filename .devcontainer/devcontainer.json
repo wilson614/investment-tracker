@@ -1,0 +1,28 @@
+{
+  "name": "Claude Safe Zone",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "runArgs": [
+    "--env-file",
+    ".devcontainer/.env"
+  ],
+  "postCreateCommand": "bash .devcontainer/setup-claude.sh; echo \"alias ccy='claude --dangerously-skip-permissions'\" >> ~/.bashrc",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "forwardPorts": [3000, 5000],
+  
+  // 將主機的 Claude 設定資料夾掛載到容器內
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude,type=bind",
+    "source=investmenttracker-frontend-node_modules,target=${containerWorkspaceFolder}/frontend/node_modules,type=volume"
+  ]
+}

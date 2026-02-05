@@ -25,6 +25,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(getAppVersion()),
   },
   server: {
+    host: true,
     port: 3000,
     proxy: {
       '/api': {

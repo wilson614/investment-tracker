@@ -80,7 +80,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              總資產（TWD）
+              總資產 (TWD)
             </label>
             <input
               type="number"
@@ -110,7 +110,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
             </div>
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                優惠上限（TWD）
+                優惠上限 (TWD)
               </label>
               <input
                 type="number"
