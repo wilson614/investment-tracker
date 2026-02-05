@@ -18,6 +18,7 @@ public class AuthController(
     IRefreshTokenRepository refreshTokenRepository,
     IPortfolioRepository portfolioRepository,
     ICurrencyLedgerRepository currencyLedgerRepository,
+    IAppDbTransactionManager transactionManager,
     IJwtTokenService jwtTokenService) : ControllerBase
 {
     /// <summary>
@@ -37,24 +38,40 @@ public class AuthController(
             return Conflict(new { message = "Email already registered" });
         }
 
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
+
         // 建立使用者
         var passwordHash = jwtTokenService.HashPassword(request.Password);
         var user = new User(normalizedEmail, passwordHash, request.DisplayName.Trim());
         await userRepository.AddAsync(user, cancellationToken);
 
-        // 為新使用者建立預設投資組合
-        var ledger = new CurrencyLedger(user.Id, "USD", "USD Ledger", homeCurrency: "TWD");
-        await currencyLedgerRepository.AddAsync(ledger, cancellationToken);
+        // 為新使用者建立預設投資組合（台股 + 美股）
+        var twdLedger = new CurrencyLedger(user.Id, "TWD", "TWD Ledger", homeCurrency: "TWD");
+        await currencyLedgerRepository.AddAsync(twdLedger, cancellationToken);
 
-        var portfolio = new Portfolio(
+        var twdPortfolio = new Portfolio(
             user.Id,
-            ledger.Id,
-            baseCurrency: ledger.CurrencyCode,
-            homeCurrency: ledger.HomeCurrency);
-        await portfolioRepository.AddAsync(portfolio, cancellationToken);
+            twdLedger.Id,
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "台股投資組合");
+        await portfolioRepository.AddAsync(twdPortfolio, cancellationToken);
+
+        var usdLedger = new CurrencyLedger(user.Id, "USD", "USD Ledger", homeCurrency: "TWD");
+        await currencyLedgerRepository.AddAsync(usdLedger, cancellationToken);
+
+        var usdPortfolio = new Portfolio(
+            user.Id,
+            usdLedger.Id,
+            baseCurrency: "USD",
+            homeCurrency: "TWD",
+            displayName: "美股投資組合");
+        await portfolioRepository.AddAsync(usdPortfolio, cancellationToken);
 
         // 產生 Token
         var authResponse = await CreateAuthResponseAsync(user, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
 
         return CreatedAtAction(nameof(Register), authResponse);
     }
