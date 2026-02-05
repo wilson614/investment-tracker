@@ -143,6 +143,7 @@ builder.Services.AddHttpContextAccessor();
 // Register Infrastructure services
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAppDbTransactionManager, AppDbTransactionManager>();
 
 // Register Repositories
 builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();

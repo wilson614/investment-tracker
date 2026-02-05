@@ -4,6 +4,7 @@ using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.UseCases.Portfolio;
 
@@ -14,7 +15,9 @@ public class CreatePortfolioUseCase(
     IPortfolioRepository portfolioRepository,
     ICurrencyLedgerRepository currencyLedgerRepository,
     ICurrencyTransactionRepository currencyTransactionRepository,
-    ICurrentUserService currentUserService)
+    ICurrentUserService currentUserService,
+    IAppDbTransactionManager transactionManager,
+    ILogger<CreatePortfolioUseCase> logger)
 {
     public async Task<PortfolioDto> ExecuteAsync(
         CreatePortfolioRequest request,
@@ -25,62 +28,110 @@ public class CreatePortfolioUseCase(
 
         var currencyCode = request.CurrencyCode.Trim().ToUpperInvariant();
 
-        var existingPortfolios = await portfolioRepository.GetByUserIdAsync(userId, cancellationToken);
-        if (existingPortfolios.Any(p => string.Equals(p.BaseCurrency, currencyCode, StringComparison.OrdinalIgnoreCase)))
-            throw new BusinessRuleException($"A portfolio for {currencyCode} already exists");
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-        if (await currencyLedgerRepository.ExistsByCurrencyCodeAsync(userId, currencyCode, cancellationToken))
-            throw new BusinessRuleException($"A currency ledger for {currencyCode} already exists");
-
-        var ledgerName = string.IsNullOrWhiteSpace(request.DisplayName)
-            ? $"{currencyCode} Ledger"
-            : request.DisplayName.Trim();
-
-        var ledger = new Domain.Entities.CurrencyLedger(
-            userId,
-            currencyCode,
-            ledgerName,
-            request.HomeCurrency);
-
-        await currencyLedgerRepository.AddAsync(ledger, cancellationToken);
-
-        if (request.InitialBalance is > 0)
+        try
         {
-            decimal? homeAmount = null;
-            decimal? exchangeRate = null;
+            var existingPortfolios = await portfolioRepository.GetByUserIdAsync(userId, cancellationToken);
+            if (existingPortfolios.Any(p => string.Equals(p.BaseCurrency, currencyCode, StringComparison.OrdinalIgnoreCase)))
+                throw new BusinessRuleException($"A portfolio for {currencyCode} already exists");
 
-            if (string.Equals(ledger.CurrencyCode, ledger.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+            if (await currencyLedgerRepository.ExistsByCurrencyCodeAsync(userId, currencyCode, cancellationToken))
+                throw new BusinessRuleException($"A currency ledger for {currencyCode} already exists");
+
+            var ledgerName = string.IsNullOrWhiteSpace(request.DisplayName)
+                ? $"{currencyCode} Ledger"
+                : request.DisplayName.Trim();
+
+            var ledger = new Domain.Entities.CurrencyLedger(
+                userId,
+                currencyCode,
+                ledgerName,
+                request.HomeCurrency);
+
+            await currencyLedgerRepository.AddAsync(ledger, cancellationToken);
+
+            if (request.InitialBalance is > 0)
             {
-                exchangeRate = 1.0m;
-                homeAmount = request.InitialBalance.Value;
+                decimal? homeAmount = null;
+                decimal? exchangeRate = null;
+
+                if (string.Equals(ledger.CurrencyCode, ledger.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+                {
+                    exchangeRate = 1.0m;
+                    homeAmount = request.InitialBalance.Value;
+                }
+
+                var deposit = new CurrencyTransaction(
+                    ledger.Id,
+                    DateTime.UtcNow,
+                    CurrencyTransactionType.Deposit,
+                    request.InitialBalance.Value,
+                    homeAmount: homeAmount,
+                    exchangeRate: exchangeRate,
+                    notes: "Initial balance");
+
+                await currencyTransactionRepository.AddAsync(deposit, cancellationToken);
             }
 
-            var deposit = new CurrencyTransaction(
+            var portfolio = new Domain.Entities.Portfolio(
+                userId,
                 ledger.Id,
-                DateTime.UtcNow,
-                CurrencyTransactionType.Deposit,
-                request.InitialBalance.Value,
-                homeAmount: homeAmount,
-                exchangeRate: exchangeRate,
-                notes: "Initial balance");
+                currencyCode,
+                request.HomeCurrency,
+                request.DisplayName);
 
-            await currencyTransactionRepository.AddAsync(deposit, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(request.Description))
+            {
+                portfolio.SetDescription(request.Description);
+            }
+
+            await portfolioRepository.AddAsync(portfolio, cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Created portfolio {PortfolioId} for user {UserId} with ledger {LedgerId} and base currency {BaseCurrency}",
+                portfolio.Id,
+                userId,
+                ledger.Id,
+                currencyCode);
+
+            return portfolio.ToDto();
         }
-
-        var portfolio = new Domain.Entities.Portfolio(
-            userId,
-            ledger.Id,
-            currencyCode,
-            request.HomeCurrency,
-            request.DisplayName);
-
-        if (!string.IsNullOrWhiteSpace(request.Description))
+        catch (Exception ex)
         {
-            portfolio.SetDescription(request.Description);
+            try
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            catch (Exception rollbackEx)
+            {
+                logger.LogError(
+                    rollbackEx,
+                    "Failed to rollback CreatePortfolio transaction for user {UserId} currency {BaseCurrency}",
+                    userId,
+                    currencyCode);
+            }
+
+            if (ex is BusinessRuleException or AccessDeniedException)
+            {
+                logger.LogWarning(
+                    "CreatePortfolio failed for user {UserId} currency {BaseCurrency}: {Message}",
+                    userId,
+                    currencyCode,
+                    ex.Message);
+            }
+            else
+            {
+                logger.LogError(
+                    ex,
+                    "CreatePortfolio failed for user {UserId} currency {BaseCurrency}",
+                    userId,
+                    currencyCode);
+            }
+
+            throw;
         }
-
-        await portfolioRepository.AddAsync(portfolio, cancellationToken);
-
-        return portfolio.ToDto();
     }
 }
