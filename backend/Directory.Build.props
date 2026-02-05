@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- 使用 .NET 8 Artifacts Output 功能，集中輸出到 artifacts/ 資料夾 -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts/$(OS)</ArtifactsPath>
+  </PropertyGroup>
+</Project>
