@@ -84,7 +84,7 @@ public class TwseIndexPriceService(HttpClient httpClient, ILogger<TwseIndexPrice
         logger.LogInformation("Real-time TWSE API failed, trying historical fallback"); // 即時 API 失敗，改用歷史資料回退
 
         // 先嘗試當月
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var price = await GetMonthEndPriceAsync(now.Year, now.Month, cancellationToken);
         if (price != null)
         {

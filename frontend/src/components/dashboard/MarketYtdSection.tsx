@@ -9,6 +9,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Info, Settings, X, Check } from 'lucide-react';
+import { DEFAULT_BENCHMARKS } from '../../constants';
 import { useMarketYtdData } from '../../hooks/useMarketYtdData';
 import { userBenchmarkApi, stockPriceApi, marketDataApi, userPreferencesApi } from '../../services/api';
 import { Skeleton } from '../common/SkeletonLoader';
@@ -62,10 +63,7 @@ const SYSTEM_BENCHMARKS = [
 ];
 
 // Default selected benchmarks (using English keys to match API) - 預設選中 10 個
-const DEFAULT_BENCHMARKS = [
-  'All Country', 'US Large', 'Developed Markets Large', 'Developed Markets Small',
-  'Dev ex US Large', 'Emerging Markets', 'Europe', 'Japan', 'China', 'Taiwan 0050'
-];
+// Note: moved to shared constant in `src/constants`.
 
 /**
  * 從 localStorage 讀取使用者選擇的 benchmarks （fallback 用）。

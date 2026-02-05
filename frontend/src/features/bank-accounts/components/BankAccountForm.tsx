@@ -15,6 +15,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
   const [interestRate, setInterestRate] = useState<string>('');
   const [interestCap, setInterestCap] = useState<string>('');
   const [note, setNote] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
     if (initialData) {
@@ -24,16 +25,33 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
       setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
       setNote(initialData.note || '');
     }
+    setErrorMessage('');
   }, [initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
 
     const assets = parseFloat(totalAssets);
     const rate = parseFloat(interestRate);
     const cap = interestCap === '' ? undefined : parseFloat(interestCap);
 
     if (!bankName || isNaN(assets) || isNaN(rate) || (cap !== undefined && isNaN(cap))) {
+      return;
+    }
+
+    if (assets < 0) {
+      setErrorMessage('總資產不能為負數');
+      return;
+    }
+
+    if (rate < 0) {
+      setErrorMessage('年利率不能為負數');
+      return;
+    }
+
+    if (cap !== undefined && cap < 0) {
+      setErrorMessage('優惠上限不能為負數');
       return;
     }
 
@@ -65,6 +83,14 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+          {errorMessage ? (
+            <div
+              className="p-3 rounded border border-red-500/40 bg-red-500/10 text-red-200 text-sm"
+              role="alert"
+            >
+              {errorMessage}
+            </div>
+          ) : null}
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               銀行名稱

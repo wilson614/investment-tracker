@@ -1,6 +1,7 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 
@@ -24,11 +25,11 @@ public class GetPortfolioSummaryUseCase(
         CancellationToken cancellationToken = default)
     {
         var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
-            ?? throw new InvalidOperationException($"Portfolio {portfolioId} not found");
+            ?? throw new EntityNotFoundException($"Portfolio {portfolioId} not found");
 
         if (portfolio.UserId != currentUserService.UserId)
         {
-            throw new UnauthorizedAccessException("You do not have access to this portfolio");
+            throw new AccessDeniedException("You do not have access to this portfolio");
         }
 
         var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);

@@ -10,6 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
+import { DEFAULT_BENCHMARKS } from '../constants';
 import { stockPriceApi, marketDataApi, userBenchmarkApi, userPreferencesApi } from '../services/api';
 import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytdApi';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
@@ -65,7 +66,7 @@ function loadSelectedBenchmarksFromLocalStorage(): string[] {
   } catch {
     // Ignore
   }
-  return ['All Country']; // Default
+  return DEFAULT_BENCHMARKS;
 }
 
 /**
@@ -441,7 +442,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
           if (cleaned.length !== prev.length) {
             savePreferences(cleaned);
           }
-          return cleaned.length > 0 ? cleaned : ['All Country'];
+          return cleaned.length > 0 ? cleaned : DEFAULT_BENCHMARKS;
         });
       } catch (err) {
         console.error('無法載入自訂基準:', err);

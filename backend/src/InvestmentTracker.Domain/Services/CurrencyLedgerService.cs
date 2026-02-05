@@ -125,13 +125,13 @@ public class CurrencyLedgerService
                 case CurrencyTransactionType.OtherExpense:
                 case CurrencyTransactionType.Withdraw:
                     // 出金/支出類：扣除餘額並依比例扣除成本
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        var costReduction = avgCost * tx.ForeignAmount;
-                        totalCost -= costReduction;
-                        balance -= tx.ForeignAmount;
-                    }
+                    if (balance <= 0)
+                        continue;
+
+                    var avgCost = totalCost / balance;
+                    var costReduction = avgCost * tx.ForeignAmount;
+                    totalCost -= costReduction;
+                    balance -= tx.ForeignAmount;
                     break;
             }
         }
@@ -167,12 +167,12 @@ public class CurrencyLedgerService
                 case CurrencyTransactionType.OtherExpense:
                 case CurrencyTransactionType.Withdraw:
                     // 依比例扣除成本基礎（與加權平均成本計算相同）
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        totalCost -= avgCost * tx.ForeignAmount;
-                        balance -= tx.ForeignAmount;
-                    }
+                    if (balance <= 0)
+                        continue;
+
+                    var avgCost = totalCost / balance;
+                    totalCost -= avgCost * tx.ForeignAmount;
+                    balance -= tx.ForeignAmount;
                     break;
 
                 case CurrencyTransactionType.Interest:
@@ -206,17 +206,19 @@ public class CurrencyLedgerService
                     break;
 
                 case CurrencyTransactionType.ExchangeSell:
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        var costBasis = avgCost * tx.ForeignAmount;
-                        var proceeds = tx.HomeAmount ?? 0m;
-                        realizedPnl += proceeds - costBasis;
+                {
+                    if (balance <= 0)
+                        continue;
 
-                        totalCost -= costBasis;
-                        balance -= tx.ForeignAmount;
-                    }
+                    var avgCost = totalCost / balance;
+                    var costBasis = avgCost * tx.ForeignAmount;
+                    var proceeds = tx.HomeAmount ?? 0m;
+                    realizedPnl += proceeds - costBasis;
+
+                    totalCost -= costBasis;
+                    balance -= tx.ForeignAmount;
                     break;
+                }
 
                 case CurrencyTransactionType.Interest:
                 case CurrencyTransactionType.OtherIncome:
@@ -226,13 +228,15 @@ public class CurrencyLedgerService
                 case CurrencyTransactionType.Spend:
                 case CurrencyTransactionType.OtherExpense:
                 case CurrencyTransactionType.Withdraw:
-                    if (balance > 0)
-                    {
-                        var avgCost = totalCost / balance;
-                        totalCost -= avgCost * tx.ForeignAmount;
-                        balance -= tx.ForeignAmount;
-                    }
+                {
+                    if (balance <= 0)
+                        continue;
+
+                    var avgCost = totalCost / balance;
+                    totalCost -= avgCost * tx.ForeignAmount;
+                    balance -= tx.ForeignAmount;
                     break;
+                }
             }
         }
 
