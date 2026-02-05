@@ -66,7 +66,7 @@ function loadSelectedBenchmarksFromLocalStorage(): string[] {
   } catch {
     // Ignore
   }
-  return DEFAULT_BENCHMARKS;
+  return [...DEFAULT_BENCHMARKS];
 }
 
 /**
@@ -442,7 +442,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
           if (cleaned.length !== prev.length) {
             savePreferences(cleaned);
           }
-          return cleaned.length > 0 ? cleaned : DEFAULT_BENCHMARKS;
+          return cleaned.length > 0 ? cleaned : [...DEFAULT_BENCHMARKS];
         });
       } catch (err) {
         console.error('無法載入自訂基準:', err);
@@ -831,6 +831,46 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
   }, []);
 
   /**
+   * 匯率查詢失敗時的 fallback（僅作最後手段）。
+   *
+   * 注意：這些是硬編碼估值，用於避免完全無法計算，但不保證準確。
+   */
+  const getFallbackExchangeRate = useCallback(async (currency: string, homeCurrency: string): Promise<number | null> => {
+    const fromCur = currency.trim().toUpperCase();
+    const toCur = homeCurrency.trim().toUpperCase();
+
+    if (!fromCur || !toCur) return null;
+    if (fromCur === toCur) return 1;
+
+    // 優先嘗試透過既有 API 取得匯率（含 localStorage 快取）。
+    // 若 API 失敗，才使用硬編碼 fallback（最後手段）。
+    const apiRate = await stockPriceApi.getExchangeRateValue(fromCur, toCur);
+    if (apiRate && apiRate > 0) return apiRate;
+
+    if (toCur === 'TWD') {
+      const toTwd: Record<string, number> = {
+        'USD': 32,
+        'GBP': 40,
+        'EUR': 35,
+        'JPY': 0.21,
+      };
+      return toTwd[fromCur] || null;
+    }
+
+    if (toCur === 'USD') {
+      const toUsd: Record<string, number> = {
+        'GBP': 1.25,
+        'EUR': 1.08,
+        'JPY': 0.0067,
+        'TWD': 0.031,
+      };
+      return toUsd[fromCur] || null;
+    }
+
+    return null;
+  }, []);
+
+  /**
    * 補齊「歷史年度」的缺漏價格。
    *
    * 資料來源：
@@ -905,7 +945,8 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
               exchangeRate = yearStartRates[result.currency];
             } else {
               // API 失敗時使用備援匯率
-              exchangeRate = getFallbackExchangeRate(result.currency, homeCurrency) ?? 1;
+              const fallbackRate = await getFallbackExchangeRate(result.currency, homeCurrency);
+              exchangeRate = fallbackRate ?? 1;
             }
             yearStartPrices[mp.ticker] = {
               price: result.price,
@@ -967,7 +1008,8 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
               exchangeRate = yearEndRates[result.currency];
             } else {
               // API 失敗時使用備援匯率
-              exchangeRate = getFallbackExchangeRate(result.currency, homeCurrency) ?? 1;
+              const fallbackRate = await getFallbackExchangeRate(result.currency, homeCurrency);
+              exchangeRate = fallbackRate ?? 1;
             }
             yearEndPrices[mp.ticker] = {
               price: result.price,
@@ -981,38 +1023,7 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
     }
 
     return { yearStartPrices, yearEndPrices };
-  }, []);
-
-  /**
-   * 匯率查詢失敗時的 fallback（僅作最後手段）。
-   *
-   * 注意：這些是硬編碼估值，用於避免完全無法計算，但不保證準確。
-   */
-  const getFallbackExchangeRate = (currency: string, homeCurrency: string): number | null => {
-    if (currency === homeCurrency) return 1;
-
-    if (homeCurrency === 'TWD') {
-      const toTwd: Record<string, number> = {
-        'USD': 32,
-        'GBP': 40,
-        'EUR': 35,
-        'JPY': 0.21,
-      };
-      return toTwd[currency] || null;
-    }
-
-    if (homeCurrency === 'USD') {
-      const toUsd: Record<string, number> = {
-        'GBP': 1.25,
-        'EUR': 1.08,
-        'JPY': 0.0067,
-        'TWD': 0.031,
-      };
-      return toUsd[currency] || null;
-    }
-
-    return null;
-  };
+  }, [getFallbackExchangeRate]);
 
   /**
    * 當 `useHistoricalPerformance` 回報有缺漏價格時，自動嘗試補價。

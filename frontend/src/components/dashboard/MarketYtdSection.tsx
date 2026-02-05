@@ -82,7 +82,7 @@ function getSelectedBenchmarksFromLocalStorage(): string[] {
   } catch {
     // Ignore
   }
-  return DEFAULT_BENCHMARKS;
+  return [...DEFAULT_BENCHMARKS];
 }
 
 /**
@@ -287,7 +287,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
           if (cleaned.length !== prev.length) {
             savePreferences(cleaned);
           }
-          return cleaned.length > 0 ? cleaned : DEFAULT_BENCHMARKS;
+          return cleaned.length > 0 ? cleaned : [...DEFAULT_BENCHMARKS];
         });
 
         // 如果沒有自訂基準，直接標記載入完成

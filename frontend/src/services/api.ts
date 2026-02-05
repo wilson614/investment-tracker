@@ -589,6 +589,13 @@ export const stockPriceApi = {
   getExchangeRate: (from: string, to: string) =>
     fetchApi<ExchangeRateResponse>(`/stock-prices/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
+  /**
+   * 取得匯率數值（含 localStorage 快取）。
+   * 失敗時回傳 null。
+   */
+  getExchangeRateValue: (from: string, to: string) =>
+    resolveExchangeRateValue(from, to),
+
   /** 取得支援的市場清單 */
   getMarkets: () =>
     fetchApi<MarketInfo[]>('/stock-prices/markets'),
