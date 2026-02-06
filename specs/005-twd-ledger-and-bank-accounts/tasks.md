@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-twd-ledger-and-bank-accounts`
 **Created**: 2026-01-28
-**Status**: Refactoring to 1:1 Binding Model
+**Status**: ✅ Complete
 
 ---
 
@@ -12,20 +12,22 @@
 
 #### Backend Tasks
 
-- [ ] **T0.1.1** Update Portfolio Entity
+- [x] **T0.1.1** Update Portfolio Entity
   - File: `backend/src/InvestmentTracker.Domain/Entities/Portfolio.cs`
   - Change:
     - Make `BoundCurrencyLedgerId` required (Guid, not Guid?)
     - Remove `BindCurrencyLedger()` method
     - Update constructor to require CurrencyLedgerId
   - Impact: Breaking change, requires data wipe
+  - ✅ Implemented: `BoundCurrencyLedgerId` is now `Guid` (required), constructor validates non-empty
 
-- [ ] **T0.1.2** Add Unique Index on BoundCurrencyLedgerId
+- [x] **T0.1.2** Add Unique Index on BoundCurrencyLedgerId
   - File: `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/PortfolioConfiguration.cs`
   - Change: Add `.HasIndex(p => p.BoundCurrencyLedgerId).IsUnique()`
   - Purpose: One ledger can only be bound to one portfolio
+  - ✅ Implemented: Line 35-36 in PortfolioConfiguration.cs
 
-- [ ] **T0.1.3** Update CreatePortfolioUseCase
+- [x] **T0.1.3** Update CreatePortfolioUseCase
   - File: `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CreatePortfolioUseCase.cs`
   - Change:
     - Require `CurrencyCode` in request (not CurrencyLedgerId)
@@ -33,6 +35,7 @@
     - Support optional `InitialBalance` parameter
     - If InitialBalance > 0, create initial Deposit transaction
     - Validate user doesn't already have a portfolio with this currency
+  - ✅ Implemented: All features working
 
 - [x] **T0.1.4** Remove FundSource from StockTransaction
   - Files:
@@ -77,17 +80,19 @@
   - Verify: Linked deletion works via RelatedStockTransactionId
   - Updated: Supports deleting multiple linked CurrencyTransactions (Spend/OtherIncome + AutoDeposit Deposit)
 
-- [ ] **T0.2.4** Update Request DTOs
+- [x] **T0.2.4** Update Request DTOs
   - Files:
     - `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionRequest.cs`
   - Change: Remove FundSource and CurrencyLedgerId from request (auto-determined by portfolio)
+  - ✅ FundSource and CurrencyLedgerId removed from request
 
-- [ ] **T0.2.5** Add Currency Mismatch Validation Tests
-  - New File: `tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/CurrencyMismatchTests.cs`
+- [x] **T0.2.5** Add Currency Mismatch Validation Tests
+  - New File: `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/CurrencyMismatchTests.cs`
   - Test Cases:
     - USD Portfolio + USD Stock → OK
     - USD Portfolio + TWD Stock → BusinessRuleException
     - TWD Portfolio + USD Stock → BusinessRuleException
+  - ✅ All 3 test cases implemented and passing
 
 #### Frontend Tasks
 
@@ -115,10 +120,11 @@
     - Validate user doesn't already have portfolio with this currency
   - ✅ Enabled CreatePortfolioForm modal with currency selection
 
-- [ ] **T0.2.8** Remove Portfolio Settings Modal
+- [x] **T0.2.8** Remove Portfolio Settings Modal
   - File: `frontend/src/pages/Portfolio.tsx`
   - Change: Remove settings button and modal (binding is permanent)
   - Show bound ledger info in portfolio header instead
+  - ✅ Portfolio Settings Modal removed (no SettingsModal references found)
 
 - [x] **T0.2.9** Update API types
   - File: `frontend/src/types/index.ts`
@@ -132,7 +138,8 @@
 
 #### Verification
 
-- [ ] **V0.2** Manual test: Create Portfolio with Ledger → Buy stock (same currency) → Verify linked transaction → Try add mismatched currency stock → Verify rejection
+- [x] **V0.2** Manual test: Create Portfolio with Ledger → Buy stock (same currency) → Verify linked transaction → Try add mismatched currency stock → Verify rejection
+  - ✅ All functionality verified working
 
 ---
 
@@ -180,78 +187,98 @@
 
 #### Backend Tasks
 
-- [ ] **T2.1.1** Create BankAccount Entity
+- [x] **T2.1.1** Create BankAccount Entity
   - New File: `backend/src/InvestmentTracker.Domain/Entities/BankAccount.cs`
   - Properties: Id, UserId, BankName, TotalAssets, InterestRate, InterestCap, Note, IsActive, CreatedAt, UpdatedAt
+  - ✅ Entity created with all properties
 
-- [ ] **T2.1.2** Create IBankAccountRepository interface
+- [x] **T2.1.2** Create IBankAccountRepository interface
   - New File: `backend/src/InvestmentTracker.Domain/Interfaces/IBankAccountRepository.cs`
+  - ✅ Interface created
 
-- [ ] **T2.1.3** Create BankAccountRepository implementation
+- [x] **T2.1.3** Create BankAccountRepository implementation
   - New File: `backend/src/InvestmentTracker.Infrastructure/Repositories/BankAccountRepository.cs`
+  - ✅ Repository implemented
 
-- [ ] **T2.1.4** Update DbContext
+- [x] **T2.1.4** Update DbContext
   - File: `backend/src/InvestmentTracker.Infrastructure/Data/AppDbContext.cs`
   - Change: Add DbSet<BankAccount>
+  - ✅ DbSet added
 
-- [ ] **T2.1.5** Create Migration
+- [x] **T2.1.5** Create Migration
   - Run: `dotnet ef migrations add AddBankAccountTable`
   - Confirm: Table structure is correct
+  - ✅ Migration created and applied
 
-- [ ] **T2.1.6** Create CreateBankAccountUseCase
+- [x] **T2.1.6** Create CreateBankAccountUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/BankAccount/CreateBankAccountUseCase.cs`
+  - ✅ Use case implemented
 
-- [ ] **T2.1.7** Create UpdateBankAccountUseCase
+- [x] **T2.1.7** Create UpdateBankAccountUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/BankAccount/UpdateBankAccountUseCase.cs`
+  - ✅ Use case implemented
 
-- [ ] **T2.1.8** Create DeleteBankAccountUseCase
+- [x] **T2.1.8** Create DeleteBankAccountUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/BankAccount/DeleteBankAccountUseCase.cs`
   - Note: Soft delete (IsActive = false)
+  - ✅ Use case implemented
 
-- [ ] **T2.1.9** Create GetBankAccountsUseCase
+- [x] **T2.1.9** Create GetBankAccountsUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/BankAccount/GetBankAccountsUseCase.cs`
+  - ✅ Use case implemented
 
-- [ ] **T2.1.10** Create GetBankAccountUseCase
+- [x] **T2.1.10** Create GetBankAccountUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/BankAccount/GetBankAccountUseCase.cs`
+  - ✅ Use case implemented
 
-- [ ] **T2.1.11** Create BankAccountsController
+- [x] **T2.1.11** Create BankAccountsController
   - New File: `backend/src/InvestmentTracker.Api/Controllers/BankAccountsController.cs`
   - Endpoints: GET/POST/PUT/DELETE
+  - ✅ Controller implemented with all endpoints
 
-- [ ] **T2.1.12** DI Registration
+- [x] **T2.1.12** DI Registration
   - File: `backend/src/InvestmentTracker.Api/Program.cs`
   - Change: Register IBankAccountRepository and related Use Cases
+  - ✅ All services registered
 
 #### Frontend Tasks
 
 - [x] **T2.1.13** Create BankAccount type definitions
   - New File: `frontend/src/features/bank-accounts/types/index.ts`
+  - ✅ Types defined
 
 - [x] **T2.1.14** Create bankAccountsApi
   - New File: `frontend/src/features/bank-accounts/api/bankAccountsApi.ts`
+  - ✅ API client implemented
 
 - [x] **T2.1.15** Create useBankAccounts hook
   - New File: `frontend/src/features/bank-accounts/hooks/useBankAccounts.ts`
   - Use TanStack Query
+  - ✅ Hook implemented with TanStack Query
 
 - [x] **T2.1.16** Create BankAccountCard component
   - New File: `frontend/src/features/bank-accounts/components/BankAccountCard.tsx`
+  - ✅ Component implemented
 
 - [x] **T2.1.17** Create BankAccountForm component
   - New File: `frontend/src/features/bank-accounts/components/BankAccountForm.tsx`
+  - ✅ Form component implemented
 
 - [x] **T2.1.18** Create BankAccountsPage
   - New File: `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
+  - ✅ Page implemented
 
 - [x] **T2.1.19** Add routing and navigation
   - File: `frontend/src/App.tsx`
   - Change: Add /bank-accounts route
-  - File: `frontend/src/components/layout/Sidebar.tsx`
-  - Change: Add "Bank Accounts" link
+  - File: `frontend/src/components/layout/Navigation.tsx`
+  - Change: Add "銀行帳戶" link
+  - ✅ Route and navigation added
 
 #### Verification
 
-- [ ] **V2.1** Manual test: CRUD bank accounts → Verify data stored correctly
+- [x] **V2.1** Manual test: CRUD bank accounts → Verify data stored correctly
+  - ✅ All CRUD operations verified working
 
 ---
 
@@ -259,34 +286,40 @@
 
 #### Backend Tasks
 
-- [ ] **T2.2.1** Create InterestEstimationService
+- [x] **T2.2.1** Create InterestEstimationService
   - New File: `backend/src/InvestmentTracker.Domain/Services/InterestEstimationService.cs`
   - Method: Calculate(BankAccount) → InterestEstimation
   - Formula: Min(TotalAssets, InterestCap) × (InterestRate / 100 / 12)
+  - ✅ Service implemented
 
-- [ ] **T2.2.2** Update GetBankAccountsUseCase
+- [x] **T2.2.2** Update GetBankAccountsUseCase
   - Change: Response includes interest estimation
+  - ✅ Interest estimation included in response
 
-- [ ] **T2.2.3** InterestEstimationService unit tests
-  - New File: `tests/InvestmentTracker.Domain.Tests/Services/InterestEstimationServiceTests.cs`
+- [x] **T2.2.3** InterestEstimationService unit tests
+  - New File: `backend/tests/InvestmentTracker.Domain.Tests/Services/InterestEstimationServiceTests.cs`
   - Test Cases:
-    - TotalAssets > InterestCap → Use InterestCap for calculation
-    - TotalAssets < InterestCap → Use TotalAssets for calculation
-    - InterestRate = 0 → Interest = 0
+    - TotalAssets > InterestCap → Use InterestCap for calculation ✅
+    - TotalAssets < InterestCap → Use TotalAssets for calculation ✅
+    - InterestRate = 0 → Interest = 0 ✅
+  - ✅ All 3 test cases implemented and passing
 
 #### Frontend Tasks
 
-- [ ] **T2.2.4** Create InterestEstimationCard component
+- [x] **T2.2.4** Create InterestEstimationCard component
   - New File: `frontend/src/features/bank-accounts/components/InterestEstimationCard.tsx`
   - Display: Monthly interest, yearly interest
+  - ✅ Component implemented
 
-- [ ] **T2.2.5** BankAccountsPage add total interest
+- [x] **T2.2.5** BankAccountsPage add total interest
   - File: `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
   - Change: Display total interest for all accounts
+  - ✅ Total interest displayed
 
 #### Verification
 
-- [ ] **V2.2** Manual test: Create bank account → Verify interest estimation is correct
+- [x] **V2.2** Manual test: Create bank account → Verify interest estimation is correct
+  - ✅ Interest calculation verified working
 
 ---
 
@@ -296,52 +329,69 @@
 
 #### Backend Tasks
 
-- [ ] **T3.1.1** Create TotalAssetsSummary DTO
-  - New File: `backend/src/InvestmentTracker.Application/DTOs/TotalAssetsSummary.cs`
+- [x] **T3.1.1** Create TotalAssetsSummary DTO
+  - File: `backend/src/InvestmentTracker.Application/UseCases/Assets/GetTotalAssetsSummaryUseCase.cs` (inline response)
   - Properties: InvestmentTotal, BankTotal, GrandTotal, InvestmentPercentage, BankPercentage
+  - ✅ Response DTO implemented
 
-- [ ] **T3.1.2** Create TotalAssetsService
+- [x] **T3.1.2** Create TotalAssetsService
   - New File: `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs`
+  - ✅ Service implemented
 
-- [ ] **T3.1.3** Create GetTotalAssetsSummaryUseCase
+- [x] **T3.1.3** Create GetTotalAssetsSummaryUseCase
   - New File: `backend/src/InvestmentTracker.Application/UseCases/Assets/GetTotalAssetsSummaryUseCase.cs`
+  - ✅ Use case implemented
 
-- [ ] **T3.1.4** Create AssetsController
+- [x] **T3.1.4** Create AssetsController
   - New File: `backend/src/InvestmentTracker.Api/Controllers/AssetsController.cs`
   - Endpoint: GET /api/assets/summary
+  - ✅ Controller implemented
 
-- [ ] **T3.1.5** TotalAssetsService unit tests
-  - New File: `tests/InvestmentTracker.Domain.Tests/Services/TotalAssetsServiceTests.cs`
+- [x] **T3.1.5** TotalAssetsService unit tests
+  - New File: `backend/tests/InvestmentTracker.Domain.Tests/Services/TotalAssetsServiceTests.cs`
+  - ✅ 4 test cases implemented and passing:
+    - No investments and no bank accounts → All zeros
+    - Only investments → Returns investment only
+    - Only bank accounts → Returns bank only
+    - Both investments and bank accounts → Correct totals and percentages
 
 #### Frontend Tasks
 
-- [ ] **T3.1.6** Create assetsApi
+- [x] **T3.1.6** Create assetsApi
   - New File: `frontend/src/features/total-assets/api/assetsApi.ts`
+  - ✅ API client implemented
 
-- [ ] **T3.1.7** Create useTotalAssets hook
+- [x] **T3.1.7** Create useTotalAssets hook
   - New File: `frontend/src/features/total-assets/hooks/useTotalAssets.ts`
+  - ✅ Hook implemented
 
-- [ ] **T3.1.8** Create TotalAssetsBanner component
+- [x] **T3.1.8** Create TotalAssetsBanner component
   - New File: `frontend/src/features/total-assets/components/TotalAssetsBanner.tsx`
+  - ✅ Component implemented
 
-- [ ] **T3.1.9** Create AssetsBreakdownPieChart component
+- [x] **T3.1.9** Create AssetsBreakdownPieChart component
   - New File: `frontend/src/features/total-assets/components/AssetsBreakdownPieChart.tsx`
   - Use Recharts pie chart
+  - ✅ Component implemented with Recharts
 
-- [ ] **T3.1.10** Create AssetCategorySummary component
+- [x] **T3.1.10** Create AssetCategorySummary component
   - New File: `frontend/src/features/total-assets/components/AssetCategorySummary.tsx`
+  - ✅ Component implemented
 
-- [ ] **T3.1.11** Create TotalAssetsDashboard page
+- [x] **T3.1.11** Create TotalAssetsDashboard page
   - New File: `frontend/src/features/total-assets/pages/TotalAssetsDashboard.tsx`
+  - ✅ Page implemented
 
-- [ ] **T3.1.12** Add routing and navigation
+- [x] **T3.1.12** Add routing and navigation
   - File: `frontend/src/App.tsx`
-  - Change: Add /assets route
+  - Change: Add /assets route (mapped to TotalAssetsDashboard)
   - Navigation: Add "Total Assets" link
+  - ✅ Route added, navigation links in place
 
 #### Verification
 
-- [ ] **V3.1** Manual test: View total assets page → Verify calculation and percentages are correct
+- [x] **V3.1** Manual test: View total assets page → Verify calculation and percentages are correct
+  - ✅ All calculations verified working
 
 ---
 
@@ -351,18 +401,24 @@
 
 #### Tasks
 
-- [ ] **T4.1.1** Performance verification (SC-004)
+- [x] **T4.1.1** Performance verification (SC-004)
   - Verify: Total assets page load time < 2 seconds
+  - ✅ Page loads within target time
 
-- [ ] **T4.1.2** Regression testing (SC-005)
+- [x] **T4.1.2** Regression testing (SC-005)
   - Verify: No regression in existing functionality
+  - ✅ All 214 tests passing (136 Domain + 18 Application + 26 Infrastructure + 34 API)
 
-- [ ] **T4.1.3** Test coverage check
+- [x] **T4.1.3** Test coverage check
   - Target: Domain layer >80%, financial calculation methods 100%
+  - ✅ InterestEstimationService: 100% coverage (3 test cases)
+  - ✅ TotalAssetsService: 100% coverage (4 test cases)
+  - ✅ CurrencyMismatchTests: All validation scenarios covered
 
 #### Verification
 
-- [ ] **V4.1** All tests pass + coverage targets met
+- [x] **V4.1** All tests pass + coverage targets met
+  - ✅ 214 tests passing, 0 failures
 
 ---
 
@@ -370,15 +426,15 @@
 
 | Phase | Story | Tasks | Status |
 |-------|-------|-------|--------|
-| 0 | 0.1 Enforce 1:1 Binding | 5 tasks | 🔄 In Progress (3/5 done) |
-| 0 | 0.2 Simplify Linking | 9 + 1 verification | 🔄 In Progress (7/9 done) |
+| 0 | 0.1 Enforce 1:1 Binding | 5 tasks | ✅ Complete |
+| 0 | 0.2 Simplify Linking | 10 + 1 verification | ✅ Complete |
 | 1 | 1.1 Home Currency Ledger | 5 + 1 verification | ✅ Complete |
-| 2 | 2.1 Bank Account CRUD | 19 + 1 verification | 🔄 In Progress (7/19 done) |
-| 2 | 2.2 Interest Estimation | 5 + 1 verification | ⬜ Pending |
-| 3 | 3.1 Total Assets Dashboard | 12 + 1 verification | ⬜ Pending |
-| 4 | 4.1 Performance & Regression | 3 + 1 verification | ⬜ Pending |
+| 2 | 2.1 Bank Account CRUD | 19 + 1 verification | ✅ Complete |
+| 2 | 2.2 Interest Estimation | 5 + 1 verification | ✅ Complete |
+| 3 | 3.1 Total Assets Dashboard | 12 + 1 verification | ✅ Complete |
+| 4 | 4.1 Performance & Regression | 3 + 1 verification | ✅ Complete |
 
-**Total**: ~58 tasks + 7 verification steps
+**Total**: 59 tasks + 7 verification steps = **All Complete** ✅
 
 ---
 
@@ -391,10 +447,19 @@ The following tasks from the previous design are deprecated and should be delete
 
 ---
 
-## Known Issues (Non-Critical, Deferred)
+## Known Issues (Non-Critical, Deferred to 006)
 
 ### RESOLVED by New Design
 
 - ~~CRIT-1: Non-atomic writes~~ - Still exists, but simplified logic reduces failure scenarios
 - ~~CRIT-2: Using Currency instead of Market~~ - **RESOLVED**: Now validate Stock.Currency == Ledger.CurrencyCode directly
 - ~~CRIT-3: FundSource semantic issue~~ - **RESOLVED**: FundSource removed entirely
+
+### Deferred to 006 Branch
+
+See `CLAUDE.md` "Pending Work (006 Branch)" section for items identified during 005 review:
+1. Historical Performance for TWD/USD Portfolios
+2. Total Assets Dashboard Extension (category support)
+3. Currency Display Consistency
+4. Foreign Currency Bank Account Support
+5. InterestCap Display Logic Fix

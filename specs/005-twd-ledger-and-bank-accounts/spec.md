@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-twd-ledger-and-bank-accounts`
 **Created**: 2026-01-28
-**Status**: Draft
+**Status**: ✅ Complete
 **Input**: Add TWD ledger (linked with TW stocks), bank accounts (interest rates/caps/estimation), total assets dashboard
 
 ## Background & Motivation

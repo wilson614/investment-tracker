@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-twd-ledger-and-bank-accounts`
 **Created**: 2026-01-28
-**Status**: Refactoring Phase 1 (1:1 Binding Model)
+**Status**: ✅ Complete
 
 ---
 
