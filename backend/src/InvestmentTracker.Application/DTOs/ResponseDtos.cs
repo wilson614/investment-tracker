@@ -14,6 +14,7 @@ public record BankAccountResponse
     public decimal TotalAssets { get; init; }
     public decimal InterestRate { get; init; }
     public decimal InterestCap { get; init; }
+    public string Currency { get; init; } = string.Empty;
     public string? Note { get; init; }
 
     public decimal MonthlyInterest { get; init; }
@@ -34,6 +35,7 @@ public record BankAccountResponse
             TotalAssets = entity.TotalAssets,
             InterestRate = entity.InterestRate,
             InterestCap = entity.InterestCap,
+            Currency = entity.Currency,
             Note = entity.Note,
             MonthlyInterest = estimation.MonthlyInterest,
             YearlyInterest = estimation.YearlyInterest,

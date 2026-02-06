@@ -227,6 +227,9 @@ public record CreateBankAccountRequest
 
     [StringLength(500)]
     public string? Note { get; init; }
+
+    [StringLength(3, MinimumLength = 3)]
+    public string Currency { get; init; } = "TWD";
 }
 
 /// <summary>
@@ -251,4 +254,7 @@ public record UpdateBankAccountRequest
 
     [StringLength(500)]
     public string? Note { get; init; }
+
+    [StringLength(3, MinimumLength = 3)]
+    public string? Currency { get; init; }
 }

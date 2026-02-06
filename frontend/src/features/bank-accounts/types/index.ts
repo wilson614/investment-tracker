@@ -8,6 +8,7 @@ export interface BankAccount {
   interestRate: number;      // Annual interest rate %
   interestCap?: number;       // Preferential interest cap
   note?: string;
+  currency: string;
   monthlyInterest: number;   // Calculated monthly interest
   yearlyInterest: number;    // Calculated annual interest
   isActive: boolean;
@@ -21,6 +22,7 @@ export interface CreateBankAccountRequest {
   interestRate: number;
   interestCap?: number;
   note?: string;
+  currency: string; // Default "TWD" when creating
 }
 
 export interface UpdateBankAccountRequest {
@@ -29,6 +31,7 @@ export interface UpdateBankAccountRequest {
   interestRate: number;
   interestCap?: number;
   note?: string;
+  currency?: string;
 }
 
 export interface InterestEstimation {

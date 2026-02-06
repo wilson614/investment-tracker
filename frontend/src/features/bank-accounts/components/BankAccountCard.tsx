@@ -60,7 +60,7 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
             {formatNumber(account.interestRate)}%
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            額度上限：{account.interestCap ? `$${formatCurrency(account.interestCap)}` : '無上限'}
+            額度上限：{account.interestCap != null ? `$${formatCurrency(account.interestCap)}` : '無上限'}
           </p>
         </div>
         <div>
