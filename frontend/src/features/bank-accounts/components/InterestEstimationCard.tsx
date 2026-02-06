@@ -1,4 +1,5 @@
 import { TrendingUp } from 'lucide-react';
+import { formatCurrency } from '../../../utils/currency';
 
 interface InterestEstimationCardProps {
   yearlyInterest: number;
@@ -6,14 +7,6 @@ interface InterestEstimationCardProps {
 }
 
 export function InterestEstimationCard({ yearlyInterest, monthlyInterest }: InterestEstimationCardProps) {
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('zh-TW', {
-      style: 'currency',
-      currency: 'TWD',
-      maximumFractionDigits: 0
-    }).format(val);
-  };
-
   return (
     <div className="metric-card metric-card-cream">
       <div className="flex items-center gap-3 mb-4">
@@ -29,13 +22,13 @@ export function InterestEstimationCard({ yearlyInterest, monthlyInterest }: Inte
         <div>
           <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">預估年利息</p>
           <p className="text-xl font-bold text-[var(--text-primary)]">
-            {formatCurrency(yearlyInterest)}
+            {formatCurrency(yearlyInterest, 'TWD')}
           </p>
         </div>
         <div>
           <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">平均月利息</p>
           <p className="text-xl font-bold text-[var(--text-primary)]">
-            {formatCurrency(monthlyInterest)}
+            {formatCurrency(monthlyInterest, 'TWD')}
           </p>
         </div>
       </div>
