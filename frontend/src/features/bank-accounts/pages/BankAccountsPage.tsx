@@ -21,7 +21,7 @@ export function BankAccountsPage() {
     refetch
   } = useBankAccounts();
 
-  const { summary: assetsSummary } = useTotalAssets();
+  const { summary: assetsSummary, isLoading: isAssetsLoading } = useTotalAssets();
 
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | undefined>(undefined);
@@ -76,7 +76,7 @@ export function BankAccountsPage() {
   };
 
 
-  if (isLoading && bankAccounts.length === 0) {
+  if ((isLoading && bankAccounts.length === 0) || (isAssetsLoading && !assetsSummary)) {
     return <LoadingSpinner />;
   }
 
