@@ -73,3 +73,23 @@ taskkill /F /IM dotnet.exe  # Stop backend
 ```
 
 This releases ports 3000/5000 for manual testing.
+
+## Pending Work (006 Branch)
+
+The following items were identified during 005 review and deferred to 006:
+
+### 1. Historical Performance for TWD/USD Portfolios
+- **Problem**: `HistoricalPerformanceService` has hardcoded USD assumptions
+- **Location**: `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- **Required Changes**:
+  - Generalize `GetUsdToTwdRate` to `GetSourceToHomeRate`
+  - Use `portfolio.BaseCurrency` dynamically instead of assuming USD
+  - Handle TWD portfolios (Base=TWD) with exchange rate = 1
+
+### 2. Total Assets Dashboard Extension
+- **Problem**: Need categories like "Emergency Fund", "Family Deposit" with navigation
+- **Required Changes**:
+  - Add `Category` or `Purpose` field to `BankAccount` entity (Migration required)
+  - Update `TotalAssetsSummaryResponse` to include category breakdowns
+  - Frontend: Add clickable category sections with navigation to filtered views
+- **Suggested Category Names**: EmergencyFund, FamilyDeposit, General, Savings
