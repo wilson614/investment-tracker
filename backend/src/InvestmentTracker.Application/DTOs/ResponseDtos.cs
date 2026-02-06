@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Services;
 
 namespace InvestmentTracker.Application.DTOs;
@@ -43,6 +44,52 @@ public record BankAccountResponse
             UpdatedAt = entity.UpdatedAt
         };
     }
+}
+
+public record FundAllocationResponse
+{
+    public Guid Id { get; init; }
+    public AllocationPurpose Purpose { get; init; }
+    public string PurposeDisplayName { get; init; } = string.Empty;
+    public decimal Amount { get; init; }
+    public string? Note { get; init; }
+    public DateTime CreatedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
+
+    public static FundAllocationResponse FromEntity(FundAllocation entity)
+    {
+        return new FundAllocationResponse
+        {
+            Id = entity.Id,
+            Purpose = entity.Purpose,
+            PurposeDisplayName = GetPurposeDisplayName(entity.Purpose),
+            Amount = entity.Amount,
+            Note = entity.Note,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+
+    public static string GetPurposeDisplayName(AllocationPurpose purpose)
+    {
+        return purpose switch
+        {
+            AllocationPurpose.EmergencyFund => "緊急預備金",
+            AllocationPurpose.FamilyDeposit => "家庭存款",
+            AllocationPurpose.General => "一般",
+            AllocationPurpose.Savings => "儲蓄",
+            AllocationPurpose.Investment => "投資準備金",
+            AllocationPurpose.Other => "其他",
+            _ => purpose.ToString()
+        };
+    }
+}
+
+public record AllocationSummary
+{
+    public decimal TotalAllocated { get; init; }
+    public decimal Unallocated { get; init; }
+    public IReadOnlyList<FundAllocationResponse> Allocations { get; init; } = [];
 }
 
 public record TotalAssetsSummaryResponse(

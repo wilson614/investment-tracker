@@ -258,3 +258,23 @@ public record UpdateBankAccountRequest
     [StringLength(3, MinimumLength = 3)]
     public string? Currency { get; init; }
 }
+
+/// <summary>
+/// Create fund allocation request DTO.
+/// </summary>
+public record CreateFundAllocationRequest
+{
+    public AllocationPurpose Purpose { get; init; }
+    public decimal Amount { get; init; }
+    public string? Note { get; init; }
+}
+
+/// <summary>
+/// Update fund allocation request DTO.
+/// </summary>
+public record UpdateFundAllocationRequest
+{
+    public AllocationPurpose? Purpose { get; init; }
+    public decimal? Amount { get; init; }
+    public string? Note { get; init; }
+}

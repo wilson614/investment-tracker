@@ -12,6 +12,7 @@ using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.UseCases.Assets;
 using InvestmentTracker.Application.UseCases.BankAccount;
+using InvestmentTracker.Application.UseCases.FundAllocation;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -208,6 +209,10 @@ builder.Services.AddScoped<UpdateBankAccountUseCase>();
 builder.Services.AddScoped<DeleteBankAccountUseCase>();
 builder.Services.AddScoped<GetBankAccountsUseCase>();
 builder.Services.AddScoped<GetBankAccountUseCase>();
+builder.Services.AddScoped<GetFundAllocationsUseCase>();
+builder.Services.AddScoped<CreateFundAllocationUseCase>();
+builder.Services.AddScoped<UpdateFundAllocationUseCase>();
+builder.Services.AddScoped<DeleteFundAllocationUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 
 // Stock Price Service
