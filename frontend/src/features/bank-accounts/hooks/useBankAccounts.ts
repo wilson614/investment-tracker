@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bankAccountsApi } from '../api/bankAccountsApi';
 import type { CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 import { useToast } from '../../../components/common';
+import { getErrorMessage } from '../../../utils/errorMapping';
+import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
 
 export const BANK_ACCOUNTS_QUERY_KEY = ['bankAccounts'];
 
@@ -18,10 +20,11 @@ export function useBankAccounts() {
     mutationFn: (data: CreateBankAccountRequest) => bankAccountsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
       toast.success('銀行帳戶建立成功');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '建立失敗');
+      toast.error(getErrorMessage(err.message || '建立失敗'));
     },
   });
 
@@ -30,10 +33,11 @@ export function useBankAccounts() {
       bankAccountsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
       toast.success('銀行帳戶更新成功');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '更新失敗');
+      toast.error(getErrorMessage(err.message || '更新失敗'));
     },
   });
 
@@ -41,10 +45,11 @@ export function useBankAccounts() {
     mutationFn: (id: string) => bankAccountsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
       toast.success('銀行帳戶已刪除');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '刪除失敗');
+      toast.error(getErrorMessage(err.message || '刪除失敗'));
     },
   });
 

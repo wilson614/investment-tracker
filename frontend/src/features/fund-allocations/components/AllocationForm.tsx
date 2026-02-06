@@ -89,7 +89,7 @@ export function AllocationForm({ onSubmit, initialData }: AllocationFormProps) {
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">
           {isEditMode ? '編輯資金配置' : '新增資金配置'}
         </h3>
-        <p className="text-sm text-[var(--text-muted)] mt-1">設定銀行資產的用途與金額（TWD）</p>
+        <p className="text-sm text-[var(--text-muted)] mt-1">設定銀行資產的用途與金額</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -137,7 +137,7 @@ export function AllocationForm({ onSubmit, initialData }: AllocationFormProps) {
 
         <div>
           <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            備註（選填）
+            備註
           </label>
           <textarea
             value={note}

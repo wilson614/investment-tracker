@@ -34,6 +34,14 @@ export const ERROR_MESSAGES: Record<string, string> = {
   // Common Validations
   'Field is required': '此欄位為必填',
   'Invalid format': '格式不正確',
+  'One or more validation errors occurred.': '輸入資料驗證失敗',
+  'Total allocations cannot exceed total bank assets.': '資金配置總額不能超過銀行總資產',
+  'Amount cannot be negative': '金額不能為負數',
+  'Invalid allocation purpose': '資金配置用途不正確',
+  'Note cannot exceed 500 characters': '備註不能超過 500 個字元',
+  'A non-empty request body is required.': '請提供請求資料',
+  'The JSON value could not be converted to': '輸入格式不正確，請檢查欄位內容',
+  'Fund allocation purpose already exists.': '此用途的資金配置已存在',
 };
 
 /**
@@ -61,11 +69,23 @@ export function getErrorMessage(originalMessage: string): string {
     return ERROR_MESSAGES['Failed to fetch'];
   }
 
+  if (lowerMsg.includes('validation errors occurred')) {
+    return ERROR_MESSAGES['One or more validation errors occurred.'];
+  }
+
+  if (lowerMsg.includes('json value could not be converted')) {
+    return ERROR_MESSAGES['The JSON value could not be converted to'];
+  }
+
+  if (lowerMsg.includes('total allocations cannot exceed total bank assets')) {
+    return ERROR_MESSAGES['Total allocations cannot exceed total bank assets.'];
+  }
+
   // 特定字詞替換
   if (lowerMsg.includes('not found')) {
-      if (lowerMsg.includes('portfolio')) return '找不到投資組合';
-      if (lowerMsg.includes('transaction')) return '找不到交易紀錄';
-      if (lowerMsg.includes('user')) return '找不到使用者';
+    if (lowerMsg.includes('portfolio')) return '找不到投資組合';
+    if (lowerMsg.includes('transaction')) return '找不到交易紀錄';
+    if (lowerMsg.includes('user')) return '找不到使用者';
   }
 
   return originalMessage;

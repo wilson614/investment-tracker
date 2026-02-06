@@ -10,6 +10,9 @@ export function useTotalAssets() {
   const query = useQuery({
     queryKey: ASSETS_KEYS.summary(),
     queryFn: () => assetsApi.getSummary(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
   });
 
   return {

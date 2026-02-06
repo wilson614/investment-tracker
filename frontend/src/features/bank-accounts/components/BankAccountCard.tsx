@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Edit, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount } from '../types';
@@ -11,6 +12,8 @@ interface BankAccountCardProps {
 }
 
 export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardProps) {
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
     if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
@@ -19,11 +22,27 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
     });
   };
 
+  useEffect(() => {
+    setCurrentTime(Date.now());
+
+    if (account.currency === 'TWD') {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [account.currency, account.updatedAt]);
+
   const isForeignCurrency = account.currency !== 'TWD';
   // TODO: Replace with dedicated exchange-rate timestamp once backend provides it.
   const lastUpdatedTime = new Date(account.updatedAt).getTime();
   const isExchangeRateStale =
-    isForeignCurrency && Number.isFinite(lastUpdatedTime) && Date.now() - lastUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
+    isForeignCurrency && Number.isFinite(lastUpdatedTime) && currentTime - lastUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">

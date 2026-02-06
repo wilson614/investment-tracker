@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../../components/common';
+import { getErrorMessage } from '../../../utils/errorMapping';
 import { allocationsApi } from '../api/allocationsApi';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
 import type { CreateFundAllocationRequest, UpdateFundAllocationRequest } from '../types';
@@ -27,7 +28,7 @@ export function useFundAllocations() {
       toast.success('資金配置建立成功');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '建立失敗');
+      toast.error(getErrorMessage(err.message || '建立失敗'));
     },
   });
 
@@ -39,7 +40,7 @@ export function useFundAllocations() {
       toast.success('資金配置更新成功');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '更新失敗');
+      toast.error(getErrorMessage(err.message || '更新失敗'));
     },
   });
 
@@ -50,7 +51,7 @@ export function useFundAllocations() {
       toast.success('資金配置已刪除');
     },
     onError: (err: Error) => {
-      toast.error(err.message || '刪除失敗');
+      toast.error(getErrorMessage(err.message || '刪除失敗'));
     },
   });
 
@@ -59,7 +60,7 @@ export function useFundAllocations() {
     totalAllocated: query.data?.totalAllocated ?? 0,
     unallocated: query.data?.unallocated ?? 0,
     isLoading: query.isLoading,
-    error: query.error ? (query.error instanceof Error ? query.error.message : 'Unknown error') : null,
+    error: query.error ? (query.error instanceof Error ? getErrorMessage(query.error.message) : 'Unknown error') : null,
     refetch: query.refetch,
     createAllocation: createMutation.mutateAsync,
     updateAllocation: (id: string, data: UpdateFundAllocationRequest) => updateMutation.mutateAsync({ id, data }),
