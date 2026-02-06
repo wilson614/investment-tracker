@@ -636,8 +636,12 @@ export default function CurrencyDetail() {
                     <th>日期</th>
                     <th>類型</th>
                     <th className="text-right">外幣金額</th>
-                    <th className="text-right">台幣金額</th>
-                    <th className="text-right">匯率</th>
+                    {!isHomeCurrencyLedger && (
+                      <th className="text-right">台幣金額</th>
+                    )}
+                    {!isHomeCurrencyLedger && (
+                      <th className="text-right">匯率</th>
+                    )}
                     <th className="text-right">餘額</th>
                     <th>備註</th>
                     <th className="w-24 text-center">操作</th>
@@ -672,12 +676,16 @@ export default function CurrencyDetail() {
                         <td className="text-right number-display whitespace-nowrap">
                           {formatLedgerCurrency(tx.foreignAmount, 4)}
                         </td>
-                        <td className="text-right number-display whitespace-nowrap">
-                          {tx.homeAmount ? formatNumber(tx.homeAmount) : '-'}
-                        </td>
-                        <td className="text-right number-display whitespace-nowrap">
-                          {tx.exchangeRate ? formatNumber(tx.exchangeRate, 4) : '-'}
-                        </td>
+                        {!isHomeCurrencyLedger && (
+                          <td className="text-right number-display whitespace-nowrap">
+                            {tx.homeAmount ? formatNumber(tx.homeAmount) : '-'}
+                          </td>
+                        )}
+                        {!isHomeCurrencyLedger && (
+                          <td className="text-right number-display whitespace-nowrap">
+                            {tx.exchangeRate ? formatNumber(tx.exchangeRate, 4) : '-'}
+                          </td>
+                        )}
                         <td className="text-right number-display whitespace-nowrap">
                           {formatLedgerCurrency(runningBalances.get(tx.id) ?? 0, 4)}
                         </td>

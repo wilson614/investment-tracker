@@ -93,7 +93,7 @@ export function BankAccountsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">銀行帳戶</h1>
-          <p className="text-[var(--text-secondary)]">管理台幣高利活存與定存帳戶</p>
+          <p className="text-[var(--text-secondary)]">管理高利活存與定存帳戶</p>
         </div>
         <button
           onClick={handleCreate}

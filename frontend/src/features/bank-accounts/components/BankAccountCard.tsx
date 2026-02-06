@@ -56,14 +56,12 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
           <p className="text-[var(--text-muted)] mb-1">活存利率</p>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-[var(--accent-peach)] number-display">
-              {formatNumber(account.interestRate)}%
-            </span>
-            <span className="text-xs text-[var(--text-muted)]">
-              （額度：{account.interestCap ? `NT$${formatCurrency(account.interestCap)}` : '無上限'}）
-            </span>
-          </div>
+          <p className="font-medium text-[var(--accent-peach)] number-display">
+            {formatNumber(account.interestRate)}%
+          </p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            額度上限：{account.interestCap ? `$${formatCurrency(account.interestCap)}` : '無上限'}
+          </p>
         </div>
         <div>
           <p className="text-[var(--text-muted)] mb-1">預估月息</p>
