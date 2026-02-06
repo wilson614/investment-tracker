@@ -141,6 +141,69 @@ public class TotalAssetsServiceTests
     }
 
     [Fact]
+    public void Calculate_UsdAccountInterest_ConvertsUsingExchangeRate()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "US", totalAssets: 1_000m, interestRate: 12m, currency: "USD")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>
+            {
+                ["USD"] = 30m
+            });
+
+        result.TotalMonthlyInterest.Should().Be(300m);
+        result.TotalYearlyInterest.Should().Be(3_600m);
+    }
+
+    [Fact]
+    public void Calculate_MixedCurrencyInterests_AggregatesInTwd()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "TW", totalAssets: 120_000m, interestRate: 1.2m, currency: "TWD"),
+            new(userId, "US", totalAssets: 1_000m, interestRate: 12m, currency: "USD"),
+            new(userId, "EU", totalAssets: 2_000m, interestRate: 6m, currency: "EUR")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>
+            {
+                ["USD"] = 31m,
+                ["EUR"] = 34m
+            });
+
+        result.TotalMonthlyInterest.Should().Be(770m);
+        result.TotalYearlyInterest.Should().Be(9_240m);
+    }
+
+    [Fact]
+    public void Calculate_ForeignCurrencyInterestWithoutExchangeRate_ExcludesUnconvertedInterest()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "US", totalAssets: 1_000m, interestRate: 12m, currency: "USD")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>());
+
+        result.TotalMonthlyInterest.Should().Be(0m);
+        result.TotalYearlyInterest.Should().Be(0m);
+    }
+
+    [Fact]
     public void Calculate_MixedCurrencies_AggregatesInTwd()
     {
         var userId = Guid.NewGuid();

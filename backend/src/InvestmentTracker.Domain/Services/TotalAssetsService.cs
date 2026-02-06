@@ -33,11 +33,19 @@ public class TotalAssetsService(InterestEstimationService interestEstimationServ
 
         var bankTotal = bankAccounts.Sum(a => ConvertToTwd(a, rates));
 
-        var totalMonthlyInterest = bankAccounts
-            .Sum(a => interestEstimationService.Calculate(a).MonthlyInterest);
+        var interestEstimations = bankAccounts
+            .Select(account => new
+            {
+                Account = account,
+                Estimation = interestEstimationService.Calculate(account)
+            })
+            .ToList();
 
-        var totalYearlyInterest = bankAccounts
-            .Sum(a => interestEstimationService.Calculate(a).YearlyInterest);
+        var totalMonthlyInterest = interestEstimations
+            .Sum(x => ConvertInterestToTwd(x.Account, x.Estimation.MonthlyInterest, rates));
+
+        var totalYearlyInterest = interestEstimations
+            .Sum(x => ConvertInterestToTwd(x.Account, x.Estimation.YearlyInterest, rates));
 
         var grandTotal = investmentTotal + bankTotal;
 
@@ -82,6 +90,23 @@ public class TotalAssetsService(InterestEstimationService interestEstimationServ
 
         if (rates.TryGetValue(currency, out var exchangeRate) && exchangeRate > 0m)
             return Math.Round(account.TotalAssets * exchangeRate, 4);
+
+        // Missing exchange rate: treat as unconverted and exclude from TWD total.
+        return 0m;
+    }
+
+    private static decimal ConvertInterestToTwd(
+        BankAccount account,
+        decimal interest,
+        IReadOnlyDictionary<string, decimal> rates)
+    {
+        var currency = NormalizeCurrency(account.Currency);
+
+        if (string.Equals(currency, HomeCurrency, StringComparison.OrdinalIgnoreCase))
+            return interest;
+
+        if (rates.TryGetValue(currency, out var exchangeRate) && exchangeRate > 0m)
+            return Math.Round(interest * exchangeRate, 4);
 
         // Missing exchange rate: treat as unconverted and exclude from TWD total.
         return 0m;
