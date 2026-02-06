@@ -28,6 +28,10 @@ public class UpdateBankAccountUseCase(
         bankAccount.SetBankName(request.BankName);
         bankAccount.SetTotalAssets(request.TotalAssets);
         bankAccount.SetInterestSettings(request.InterestRate, request.InterestCap);
+
+        if (request.Currency is not null)
+            bankAccount.SetCurrency(request.Currency);
+
         bankAccount.SetNote(request.Note);
 
         await bankAccountRepository.UpdateAsync(bankAccount, cancellationToken);

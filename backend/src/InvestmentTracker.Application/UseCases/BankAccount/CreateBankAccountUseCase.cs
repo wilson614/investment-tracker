@@ -27,7 +27,8 @@ public class CreateBankAccountUseCase(
             request.TotalAssets,
             request.InterestRate,
             request.InterestCap,
-            request.Note);
+            request.Note,
+            request.Currency);
 
         await bankAccountRepository.AddAsync(bankAccount, cancellationToken);
 

@@ -97,4 +97,88 @@ public class TotalAssetsServiceTests
         result.InvestmentPercentage.Should().BeApproximately(446_000m / 1_146_000m * 100m, 0.0001m);
         result.BankPercentage.Should().BeApproximately(700_000m / 1_146_000m * 100m, 0.0001m);
     }
+
+    [Fact]
+    public void Calculate_TwdAccount_UsesBalanceAsIs()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "TW", totalAssets: 100_000m, currency: "TWD")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>
+            {
+                ["USD"] = 31.5m
+            });
+
+        result.BankTotal.Should().Be(100_000m);
+        result.GrandTotal.Should().Be(100_000m);
+    }
+
+    [Fact]
+    public void Calculate_UsdAccount_ConvertsUsingExchangeRate()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "US", totalAssets: 1_000m, currency: "USD")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>
+            {
+                ["USD"] = 31.25m
+            });
+
+        result.BankTotal.Should().Be(31_250m);
+        result.GrandTotal.Should().Be(31_250m);
+    }
+
+    [Fact]
+    public void Calculate_MixedCurrencies_AggregatesInTwd()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "TW", totalAssets: 50_000m, currency: "TWD"),
+            new(userId, "US", totalAssets: 1_000m, currency: "USD"),
+            new(userId, "EU", totalAssets: 200m, currency: "EUR")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 10_000m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>
+            {
+                ["USD"] = 31m,
+                ["EUR"] = 34.5m
+            });
+
+        result.BankTotal.Should().Be(87_900m);
+        result.GrandTotal.Should().Be(97_900m);
+    }
+
+    [Fact]
+    public void Calculate_ForeignCurrencyWithoutExchangeRate_ExcludesUnconvertedBalance()
+    {
+        var userId = Guid.NewGuid();
+        var accounts = new List<BankAccount>
+        {
+            new(userId, "US", totalAssets: 1_000m, currency: "USD")
+        };
+
+        var result = _service.Calculate(
+            investmentTotal: 0m,
+            bankAccounts: accounts,
+            exchangeRatesToTwd: new Dictionary<string, decimal>());
+
+        result.BankTotal.Should().Be(0m);
+        result.GrandTotal.Should().Be(0m);
+    }
 }

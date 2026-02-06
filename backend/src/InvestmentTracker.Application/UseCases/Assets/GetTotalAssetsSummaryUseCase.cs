@@ -5,6 +5,7 @@ using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using BankAccountEntity = InvestmentTracker.Domain.Entities.BankAccount;
 using PortfolioEntity = InvestmentTracker.Domain.Entities.Portfolio;
 
 namespace InvestmentTracker.Application.UseCases.Assets;
@@ -52,7 +53,12 @@ public class GetTotalAssetsSummaryUseCase(
             investmentTotal += portfolioValue;
         }
 
-        var summary = totalAssetsService.Calculate(investmentTotal, bankAccounts);
+        var bankExchangeRates = await GetBankExchangeRatesToTwdAsync(bankAccounts, valuationDate, cancellationToken);
+
+        var summary = totalAssetsService.Calculate(
+            investmentTotal,
+            bankAccounts,
+            bankExchangeRates);
 
         return new TotalAssetsSummaryResponse(
             InvestmentTotal: summary.InvestmentTotal,
@@ -152,6 +158,38 @@ public class GetTotalAssetsSummaryUseCase(
             cancellationToken);
 
         return fx?.Rate;
+    }
+
+    private async Task<IReadOnlyDictionary<string, decimal>> GetBankExchangeRatesToTwdAsync(
+        IReadOnlyList<BankAccountEntity> bankAccounts,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var currencies = bankAccounts
+            .Select(a => a.Currency)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var rates = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+        {
+            [DefaultHomeCurrency] = 1m
+        };
+
+        foreach (var currency in currencies)
+        {
+            if (string.Equals(currency, DefaultHomeCurrency, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var fx = await GetExchangeRateAsync(currency, DefaultHomeCurrency, date, cancellationToken);
+            if (fx is > 0m)
+            {
+                rates[currency] = fx.Value;
+            }
+        }
+
+        return rates;
     }
 
     private static string ConvertToYahooSymbol(string ticker, StockMarket market)
