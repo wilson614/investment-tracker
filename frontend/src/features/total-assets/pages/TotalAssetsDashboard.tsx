@@ -3,7 +3,7 @@ import { AssetCategorySummary } from '../components/AssetCategorySummary';
 import { AssetsBreakdownPieChart } from '../components/AssetsBreakdownPieChart';
 import { TotalAssetsBanner } from '../components/TotalAssetsBanner';
 import { useTotalAssets } from '../hooks/useTotalAssets';
-import { AllocationForm } from '../../fund-allocations/components/AllocationForm';
+import { AllocationFormDialog } from '../../fund-allocations/components/AllocationFormDialog';
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
 import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocations';
 
@@ -18,23 +18,11 @@ export function TotalAssetsDashboard() {
     error: allocationsError,
   } = useFundAllocations();
   const [editingAllocation, setEditingAllocation] = useState<AllocationSummaryItem | undefined>(undefined);
-
-  const handleAllocationSubmit = async (data: {
-    purpose: AllocationSummaryItem['purpose'];
-    amount: number;
-    note?: string;
-  }) => {
-    if (editingAllocation) {
-      await updateAllocation(editingAllocation.id, data);
-      setEditingAllocation(undefined);
-      return;
-    }
-
-    await createAllocation(data);
-  };
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleAllocationEdit = (allocation: AllocationSummaryItem) => {
     setEditingAllocation(allocation);
+    setIsDialogOpen(true);
   };
 
   const handleAllocationDelete = async (id: string) => {
@@ -103,9 +91,21 @@ export function TotalAssetsDashboard() {
       </div>
 
       <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">銀行資金配置</h2>
-          <p className="text-sm text-[var(--text-muted)] mt-1">管理銀行資產用途與未配置金額</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">銀行資金配置</h2>
+            <p className="text-sm text-[var(--text-muted)] mt-1">管理銀行資產用途與未配置金額</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingAllocation(undefined);
+              setIsDialogOpen(true);
+            }}
+            className="btn-accent px-4 py-2 whitespace-nowrap"
+          >
+            新增配置
+          </button>
         </div>
 
         {allocationsError ? (
@@ -114,31 +114,35 @@ export function TotalAssetsDashboard() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AllocationSummary
-            allocations={allocationItems}
-            bankTotal={assetsData?.bankTotal ?? 0}
-            unallocatedAmount={unallocated}
-            onEdit={handleAllocationEdit}
-            onDelete={(id) => {
-              void handleAllocationDelete(id);
-            }}
-          />
-
-          <div className="space-y-3">
-            <AllocationForm onSubmit={handleAllocationSubmit} initialData={editingAllocation} />
-            {editingAllocation ? (
-              <button
-                type="button"
-                onClick={() => setEditingAllocation(undefined)}
-                className="btn-dark w-full py-2.5"
-              >
-                取消編輯
-              </button>
-            ) : null}
-          </div>
-        </div>
+        <AllocationSummary
+          allocations={allocationItems}
+          bankTotal={assetsData?.bankTotal ?? 0}
+          unallocatedAmount={unallocated}
+          onEdit={handleAllocationEdit}
+          onDelete={(id) => {
+            void handleAllocationDelete(id);
+          }}
+        />
       </section>
+
+      <AllocationFormDialog
+        isOpen={isDialogOpen}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingAllocation(undefined);
+        }}
+        onSubmit={async (data) => {
+          if (editingAllocation) {
+            await updateAllocation(editingAllocation.id, data);
+          } else {
+            await createAllocation(data);
+          }
+
+          setIsDialogOpen(false);
+          setEditingAllocation(undefined);
+        }}
+        initialData={editingAllocation}
+      />
     </div>
   );
 }

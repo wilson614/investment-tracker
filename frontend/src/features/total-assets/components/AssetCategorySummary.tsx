@@ -48,7 +48,7 @@ export function AssetCategorySummary({ data, isLoading }: AssetCategorySummaryPr
       colorClass: 'text-blue-400',
       bgClass: 'bg-blue-400/10',
       barClass: 'bg-blue-400',
-      description: '台幣活存與定存',
+      description: '活存與定期存款',
       to: '/bank-accounts',
     },
   ] as const;

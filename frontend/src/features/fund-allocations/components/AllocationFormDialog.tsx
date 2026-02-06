@@ -5,8 +5,8 @@ import type { AllocationPurpose } from '../types';
 interface AllocationFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { purpose: string; amount: number; note?: string }) => Promise<void>;
-  initialData?: { purpose: string; amount: number; note?: string };
+  onSubmit: (data: { purpose: AllocationPurpose; amount: number; note?: string }) => Promise<void> | void;
+  initialData?: { purpose: AllocationPurpose; amount: number; note?: string };
 }
 
 const PURPOSE_OPTIONS: ReadonlyArray<{ value: AllocationPurpose; label: string }> = [
@@ -19,14 +19,9 @@ const PURPOSE_OPTIONS: ReadonlyArray<{ value: AllocationPurpose; label: string }
 ];
 
 const DEFAULT_PURPOSE: AllocationPurpose = 'EmergencyFund';
-const PURPOSE_VALUE_SET = new Set<string>(PURPOSE_OPTIONS.map((option) => option.value));
 
-function resolvePurpose(value?: string): AllocationPurpose {
-  if (value && PURPOSE_VALUE_SET.has(value)) {
-    return value as AllocationPurpose;
-  }
-
-  return DEFAULT_PURPOSE;
+function resolvePurpose(value?: AllocationPurpose): AllocationPurpose {
+  return value ?? DEFAULT_PURPOSE;
 }
 
 export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }: AllocationFormDialogProps) {
