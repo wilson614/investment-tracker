@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Wallet, AlertCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
+import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
 import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
@@ -20,6 +21,8 @@ export function BankAccountsPage() {
     refetch
   } = useBankAccounts();
 
+  const { summary: assetsSummary } = useTotalAssets();
+
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,9 +31,9 @@ export function BankAccountsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
 
-  const totalAssets = bankAccounts.reduce((sum, acc) => sum + acc.totalAssets, 0);
-  const totalYearlyInterest = bankAccounts.reduce((sum, acc) => sum + acc.yearlyInterest, 0);
-  const totalMonthlyInterest = bankAccounts.reduce((sum, acc) => sum + acc.monthlyInterest, 0);
+  const totalAssets = assetsSummary?.bankTotal ?? 0;
+  const totalYearlyInterest = assetsSummary?.totalYearlyInterest ?? 0;
+  const totalMonthlyInterest = assetsSummary?.totalMonthlyInterest ?? 0;
 
   const handleCreate = () => {
     setEditingAccount(undefined);
