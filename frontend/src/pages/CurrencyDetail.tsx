@@ -622,7 +622,18 @@ export default function CurrencyDetail() {
             <p className="text-[var(--text-muted)] text-center py-12 text-base">尚無交易紀錄</p>
           ) : (
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-              <table className="table-dark">
+              <table className={`table-dark ${isHomeCurrencyLedger ? 'table-fixed' : ''}`}>
+                <colgroup>
+                  <col className="w-12" />
+                  <col className="w-32" />
+                  <col className="w-28" />
+                  <col className="w-40" />
+                  {!isHomeCurrencyLedger && <col className="w-40" />}
+                  {!isHomeCurrencyLedger && <col className="w-32" />}
+                  <col className="w-40" />
+                  <col />
+                  <col className="w-24" />
+                </colgroup>
                 <thead className="sticky top-0 z-10">
                   <tr>
                     <th className="w-12 text-center">
@@ -635,7 +646,7 @@ export default function CurrencyDetail() {
                     </th>
                     <th>日期</th>
                     <th>類型</th>
-                    <th className="text-right">外幣金額</th>
+                    <th className="text-right">{isHomeCurrencyLedger ? '金額' : '外幣金額'}</th>
                     {!isHomeCurrencyLedger && (
                       <th className="text-right">台幣金額</th>
                     )}

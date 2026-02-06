@@ -93,3 +93,25 @@ The following items were identified during 005 review and deferred to 006:
   - Update `TotalAssetsSummaryResponse` to include category breakdowns
   - Frontend: Add clickable category sections with navigation to filtered views
 - **Suggested Category Names**: EmergencyFund, FamilyDeposit, General, Savings
+
+### 3. Currency Display Consistency
+- **Problem**: Inconsistent currency formatting across bank accounts feature
+- **Current State**: Mixing Intl.NumberFormat (with currency style), TWD suffix, $ prefix
+- **Required Changes**:
+  - Audit all currency display in bank-accounts feature
+  - Create unified formatting approach
+  - Apply consistent pattern across BankAccountCard, BankAccountsPage, InterestEstimationCard
+
+### 4. Foreign Currency Bank Account Support
+- **Problem**: Bank accounts currently only support TWD
+- **Required Changes**:
+  - Add currency field to BankAccount entity (Migration required)
+  - Update BankAccountForm to allow currency selection
+  - Handle foreign currency display in total assets
+
+### 5. InterestCap Display Logic Fix
+- **Problem**: `interestCap` uses truthy check, so value of 0 displays as "無上限"
+- **Source**: Code Review suggestion from 005 branch
+- **Location**: `BankAccountCard.tsx:63`
+- **Required Changes**:
+  - Change `account.interestCap ? ...` to `account.interestCap != null ? ...`
