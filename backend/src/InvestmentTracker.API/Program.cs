@@ -161,6 +161,7 @@ builder.Services.AddScoped<IHistoricalExchangeRateCacheRepository, HistoricalExc
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IBenchmarkAnnualReturnRepository, BenchmarkAnnualReturnRepository>();
+builder.Services.AddScoped<IFundAllocationRepository, FundAllocationRepository>();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();

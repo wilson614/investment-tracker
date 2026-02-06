@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<HistoricalExchangeRateCache> HistoricalExchangeRateCaches => Set<HistoricalExchangeRateCache>();
     public DbSet<UserBenchmark> UserBenchmarks => Set<UserBenchmark>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+    public DbSet<FundAllocation> FundAllocations => Set<FundAllocation>();
     public DbSet<MonthlyNetWorthSnapshot> MonthlyNetWorthSnapshots => Set<MonthlyNetWorthSnapshot>();
     public DbSet<TransactionPortfolioSnapshot> TransactionPortfolioSnapshots => Set<TransactionPortfolioSnapshot>();
     public DbSet<BenchmarkAnnualReturn> BenchmarkAnnualReturns => Set<BenchmarkAnnualReturn>();
@@ -79,6 +80,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<BankAccount>()
             .HasQueryFilter(ba => ba.IsActive &&
                 (_currentUserService == null || ba.UserId == _currentUserService.UserId));
+
+        // FundAllocation：依使用者過濾
+        modelBuilder.Entity<FundAllocation>()
+            .HasQueryFilter(fa => _currentUserService == null || fa.UserId == _currentUserService.UserId);
 
         // StockTransaction：軟刪除過濾
         modelBuilder.Entity<StockTransaction>()
