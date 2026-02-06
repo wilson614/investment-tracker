@@ -19,9 +19,9 @@ export function TotalAssetsBanner({ data, isLoading }: TotalAssetsBannerProps) {
 
   const grandTotal = data?.grandTotal ?? 0;
   const bankTotal = data?.bankTotal ?? 0;
-  const allocations = data?.allocations ?? [];
-  const allocatedTotal = allocations.reduce((sum, item) => sum + item.amount, 0);
-  const unallocatedAmount = data?.unallocatedAmount ?? bankTotal - allocatedTotal;
+  const allocatedTotal = data?.totalAllocated ?? 0;
+  const unallocatedAmount = data?.unallocated ?? bankTotal - allocatedTotal;
+  const allocationBreakdown = data?.allocationBreakdown ?? [];
 
   return (
     <div className="card-dark p-8 bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] border-[var(--border-color)] space-y-5">
@@ -59,26 +59,29 @@ export function TotalAssetsBanner({ data, isLoading }: TotalAssetsBannerProps) {
         </div>
       </div>
 
-      {allocations.length > 0 ? (
+      {allocationBreakdown.length > 0 ? (
         <div className="space-y-2">
           <p className="text-sm font-medium text-[var(--text-secondary)]">用途分配</p>
           <div className="space-y-2">
-            {allocations.map((allocation) => (
-              <div key={allocation.purpose} className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[var(--text-secondary)]">{allocation.purposeDisplay}</span>
-                  <span className="text-[var(--text-primary)] font-medium">
-                    {formatCurrency(allocation.amount, 'TWD')} ({allocation.percentage.toFixed(1)}%)
-                  </span>
+            {allocationBreakdown.map((allocation) => {
+              const percentage = bankTotal > 0 ? (allocation.amount / bankTotal) * 100 : 0;
+              return (
+                <div key={allocation.purpose} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">{allocation.purposeDisplayName}</span>
+                    <span className="text-[var(--text-primary)] font-medium">
+                      {formatCurrency(allocation.amount, 'TWD')} ({percentage.toFixed(1)}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--accent-peach)]"
+                      style={{ width: `${Math.min(Math.max(percentage, 0), 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-[var(--accent-peach)]"
-                    style={{ width: `${Math.min(Math.max(allocation.percentage, 0), 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
