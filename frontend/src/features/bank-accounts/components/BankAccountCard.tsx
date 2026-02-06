@@ -1,5 +1,8 @@
-import { Edit, Trash2 } from 'lucide-react';
+import { AlertTriangle, Edit, Trash2 } from 'lucide-react';
+import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount } from '../types';
+
+const EXCHANGE_RATE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 interface BankAccountCardProps {
   account: BankAccount;
@@ -16,9 +19,11 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
     });
   };
 
-  const formatCurrency = (value: number) => {
-    return Math.round(value).toLocaleString('zh-TW'); // TWD usually no decimals
-  };
+  const isForeignCurrency = account.currency !== 'TWD';
+  // TODO: Replace with dedicated exchange-rate timestamp once backend provides it.
+  const lastUpdatedTime = new Date(account.updatedAt).getTime();
+  const isExchangeRateStale =
+    isForeignCurrency && Number.isFinite(lastUpdatedTime) && Date.now() - lastUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
@@ -46,10 +51,18 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
         )}
       </div>
 
+      {isExchangeRateStale && (
+        <div className="mb-4 inline-flex items-center gap-1 text-xs text-[var(--color-warning)]">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          <span>匯率可能已過時</span>
+        </div>
+      )}
+
       <div className="mb-6">
         <p className="text-sm text-[var(--text-muted)] mb-1">總資產</p>
         <p className="text-2xl font-bold text-[var(--text-primary)] number-display">
-          {formatCurrency(account.totalAssets)} <span className="text-sm font-normal text-[var(--text-muted)]">TWD</span>
+          {formatCurrency(account.totalAssets, account.currency)}{' '}
+          <span className="text-sm font-normal text-[var(--text-muted)]">{account.currency}</span>
         </p>
       </div>
 
@@ -60,13 +73,14 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
             {formatNumber(account.interestRate)}%
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            額度上限：{account.interestCap != null ? `$${formatCurrency(account.interestCap)}` : '無上限'}
+            額度上限：{account.interestCap != null ? formatCurrency(account.interestCap, account.currency) : '無上限'}
           </p>
         </div>
         <div>
           <p className="text-[var(--text-muted)] mb-1">預估月息</p>
           <p className="font-medium text-[var(--accent-peach)] number-display">
-            {formatNumber(account.monthlyInterest, 0)} <span className="text-xs text-[var(--text-muted)]">TWD</span>
+            {formatCurrency(account.monthlyInterest, account.currency)}{' '}
+            <span className="text-xs text-[var(--text-muted)]">{account.currency}</span>
           </p>
         </div>
       </div>

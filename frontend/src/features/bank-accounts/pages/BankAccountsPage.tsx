@@ -6,6 +6,7 @@ import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
 import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
 import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
+import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
 export function BankAccountsPage() {
@@ -71,13 +72,6 @@ export function BankAccountsPage() {
     }
   };
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('zh-TW', {
-      style: 'currency',
-      currency: 'TWD',
-      maximumFractionDigits: 0
-    }).format(val);
-  };
 
   if (isLoading && bankAccounts.length === 0) {
     return <LoadingSpinner />;
@@ -116,7 +110,7 @@ export function BankAccountsPage() {
             </span>
           </div>
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4">
-            {formatCurrency(totalAssets)}
+            {formatCurrency(totalAssets, 'TWD')}
           </div>
         </div>
 
@@ -141,15 +135,28 @@ export function BankAccountsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {bankAccounts.map((account) => (
-            <BankAccountCard
-              key={account.id}
-              account={account}
-              onEdit={handleEdit}
-              onDelete={handleDeleteClick}
-            />
-          ))}
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {bankAccounts.map((account) => (
+              <span
+                key={`currency-${account.id}`}
+                className="inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
+              >
+                {account.bankName} · {account.currency}
+              </span>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {bankAccounts.map((account) => (
+              <BankAccountCard
+                key={account.id}
+                account={account}
+                onEdit={handleEdit}
+                onDelete={handleDeleteClick}
+              />
+            ))}
+          </div>
         </div>
       )}
 

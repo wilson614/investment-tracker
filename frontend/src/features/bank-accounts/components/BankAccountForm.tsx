@@ -2,6 +2,16 @@ import { useState, useEffect } from 'react';
 import { X, Save, Building2 } from 'lucide-react';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
+const CURRENCY_OPTIONS = [
+  { value: 'TWD', label: '新台幣' },
+  { value: 'USD', label: '美元' },
+  { value: 'EUR', label: '歐元' },
+  { value: 'JPY', label: '日圓' },
+  { value: 'CNY', label: '人民幣' },
+  { value: 'GBP', label: '英鎊' },
+  { value: 'AUD', label: '澳幣' },
+] as const;
+
 interface BankAccountFormProps {
   initialData?: BankAccount;
   onSubmit: (data: CreateBankAccountRequest | UpdateBankAccountRequest) => Promise<boolean>;
@@ -12,6 +22,7 @@ interface BankAccountFormProps {
 export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: BankAccountFormProps) {
   const [bankName, setBankName] = useState('');
   const [totalAssets, setTotalAssets] = useState<string>('');
+  const [currency, setCurrency] = useState('TWD');
   const [interestRate, setInterestRate] = useState<string>('');
   const [interestCap, setInterestCap] = useState<string>('');
   const [note, setNote] = useState('');
@@ -21,9 +32,12 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
     if (initialData) {
       setBankName(initialData.bankName);
       setTotalAssets(initialData.totalAssets.toString());
+      setCurrency(initialData.currency || 'TWD');
       setInterestRate(initialData.interestRate.toString());
       setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
       setNote(initialData.note || '');
+    } else {
+      setCurrency('TWD');
     }
     setErrorMessage('');
   }, [initialData]);
@@ -60,7 +74,8 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
       totalAssets: assets,
       interestRate: rate,
       interestCap: cap,
-      note: note.trim() || undefined
+      note: note.trim() || undefined,
+      currency
     };
 
     await onSubmit(data);
@@ -106,7 +121,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              總資產 (TWD)
+              總資產 ({currency})
             </label>
             <input
               type="number"
@@ -117,6 +132,24 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               min="0"
               step="1"
             />
+          </div>
+
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              幣別
+            </label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="input-dark w-full"
+              required
+            >
+              {CURRENCY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.value} - {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -136,7 +169,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
             </div>
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                優惠上限 (TWD)
+                優惠上限 ({currency})
               </label>
               <input
                 type="number"
