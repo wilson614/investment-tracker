@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Info } from 'lucide-react';
 import { currencyLedgerApi } from '../services/api';
 import { CurrencyLedgerCard } from '../components/currency/CurrencyLedgerCard';
 import { Skeleton } from '../components/common';
@@ -119,16 +120,10 @@ export default function Currency() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">帳本</h1>
-          <p className="text-base text-[var(--text-secondary)] mt-2">
-            帳本會隨投資組合自動建立，無需手動新增。
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/portfolio')}
-            className="btn-dark mt-4"
-          >
-            前往投資組合
-          </button>
+          <div className="mt-2 flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <Info className="h-4 w-4" aria-hidden="true" />
+            <span>帳本會隨投資組合自動建立</span>
+          </div>
         </div>
 
         {error && (
