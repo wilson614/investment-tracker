@@ -586,12 +586,6 @@ export function PortfolioPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowCreatePortfolio(true)}
-              className="btn-accent px-3 py-1.5 text-sm"
-            >
-              + 建立
-            </button>
             {/* FR-130: Export Positions button removed - only Export Transactions remains in transaction history section */}
             <button
               type="button"

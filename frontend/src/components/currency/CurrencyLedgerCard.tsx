@@ -46,6 +46,7 @@ const loadCachedRate = (from: string, to: string): CachedRate | null => {
 
 export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps) {
   const isHomeCurrencyLedger = ledger.ledger.currencyCode === ledger.ledger.homeCurrency;
+  const isTwdLedger = ledger.ledger.currencyCode === 'TWD';
 
   // 先用快取初始化，避免初次 render 因等待 API 而閃爍。
   const cachedData = loadCachedRate(ledger.ledger.currencyCode, ledger.ledger.homeCurrency);
@@ -67,6 +68,10 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
   const formatTWD = (value: number | null | undefined) => {
     if (value == null || isNaN(value)) return '-';
     return Math.round(value).toLocaleString('zh-TW');
+  };
+
+  const formatLedgerCurrency = (value: number | null | undefined, decimals = 2) => {
+    return isTwdLedger ? formatTWD(value) : formatNumber(value, decimals);
   };
 
   const formatTime = (date: Date) => {
@@ -142,7 +147,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
           className={`text-2xl font-bold number-display ${ledger.balance < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'}`}
           title={ledger.balance < 0 ? '餘額為負' : undefined}
         >
-          {formatNumber(ledger.balance, 2)}
+          {formatLedgerCurrency(ledger.balance, 2)}
         </p>
         {twdEquivalent !== null ? (
           <p className="text-sm text-[var(--text-muted)] mt-1">
@@ -179,7 +184,7 @@ export function CurrencyLedgerCard({ ledger, onClick }: CurrencyLedgerCardProps)
           <div className="flex justify-between">
             <span className="text-[var(--text-muted)]">利息收入:</span>
             <span className="font-medium text-[var(--accent-peach)] number-display">
-              {formatNumber(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
+              {formatLedgerCurrency(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
             </span>
           </div>
         )}

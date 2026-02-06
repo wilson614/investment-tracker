@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, Plus, DollarSign } from 'lucide-react';
 import type { Portfolio } from '../../types';
 import { usePortfolio } from '../../contexts/PortfolioContext';
-import { CURRENCY_LABELS } from '../../constants';
+import { COMMON_CURRENCIES, CURRENCY_LABELS } from '../../constants';
 
 interface PortfolioSelectorProps {
   onCreateNew: () => void;
@@ -17,6 +17,11 @@ export function PortfolioSelector({
   const [isOpen, setIsOpen] = useState(false);
 
   const currentPortfolio = portfolios.find((p) => p.id === currentPortfolioId);
+
+  const portfolioCurrencies = new Set(portfolios.map((p) => p.baseCurrency));
+  const allCurrenciesHavePortfolios = COMMON_CURRENCIES.every((currency) =>
+    portfolioCurrencies.has(currency)
+  );
 
   const getPortfolioLabel = (portfolio: Portfolio) => {
     return CURRENCY_LABELS[portfolio.baseCurrency] || portfolio.baseCurrency;
@@ -81,10 +86,16 @@ export function PortfolioSelector({
               <button
                 type="button"
                 onClick={() => {
+                  if (allCurrenciesHavePortfolios) return;
                   onCreateNew();
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--accent-peach)]"
+                disabled={allCurrenciesHavePortfolios}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors text-[var(--accent-peach)] ${
+                  allCurrenciesHavePortfolios
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-[var(--bg-tertiary)]'
+                }`}
               >
                 <Plus className="w-4 h-4" />
                 <span className="text-sm font-medium">新增投資組合</span>

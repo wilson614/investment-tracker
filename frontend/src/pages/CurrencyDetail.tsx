@@ -122,7 +122,7 @@ export default function CurrencyDetail() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSingleDeleteModal, setShowSingleDeleteModal] = useState(false);
   const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<CurrencyTransaction | null>(null);
@@ -389,6 +389,12 @@ export default function CurrencyDetail() {
   }
 
   const isHomeCurrencyLedger = ledger.ledger.currencyCode === ledger.ledger.homeCurrency;
+  const isTwdLedger = ledger.ledger.currencyCode === 'TWD';
+
+  const formatLedgerCurrency = (value: number | null | undefined, decimals = 2) => {
+    return isTwdLedger ? formatTWD(value) : formatNumber(value, decimals);
+  };
+
   const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length;
 
   return (
@@ -453,7 +459,7 @@ export default function CurrencyDetail() {
                 className={`text-lg font-bold number-display ${ledger.balance < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'}`}
                 title={ledger.balance < 0 ? '餘額為負' : undefined}
               >
-                {formatNumber(ledger.balance, 2)} {ledger.ledger.currencyCode}
+                {formatLedgerCurrency(ledger.balance, 2)} {ledger.ledger.currencyCode}
               </p>
               {!isHomeCurrencyLedger && currentRate && ledger.balance > 0 && (
                 <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -481,7 +487,7 @@ export default function CurrencyDetail() {
               <div className="metric-card">
                 <p className="text-sm text-[var(--text-muted)] mb-1">利息收入</p>
                 <p className="text-lg font-bold text-[var(--accent-peach)] number-display">
-                  {formatNumber(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
+                  {formatLedgerCurrency(ledger.totalInterest, 2)} {ledger.ledger.currencyCode}
                 </p>
               </div>
             )}
@@ -499,7 +505,7 @@ export default function CurrencyDetail() {
                   </div>
                 </div>
                 <p className="text-lg font-bold text-[var(--text-primary)] number-display">
-                  {formatNumber(ledger.totalSpentOnStocks, 2)} {ledger.ledger.currencyCode}
+                  {formatLedgerCurrency(ledger.totalSpentOnStocks, 2)} {ledger.ledger.currencyCode}
                 </p>
               </div>
             )}
@@ -664,7 +670,7 @@ export default function CurrencyDetail() {
                           </span>
                         </td>
                         <td className="text-right number-display whitespace-nowrap">
-                          {formatNumber(tx.foreignAmount, 4)}
+                          {formatLedgerCurrency(tx.foreignAmount, 4)}
                         </td>
                         <td className="text-right number-display whitespace-nowrap">
                           {tx.homeAmount ? formatNumber(tx.homeAmount) : '-'}
@@ -673,7 +679,7 @@ export default function CurrencyDetail() {
                           {tx.exchangeRate ? formatNumber(tx.exchangeRate, 4) : '-'}
                         </td>
                         <td className="text-right number-display whitespace-nowrap">
-                          {formatNumber(runningBalances.get(tx.id) ?? 0, 4)}
+                          {formatLedgerCurrency(runningBalances.get(tx.id) ?? 0, 4)}
                         </td>
                         <td className="text-[var(--text-muted)]">
                           {tx.notes || '-'}

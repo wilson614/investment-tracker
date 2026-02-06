@@ -1,4 +1,5 @@
 import { TrendingUp, Landmark } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
 import type { TotalAssetsSummary } from '../types';
 
@@ -8,6 +9,8 @@ interface AssetCategorySummaryProps {
 }
 
 export function AssetCategorySummary({ data, isLoading }: AssetCategorySummaryProps) {
+  const navigate = useNavigate();
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -35,6 +38,7 @@ export function AssetCategorySummary({ data, isLoading }: AssetCategorySummaryPr
       bgClass: 'bg-[var(--accent-peach-soft)]',
       barClass: 'bg-[var(--accent-peach)]',
       description: '股票與外幣資產',
+      to: '/portfolio',
     },
     {
       title: '銀行存款',
@@ -45,13 +49,18 @@ export function AssetCategorySummary({ data, isLoading }: AssetCategorySummaryPr
       bgClass: 'bg-blue-400/10',
       barClass: 'bg-blue-400',
       description: '台幣活存與定存',
+      to: '/bank-accounts',
     },
-  ];
+  ] as const;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {items.map((item) => (
-        <div key={item.title} className="card-dark p-6 transition-transform hover:scale-[1.01]">
+        <div
+          key={item.title}
+          className="card-dark p-6 transition-transform hover:scale-[1.01] cursor-pointer"
+          onClick={() => navigate(item.to)}
+        >
           <div className="flex justify-between items-start mb-4">
             <div>
               <h3 className="text-[var(--text-secondary)] font-medium mb-1">{item.title}</h3>
