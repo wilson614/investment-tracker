@@ -92,6 +92,11 @@ public record AllocationSummary
     public IReadOnlyList<FundAllocationResponse> Allocations { get; init; } = [];
 }
 
+public record AllocationBreakdownResponse(
+    AllocationPurpose Purpose,
+    string PurposeDisplayName,
+    decimal Amount);
+
 public record TotalAssetsSummaryResponse(
     decimal InvestmentTotal,      // 投資總額 (股票市值)
     decimal BankTotal,            // 銀行總額
@@ -99,5 +104,8 @@ public record TotalAssetsSummaryResponse(
     decimal InvestmentPercentage, // 投資佔比 %
     decimal BankPercentage,       // 銀行佔比 %
     decimal TotalMonthlyInterest, // 銀行總月利息
-    decimal TotalYearlyInterest   // 銀行總年利息
+    decimal TotalYearlyInterest,  // 銀行總年利息
+    decimal TotalAllocated,       // 資產配置總額
+    decimal Unallocated,          // 未配置餘額
+    IReadOnlyList<AllocationBreakdownResponse>? AllocationBreakdown // 配置明細
 );

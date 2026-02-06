@@ -1,6 +1,12 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Services;
+
+public record AllocationBreakdown(
+    AllocationPurpose Purpose,
+    string PurposeDisplayName,
+    decimal Amount);
 
 public record TotalAssetsSummary(
     decimal InvestmentTotal,
@@ -9,7 +15,10 @@ public record TotalAssetsSummary(
     decimal InvestmentPercentage,
     decimal BankPercentage,
     decimal TotalMonthlyInterest,
-    decimal TotalYearlyInterest);
+    decimal TotalYearlyInterest,
+    decimal TotalAllocated = 0m,
+    decimal Unallocated = 0m,
+    IReadOnlyList<AllocationBreakdown>? AllocationBreakdown = null);
 
 public class TotalAssetsService(InterestEstimationService interestEstimationService)
 {

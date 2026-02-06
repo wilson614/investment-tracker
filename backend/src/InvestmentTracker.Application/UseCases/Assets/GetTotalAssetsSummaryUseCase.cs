@@ -22,6 +22,7 @@ public class GetTotalAssetsSummaryUseCase(
     ITwseStockHistoricalPriceService twseStockHistoricalPriceService,
     IYahooHistoricalPriceService yahooHistoricalPriceService,
     IBankAccountRepository bankAccountRepository,
+    IFundAllocationRepository fundAllocationRepository,
     TotalAssetsService totalAssetsService,
     ICurrentUserService currentUserService)
 {
@@ -60,6 +61,16 @@ public class GetTotalAssetsSummaryUseCase(
             bankAccounts,
             bankExchangeRates);
 
+        var fundAllocations = await fundAllocationRepository.GetByUserIdAsync(userId, cancellationToken);
+        var totalAllocated = fundAllocations.Sum(x => x.Amount);
+        var unallocated = summary.BankTotal - totalAllocated;
+        var allocationBreakdown = fundAllocations
+            .Select(x => new AllocationBreakdownResponse(
+                Purpose: x.Purpose,
+                PurposeDisplayName: FundAllocationResponse.GetPurposeDisplayName(x.Purpose),
+                Amount: x.Amount))
+            .ToList();
+
         return new TotalAssetsSummaryResponse(
             InvestmentTotal: summary.InvestmentTotal,
             BankTotal: summary.BankTotal,
@@ -67,7 +78,10 @@ public class GetTotalAssetsSummaryUseCase(
             InvestmentPercentage: summary.InvestmentPercentage,
             BankPercentage: summary.BankPercentage,
             TotalMonthlyInterest: summary.TotalMonthlyInterest,
-            TotalYearlyInterest: summary.TotalYearlyInterest);
+            TotalYearlyInterest: summary.TotalYearlyInterest,
+            TotalAllocated: totalAllocated,
+            Unallocated: unallocated,
+            AllocationBreakdown: allocationBreakdown);
     }
 
     private async Task<decimal> CalculatePortfolioMarketValueHomeAsync(
