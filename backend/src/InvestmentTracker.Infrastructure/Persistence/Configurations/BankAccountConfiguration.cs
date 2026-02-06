@@ -28,6 +28,11 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
             .IsRequired()
             .HasPrecision(18, 2);
 
+        builder.Property(ba => ba.Currency)
+            .IsRequired()
+            .HasMaxLength(3)
+            .HasDefaultValue("TWD");
+
         builder.Property(ba => ba.Note)
             .HasMaxLength(500);
 

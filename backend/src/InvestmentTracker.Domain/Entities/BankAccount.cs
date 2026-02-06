@@ -12,6 +12,7 @@ public class BankAccount : BaseEntity
     public decimal TotalAssets { get; private set; }
     public decimal InterestRate { get; private set; }
     public decimal InterestCap { get; private set; }
+    public string Currency { get; private set; } = "TWD";
     public string? Note { get; private set; }
     public bool IsActive { get; private set; } = true;
 
@@ -27,7 +28,8 @@ public class BankAccount : BaseEntity
         decimal totalAssets = 0m,
         decimal interestRate = 0m,
         decimal interestCap = 0m,
-        string? note = null)
+        string? note = null,
+        string currency = "TWD")
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
@@ -36,6 +38,7 @@ public class BankAccount : BaseEntity
         SetBankName(bankName);
         SetTotalAssets(totalAssets);
         SetInterestSettings(interestRate, interestCap);
+        SetCurrency(currency);
         SetNote(note);
     }
 
@@ -68,6 +71,14 @@ public class BankAccount : BaseEntity
 
         InterestRate = Math.Round(interestRate, 4);
         InterestCap = Math.Round(interestCap, 2);
+    }
+
+    public void SetCurrency(string currency)
+    {
+        if (string.IsNullOrWhiteSpace(currency) || currency.Length != 3)
+            throw new ArgumentException("Currency code must be a 3-letter ISO code", nameof(currency));
+
+        Currency = currency.ToUpperInvariant();
     }
 
     public void SetNote(string? note)
