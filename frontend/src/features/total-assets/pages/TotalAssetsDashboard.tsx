@@ -82,11 +82,12 @@ export function TotalAssetsDashboard() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h1 className="text-2xl font-bold text-[var(--text-primary)]">總資產儀表板</h1>
+
       {/* ROW 1: 總金額 + 資金配置效率 並排 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
         <section className="card-dark p-6 h-full flex flex-col justify-center">
-          <p className="text-sm text-[var(--text-muted)]">總資產儀表板</p>
-          <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)] mt-1">
+          <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
             {formatCurrency(totalAssets, 'TWD')}
           </p>
         </section>

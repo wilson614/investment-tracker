@@ -1,3 +1,5 @@
+import { Info } from 'lucide-react';
+
 interface CompactMetricRowProps {
   label: string;
   value: number;
@@ -18,11 +20,19 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
 
   return (
     <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs text-[var(--text-muted)]">{label}</span>
-        <span className="text-sm font-mono font-semibold text-[var(--text-primary)]">
-          {displayPercentage}
-        </span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-[var(--text-muted)]">{label}</span>
+          <div className="relative group">
+            <Info className="w-3.5 h-3.5 text-[var(--text-muted)] cursor-help" aria-label={description} />
+            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-max max-w-64">
+              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] leading-relaxed whitespace-normal">
+                {description}
+              </div>
+            </div>
+          </div>
+        </div>
+        <span className="text-sm font-mono font-semibold text-[var(--text-primary)]">{displayPercentage}</span>
       </div>
       <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
         <div
@@ -33,7 +43,6 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
           }}
         />
       </div>
-      <p className="text-[10px] text-[var(--text-muted)] leading-tight">{description}</p>
     </div>
   );
 }

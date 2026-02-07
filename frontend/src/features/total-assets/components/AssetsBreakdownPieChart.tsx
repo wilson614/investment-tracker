@@ -132,7 +132,7 @@ export function AssetsBreakdownPieChart({
 
   return (
     <div className="card-dark p-6 h-[400px]">
-      <h3 className="text-[var(--text-secondary)] font-medium mb-4">資產配置分析</h3>
+      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">資產配置分析</h3>
       <div className="w-full h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

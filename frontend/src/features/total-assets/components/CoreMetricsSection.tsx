@@ -11,7 +11,7 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
 
   return (
     <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-full">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)]">資金配置效率</h3>
+      <h3 className="text-lg font-semibold text-[var(--text-primary)]">資金配置效率</h3>
 
       <div className="space-y-2.5">
         <CompactMetricRow
