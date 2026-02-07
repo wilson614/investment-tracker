@@ -23,13 +23,7 @@ export function TotalAssetsDashboard() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAllocation, setEditingAllocation] = useState<AllocationSummaryItem | null>(null);
 
-  const nonDisposableAllocations = allocations
-    .filter((allocation) => !allocation.isDisposable)
-    .map((allocation) => ({
-      id: allocation.id,
-      purposeDisplayName: allocation.purposeDisplayName,
-      amount: allocation.amount,
-    }));
+  const nonDisposableAllocationCount = allocations.filter((allocation) => !allocation.isDisposable).length;
 
   const allocationItems: AllocationSummaryItem[] = allocations.map((allocation) => ({
     id: allocation.id,
@@ -88,33 +82,33 @@ export function TotalAssetsDashboard() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* 頂部：標題 + 總資產金額 */}
-      <div className="card-dark p-6">
-        <p className="text-sm text-[var(--text-muted)]">總資產儀表板</p>
-        <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)] mt-1">
-          {formatCurrency(totalAssets, 'TWD')}
-        </p>
-      </div>
+      {/* ROW 1: 總金額 + 資金配置效率 並排 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
+        <section className="card-dark p-6 h-full flex flex-col justify-center">
+          <p className="text-sm text-[var(--text-muted)]">總資產儀表板</p>
+          <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)] mt-1">
+            {formatCurrency(totalAssets, 'TWD')}
+          </p>
+        </section>
 
-      {/* 核心指標 + 圓餅圖 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         <CoreMetricsSection
           data={{
             investmentRatio: correctedInvestmentRatio,
             stockRatio: assetsData?.stockRatio ?? 0,
           }}
         />
-
-        <AssetsBreakdownPieChart
-          portfolioMarketValue={investmentTotal}
-          cashBalance={assetsData?.cashBalance ?? 0}
-          disposableDeposit={disposableDeposit}
-          nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
-          isLoading={isLoading}
-        />
       </div>
 
-      {/* 下方左右兩欄：可動用資產 2/3、不可動用資產 1/3 */}
+      {/* ROW 2: 圓餅圖獨立 */}
+      <AssetsBreakdownPieChart
+        portfolioMarketValue={investmentTotal}
+        cashBalance={assetsData?.cashBalance ?? 0}
+        disposableDeposit={disposableDeposit}
+        nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
+        isLoading={isLoading}
+      />
+
+      {/* ROW 3: 可動用 + 不可動用（維持原本配置） */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div className="lg:col-span-2 h-full">
           <DisposableAssetsSection
@@ -128,7 +122,7 @@ export function TotalAssetsDashboard() {
         <div className="lg:col-span-1 h-full">
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
-            nonDisposableAllocations={nonDisposableAllocations}
+            allocationCount={nonDisposableAllocationCount}
           />
         </div>
       </div>
@@ -140,7 +134,7 @@ export function TotalAssetsDashboard() {
         </div>
       ) : null}
 
-      <div className="space-y-4">
+      <div id="allocation-management-section" className="space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">資金配置管理</h2>
           <button
