@@ -1,23 +1,62 @@
 import { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
-import type { TotalAssetsSummary } from '../types';
+import { formatCurrency } from '../../../utils/currency';
 
 interface AssetsBreakdownPieChartProps {
-  data?: TotalAssetsSummary;
+  portfolioMarketValue: number;
+  cashBalance: number;
+  disposableDeposit: number;
+  nonDisposableDeposit: number;
   isLoading: boolean;
 }
 
-const COLORS = ['var(--accent-peach)', '#60a5fa']; // investment (peach) and bank (blue-400)
+interface ChartSlice {
+  key: 'portfolioMarketValue' | 'cashBalance' | 'disposableDeposit' | 'nonDisposableDeposit';
+  name: string;
+  value: number;
+  color: string;
+  [key: string]: string | number;
+}
 
-export function AssetsBreakdownPieChart({ data, isLoading }: AssetsBreakdownPieChartProps) {
-  const chartData = useMemo(() => {
-    if (!data) return [];
-    return [
-      { name: '投資部位', value: data.investmentTotal },
-      { name: '銀行存款', value: data.bankTotal },
-    ].filter(item => item.value > 0);
-  }, [data]);
+export function AssetsBreakdownPieChart({
+  portfolioMarketValue,
+  cashBalance,
+  disposableDeposit,
+  nonDisposableDeposit,
+  isLoading,
+}: AssetsBreakdownPieChartProps) {
+  const chartData = useMemo<ChartSlice[]>(
+    () => [
+      {
+        key: 'portfolioMarketValue',
+        name: '股票市值',
+        value: portfolioMarketValue,
+        color: '#3b82f6',
+      },
+      {
+        key: 'cashBalance',
+        name: '帳本現金',
+        value: cashBalance,
+        color: '#22c55e',
+      },
+      {
+        key: 'disposableDeposit',
+        name: '可動用存款',
+        value: disposableDeposit,
+        color: '#eab308',
+      },
+      {
+        key: 'nonDisposableDeposit',
+        name: '不可動用存款',
+        value: nonDisposableDeposit,
+        color: '#9ca3af',
+      },
+    ],
+    [portfolioMarketValue, cashBalance, disposableDeposit, nonDisposableDeposit]
+  );
+
+  const total = useMemo(() => chartData.reduce((sum, item) => sum + item.value, 0), [chartData]);
 
   if (isLoading) {
     return (
@@ -26,13 +65,14 @@ export function AssetsBreakdownPieChart({ data, isLoading }: AssetsBreakdownPieC
         <div className="mt-4 flex gap-4">
           <Skeleton width="w-20" height="h-4" />
           <Skeleton width="w-20" height="h-4" />
+          <Skeleton width="w-20" height="h-4" />
+          <Skeleton width="w-20" height="h-4" />
         </div>
       </div>
     );
   }
 
-  // If no data or zero total, show empty state
-  if (chartData.length === 0) {
+  if (total <= 0) {
     return (
       <div className="card-dark p-6 h-[400px] flex flex-col items-center justify-center text-[var(--text-muted)]">
         <p>尚無資產資料</p>
@@ -42,9 +82,10 @@ export function AssetsBreakdownPieChart({ data, isLoading }: AssetsBreakdownPieC
 
   const formatTooltip = (value: number | string | Array<number | string> | undefined) => {
     if (typeof value === 'number') {
-      return [`NT$ ${Math.round(value).toLocaleString('zh-TW')}`];
+      return formatCurrency(value, 'TWD');
     }
-    return [value];
+
+    return value;
   };
 
   return (
@@ -59,12 +100,13 @@ export function AssetsBreakdownPieChart({ data, isLoading }: AssetsBreakdownPieC
               cy="50%"
               innerRadius={60}
               outerRadius={100}
-              paddingAngle={5}
+              paddingAngle={4}
               dataKey="value"
+              nameKey="name"
               stroke="none"
             >
-              {chartData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              {chartData.map((item) => (
+                <Cell key={item.key} fill={item.color} />
               ))}
             </Pie>
             <Tooltip

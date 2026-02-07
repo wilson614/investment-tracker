@@ -114,6 +114,9 @@ public class HistoricalPerformanceService(
             .OrderBy(t => t.TransactionDate)
             .ToList();
 
+        var sourceCurrency = portfolio.BaseCurrency.ToUpperInvariant();
+        var homeCurrency = portfolio.HomeCurrency.ToUpperInvariant();
+
         // Calculate positions at year end (NO split adjustment - use historical share counts)
         // Historical prices from APIs are already in their original (pre-split) values,
         // so we need to use the actual share counts at that time, not split-adjusted counts.
@@ -163,11 +166,15 @@ public class HistoricalPerformanceService(
                 // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
                 var currency = GetCurrencyForMarket(market);
 
-                decimal exchangeRate = 1m;
-                if (currency != "TWD")
+                decimal exchangeRate;
+                if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                {
+                    exchangeRate = 1m;
+                }
+                else
                 {
                     var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
-                        currency, portfolio.HomeCurrency, year, cancellationToken);
+                        currency, homeCurrency, year, cancellationToken);
                     exchangeRate = rateResult?.Rate ?? 1m;
                 }
 
@@ -206,11 +213,15 @@ public class HistoricalPerformanceService(
                 // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
                 var currency = GetCurrencyForMarket(market);
 
-                decimal exchangeRate = 1m;
-                if (currency != "TWD")
+                decimal exchangeRate;
+                if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                {
+                    exchangeRate = 1m;
+                }
+                else
                 {
                     var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
-                        currency, portfolio.HomeCurrency, yearStartYear, cancellationToken);
+                        currency, homeCurrency, yearStartYear, cancellationToken);
                     exchangeRate = rateResult?.Rate ?? 1m;
                 }
 
@@ -272,7 +283,7 @@ public class HistoricalPerformanceService(
             return new YearPerformanceDto
             {
                 Year = year,
-                SourceCurrency = portfolio.BaseCurrency,
+                SourceCurrency = sourceCurrency,
                 MissingPrices = missingPrices.DistinctBy(p => (p.Ticker, p.PriceType)).ToList(),
                 CashFlowCount = 0
             };
@@ -280,25 +291,6 @@ public class HistoricalPerformanceService(
 
         // ===== Calculate Source Currency (portfolio.BaseCurrency) Performance =====
         var cashFlowsSource = new List<CashFlow>();
-        var sourceCurrency = portfolio.BaseCurrency.ToUpperInvariant();
-        var homeCurrency = portfolio.HomeCurrency.ToUpperInvariant();
-
-        // Get source/home rates for converting home-currency amounts into portfolio base currency.
-        // For base/home same currency (e.g., TWD/TWD), rate is always 1.
-        var sourceToHomeFallback =
-            string.Equals(sourceCurrency, "USD", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(homeCurrency, "TWD", StringComparison.OrdinalIgnoreCase)
-                ? 30m
-                : 1m;
-        var sourceToHomeRateEnd = GetSourceToHomeRate(yearEndPrices, sourceCurrency, homeCurrency, sourceToHomeFallback);
-        var sourceToHomeRateStart = GetSourceToHomeRate(yearStartPrices, sourceCurrency, homeCurrency, sourceToHomeRateEnd);
-
-        // Build source→home daily rate lookup from transactions already denominated in source currency.
-        var dailySourceToHomeRates = yearTransactions
-            .Where(t => string.Equals(t.Currency.ToString(), sourceCurrency, StringComparison.OrdinalIgnoreCase)
-                        && t.ExchangeRate is > 0)
-            .GroupBy(t => t.TransactionDate.Date)
-            .ToDictionary(g => g.Key, g => g.First().ExchangeRate!.Value);
 
         string GetTickerCurrency(string ticker)
         {
@@ -307,6 +299,41 @@ public class HistoricalPerformanceService(
 
             return IsTaiwanTicker(ticker) ? "TWD" : "USD";
         }
+
+        async Task<decimal> GetSourceToHomeFallbackRateAsync(DateTime date, decimal fallbackRate = 1m)
+        {
+            if (string.Equals(sourceCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                return 1m;
+
+            var fxResult = await txDateFxService.GetOrFetchAsync(sourceCurrency, homeCurrency, date, cancellationToken);
+            if (fxResult is { Rate: > 0 })
+                return fxResult.Rate;
+
+            return fallbackRate > 0 ? fallbackRate : 1m;
+        }
+
+        var sourceToHomeFallbackEnd = await GetSourceToHomeFallbackRateAsync(yearEnd);
+        var sourceToHomeRateEnd = GetSourceToHomeRate(
+            yearEndPrices,
+            sourceCurrency,
+            homeCurrency,
+            GetTickerCurrency,
+            sourceToHomeFallbackEnd);
+
+        var sourceToHomeFallbackStart = await GetSourceToHomeFallbackRateAsync(priceReferenceDate, sourceToHomeRateEnd);
+        var sourceToHomeRateStart = GetSourceToHomeRate(
+            yearStartPrices,
+            sourceCurrency,
+            homeCurrency,
+            GetTickerCurrency,
+            sourceToHomeFallbackStart);
+
+        // Build source→home daily rate lookup from transactions already denominated in source currency.
+        var dailySourceToHomeRates = yearTransactions
+            .Where(t => string.Equals(t.Currency.ToString(), sourceCurrency, StringComparison.OrdinalIgnoreCase)
+                        && t.ExchangeRate is > 0)
+            .GroupBy(t => t.TransactionDate.Date)
+            .ToDictionary(g => g.Key, g => g.First().ExchangeRate!.Value);
 
         decimal GetSourceToHomeRateForDate(DateTime date)
         {
@@ -592,31 +619,41 @@ public class HistoricalPerformanceService(
 
         async Task<decimal> ConvertAmountAsync(string fromCurrency, string toCurrency, DateTime date, decimal amount)
         {
-            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+            var normalizedFromCurrency = fromCurrency.ToUpperInvariant();
+            var normalizedToCurrency = toCurrency.ToUpperInvariant();
+
+            if (string.Equals(normalizedFromCurrency, normalizedToCurrency, StringComparison.OrdinalIgnoreCase))
                 return amount;
 
-            if (string.Equals(fromCurrency, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(toCurrency, portfolio.BaseCurrency, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(sourceCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedFromCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedToCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                return amount;
+            }
+
+            if (string.Equals(normalizedFromCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedToCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
             {
                 var rate = GetSourceToHomeRateForDate(date);
                 return rate > 0 ? amount / rate : 0m;
             }
 
-            if (string.Equals(fromCurrency, portfolio.BaseCurrency, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(toCurrency, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedFromCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedToCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             {
                 var rate = GetSourceToHomeRateForDate(date);
                 return amount * rate;
             }
 
-            var fx = await txDateFxService.GetOrFetchAsync(fromCurrency, toCurrency, date, cancellationToken);
+            var fx = await txDateFxService.GetOrFetchAsync(normalizedFromCurrency, normalizedToCurrency, date, cancellationToken);
             if (fx != null)
                 return amount * fx.Rate;
 
             logger.LogWarning(
                 "Missing FX rate {From}/{To} on {Date} for cash flow conversion (amount={Amount})",
-                fromCurrency,
-                toCurrency,
+                normalizedFromCurrency,
+                normalizedToCurrency,
                 date.Date,
                 amount);
 
@@ -676,10 +713,10 @@ public class HistoricalPerformanceService(
             endValue: endValueSource,
             cashFlowSnapshots: sourceSnapshots);
 
-        // ===== Calculate Home Currency (e.g., TWD) Performance =====
+        // ===== Calculate Home Currency Performance =====
         var cashFlowsHome = new List<CashFlow>();
 
-        logger.LogInformation("  === Home Currency Calculation ===");
+        logger.LogInformation("  === Home Currency Calculation ({HomeCurrency}) ===", homeCurrency);
 
         // Year-start portfolio value in home currency
         var startValueHome = 0m;
@@ -688,12 +725,12 @@ public class HistoricalPerformanceService(
             if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
             {
                 var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
-                logger.LogInformation("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} TWD",
-                    position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue);
+                logger.LogInformation("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} {HomeCurrency}",
+                    position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue, homeCurrency);
                 startValueHome += positionValue;
             }
         }
-        logger.LogInformation("  Total startValueHome: {Value} TWD", startValueHome);
+        logger.LogInformation("  Total startValueHome ({HomeCurrency}): {Value}", homeCurrency, startValueHome);
 
         if (startValueHome > 0)
         {
@@ -789,7 +826,7 @@ public class HistoricalPerformanceService(
         return new YearPerformanceDto
         {
             Year = year,
-            // Home currency
+            // Home currency (portfolio.HomeCurrency)
             Xirr = xirrHome,
             XirrPercentage = xirrHome * 100,
             TotalReturnPercentage = totalReturnHome,
@@ -798,8 +835,8 @@ public class HistoricalPerformanceService(
             StartValueHome = startValueHome > 0 ? startValueHome : null,
             EndValueHome = endValueHome > 0 ? endValueHome : null,
             NetContributionsHome = netContributionsHome,
-            // Source currency
-            SourceCurrency = portfolio.BaseCurrency,
+            // Source currency (portfolio.BaseCurrency)
+            SourceCurrency = sourceCurrency,
             XirrSource = xirrSource,
             XirrPercentageSource = xirrSource * 100,
             TotalReturnPercentageSource = totalReturnSource,
@@ -823,30 +860,29 @@ public class HistoricalPerformanceService(
         !string.IsNullOrEmpty(ticker) && char.IsDigit(ticker[0]);
 
     /// <summary>
-    /// 從價格資訊中取得 source/home 匯率。
+    /// 從價格資訊中取得 source/home 匯率（source→home）。
     /// 若 source 與 home 相同，直接回傳 1。
-    /// 對於 source=USD 且 home=TWD，優先使用非台股 ExchangeRate；若無則使用 fallback（預設 30）。
-    /// 其他幣別組合若缺資料，回傳 fallback（預設 1）。
+    /// 優先尋找與 sourceCurrency 相同計價幣別的價格資料，取其 ExchangeRate（原始幣別→home）。
+    /// 若找不到或資料不完整，回傳 fallback（預設 1）。
     /// </summary>
     private static decimal GetSourceToHomeRate(
         Dictionary<string, YearEndPriceInfo> prices,
         string sourceCurrency,
         string homeCurrency,
+        Func<string, string> resolveTickerCurrency,
         decimal fallback = 1m)
     {
         if (string.Equals(sourceCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             return 1m;
 
-        if (string.Equals(sourceCurrency, "USD", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(homeCurrency, "TWD", StringComparison.OrdinalIgnoreCase))
+        foreach (var (ticker, priceInfo) in prices)
         {
-            var nonTaiwanEntry = prices.FirstOrDefault(p => !IsTaiwanTicker(p.Key));
-            if (nonTaiwanEntry.Value?.ExchangeRate > 0)
-            {
-                return nonTaiwanEntry.Value.ExchangeRate;
-            }
+            if (priceInfo.ExchangeRate <= 0)
+                continue;
 
-            return fallback > 0 ? fallback : 30m;
+            var tickerCurrency = resolveTickerCurrency(ticker);
+            if (string.Equals(tickerCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+                return priceInfo.ExchangeRate;
         }
 
         return fallback > 0 ? fallback : 1m;
