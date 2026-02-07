@@ -1,23 +1,8 @@
 import type { TotalAssetsSummary } from '../types';
-import { MetricCard } from './MetricCard';
+import { CompactMetricRow } from './CompactMetricRow';
 
 interface CoreMetricsSectionProps {
   data?: Pick<TotalAssetsSummary, 'investmentRatio' | 'stockRatio'>;
-}
-
-function formatRatioAsPercentage(value: number | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '0%';
-  }
-
-  const percentage = value * 100;
-  const roundedValue = Math.round(percentage * 10) / 10;
-
-  if (Number.isInteger(roundedValue)) {
-    return `${roundedValue.toFixed(0)}%`;
-  }
-
-  return `${roundedValue.toFixed(1)}%`;
 }
 
 export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
@@ -25,19 +10,23 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
   const stockRatio = data?.stockRatio ?? 0;
 
   return (
-    <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <MetricCard
-        label="投資比例"
-        value={formatRatioAsPercentage(investmentRatio)}
-        ratio={investmentRatio}
-        description="投資部位 / 可動用資產"
-      />
-      <MetricCard
-        label="股票佔比"
-        value={formatRatioAsPercentage(stockRatio)}
-        ratio={stockRatio}
-        description="組合市值 / 投資部位"
-      />
+    <section className="card-dark p-4 sm:p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)]">資金配置效率</h3>
+
+      <div className="space-y-4">
+        <CompactMetricRow
+          label="資金投入率"
+          value={investmentRatio}
+          description="投資部位 / 可動用資產"
+          color="peach"
+        />
+        <CompactMetricRow
+          label="持倉比例"
+          value={stockRatio}
+          description="組合市值 / 投資部位"
+          color="lavender"
+        />
+      </div>
     </section>
   );
 }

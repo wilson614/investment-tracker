@@ -1,4 +1,11 @@
-export type AllocationPurpose = 'EmergencyFund' | 'FamilyDeposit' | 'General' | 'Savings' | 'Investment' | 'Other';
+export type AllocationPurpose =
+  | 'EmergencyFund'
+  | 'FamilyDeposit'
+  | 'General'
+  | 'Savings'
+  | 'Investment'
+  | 'Other'
+  | (string & {});
 
 export interface FundAllocation {
   id: string;
@@ -21,12 +28,10 @@ export interface CreateFundAllocationRequest {
   purpose: AllocationPurpose;
   amount: number;
   isDisposable?: boolean;
-  note?: string;
 }
 
 export interface UpdateFundAllocationRequest {
   purpose?: AllocationPurpose;
   amount?: number;
   isDisposable?: boolean;
-  note?: string;
 }

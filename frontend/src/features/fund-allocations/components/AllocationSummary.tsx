@@ -2,7 +2,7 @@ import { Edit2, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { FundAllocation } from '../types';
 
-export interface AllocationSummaryItem extends Pick<FundAllocation, 'id' | 'purpose' | 'amount' | 'isDisposable' | 'note'> {}
+export type AllocationSummaryItem = Pick<FundAllocation, 'id' | 'purpose' | 'amount' | 'isDisposable'>;
 
 interface AllocationSummaryProps {
   allocations: AllocationSummaryItem[];
@@ -12,7 +12,7 @@ interface AllocationSummaryProps {
   onDelete: (id: string) => void;
 }
 
-const PURPOSE_DISPLAY_NAMES: Record<FundAllocation['purpose'], string> = {
+const PURPOSE_DISPLAY_NAMES: Record<string, string> = {
   EmergencyFund: '緊急預備金',
   FamilyDeposit: '家庭存款',
   General: '一般用途',
@@ -20,6 +20,10 @@ const PURPOSE_DISPLAY_NAMES: Record<FundAllocation['purpose'], string> = {
   Investment: '投資準備金',
   Other: '其他',
 };
+
+function getPurposeLabel(purpose: string): string {
+  return PURPOSE_DISPLAY_NAMES[purpose] ?? purpose;
+}
 
 export function AllocationSummary({
   allocations,
@@ -35,13 +39,15 @@ export function AllocationSummary({
 
   return (
     <div className="card-dark p-6 space-y-5">
-      <div className="flex items-start justify-end">
-        <div className="text-right space-y-1">
-          <p className="text-xs text-[var(--text-muted)]">已配置</p>
-          <p className="text-lg font-semibold text-[var(--text-primary)]">{formatCurrency(totalAllocated, 'TWD')}</p>
-          <p className="text-xs text-[var(--text-muted)]">未配置</p>
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
+          <p className="text-xs text-[var(--text-muted)] mb-1">已配置</p>
+          <p className="text-xl font-bold text-[var(--text-primary)]">{formatCurrency(totalAllocated, 'TWD')}</p>
+        </div>
+        <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
+          <p className="text-xs text-[var(--text-muted)] mb-1">未配置</p>
           <p
-            className={`text-sm font-medium ${
+            className={`text-xl font-bold ${
               normalizedUnallocated < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'
             }`}
           >
@@ -61,12 +67,10 @@ export function AllocationSummary({
               key={allocation.id}
               className="border border-[var(--border-color)] rounded-lg p-3 bg-[var(--bg-tertiary)]/50"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-[var(--text-secondary)]">
-                      {PURPOSE_DISPLAY_NAMES[allocation.purpose]}
-                    </span>
+                    <span className="text-sm text-[var(--text-secondary)] truncate">{getPurposeLabel(allocation.purpose)}</span>
                     <span
                       className={`text-xs px-1.5 py-0.5 rounded ${
                         allocation.isDisposable
@@ -80,12 +84,9 @@ export function AllocationSummary({
                   <div className="text-base font-semibold text-[var(--text-primary)] mt-1">
                     {formatCurrency(allocation.amount, 'TWD')}
                   </div>
-                  {allocation.note ? (
-                    <p className="text-xs text-[var(--text-muted)] mt-1 break-words">{allocation.note}</p>
-                  ) : null}
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => onEdit(allocation)}

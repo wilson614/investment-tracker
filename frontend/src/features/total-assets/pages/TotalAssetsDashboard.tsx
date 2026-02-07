@@ -9,7 +9,6 @@ import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocati
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
 import { AllocationFormDialog } from '../../fund-allocations/components/AllocationFormDialog';
 import { formatCurrency } from '../../../utils/currency';
-import type { AllocationPurpose } from '../../fund-allocations/types';
 
 export function TotalAssetsDashboard() {
   const { summary: assetsData, isLoading } = useTotalAssets();
@@ -34,10 +33,9 @@ export function TotalAssetsDashboard() {
 
   const allocationItems: AllocationSummaryItem[] = allocations.map((allocation) => ({
     id: allocation.id,
-    purpose: allocation.purpose as AllocationPurpose,
+    purpose: allocation.purpose,
     amount: allocation.amount,
     isDisposable: allocation.isDisposable,
-    note: allocation.note,
   }));
 
   const handleOpenCreate = () => {
@@ -57,24 +55,21 @@ export function TotalAssetsDashboard() {
   };
 
   const handleFormSubmit = async (data: {
-    purpose: AllocationPurpose;
+    purpose: string;
     amount: number;
     isDisposable: boolean;
-    note?: string;
   }) => {
     if (editingAllocation) {
       await updateAllocation(editingAllocation.id, {
         purpose: data.purpose,
         amount: data.amount,
         isDisposable: data.isDisposable,
-        note: data.note,
       });
     } else {
       await createAllocation({
         purpose: data.purpose,
         amount: data.amount,
         isDisposable: data.isDisposable,
-        note: data.note,
       });
     }
     setIsFormOpen(false);
@@ -174,7 +169,6 @@ export function TotalAssetsDashboard() {
                 purpose: editingAllocation.purpose,
                 amount: editingAllocation.amount,
                 isDisposable: editingAllocation.isDisposable,
-                note: editingAllocation.note,
               }
             : undefined
         }

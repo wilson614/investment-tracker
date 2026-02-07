@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../../../utils/currency';
 import type { TotalAssetsSummary } from '../types';
 
-export interface DisposableAssetsSectionProps
-  extends Pick<TotalAssetsSummary, 'portfolioValue' | 'cashBalance' | 'disposableDeposit' | 'investmentTotal'> {}
+export type DisposableAssetsSectionProps =
+  Pick<TotalAssetsSummary, 'portfolioValue' | 'cashBalance' | 'disposableDeposit' | 'investmentTotal'>;
 
 export function DisposableAssetsSection({
   portfolioValue,
@@ -15,7 +15,7 @@ export function DisposableAssetsSection({
   const navigate = useNavigate();
 
   return (
-    <section className="card-dark p-6 space-y-5 lg:col-span-2">
+    <section className="card-dark p-6 space-y-5 lg:col-span-2 min-h-[200px] lg:min-h-[280px]">
       <header className="space-y-1">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">可動用資產</h3>
         <p className="text-sm text-[var(--text-muted)]">聚焦可動用存款與投資部位，追蹤資金配置效率</p>
@@ -40,19 +40,35 @@ export function DisposableAssetsSection({
           <p className="mt-2 text-xs text-[var(--accent-peach)]">前往投資組合</p>
         </button>
 
-        <article className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50">
-          <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">帳本現金</p>
+        <button
+          type="button"
+          onClick={() => navigate('/currency')}
+          className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left transition-colors hover:border-[var(--accent-peach)]/40 hover:bg-[var(--bg-tertiary)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]/40"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">帳本現金</p>
+            <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+          </div>
           <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(cashBalance, 'TWD')}
           </p>
-        </article>
+          <p className="mt-2 text-xs text-[var(--accent-peach)]">前往帳本</p>
+        </button>
 
-        <article className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50">
-          <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">可動用存款</p>
+        <button
+          type="button"
+          onClick={() => navigate('/bank-accounts')}
+          className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left transition-colors hover:border-[var(--accent-peach)]/40 hover:bg-[var(--bg-tertiary)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]/40"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">可動用存款</p>
+            <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+          </div>
           <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(disposableDeposit, 'TWD')}
           </p>
-        </article>
+          <p className="mt-2 text-xs text-[var(--accent-peach)]">前往銀行帳戶</p>
+        </button>
       </div>
     </section>
   );

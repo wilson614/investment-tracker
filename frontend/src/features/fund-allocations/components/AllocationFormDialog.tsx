@@ -1,19 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import type { AllocationPurpose } from '../types';
 
 interface AllocationFormDialogSubmitData {
-  purpose: AllocationPurpose;
+  purpose: string;
   amount: number;
   isDisposable: boolean;
-  note?: string;
 }
 
 interface AllocationFormDialogInitialData {
-  purpose: AllocationPurpose;
+  purpose: string;
   amount: number;
   isDisposable?: boolean;
-  note?: string;
 }
 
 interface AllocationFormDialogProps {
@@ -23,46 +20,29 @@ interface AllocationFormDialogProps {
   initialData?: AllocationFormDialogInitialData;
 }
 
-const PURPOSE_OPTIONS: ReadonlyArray<{ value: AllocationPurpose; label: string }> = [
-  { value: 'EmergencyFund', label: '緊急預備金' },
-  { value: 'FamilyDeposit', label: '家庭存款' },
-  { value: 'General', label: '一般用途' },
-  { value: 'Savings', label: '儲蓄' },
-  { value: 'Investment', label: '投資準備金' },
-  { value: 'Other', label: '其他' },
-];
+const DEFAULT_PURPOSE = '';
 
-const DEFAULT_PURPOSE: AllocationPurpose = 'EmergencyFund';
-
-function resolvePurpose(value?: AllocationPurpose): AllocationPurpose {
+function resolvePurpose(value?: string): string {
   return value ?? DEFAULT_PURPOSE;
 }
 
-function getDefaultIsDisposable(purpose: AllocationPurpose): boolean {
-  return purpose !== 'EmergencyFund' && purpose !== 'FamilyDeposit';
-}
-
-function resolveIsDisposable(value: boolean | undefined, purpose: AllocationPurpose): boolean {
-  return value ?? getDefaultIsDisposable(purpose);
+function resolveIsDisposable(value: boolean | undefined): boolean {
+  return value ?? false;
 }
 
 export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }: AllocationFormDialogProps) {
-  const [purpose, setPurpose] = useState<AllocationPurpose>(DEFAULT_PURPOSE);
+  const [purpose, setPurpose] = useState<string>(DEFAULT_PURPOSE);
   const [amount, setAmount] = useState<string>('');
-  const [isDisposable, setIsDisposable] = useState<boolean>(getDefaultIsDisposable(DEFAULT_PURPOSE));
-  const [note, setNote] = useState('');
+  const [isDisposable, setIsDisposable] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const resolvedPurpose = resolvePurpose(initialData?.purpose);
-
-    setPurpose(resolvedPurpose);
+    setPurpose(resolvePurpose(initialData?.purpose));
     setAmount(initialData?.amount != null ? String(initialData.amount) : '');
-    setIsDisposable(resolveIsDisposable(initialData?.isDisposable, resolvedPurpose));
-    setNote(initialData?.note ?? '');
+    setIsDisposable(resolveIsDisposable(initialData?.isDisposable));
     setErrorMessage('');
   }, [isOpen, initialData]);
 
@@ -71,6 +51,13 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage('');
+
+    const normalizedPurpose = purpose.trim();
+
+    if (!normalizedPurpose) {
+      setErrorMessage('請輸入用途');
+      return;
+    }
 
     if (!amount.trim()) {
       setErrorMessage('請輸入金額');
@@ -93,10 +80,9 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
 
     try {
       await onSubmit({
-        purpose,
+        purpose: normalizedPurpose,
         amount: parsedAmount,
         isDisposable,
-        note: note.trim() || undefined,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '儲存資金配置失敗');
@@ -139,22 +125,18 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
                 用途
               </label>
-              <select
+              <input
+                type="text"
                 value={purpose}
-                onChange={(event) => {
-                  const nextPurpose = event.target.value as AllocationPurpose;
-                  setPurpose(nextPurpose);
-                  setIsDisposable(getDefaultIsDisposable(nextPurpose));
-                }}
+                onChange={(event) => setPurpose(event.target.value)}
                 className="input-dark w-full"
+                placeholder="例如：子女教育基金、旅遊存款..."
+                maxLength={50}
                 required
-              >
-                {PURPOSE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              />
+              <p className="mt-2 text-xs text-[var(--text-muted)]">
+                建議：緊急預備金、儲蓄、投資準備金、家庭存款
+              </p>
             </div>
 
             <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/30 p-3">
@@ -174,6 +156,18 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
                   <span>{isDisposable ? '可動用' : '不可動用'}</span>
                 </label>
               </div>
+              <div className="mt-2 text-xs text-[var(--text-muted)] flex items-center gap-2" aria-live="polite">
+                <span>儲存後歸類為：</span>
+                <span
+                  className={`px-2 py-0.5 rounded ${
+                    isDisposable
+                      ? 'bg-[var(--accent-peach)]/20 text-[var(--accent-peach)]'
+                      : 'bg-[var(--text-muted)]/20 text-[var(--text-muted)]'
+                  }`}
+                >
+                  {isDisposable ? '可動用資產' : '不可動用資產'}
+                </span>
+              </div>
             </div>
 
             <div>
@@ -188,17 +182,6 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
                 min="0"
                 step="1"
                 required
-              />
-            </div>
-
-            <div>
-              <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                備註
-              </label>
-              <textarea
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                className="input-dark w-full h-24 resize-none"
               />
             </div>
           </div>
