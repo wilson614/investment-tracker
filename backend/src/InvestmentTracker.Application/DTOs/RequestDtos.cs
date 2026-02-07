@@ -264,7 +264,7 @@ public record UpdateBankAccountRequest
 /// </summary>
 public record CreateFundAllocationRequest
 {
-    public AllocationPurpose Purpose { get; init; }
+    public string Purpose { get; init; } = string.Empty;
     public decimal Amount { get; init; }
     public string? Note { get; init; }
     public bool? IsDisposable { get; init; }
@@ -275,7 +275,7 @@ public record CreateFundAllocationRequest
 /// </summary>
 public record UpdateFundAllocationRequest
 {
-    public AllocationPurpose? Purpose { get; init; }
+    public string? Purpose { get; init; }
     public decimal? Amount { get; init; }
     public string? Note { get; init; }
     public bool? IsDisposable { get; init; }

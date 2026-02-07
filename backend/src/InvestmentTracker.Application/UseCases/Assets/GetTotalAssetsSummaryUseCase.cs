@@ -93,7 +93,7 @@ public class GetTotalAssetsSummaryUseCase(
         var allocationBreakdown = fundAllocations
             .Select(x => new AllocationBreakdownResponse(
                 Purpose: x.Purpose,
-                PurposeDisplayName: FundAllocationResponse.GetPurposeDisplayName(x.Purpose),
+                PurposeDisplayName: x.Purpose,
                 Amount: x.Amount))
             .ToList();
 

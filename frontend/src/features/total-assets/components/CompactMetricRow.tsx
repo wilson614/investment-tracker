@@ -17,14 +17,14 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
   const displayPercentage = Number.isInteger(percentage) ? `${percentage}%` : `${percentage.toFixed(1)}%`;
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs text-[var(--text-muted)]">{label}</span>
         <span className="text-sm font-mono font-semibold text-[var(--text-primary)]">
           {displayPercentage}
         </span>
       </div>
-      <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+      <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-300"
           style={{
@@ -33,7 +33,7 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
           }}
         />
       </div>
-      <p className="text-[10px] text-[var(--text-muted)]">{description}</p>
+      <p className="text-[10px] text-[var(--text-muted)] leading-tight">{description}</p>
     </div>
   );
 }

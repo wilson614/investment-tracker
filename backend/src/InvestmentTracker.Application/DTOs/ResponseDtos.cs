@@ -1,5 +1,4 @@
 using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Services;
 
 namespace InvestmentTracker.Application.DTOs;
@@ -49,7 +48,7 @@ public record BankAccountResponse
 public record FundAllocationResponse
 {
     public Guid Id { get; init; }
-    public AllocationPurpose Purpose { get; init; }
+    public string Purpose { get; init; } = string.Empty;
     public string PurposeDisplayName { get; init; } = string.Empty;
     public decimal Amount { get; init; }
     public bool IsDisposable { get; init; }
@@ -63,26 +62,12 @@ public record FundAllocationResponse
         {
             Id = entity.Id,
             Purpose = entity.Purpose,
-            PurposeDisplayName = GetPurposeDisplayName(entity.Purpose),
+            PurposeDisplayName = entity.Purpose,
             Amount = entity.Amount,
             IsDisposable = entity.IsDisposable,
             Note = entity.Note,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
-        };
-    }
-
-    public static string GetPurposeDisplayName(AllocationPurpose purpose)
-    {
-        return purpose switch
-        {
-            AllocationPurpose.EmergencyFund => "緊急預備金",
-            AllocationPurpose.FamilyDeposit => "家庭存款",
-            AllocationPurpose.General => "一般",
-            AllocationPurpose.Savings => "儲蓄",
-            AllocationPurpose.Investment => "投資準備金",
-            AllocationPurpose.Other => "其他",
-            _ => purpose.ToString()
         };
     }
 }
@@ -95,7 +80,7 @@ public record AllocationSummary
 }
 
 public record AllocationBreakdownResponse(
-    AllocationPurpose Purpose,
+    string Purpose,
     string PurposeDisplayName,
     decimal Amount);
 

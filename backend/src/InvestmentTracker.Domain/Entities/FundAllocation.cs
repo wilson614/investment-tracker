@@ -1,5 +1,4 @@
 using InvestmentTracker.Domain.Common;
-using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Entities;
 
@@ -9,7 +8,7 @@ namespace InvestmentTracker.Domain.Entities;
 public class FundAllocation : BaseEntity
 {
     public Guid UserId { get; private set; }
-    public AllocationPurpose Purpose { get; private set; }
+    public string Purpose { get; private set; } = string.Empty;
     public decimal Amount { get; private set; }
     public bool IsDisposable { get; private set; }
     public string? Note { get; private set; }
@@ -22,13 +21,13 @@ public class FundAllocation : BaseEntity
 
     public FundAllocation(
         Guid userId,
-        AllocationPurpose purpose,
+        string purpose,
         decimal amount,
         string? note = null,
         bool isDisposable = false)
     {
         if (userId == Guid.Empty)
-            throw new ArgumentException("User ID is required", nameof(userId));
+            throw new ArgumentException("使用者 ID 為必填", nameof(userId));
 
         UserId = userId;
         SetPurpose(purpose);
@@ -40,17 +39,17 @@ public class FundAllocation : BaseEntity
     public void SetAmount(decimal amount)
     {
         if (amount < 0)
-            throw new ArgumentException("Amount cannot be negative", nameof(amount));
+            throw new ArgumentException("金額不可為負數", nameof(amount));
 
         Amount = Math.Round(amount, 2);
     }
 
-    public void SetPurpose(AllocationPurpose purpose)
+    public void SetPurpose(string purpose)
     {
-        if (!Enum.IsDefined(typeof(AllocationPurpose), purpose))
-            throw new ArgumentException("Invalid allocation purpose", nameof(purpose));
+        if (string.IsNullOrWhiteSpace(purpose))
+            throw new ArgumentException("配置用途不可為空白", nameof(purpose));
 
-        Purpose = purpose;
+        Purpose = purpose.Trim();
     }
 
     public void SetIsDisposable(bool value)
@@ -61,7 +60,7 @@ public class FundAllocation : BaseEntity
     public void SetNote(string? note)
     {
         if (note?.Length > 500)
-            throw new ArgumentException("Note cannot exceed 500 characters", nameof(note));
+            throw new ArgumentException("備註不可超過 500 個字元", nameof(note));
 
         Note = note?.Trim();
     }

@@ -42,13 +42,13 @@ public class UpdateFundAllocationUseCase(
             cancellationToken);
 
         if (totalAllocatedExcludingCurrent + updatedAmount > totalBankAssets)
-            throw new BusinessRuleException("Total allocations cannot exceed total bank assets.");
+            throw new BusinessRuleException("資金配置總額不得超過銀行資產總額。");
 
         if (request.Amount.HasValue)
             allocation.SetAmount(request.Amount.Value);
 
-        if (request.Purpose.HasValue)
-            allocation.SetPurpose(request.Purpose.Value);
+        if (!string.IsNullOrWhiteSpace(request.Purpose))
+            allocation.SetPurpose(request.Purpose);
 
         if (request.IsDisposable.HasValue)
             allocation.SetIsDisposable(request.IsDisposable.Value);

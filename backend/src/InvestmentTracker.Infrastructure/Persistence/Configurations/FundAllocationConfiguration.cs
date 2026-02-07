@@ -17,7 +17,7 @@ public class FundAllocationConfiguration : IEntityTypeConfiguration<FundAllocati
 
         builder.Property(fa => fa.Purpose)
             .IsRequired()
-            .HasConversion<int>();
+            .HasMaxLength(100);
 
         builder.Property(fa => fa.Amount)
             .IsRequired()

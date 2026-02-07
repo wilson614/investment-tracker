@@ -3,7 +3,6 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.FundAllocation;
 using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -49,7 +48,7 @@ public class CreateFundAllocationUseCaseTests
         // Arrange
         var existingAllocation = new global::InvestmentTracker.Domain.Entities.FundAllocation(
             userId: _userId,
-            purpose: AllocationPurpose.EmergencyFund,
+            purpose: "緊急預備金",
             amount: 700_000m,
             note: "Existing allocation");
 
@@ -72,7 +71,7 @@ public class CreateFundAllocationUseCaseTests
 
         var request = new CreateFundAllocationRequest
         {
-            Purpose = AllocationPurpose.FamilyDeposit,
+            Purpose = "家庭存款",
             Amount = 400_000m,
             Note = "Should exceed"
         };
@@ -82,7 +81,7 @@ public class CreateFundAllocationUseCaseTests
 
         // Assert
         var exception = await action.Should().ThrowAsync<BusinessRuleException>();
-        exception.Which.Message.Should().Be("Total allocations cannot exceed total bank assets.");
+        exception.Which.Message.Should().Be("資金配置總額不得超過銀行資產總額。");
 
         _fundAllocationRepositoryMock.Verify(
             x => x.AddAsync(It.IsAny<global::InvestmentTracker.Domain.Entities.FundAllocation>(), It.IsAny<CancellationToken>()),
@@ -95,7 +94,7 @@ public class CreateFundAllocationUseCaseTests
         // Arrange
         var existingAllocation = new global::InvestmentTracker.Domain.Entities.FundAllocation(
             userId: _userId,
-            purpose: AllocationPurpose.EmergencyFund,
+            purpose: "緊急預備金",
             amount: 600_000m,
             note: "Existing allocation");
 
@@ -122,7 +121,7 @@ public class CreateFundAllocationUseCaseTests
 
         var request = new CreateFundAllocationRequest
         {
-            Purpose = AllocationPurpose.FamilyDeposit,
+            Purpose = "旅遊基金",
             Amount = 300_000m,
             Note = "Valid allocation"
         };
@@ -132,7 +131,7 @@ public class CreateFundAllocationUseCaseTests
 
         // Assert
         response.Should().NotBeNull();
-        response.Purpose.Should().Be(AllocationPurpose.FamilyDeposit);
+        response.Purpose.Should().Be("旅遊基金");
         response.Amount.Should().Be(300_000m);
         response.Note.Should().Be("Valid allocation");
 

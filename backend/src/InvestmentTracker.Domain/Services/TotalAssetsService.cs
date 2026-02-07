@@ -1,10 +1,9 @@
 using InvestmentTracker.Domain.Entities;
-using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Services;
 
 public record AllocationBreakdown(
-    AllocationPurpose Purpose,
+    string Purpose,
     string PurposeDisplayName,
     decimal Amount);
 

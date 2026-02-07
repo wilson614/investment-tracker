@@ -107,7 +107,7 @@ export function AssetsBreakdownPieChart({
     outerRadius = 0,
     percent = 0,
   }: PieLabelProps) => {
-    if (percent <= 0) {
+    if (percent < 0.05) {
       return null;
     }
 
