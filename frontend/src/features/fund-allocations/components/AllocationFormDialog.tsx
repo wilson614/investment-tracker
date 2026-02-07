@@ -2,11 +2,25 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import type { AllocationPurpose } from '../types';
 
+interface AllocationFormDialogSubmitData {
+  purpose: AllocationPurpose;
+  amount: number;
+  isDisposable: boolean;
+  note?: string;
+}
+
+interface AllocationFormDialogInitialData {
+  purpose: AllocationPurpose;
+  amount: number;
+  isDisposable?: boolean;
+  note?: string;
+}
+
 interface AllocationFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { purpose: AllocationPurpose; amount: number; note?: string }) => Promise<void> | void;
-  initialData?: { purpose: AllocationPurpose; amount: number; note?: string };
+  onSubmit: (data: AllocationFormDialogSubmitData) => Promise<void> | void;
+  initialData?: AllocationFormDialogInitialData;
 }
 
 const PURPOSE_OPTIONS: ReadonlyArray<{ value: AllocationPurpose; label: string }> = [
@@ -24,9 +38,18 @@ function resolvePurpose(value?: AllocationPurpose): AllocationPurpose {
   return value ?? DEFAULT_PURPOSE;
 }
 
+function getDefaultIsDisposable(purpose: AllocationPurpose): boolean {
+  return purpose !== 'EmergencyFund' && purpose !== 'FamilyDeposit';
+}
+
+function resolveIsDisposable(value: boolean | undefined, purpose: AllocationPurpose): boolean {
+  return value ?? getDefaultIsDisposable(purpose);
+}
+
 export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }: AllocationFormDialogProps) {
   const [purpose, setPurpose] = useState<AllocationPurpose>(DEFAULT_PURPOSE);
   const [amount, setAmount] = useState<string>('');
+  const [isDisposable, setIsDisposable] = useState<boolean>(getDefaultIsDisposable(DEFAULT_PURPOSE));
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,8 +57,11 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
   useEffect(() => {
     if (!isOpen) return;
 
-    setPurpose(resolvePurpose(initialData?.purpose));
+    const resolvedPurpose = resolvePurpose(initialData?.purpose);
+
+    setPurpose(resolvedPurpose);
     setAmount(initialData?.amount != null ? String(initialData.amount) : '');
+    setIsDisposable(resolveIsDisposable(initialData?.isDisposable, resolvedPurpose));
     setNote(initialData?.note ?? '');
     setErrorMessage('');
   }, [isOpen, initialData]);
@@ -69,6 +95,7 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
       await onSubmit({
         purpose,
         amount: parsedAmount,
+        isDisposable,
         note: note.trim() || undefined,
       });
     } catch (error) {
@@ -114,7 +141,11 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
               </label>
               <select
                 value={purpose}
-                onChange={(event) => setPurpose(event.target.value as AllocationPurpose)}
+                onChange={(event) => {
+                  const nextPurpose = event.target.value as AllocationPurpose;
+                  setPurpose(nextPurpose);
+                  setIsDisposable(getDefaultIsDisposable(nextPurpose));
+                }}
                 className="input-dark w-full"
                 required
               >
@@ -124,6 +155,25 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/30 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-secondary)]">可動用資金</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">勾選後，此配置會被視為可動用存款</p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] select-none">
+                  <input
+                    type="checkbox"
+                    checked={isDisposable}
+                    onChange={(event) => setIsDisposable(event.target.checked)}
+                    className="checkbox-dark"
+                    disabled={isSubmitting}
+                  />
+                  <span>{isDisposable ? '可動用' : '不可動用'}</span>
+                </label>
+              </div>
             </div>
 
             <div>

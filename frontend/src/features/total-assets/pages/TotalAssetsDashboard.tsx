@@ -41,6 +41,7 @@ export function TotalAssetsDashboard() {
     id: allocation.id,
     purpose: allocation.purpose,
     amount: allocation.amount,
+    isDisposable: allocation.isDisposable,
     note: allocation.note,
   }));
 

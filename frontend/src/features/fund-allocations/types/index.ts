@@ -5,6 +5,7 @@ export interface FundAllocation {
   purpose: AllocationPurpose;
   purposeDisplayName: string;
   amount: number;
+  isDisposable: boolean;
   note?: string;
   createdAt: string;
   updatedAt: string;
@@ -19,11 +20,13 @@ export interface AllocationSummary {
 export interface CreateFundAllocationRequest {
   purpose: AllocationPurpose;
   amount: number;
+  isDisposable?: boolean;
   note?: string;
 }
 
 export interface UpdateFundAllocationRequest {
   purpose?: AllocationPurpose;
   amount?: number;
+  isDisposable?: boolean;
   note?: string;
 }

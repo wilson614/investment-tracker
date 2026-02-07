@@ -1,10 +1,8 @@
 import { Edit2, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
-import type { AllocationFormData } from './AllocationForm';
+import type { FundAllocation } from '../types';
 
-export interface AllocationSummaryItem extends AllocationFormData {
-  id: string;
-}
+export interface AllocationSummaryItem extends Pick<FundAllocation, 'id' | 'purpose' | 'amount' | 'isDisposable' | 'note'> {}
 
 interface AllocationSummaryProps {
   allocations: AllocationSummaryItem[];
@@ -14,7 +12,7 @@ interface AllocationSummaryProps {
   onDelete: (id: string) => void;
 }
 
-const PURPOSE_DISPLAY_NAMES: Record<AllocationFormData['purpose'], string> = {
+const PURPOSE_DISPLAY_NAMES: Record<FundAllocation['purpose'], string> = {
   EmergencyFund: '緊急預備金',
   FamilyDeposit: '家庭存款',
   General: '一般用途',

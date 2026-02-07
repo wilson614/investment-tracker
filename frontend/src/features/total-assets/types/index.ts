@@ -17,6 +17,12 @@ export interface TotalAssetsSummary {
   investmentTotal: number;
   bankTotal: number;
   grandTotal: number;
+  portfolioValue: number;
+  cashBalance: number;
+  disposableDeposit: number;
+  nonDisposableDeposit: number;
+  investmentRatio: number;
+  stockRatio: number;
   investmentPercentage: number;
   bankPercentage: number;
   totalMonthlyInterest: number;
