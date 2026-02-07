@@ -9,9 +9,17 @@ interface BankAccountCardProps {
   account: BankAccount;
   onEdit: (account: BankAccount) => void;
   onDelete: (id: string) => void;
+  showCurrencyBadge?: boolean;
 }
 
-export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardProps) {
+interface ExchangeRateMeta {
+  exchangeRateUpdatedAt?: string;
+  exchangeRateLastUpdatedAt?: string;
+  rateUpdatedAt?: string;
+  rateFetchedAt?: string;
+}
+
+export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge = true }: BankAccountCardProps) {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
@@ -21,6 +29,15 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
       maximumFractionDigits: decimals,
     });
   };
+
+  const accountWithExchangeRateMeta = account as BankAccount & ExchangeRateMeta;
+
+  const exchangeRateUpdatedAt =
+    accountWithExchangeRateMeta.exchangeRateUpdatedAt ??
+    accountWithExchangeRateMeta.exchangeRateLastUpdatedAt ??
+    accountWithExchangeRateMeta.rateUpdatedAt ??
+    accountWithExchangeRateMeta.rateFetchedAt ??
+    account.updatedAt;
 
   useEffect(() => {
     setCurrentTime(Date.now());
@@ -36,13 +53,12 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
     return () => {
       window.clearInterval(timerId);
     };
-  }, [account.currency, account.updatedAt]);
+  }, [account.currency, exchangeRateUpdatedAt]);
 
   const isForeignCurrency = account.currency !== 'TWD';
-  // TODO: Replace with dedicated exchange-rate timestamp once backend provides it.
-  const lastUpdatedTime = new Date(account.updatedAt).getTime();
+  const rateUpdatedTime = new Date(exchangeRateUpdatedAt).getTime();
   const isExchangeRateStale =
-    isForeignCurrency && Number.isFinite(lastUpdatedTime) && currentTime - lastUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
+    isForeignCurrency && Number.isFinite(rateUpdatedTime) && currentTime - rateUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
@@ -64,14 +80,21 @@ export function BankAccountCard({ account, onEdit, onDelete }: BankAccountCardPr
       </div>
 
       <div className="mb-4">
-        <h3 className="text-xl font-bold text-[var(--accent-cream)] mb-1">{account.bankName}</h3>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="text-xl font-bold text-[var(--accent-cream)]">{account.bankName}</h3>
+          {showCurrencyBadge && (
+            <span className="inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
+              {account.currency}
+            </span>
+          )}
+        </div>
         {account.note && (
           <p className="text-sm text-[var(--text-muted)] line-clamp-1">{account.note}</p>
         )}
       </div>
 
       {isExchangeRateStale && (
-        <div className="mb-4 inline-flex items-center gap-1 text-xs text-[var(--color-warning)]">
+        <div className="mb-4 inline-flex items-center gap-1 rounded-full border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-2 py-1 text-xs text-[var(--color-warning)]">
           <AlertTriangle className="w-3.5 h-3.5" />
           <span>匯率可能已過時</span>
         </div>

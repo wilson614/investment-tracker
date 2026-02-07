@@ -23,6 +23,10 @@ public class FundAllocationConfiguration : IEntityTypeConfiguration<FundAllocati
             .IsRequired()
             .HasPrecision(18, 2);
 
+        builder.Property(fa => fa.IsDisposable)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(fa => fa.Note)
             .HasMaxLength(500);
 

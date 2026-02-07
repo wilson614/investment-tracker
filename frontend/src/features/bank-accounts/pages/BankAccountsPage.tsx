@@ -139,17 +139,6 @@ export function BankAccountsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {bankAccounts.map((account) => (
-              <span
-                key={`currency-${account.id}`}
-                className="inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
-              >
-                {account.bankName} · {account.currency}
-              </span>
-            ))}
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {bankAccounts.map((account) => (
               <BankAccountCard
@@ -157,6 +146,7 @@ export function BankAccountsPage() {
                 account={account}
                 onEdit={handleEdit}
                 onDelete={handleDeleteClick}
+                showCurrencyBadge
               />
             ))}
           </div>

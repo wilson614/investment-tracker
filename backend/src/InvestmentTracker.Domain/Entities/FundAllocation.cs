@@ -11,6 +11,7 @@ public class FundAllocation : BaseEntity
     public Guid UserId { get; private set; }
     public AllocationPurpose Purpose { get; private set; }
     public decimal Amount { get; private set; }
+    public bool IsDisposable { get; private set; }
     public string? Note { get; private set; }
 
     // Navigation property
@@ -19,7 +20,12 @@ public class FundAllocation : BaseEntity
     // EF Core required parameterless constructor
     private FundAllocation() { }
 
-    public FundAllocation(Guid userId, AllocationPurpose purpose, decimal amount, string? note = null)
+    public FundAllocation(
+        Guid userId,
+        AllocationPurpose purpose,
+        decimal amount,
+        string? note = null,
+        bool isDisposable = false)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
@@ -28,6 +34,7 @@ public class FundAllocation : BaseEntity
         SetPurpose(purpose);
         SetAmount(amount);
         SetNote(note);
+        SetIsDisposable(isDisposable);
     }
 
     public void SetAmount(decimal amount)
@@ -44,6 +51,11 @@ public class FundAllocation : BaseEntity
             throw new ArgumentException("Invalid allocation purpose", nameof(purpose));
 
         Purpose = purpose;
+    }
+
+    public void SetIsDisposable(bool value)
+    {
+        IsDisposable = value;
     }
 
     public void SetNote(string? note)

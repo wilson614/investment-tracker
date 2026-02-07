@@ -12,6 +12,12 @@ const CURRENCY_OPTIONS = [
   { value: 'AUD', label: '澳幣' },
 ] as const;
 
+const DEFAULT_CURRENCY = 'TWD';
+type SupportedCurrency = (typeof CURRENCY_OPTIONS)[number]['value'];
+
+const isSupportedCurrency = (currency: string): currency is SupportedCurrency =>
+  CURRENCY_OPTIONS.some((option) => option.value === currency);
+
 interface BankAccountFormProps {
   initialData?: BankAccount;
   onSubmit: (data: CreateBankAccountRequest | UpdateBankAccountRequest) => Promise<boolean>;
@@ -22,7 +28,7 @@ interface BankAccountFormProps {
 export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: BankAccountFormProps) {
   const [bankName, setBankName] = useState('');
   const [totalAssets, setTotalAssets] = useState<string>('');
-  const [currency, setCurrency] = useState('TWD');
+  const [currency, setCurrency] = useState<SupportedCurrency>(DEFAULT_CURRENCY);
   const [interestRate, setInterestRate] = useState<string>('');
   const [interestCap, setInterestCap] = useState<string>('');
   const [note, setNote] = useState('');
@@ -32,12 +38,12 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
     if (initialData) {
       setBankName(initialData.bankName);
       setTotalAssets(initialData.totalAssets.toString());
-      setCurrency(initialData.currency || 'TWD');
+      setCurrency(isSupportedCurrency(initialData.currency) ? initialData.currency : DEFAULT_CURRENCY);
       setInterestRate(initialData.interestRate.toString());
       setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
       setNote(initialData.note || '');
     } else {
-      setCurrency('TWD');
+      setCurrency(DEFAULT_CURRENCY);
     }
     setErrorMessage('');
   }, [initialData]);
@@ -140,7 +146,12 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
             </label>
             <select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
+              onChange={(e) => {
+                const selectedCurrency = e.target.value;
+                if (isSupportedCurrency(selectedCurrency)) {
+                  setCurrency(selectedCurrency);
+                }
+              }}
               className="input-dark w-full"
               required
             >
