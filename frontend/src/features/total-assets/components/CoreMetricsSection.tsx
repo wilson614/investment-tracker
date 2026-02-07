@@ -10,14 +10,14 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
   const stockRatio = data?.stockRatio ?? 0;
 
   return (
-    <section className="card-dark p-4 sm:p-5 space-y-4 w-full lg:max-w-md lg:ml-auto">
+    <section className="card-dark p-4 sm:p-5 space-y-4 w-full h-full">
       <h3 className="text-sm font-semibold text-[var(--text-primary)]">資金配置效率</h3>
 
       <div className="space-y-4">
         <CompactMetricRow
           label="投資部位對比"
           value={investmentRatio}
-          description="投資部位 / 可動用資產（生活資金）"
+          description="投資部位 / (可動用資產 + 投資部位)"
           color="peach"
         />
         <CompactMetricRow

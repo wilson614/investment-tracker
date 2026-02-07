@@ -19,6 +19,15 @@ interface ChartSlice {
   [key: string]: string | number;
 }
 
+interface PieLabelProps {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  percent?: number;
+}
+
 export function AssetsBreakdownPieChart({
   portfolioMarketValue,
   cashBalance,
@@ -88,6 +97,39 @@ export function AssetsBreakdownPieChart({
     return value;
   };
 
+  const RADIAN = Math.PI / 180;
+
+  const renderPercentLabel = ({
+    cx = 0,
+    cy = 0,
+    midAngle = 0,
+    innerRadius = 0,
+    outerRadius = 0,
+    percent = 0,
+  }: PieLabelProps) => {
+    if (percent <= 0) {
+      return null;
+    }
+
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="var(--text-primary)"
+        textAnchor={x > cx ? 'start' : 'end'}
+        dominantBaseline="central"
+        fontSize={12}
+        fontWeight={600}
+      >
+        {`${(percent * 100).toFixed(1)}%`}
+      </text>
+    );
+  };
+
   return (
     <div className="card-dark p-6 h-[400px]">
       <h3 className="text-[var(--text-secondary)] font-medium mb-4">資產配置分析</h3>
@@ -104,6 +146,8 @@ export function AssetsBreakdownPieChart({
               dataKey="value"
               nameKey="name"
               stroke="none"
+              labelLine={false}
+              label={renderPercentLabel}
             >
               {chartData.map((item) => (
                 <Cell key={item.key} fill={item.color} />

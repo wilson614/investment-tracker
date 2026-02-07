@@ -6,9 +6,9 @@ interface CompactMetricRowProps {
 }
 
 const COLOR_MAP = {
-  peach: 'bg-[var(--accent-peach)]',
-  lavender: 'bg-[var(--accent-lavender)]',
-  mint: 'bg-[var(--accent-mint)]',
+  peach: 'var(--accent-peach)',
+  lavender: 'var(--accent-blue)',
+  mint: 'var(--color-success)',
 } as const;
 
 export function CompactMetricRow({ label, value, description, color = 'peach' }: CompactMetricRowProps) {
@@ -26,8 +26,11 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
       </div>
       <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-300 ${COLOR_MAP[color]}`}
-          style={{ width: `${clampedValue * 100}%` }}
+          className="h-full rounded-full transition-[width] duration-300"
+          style={{
+            width: `${clampedValue * 100}%`,
+            backgroundColor: COLOR_MAP[color],
+          }}
         />
       </div>
       <p className="text-[10px] text-[var(--text-muted)]">{description}</p>

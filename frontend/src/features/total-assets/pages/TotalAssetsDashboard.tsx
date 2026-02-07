@@ -80,6 +80,12 @@ export function TotalAssetsDashboard() {
   const bankTotal = assetsData?.bankTotal ?? 0;
   const unallocatedAmount = assetsData?.unallocated ?? 0;
 
+  const investmentTotal = assetsData?.investmentTotal ?? 0;
+  const disposableDeposit = assetsData?.disposableDeposit ?? 0;
+  const investmentRatioDenominator = investmentTotal + disposableDeposit;
+  const correctedInvestmentRatio =
+    investmentRatioDenominator > 0 ? investmentTotal / investmentRatioDenominator : 0;
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* 頂部：標題 + 總資產金額 */}
@@ -90,22 +96,23 @@ export function TotalAssetsDashboard() {
         </p>
       </div>
 
-      {/* 核心指標：投資比例 + 股票佔比 */}
-      <CoreMetricsSection
-        data={{
-          investmentRatio: assetsData?.investmentRatio ?? 0,
-          stockRatio: assetsData?.stockRatio ?? 0,
-        }}
-      />
+      {/* 核心指標 + 圓餅圖 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <CoreMetricsSection
+          data={{
+            investmentRatio: correctedInvestmentRatio,
+            stockRatio: assetsData?.stockRatio ?? 0,
+          }}
+        />
 
-      {/* 圓餅圖：獨立全寬一行 */}
-      <AssetsBreakdownPieChart
-        portfolioMarketValue={assetsData?.investmentTotal ?? 0}
-        cashBalance={assetsData?.cashBalance ?? 0}
-        disposableDeposit={assetsData?.disposableDeposit ?? 0}
-        nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
-        isLoading={isLoading}
-      />
+        <AssetsBreakdownPieChart
+          portfolioMarketValue={investmentTotal}
+          cashBalance={assetsData?.cashBalance ?? 0}
+          disposableDeposit={disposableDeposit}
+          nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
+          isLoading={isLoading}
+        />
+      </div>
 
       {/* 下方左右兩欄：可動用資產 2/3、不可動用資產 1/3 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
