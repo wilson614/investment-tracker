@@ -35,12 +35,7 @@ export function AllocationSummary({
 
   return (
     <div className="card-dark p-6 space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">資金配置總覽</h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">已配置與未配置金額</p>
-        </div>
-
+      <div className="flex items-start justify-end">
         <div className="text-right space-y-1">
           <p className="text-xs text-[var(--text-muted)]">已配置</p>
           <p className="text-lg font-semibold text-[var(--text-primary)]">{formatCurrency(totalAllocated, 'TWD')}</p>

@@ -89,7 +89,7 @@ export function TotalAssetsDashboard() {
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* 頂部：標題 + 總資產金額 */}
       <div className="card-dark p-6">
-        <p className="text-sm text-[var(--text-muted)]">總資產</p>
+        <p className="text-sm text-[var(--text-muted)]">總資產儀表板</p>
         <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)] mt-1">
           {formatCurrency(totalAssets, 'TWD')}
         </p>
@@ -119,7 +119,6 @@ export function TotalAssetsDashboard() {
             portfolioValue={assetsData?.portfolioValue ?? 0}
             cashBalance={assetsData?.cashBalance ?? 0}
             disposableDeposit={assetsData?.disposableDeposit ?? 0}
-            investmentRatio={assetsData?.investmentRatio ?? 0}
             investmentTotal={assetsData?.investmentTotal ?? 0}
           />
         </div>
