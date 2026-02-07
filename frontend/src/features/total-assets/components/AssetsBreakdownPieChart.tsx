@@ -28,6 +28,8 @@ interface PieLabelProps {
   percent?: number;
 }
 
+const PINK_THEME_COLORS = ['#E8967B', '#F7CAC9', '#DDA0DD', '#d4a5a5', '#FFB6C1'] as const;
+
 export function AssetsBreakdownPieChart({
   portfolioMarketValue,
   cashBalance,
@@ -41,25 +43,25 @@ export function AssetsBreakdownPieChart({
         key: 'portfolioMarketValue',
         name: '股票市值',
         value: portfolioMarketValue,
-        color: '#3b82f6',
+        color: PINK_THEME_COLORS[0],
       },
       {
         key: 'cashBalance',
         name: '帳本現金',
         value: cashBalance,
-        color: '#22c55e',
+        color: PINK_THEME_COLORS[1],
       },
       {
         key: 'disposableDeposit',
         name: '可動用存款',
         value: disposableDeposit,
-        color: '#eab308',
+        color: PINK_THEME_COLORS[2],
       },
       {
         key: 'nonDisposableDeposit',
         name: '不可動用存款',
         value: nonDisposableDeposit,
-        color: '#9ca3af',
+        color: PINK_THEME_COLORS[3],
       },
     ],
     [portfolioMarketValue, cashBalance, disposableDeposit, nonDisposableDeposit]

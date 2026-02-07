@@ -8,6 +8,8 @@ import { useTotalAssets } from '../hooks/useTotalAssets';
 import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocations';
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
 import { AllocationFormDialog } from '../../fund-allocations/components/AllocationFormDialog';
+import { Skeleton } from '../../../components/common/SkeletonLoader';
+import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
 import { formatCurrency } from '../../../utils/currency';
 
 export function TotalAssetsDashboard() {
@@ -22,6 +24,7 @@ export function TotalAssetsDashboard() {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAllocation, setEditingAllocation] = useState<AllocationSummaryItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const nonDisposableAllocationCount = allocations.filter((allocation) => !allocation.isDisposable).length;
 
@@ -42,10 +45,8 @@ export function TotalAssetsDashboard() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('確定要刪除此資金配置嗎？')) {
-      await deleteAllocation(id);
-    }
+  const handleDelete = (id: string) => {
+    setDeleteTarget(id);
   };
 
   const handleFormSubmit = async (data: {
@@ -80,6 +81,59 @@ export function TotalAssetsDashboard() {
   const correctedInvestmentRatio =
     investmentRatioDenominator > 0 ? investmentTotal / investmentRatioDenominator : 0;
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Skeleton width="w-48" height="h-9" />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
+          <section className="card-dark p-6 h-full flex flex-col justify-center space-y-3">
+            <Skeleton width="w-20" height="h-6" />
+            <Skeleton width="w-40" height="h-10" />
+          </section>
+          <section className="card-dark p-6 h-full space-y-4">
+            <Skeleton width="w-32" height="h-6" />
+            <Skeleton width="w-full" height="h-8" />
+            <Skeleton width="w-3/4" height="h-8" />
+          </section>
+        </div>
+
+        <div className="card-dark p-6 h-[400px] flex flex-col items-center justify-center">
+          <Skeleton width="w-48" height="h-48" circle />
+          <div className="mt-4 flex gap-4">
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          <section className="card-dark p-6 lg:col-span-2 h-full space-y-4">
+            <Skeleton width="w-40" height="h-6" />
+            <Skeleton width="w-full" height="h-24" />
+          </section>
+          <section className="card-dark p-6 lg:col-span-1 h-full space-y-4">
+            <Skeleton width="w-28" height="h-6" />
+            <Skeleton width="w-full" height="h-24" />
+          </section>
+        </div>
+
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Skeleton width="w-32" height="h-7" />
+            <Skeleton width="w-24" height="h-8" />
+          </div>
+          <div className="card-dark p-6 space-y-3">
+            <Skeleton width="w-full" height="h-6" />
+            <Skeleton width="w-full" height="h-6" />
+            <Skeleton width="w-full" height="h-6" />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-[var(--text-primary)]">總資產儀表板</h1>
@@ -87,7 +141,7 @@ export function TotalAssetsDashboard() {
       {/* ROW 1: 總金額 + 資金配置效率 並排 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
         <section className="card-dark p-6 h-full flex flex-col justify-center">
-          <p className="text-sm font-medium text-[var(--text-muted)]">總資產</p>
+          <p className="text-lg font-semibold text-[var(--text-muted)]">總資產</p>
           <p className="mt-1 text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
             {formatCurrency(totalAssets, 'TWD')}
           </p>
@@ -175,6 +229,21 @@ export function TotalAssetsDashboard() {
               }
             : undefined
         }
+      />
+
+      <ConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteAllocation(deleteTarget);
+            setDeleteTarget(null);
+          }
+        }}
+        title="刪除配置"
+        message="確定要刪除此資金配置嗎？此動作無法復原。"
+        confirmText="刪除"
+        isDestructive={true}
       />
     </div>
   );

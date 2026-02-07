@@ -20,7 +20,7 @@ export function CompactMetricRow({ label, value, description, color = 'peach' }:
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 min-w-[120px]">
         <span className="text-sm text-[var(--text-secondary)]">{label}</span>
         <div className="relative group">
           <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" aria-label={description} />

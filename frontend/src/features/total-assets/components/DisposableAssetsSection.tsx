@@ -7,7 +7,7 @@ export type DisposableAssetsSectionProps =
   Pick<TotalAssetsSummary, 'portfolioValue' | 'cashBalance' | 'disposableDeposit' | 'investmentTotal'>;
 
 export function DisposableAssetsSection({
-  portfolioValue,
+  
   cashBalance,
   disposableDeposit,
   investmentTotal,
@@ -33,11 +33,11 @@ export function DisposableAssetsSection({
               <div className="relative group">
                 <Info
                   className="w-3.5 h-3.5 text-[var(--text-muted)] cursor-help"
-                  aria-label={`股票市值 ${formatCurrency(portfolioValue, 'TWD')} + 帳本現金 ${formatCurrency(cashBalance, 'TWD')}`}
+                  aria-label="股票市值 + 帳本現金"
                 />
                 <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-max max-w-72">
                   <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-sm text-[var(--text-secondary)] leading-relaxed whitespace-normal">
-                    股票市值 {formatCurrency(portfolioValue, 'TWD')} + 帳本現金 {formatCurrency(cashBalance, 'TWD')}
+                    股票市值 + 帳本現金
                   </div>
                 </div>
               </div>
