@@ -51,7 +51,7 @@
 
 ### Implementation
 
-- [ ] T006 [US5] Fix interestCap display logic in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx` (change `account.interestCap ?` to `account.interestCap != null ?`)
+- [x] T006 [US5] Fix interestCap display logic in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx` (change `account.interestCap ?` to `account.interestCap != null ?`) ✅
 
 **Checkpoint**: Bug fix complete - interestCap=0 displays correctly
 
@@ -65,23 +65,23 @@
 
 ### Backend Implementation
 
-- [ ] T007 [P] [US1] Add Currency to CreateBankAccountRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T008 [P] [US1] Add Currency to UpdateBankAccountRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T009 [P] [US1] Add Currency to BankAccountResponse in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs`
-- [ ] T010 [US1] Update CreateBankAccountUseCase to accept Currency in `backend/src/InvestmentTracker.Application/UseCases/BankAccount/CreateBankAccountUseCase.cs`
-- [ ] T011 [US1] Update UpdateBankAccountUseCase to accept Currency in `backend/src/InvestmentTracker.Application/UseCases/BankAccount/UpdateBankAccountUseCase.cs`
-- [ ] T012 [US1] Update TotalAssetsService to convert foreign currencies to TWD in `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs`
-- [ ] T012a [US1] Add unit tests for TotalAssetsService multi-currency conversion in `backend/tests/InvestmentTracker.Application.Tests/`
+- [x] T007 [P] [US1] Add Currency to CreateBankAccountRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T008 [P] [US1] Add Currency to UpdateBankAccountRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T009 [P] [US1] Add Currency to BankAccountResponse in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs` ✅
+- [x] T010 [US1] Update CreateBankAccountUseCase to accept Currency in `backend/src/InvestmentTracker.Application/UseCases/BankAccount/CreateBankAccountUseCase.cs` ✅
+- [x] T011 [US1] Update UpdateBankAccountUseCase to accept Currency in `backend/src/InvestmentTracker.Application/UseCases/BankAccount/UpdateBankAccountUseCase.cs` ✅
+- [x] T012 [US1] Update TotalAssetsService to convert foreign currencies to TWD in `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs` ✅
+- [x] T012a [US1] Add unit tests for TotalAssetsService multi-currency conversion in `backend/tests/InvestmentTracker.Application.Tests/` ✅
 
 ### Frontend Implementation
 
-- [ ] T013 [P] [US1] Add currency field to BankAccount type in `frontend/src/features/bank-accounts/types/index.ts`
-- [ ] T014 [P] [US1] Add currency field to CreateBankAccountRequest in `frontend/src/features/bank-accounts/types/index.ts`
-- [ ] T015 [P] [US1] Add currency field to UpdateBankAccountRequest in `frontend/src/features/bank-accounts/types/index.ts`
-- [ ] T016 [US1] Add currency selector dropdown to BankAccountForm in `frontend/src/features/bank-accounts/components/BankAccountForm.tsx`
-- [ ] T017 [US1] Update BankAccountCard to display currency using formatCurrency utility in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx`
-- [ ] T017a [US1] Add stale rate indicator UI when exchange rate is outdated (> 24 hours) in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx`
-- [ ] T018 [US1] Update BankAccountsPage to show currency per account in `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
+- [x] T013 [P] [US1] Add currency field to BankAccount type in `frontend/src/features/bank-accounts/types/index.ts` ✅
+- [x] T014 [P] [US1] Add currency field to CreateBankAccountRequest in `frontend/src/features/bank-accounts/types/index.ts` ✅
+- [x] T015 [P] [US1] Add currency field to UpdateBankAccountRequest in `frontend/src/features/bank-accounts/types/index.ts` ✅
+- [x] T016 [US1] Add currency selector dropdown to BankAccountForm in `frontend/src/features/bank-accounts/components/BankAccountForm.tsx` ✅
+- [x] T017 [US1] Update BankAccountCard to display currency using formatCurrency utility in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx` ✅
+- [x] T017a [US1] Add stale rate indicator UI when exchange rate is outdated (> 24 hours) in `frontend/src/features/bank-accounts/components/BankAccountCard.tsx` ✅
+- [x] T018 [US1] Update BankAccountsPage to show currency per account in `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx` ✅
 
 **Checkpoint**: Foreign currency bank accounts fully functional
 
@@ -112,7 +112,7 @@
 
 - [x] T028 [US2] Create GetFundAllocationsUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/GetFundAllocationsUseCase.cs` ✅
 - [x] T029 [US2] Create CreateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/CreateFundAllocationUseCase.cs` ✅
-- [ ] T029a [US2] Add unit tests for over-allocation validation in `backend/tests/InvestmentTracker.Application.Tests/`
+- [x] T029a [US2] Add unit tests for over-allocation validation in `backend/tests/InvestmentTracker.Application.Tests/` ✅
 - [x] T030 [US2] Create UpdateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/UpdateFundAllocationUseCase.cs` ✅
 - [x] T031 [US2] Create DeleteFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/DeleteFundAllocationUseCase.cs` ✅
 
@@ -147,44 +147,44 @@
 
 ### Backend - Entity & Migration
 
-- [ ] T053 [US6] Add IsDisposable field to FundAllocation entity in `backend/src/InvestmentTracker.Domain/Entities/FundAllocation.cs`
-- [ ] T054 [US6] Add Investment and Other to AllocationPurpose enum in `backend/src/InvestmentTracker.Domain/Enums/AllocationPurpose.cs`
-- [ ] T055 [US6] Create migration for IsDisposable field in `backend/src/InvestmentTracker.Infrastructure/Migrations/`
-- [ ] T056 [US6] Add data migration: set IsDisposable based on purpose (false for EmergencyFund/FamilyDeposit, true for others)
+- [x] T053 [US6] Add IsDisposable field to FundAllocation entity in `backend/src/InvestmentTracker.Domain/Entities/FundAllocation.cs` ✅
+- [x] T054 [US6] Add Investment and Other to AllocationPurpose enum in `backend/src/InvestmentTracker.Domain/Enums/AllocationPurpose.cs` ✅
+- [x] T055 [US6] Create migration for IsDisposable field in `backend/src/InvestmentTracker.Infrastructure/Migrations/` ✅
+- [x] T056 [US6] Add data migration: set IsDisposable based on purpose (false for EmergencyFund/FamilyDeposit, true for others) ✅
 
 ### Backend - DTOs & Use Cases
 
-- [ ] T057 [US6] Add IsDisposable to CreateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T058 [US6] Add IsDisposable to UpdateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T059 [US6] Add IsDisposable to FundAllocationResponse in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs`
-- [ ] T060 [US6] Update CreateFundAllocationUseCase to handle IsDisposable with default logic
-- [ ] T061 [US6] Update UpdateFundAllocationUseCase to handle IsDisposable
+- [x] T057 [US6] Add IsDisposable to CreateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T058 [US6] Add IsDisposable to UpdateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T059 [US6] Add IsDisposable to FundAllocationResponse in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs` ✅
+- [x] T060 [US6] Update CreateFundAllocationUseCase to handle IsDisposable with default logic ✅
+- [x] T061 [US6] Update UpdateFundAllocationUseCase to handle IsDisposable ✅
 
 ### Backend - Summary Calculation
 
-- [ ] T062 [US6] Add PortfolioValue, CashBalance to TotalAssetsSummary DTO
-- [ ] T063 [US6] Add DisposableDeposit, NonDisposableDeposit to TotalAssetsSummary DTO
-- [ ] T064 [US6] Add InvestmentRatio, StockRatio to TotalAssetsSummary DTO
-- [ ] T065 [US6] Update GetTotalAssetsSummaryUseCase to calculate new fields
+- [x] T062 [US6] Add PortfolioValue, CashBalance to TotalAssetsSummary DTO ✅
+- [x] T063 [US6] Add DisposableDeposit, NonDisposableDeposit to TotalAssetsSummary DTO ✅
+- [x] T064 [US6] Add InvestmentRatio, StockRatio to TotalAssetsSummary DTO ✅
+- [x] T065 [US6] Update GetTotalAssetsSummaryUseCase to calculate new fields ✅
 
 ### Frontend - Types & API
 
-- [ ] T066 [P] [US6] Add IsDisposable to FundAllocation types in `frontend/src/features/fund-allocations/types/index.ts`
-- [ ] T067 [US6] Update TotalAssetsSummary type with new fields in `frontend/src/features/total-assets/types/index.ts`
+- [x] T066 [P] [US6] Add IsDisposable to FundAllocation types in `frontend/src/features/fund-allocations/types/index.ts` ✅
+- [x] T067 [US6] Update TotalAssetsSummary type with new fields in `frontend/src/features/total-assets/types/index.ts` ✅
 
 ### Frontend - Form Update
 
-- [ ] T068 [US6] Add IsDisposable toggle to AllocationFormDialog in `frontend/src/features/fund-allocations/components/AllocationFormDialog.tsx`
-- [ ] T069 [US6] Implement default IsDisposable logic based on purpose selection
+- [x] T068 [US6] Add IsDisposable toggle to AllocationFormDialog in `frontend/src/features/fund-allocations/components/AllocationFormDialog.tsx` ✅
+- [x] T069 [US6] Implement default IsDisposable logic based on purpose selection ✅
 
 ### Frontend - Dashboard Refactor
 
-- [ ] T070 [US6] Create CoreMetricsSection component in `frontend/src/features/total-assets/components/CoreMetricsSection.tsx`
-- [ ] T071 [US6] Create MetricCard component in `frontend/src/features/total-assets/components/MetricCard.tsx`
-- [ ] T072 [US6] Create DisposableAssetsSection component in `frontend/src/features/total-assets/components/DisposableAssetsSection.tsx`
-- [ ] T073 [US6] Create NonDisposableAssetsSection component in `frontend/src/features/total-assets/components/NonDisposableAssetsSection.tsx`
-- [ ] T074 [US6] Refactor AssetsBreakdownPieChart to 4 slices in `frontend/src/features/total-assets/components/AssetsBreakdownPieChart.tsx`
-- [ ] T075 [US6] Refactor TotalAssetsDashboard layout in `frontend/src/features/total-assets/pages/TotalAssetsDashboard.tsx`
+- [x] T070 [US6] Create CoreMetricsSection component in `frontend/src/features/total-assets/components/CoreMetricsSection.tsx` ✅
+- [x] T071 [US6] Create MetricCard component in `frontend/src/features/total-assets/components/MetricCard.tsx` ✅
+- [x] T072 [US6] Create DisposableAssetsSection component in `frontend/src/features/total-assets/components/DisposableAssetsSection.tsx` ✅
+- [x] T073 [US6] Create NonDisposableAssetsSection component in `frontend/src/features/total-assets/components/NonDisposableAssetsSection.tsx` ✅
+- [x] T074 [US6] Refactor AssetsBreakdownPieChart to 4 slices in `frontend/src/features/total-assets/components/AssetsBreakdownPieChart.tsx` ✅
+- [x] T075 [US6] Refactor TotalAssetsDashboard layout in `frontend/src/features/total-assets/pages/TotalAssetsDashboard.tsx` ✅
 
 **Checkpoint**: Dashboard refactor complete with Investment Ratio and Stock Ratio
 
@@ -198,10 +198,10 @@
 
 ### Implementation
 
-- [ ] T042 [US3] Refactor GetUsdToTwdRate to GetSourceToHomeRate in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T043 [US3] Update ConvertAmountAsync to use portfolio.BaseCurrency in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T044 [US3] Handle TWD portfolios with exchange rate = 1.0 in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
-- [ ] T045 [US3] Update GetYearlyPerformanceAsync to support any base currency in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T042 [US3] Refactor GetUsdToTwdRate to GetSourceToHomeRate in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` ✅
+- [x] T043 [US3] Update ConvertAmountAsync to use portfolio.BaseCurrency in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` ✅
+- [x] T044 [US3] Handle TWD portfolios with exchange rate = 1.0 in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` ✅
+- [x] T045 [US3] Update GetYearlyPerformanceAsync to support any base currency in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` ✅
 
 **Checkpoint**: Historical performance works for all portfolio currencies
 
@@ -215,9 +215,9 @@
 
 ### Implementation
 
-- [ ] T046 [US4] Audit and update InterestEstimationCard currency display in `frontend/src/features/bank-accounts/components/InterestEstimationCard.tsx`
-- [ ] T047 [US4] Verify BankAccountCard formatCurrency consistency (confirm T017 implementation covers all currency displays)
-- [ ] T048 [US4] Verify BankAccountsPage uses formatCurrency consistently in `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
+- [x] T046 [US4] Audit and update InterestEstimationCard currency display in `frontend/src/features/bank-accounts/components/InterestEstimationCard.tsx` ✅
+- [x] T047 [US4] Verify BankAccountCard formatCurrency consistency (confirm T017 implementation covers all currency displays) ✅
+- [x] T048 [US4] Verify BankAccountsPage uses formatCurrency consistently in `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx` ✅
 
 **Checkpoint**: All currency displays use consistent formatting
 
@@ -227,10 +227,10 @@
 
 **Purpose**: Final verification and cleanup
 
-- [ ] T049 Verify all acceptance scenarios from spec.md
-- [ ] T050 Run full build and verify no errors
-- [ ] T051 Manual E2E test of complete workflow
-- [ ] T052 Verify API documentation (Swagger/OpenAPI) reflects new endpoints and fields
+- [x] T049 Verify all acceptance scenarios from spec.md ✅
+- [x] T050 Run full build and verify no errors ✅
+- [x] T051 Manual E2E test of complete workflow ✅
+- [x] T052 Verify API documentation (Swagger/OpenAPI) reflects new endpoints and fields ✅
 
 ---
 
@@ -317,13 +317,13 @@ T024, T025, T026, T027 → Run together
 |-------|------------|------------|----------------|--------|
 | 1 | Setup | 2 | 2 | ✅ Complete |
 | 2 | Foundational | 3 | 0 | ✅ Complete |
-| 3 | US5 - Bug Fix | 1 | 0 | Pending |
-| 4 | US1 - Multi-Currency | 14 | 6 | Pending |
+| 3 | US5 - Bug Fix | 1 | 0 | ✅ Complete |
+| 4 | US1 - Multi-Currency | 14 | 6 | ✅ Complete |
 | 5 | US2 - Fund Allocations | 24 | 7 | ✅ Complete |
-| 5.5 | US6 - Dashboard Refactor | 23 | 1 | **NEW** |
-| 6 | US3 - Historical Performance | 4 | 0 | Pending |
-| 7 | US4 - Display Consistency | 3 | 0 | Pending |
-| 8 | Polish | 4 | 0 | Pending |
+| 5.5 | US6 - Dashboard Refactor | 23 | 1 | ✅ Complete |
+| 6 | US3 - Historical Performance | 4 | 0 | ✅ Complete |
+| 7 | US4 - Display Consistency | 3 | 0 | ✅ Complete |
+| 8 | Polish | 4 | 0 | ✅ Complete |
 | **Total** | | **78** | **16** | |
 
 ---
