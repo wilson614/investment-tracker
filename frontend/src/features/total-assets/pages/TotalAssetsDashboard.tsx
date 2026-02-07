@@ -108,8 +108,8 @@ export function TotalAssetsDashboard() {
       />
 
       {/* 下方左右兩欄：可動用資產 2/3、不可動用資產 1/3 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        <div className="lg:col-span-2 h-full">
           <DisposableAssetsSection
             portfolioValue={assetsData?.portfolioValue ?? 0}
             cashBalance={assetsData?.cashBalance ?? 0}
@@ -118,7 +118,7 @@ export function TotalAssetsDashboard() {
           />
         </div>
 
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 h-full">
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
             nonDisposableAllocations={nonDisposableAllocations}

@@ -13,7 +13,7 @@ export function NonDisposableAssetsSection({
   const subtotal = nonDisposableAllocations.reduce((sum, allocation) => sum + allocation.amount, 0);
 
   return (
-    <section className="card-dark p-6 space-y-5 lg:col-span-1 min-h-[200px] lg:min-h-[280px]">
+    <section className="card-dark p-6 space-y-5 min-h-[200px] lg:min-h-[280px] h-full flex flex-col">
       <header className="space-y-1">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">不可動用資產</h3>
         <p className="text-sm text-[var(--text-muted)]">緊急預備金、家庭存款等不納入可投資資金的配置</p>

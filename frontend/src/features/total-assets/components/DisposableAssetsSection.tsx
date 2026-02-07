@@ -15,7 +15,7 @@ export function DisposableAssetsSection({
   const navigate = useNavigate();
 
   return (
-    <section className="card-dark p-6 space-y-5 lg:col-span-2 min-h-[200px] lg:min-h-[280px]">
+    <section className="card-dark p-6 space-y-5 min-h-[200px] lg:min-h-[280px] h-full flex flex-col">
       <header className="space-y-1">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">可動用資產</h3>
         <p className="text-sm text-[var(--text-muted)]">聚焦可動用存款與投資部位，追蹤資金配置效率</p>

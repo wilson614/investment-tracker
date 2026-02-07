@@ -130,45 +130,21 @@ export function AllocationFormDialog({ isOpen, onClose, onSubmit, initialData }:
                 value={purpose}
                 onChange={(event) => setPurpose(event.target.value)}
                 className="input-dark w-full"
-                placeholder="例如：子女教育基金、旅遊存款..."
                 maxLength={50}
                 required
               />
-              <p className="mt-2 text-xs text-[var(--text-muted)]">
-                建議：緊急預備金、儲蓄、投資準備金、家庭存款
-              </p>
             </div>
 
-            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)]/30 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-secondary)]">可動用資金</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">勾選後，此配置會被視為可動用存款</p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] select-none">
-                  <input
-                    type="checkbox"
-                    checked={isDisposable}
-                    onChange={(event) => setIsDisposable(event.target.checked)}
-                    className="checkbox-dark"
-                    disabled={isSubmitting}
-                  />
-                  <span>{isDisposable ? '可動用' : '不可動用'}</span>
-                </label>
-              </div>
-              <div className="mt-2 text-xs text-[var(--text-muted)] flex items-center gap-2" aria-live="polite">
-                <span>儲存後歸類為：</span>
-                <span
-                  className={`px-2 py-0.5 rounded ${
-                    isDisposable
-                      ? 'bg-[var(--accent-peach)]/20 text-[var(--accent-peach)]'
-                      : 'bg-[var(--text-muted)]/20 text-[var(--text-muted)]'
-                  }`}
-                >
-                  {isDisposable ? '可動用資產' : '不可動用資產'}
-                </span>
-              </div>
-            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] select-none">
+              <input
+                type="checkbox"
+                checked={isDisposable}
+                onChange={(event) => setIsDisposable(event.target.checked)}
+                className="checkbox-dark"
+                disabled={isSubmitting}
+              />
+              <span>可動用資金</span>
+            </label>
 
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
