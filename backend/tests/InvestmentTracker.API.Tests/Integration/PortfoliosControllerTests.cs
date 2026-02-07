@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.API.Tests.Integration;
 
@@ -135,5 +138,76 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task StockTransactions_Response_EnumsAreSerializedAsNumbers()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Enum Serialization Test");
+        var transactionRequest = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            Ticker = "AAPL",
+            TransactionType = TransactionType.Buy,
+            Shares = 10,
+            PricePerShare = 150,
+            ExchangeRate = 31.5m,
+            Fees = 0,
+            Market = StockMarket.US,
+            Currency = Currency.USD
+        };
+
+        var createResponse = await Client.PostAsJsonAsync("/api/stocktransactions", transactionRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Act
+        var listResponse = await Client.GetAsync($"/api/stocktransactions?portfolioId={portfolio.Id}");
+
+        // Assert
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await listResponse.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+        var first = json.RootElement.EnumerateArray().First();
+
+        first.GetProperty("transactionType").ValueKind.Should().Be(JsonValueKind.Number);
+        first.GetProperty("market").ValueKind.Should().Be(JsonValueKind.Number);
+        first.GetProperty("currency").ValueKind.Should().Be(JsonValueKind.Number);
+    }
+
+    [Fact]
+    public async Task StockTransactions_Create_AcceptsStringEnumsInRequest()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("String Enum Request Test");
+        var requestJson = $$"""
+{
+  "portfolioId": "{{portfolio.Id}}",
+  "transactionDate": "{{DateTime.UtcNow.AddDays(-2):yyyy-MM-dd}}",
+  "ticker": "TSLA",
+  "transactionType": "Buy",
+  "shares": 5,
+  "pricePerShare": 200,
+  "exchangeRate": 31.5,
+  "fees": 0,
+  "market": "US",
+  "currency": "USD"
+}
+""";
+
+        using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await Client.PostAsync("/api/stocktransactions", content);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+
+        json.RootElement.GetProperty("transactionType").ValueKind.Should().Be(JsonValueKind.Number);
+        json.RootElement.GetProperty("market").ValueKind.Should().Be(JsonValueKind.Number);
+        json.RootElement.GetProperty("currency").ValueKind.Should().Be(JsonValueKind.Number);
     }
 }
