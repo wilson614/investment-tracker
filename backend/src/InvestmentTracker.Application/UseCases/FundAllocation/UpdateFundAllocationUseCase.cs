@@ -50,6 +50,9 @@ public class UpdateFundAllocationUseCase(
         if (request.Purpose.HasValue)
             allocation.SetPurpose(request.Purpose.Value);
 
+        if (request.IsDisposable.HasValue)
+            allocation.SetIsDisposable(request.IsDisposable.Value);
+
         allocation.SetNote(request.Note);
 
         await fundAllocationRepository.UpdateAsync(allocation, cancellationToken);

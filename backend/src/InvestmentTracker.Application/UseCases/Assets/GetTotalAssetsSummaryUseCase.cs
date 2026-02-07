@@ -15,10 +15,12 @@ namespace InvestmentTracker.Application.UseCases.Assets;
 /// </summary>
 public class GetTotalAssetsSummaryUseCase(
     IPortfolioRepository portfolioRepository,
+    ICurrencyLedgerRepository currencyLedgerRepository,
     IStockTransactionRepository stockTransactionRepository,
     IStockSplitRepository stockSplitRepository,
     PortfolioCalculator portfolioCalculator,
     StockSplitAdjustmentService splitAdjustmentService,
+    CurrencyLedgerService currencyLedgerService,
     ITwseStockHistoricalPriceService twseStockHistoricalPriceService,
     IYahooHistoricalPriceService yahooHistoricalPriceService,
     IBankAccountRepository bankAccountRepository,
@@ -40,30 +42,54 @@ public class GetTotalAssetsSummaryUseCase(
         // Fetch splits once for all portfolios.
         var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
 
-        var investmentTotal = 0m;
+        var portfolioMarketValue = 0m;
+        var cashBalance = 0m;
         var valuationDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
 
         foreach (var portfolio in portfolios)
         {
-            var portfolioValue = await CalculatePortfolioMarketValueHomeAsync(
+            var marketValue = await CalculatePortfolioMarketValueHomeAsync(
                 portfolio,
                 valuationDate,
                 stockSplits,
                 cancellationToken);
 
-            investmentTotal += portfolioValue;
+            var ledgerCashBalance = await CalculatePortfolioCashBalanceHomeAsync(
+                portfolio,
+                valuationDate,
+                cancellationToken);
+
+            portfolioMarketValue += marketValue;
+            cashBalance += ledgerCashBalance;
         }
 
+        var portfolioValue = portfolioMarketValue + cashBalance;
         var bankExchangeRates = await GetBankExchangeRatesToTwdAsync(bankAccounts, valuationDate, cancellationToken);
 
         var summary = totalAssetsService.Calculate(
-            investmentTotal,
+            portfolioMarketValue,
             bankAccounts,
             bankExchangeRates);
 
         var fundAllocations = await fundAllocationRepository.GetByUserIdAsync(userId, cancellationToken);
-        var totalAllocated = fundAllocations.Sum(x => x.Amount);
+        var disposableDeposit = fundAllocations
+            .Where(x => x.IsDisposable)
+            .Sum(x => x.Amount);
+        var nonDisposableDeposit = fundAllocations
+            .Where(x => !x.IsDisposable)
+            .Sum(x => x.Amount);
+        var totalAllocated = disposableDeposit + nonDisposableDeposit;
         var unallocated = summary.BankTotal - totalAllocated;
+
+        var investmentRatioDenominator = portfolioValue + disposableDeposit;
+        var investmentRatio = investmentRatioDenominator > 0m
+            ? portfolioValue / investmentRatioDenominator
+            : 0m;
+
+        var stockRatio = portfolioValue > 0m
+            ? portfolioMarketValue / portfolioValue
+            : 0m;
+
         var allocationBreakdown = fundAllocations
             .Select(x => new AllocationBreakdownResponse(
                 Purpose: x.Purpose,
@@ -79,6 +105,12 @@ public class GetTotalAssetsSummaryUseCase(
             BankPercentage: summary.BankPercentage,
             TotalMonthlyInterest: summary.TotalMonthlyInterest,
             TotalYearlyInterest: summary.TotalYearlyInterest,
+            PortfolioValue: portfolioValue,
+            CashBalance: cashBalance,
+            DisposableDeposit: disposableDeposit,
+            NonDisposableDeposit: nonDisposableDeposit,
+            InvestmentRatio: investmentRatio,
+            StockRatio: stockRatio,
             TotalAllocated: totalAllocated,
             Unallocated: unallocated,
             AllocationBreakdown: allocationBreakdown);
@@ -123,6 +155,38 @@ public class GetTotalAssetsSummaryUseCase(
         }
 
         return Math.Round(total, 4);
+    }
+
+    private async Task<decimal> CalculatePortfolioCashBalanceHomeAsync(
+        PortfolioEntity portfolio,
+        DateOnly valuationDate,
+        CancellationToken cancellationToken)
+    {
+        var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId,
+            cancellationToken);
+
+        if (ledger == null)
+            return 0m;
+
+        var transactionsUpToDate = ledger.Transactions
+            .Where(t => !t.IsDeleted && DateOnly.FromDateTime(t.TransactionDate) <= valuationDate)
+            .ToList();
+
+        var balance = currencyLedgerService.CalculateBalance(transactionsUpToDate);
+        if (balance <= 0m)
+            return 0m;
+
+        var exchangeRate = await GetExchangeRateAsync(
+            fromCurrency: ledger.CurrencyCode,
+            toCurrency: DefaultHomeCurrency,
+            date: valuationDate,
+            cancellationToken: cancellationToken);
+
+        if (exchangeRate is not > 0m)
+            return 0m;
+
+        return Math.Round(balance * exchangeRate.Value, 4);
     }
 
     private async Task<HistoricalPriceInfo?> GetPriceAsync(

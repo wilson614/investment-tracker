@@ -267,6 +267,7 @@ public record CreateFundAllocationRequest
     public AllocationPurpose Purpose { get; init; }
     public decimal Amount { get; init; }
     public string? Note { get; init; }
+    public bool? IsDisposable { get; init; }
 }
 
 /// <summary>
@@ -277,4 +278,5 @@ public record UpdateFundAllocationRequest
     public AllocationPurpose? Purpose { get; init; }
     public decimal? Amount { get; init; }
     public string? Note { get; init; }
+    public bool? IsDisposable { get; init; }
 }

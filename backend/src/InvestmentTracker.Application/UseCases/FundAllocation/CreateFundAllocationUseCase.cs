@@ -36,11 +36,16 @@ public class CreateFundAllocationUseCase(
         if (totalAllocated + request.Amount > totalBankAssets)
             throw new BusinessRuleException("Total allocations cannot exceed total bank assets.");
 
+        var isDisposable = request.IsDisposable ??
+            (request.Purpose != Domain.Enums.AllocationPurpose.EmergencyFund &&
+             request.Purpose != Domain.Enums.AllocationPurpose.FamilyDeposit);
+
         var allocation = new Domain.Entities.FundAllocation(
             userId,
             request.Purpose,
             request.Amount,
-            request.Note);
+            request.Note,
+            isDisposable);
 
         await fundAllocationRepository.AddAsync(allocation, cancellationToken);
 

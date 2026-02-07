@@ -52,6 +52,7 @@ public record FundAllocationResponse
     public AllocationPurpose Purpose { get; init; }
     public string PurposeDisplayName { get; init; } = string.Empty;
     public decimal Amount { get; init; }
+    public bool IsDisposable { get; init; }
     public string? Note { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
@@ -64,6 +65,7 @@ public record FundAllocationResponse
             Purpose = entity.Purpose,
             PurposeDisplayName = GetPurposeDisplayName(entity.Purpose),
             Amount = entity.Amount,
+            IsDisposable = entity.IsDisposable,
             Note = entity.Note,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
@@ -105,6 +107,12 @@ public record TotalAssetsSummaryResponse(
     decimal BankPercentage,       // 銀行佔比 %
     decimal TotalMonthlyInterest, // 銀行總月利息
     decimal TotalYearlyInterest,  // 銀行總年利息
+    decimal PortfolioValue,       // 投資組合總值 (股票市值 + 帳本現金)
+    decimal CashBalance,          // 帳本現金餘額
+    decimal DisposableDeposit,    // 可動用存款
+    decimal NonDisposableDeposit, // 不可動用存款
+    decimal InvestmentRatio,      // 投資比率
+    decimal StockRatio,           // 股票部位比率
     decimal TotalAllocated,       // 資產配置總額
     decimal Unallocated,          // 未配置餘額
     IReadOnlyList<AllocationBreakdownResponse>? AllocationBreakdown // 配置明細
