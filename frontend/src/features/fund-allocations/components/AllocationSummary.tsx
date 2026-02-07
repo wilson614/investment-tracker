@@ -41,11 +41,11 @@ export function AllocationSummary({
     <div className="card-dark p-6 space-y-5">
       <div className="grid grid-cols-2 gap-4 mb-5">
         <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
-          <p className="text-xs text-[var(--text-muted)] mb-1">特殊配置</p>
+          <p className="text-sm font-medium text-[var(--text-muted)] mb-1">特殊配置</p>
           <p className="text-xl font-bold text-[var(--text-primary)]">{formatCurrency(totalAllocated, 'TWD')}</p>
         </div>
         <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
-          <p className="text-xs text-[var(--text-muted)] mb-1">一般存款</p>
+          <p className="text-sm font-medium text-[var(--text-muted)] mb-1">一般存款</p>
           <p
             className={`text-xl font-bold ${
               normalizedUnallocated < 0 ? 'text-[var(--color-danger)]' : 'text-[var(--accent-peach)]'

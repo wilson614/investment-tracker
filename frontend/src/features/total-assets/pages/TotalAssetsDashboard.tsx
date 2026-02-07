@@ -87,7 +87,8 @@ export function TotalAssetsDashboard() {
       {/* ROW 1: 總金額 + 資金配置效率 並排 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
         <section className="card-dark p-6 h-full flex flex-col justify-center">
-          <p className="text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
+          <p className="text-sm font-medium text-[var(--text-muted)]">總資產</p>
+          <p className="mt-1 text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
             {formatCurrency(totalAssets, 'TWD')}
           </p>
         </section>

@@ -20,12 +20,12 @@ export function NonDisposableAssetsSection({
     <section className="card-dark p-6 h-full flex flex-col min-h-[200px] lg:min-h-[280px]">
       <header className="space-y-1">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">不可動用資產</h3>
-        <p className="text-sm text-[var(--text-muted)]">緊急預備金、家庭存款等不納入可投資資金</p>
+        <p className="text-sm text-[var(--text-muted)]">緊急預備金、家庭存款等不納入可動用資產</p>
       </header>
 
       <div className="flex-1 flex flex-col justify-center mt-4">
         <div className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 space-y-2">
-          <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">不可動用存款總額</p>
+          <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">不可動用存款總額</p>
           <p className="text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(nonDisposableDeposit, 'TWD')}
           </p>

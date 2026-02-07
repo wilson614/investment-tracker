@@ -29,14 +29,14 @@ export function DisposableAssetsSection({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-1">
-              <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">投資部位總額</p>
+              <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">投資部位總額</p>
               <div className="relative group">
                 <Info
                   className="w-3.5 h-3.5 text-[var(--text-muted)] cursor-help"
                   aria-label={`股票市值 ${formatCurrency(portfolioValue, 'TWD')} + 帳本現金 ${formatCurrency(cashBalance, 'TWD')}`}
                 />
                 <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-max max-w-72">
-                  <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] leading-relaxed whitespace-normal">
+                  <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-sm text-[var(--text-secondary)] leading-relaxed whitespace-normal">
                     股票市值 {formatCurrency(portfolioValue, 'TWD')} + 帳本現金 {formatCurrency(cashBalance, 'TWD')}
                   </div>
                 </div>
@@ -47,7 +47,7 @@ export function DisposableAssetsSection({
           <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(investmentTotal, 'TWD')}
           </p>
-          <p className="mt-2 text-xs text-[var(--accent-peach)]">前往投資組合</p>
+          <p className="mt-2 text-sm text-[var(--accent-peach)]">前往投資組合</p>
         </button>
 
         <button
@@ -56,13 +56,13 @@ export function DisposableAssetsSection({
           className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left transition-colors hover:border-[var(--accent-peach)]/40 hover:bg-[var(--bg-tertiary)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]/40"
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">帳本現金</p>
+            <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">帳本現金</p>
             <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
           </div>
           <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(cashBalance, 'TWD')}
           </p>
-          <p className="mt-2 text-xs text-[var(--accent-peach)]">前往帳本</p>
+          <p className="mt-2 text-sm text-[var(--accent-peach)]">前往帳本</p>
         </button>
 
         <button
@@ -71,13 +71,13 @@ export function DisposableAssetsSection({
           className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left transition-colors hover:border-[var(--accent-peach)]/40 hover:bg-[var(--bg-tertiary)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]/40"
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">可動用存款</p>
+            <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">可動用存款</p>
             <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
           </div>
           <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(disposableDeposit, 'TWD')}
           </p>
-          <p className="mt-2 text-xs text-[var(--accent-peach)]">前往銀行帳戶</p>
+          <p className="mt-2 text-sm text-[var(--accent-peach)]">前往銀行帳戶</p>
         </button>
       </div>
     </section>

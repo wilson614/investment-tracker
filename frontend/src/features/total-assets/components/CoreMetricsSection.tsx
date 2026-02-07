@@ -15,15 +15,15 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
 
       <div className="space-y-2.5">
         <CompactMetricRow
-          label="資金投入率"
+          label="流動資產投資率"
           value={investmentRatio}
-          description="投資部位 / (可動用資產 + 投資部位)"
+          description="投資部位 / 可動用資產（可動用資產 = 總資產 - 不可動用資產）"
           color="peach"
         />
         <CompactMetricRow
-          label="持倉比例"
+          label="持倉水位"
           value={stockRatio}
-          description="組合市值 / 投資部位（越高代表閒置現金越少）"
+          description="組合市值 / 投資部位"
           color="lavender"
         />
       </div>
