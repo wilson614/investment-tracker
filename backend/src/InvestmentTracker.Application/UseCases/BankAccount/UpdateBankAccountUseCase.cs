@@ -14,6 +14,9 @@ public class UpdateBankAccountUseCase(
     InterestEstimationService interestEstimationService,
     ICurrentUserService currentUserService)
 {
+    private static readonly string[] SupportedCurrencies = ["TWD", "USD", "EUR", "JPY", "CNY", "GBP", "AUD"];
+    private static readonly HashSet<string> SupportedCurrencySet = new(SupportedCurrencies, StringComparer.OrdinalIgnoreCase);
+
     public async Task<BankAccountResponse> ExecuteAsync(
         Guid id,
         UpdateBankAccountRequest request,
@@ -30,12 +33,24 @@ public class UpdateBankAccountUseCase(
         bankAccount.SetInterestSettings(request.InterestRate, request.InterestCap);
 
         if (request.Currency is not null)
-            bankAccount.SetCurrency(request.Currency);
+            bankAccount.SetCurrency(ValidateCurrency(request.Currency));
 
         bankAccount.SetNote(request.Note);
 
         await bankAccountRepository.UpdateAsync(bankAccount, cancellationToken);
 
         return BankAccountResponse.FromEntity(bankAccount, interestEstimationService);
+    }
+
+    private static string ValidateCurrency(string currency)
+    {
+        if (string.IsNullOrWhiteSpace(currency))
+            throw new BusinessRuleException("Currency is required.");
+
+        var normalizedCurrency = currency.Trim().ToUpperInvariant();
+        if (!SupportedCurrencySet.Contains(normalizedCurrency))
+            throw new BusinessRuleException($"Currency must be one of: {string.Join(", ", SupportedCurrencies)}.");
+
+        return normalizedCurrency;
     }
 }

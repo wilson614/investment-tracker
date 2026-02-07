@@ -14,12 +14,17 @@ public class CreateBankAccountUseCase(
     InterestEstimationService interestEstimationService,
     ICurrentUserService currentUserService)
 {
+    private static readonly string[] SupportedCurrencies = ["TWD", "USD", "EUR", "JPY", "CNY", "GBP", "AUD"];
+    private static readonly HashSet<string> SupportedCurrencySet = new(SupportedCurrencies, StringComparer.OrdinalIgnoreCase);
+
     public async Task<BankAccountResponse> ExecuteAsync(
         CreateBankAccountRequest request,
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
             ?? throw new AccessDeniedException("User not authenticated");
+
+        var currency = ValidateCurrency(request.Currency);
 
         var bankAccount = new Domain.Entities.BankAccount(
             userId,
@@ -28,10 +33,22 @@ public class CreateBankAccountUseCase(
             request.InterestRate,
             request.InterestCap,
             request.Note,
-            request.Currency);
+            currency);
 
         await bankAccountRepository.AddAsync(bankAccount, cancellationToken);
 
         return BankAccountResponse.FromEntity(bankAccount, interestEstimationService);
+    }
+
+    private static string ValidateCurrency(string currency)
+    {
+        if (string.IsNullOrWhiteSpace(currency))
+            throw new BusinessRuleException("Currency is required.");
+
+        var normalizedCurrency = currency.Trim().ToUpperInvariant();
+        if (!SupportedCurrencySet.Contains(normalizedCurrency))
+            throw new BusinessRuleException($"Currency must be one of: {string.Join(", ", SupportedCurrencies)}.");
+
+        return normalizedCurrency;
     }
 }

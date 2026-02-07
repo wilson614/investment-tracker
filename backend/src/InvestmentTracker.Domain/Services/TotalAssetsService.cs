@@ -71,42 +71,46 @@ public class TotalAssetsService(InterestEstimationService interestEstimationServ
         IReadOnlyDictionary<string, decimal>? exchangeRatesToTwd)
     {
         if (exchangeRatesToTwd == null || exchangeRatesToTwd.Count == 0)
-            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+            {
+                [HomeCurrency] = 1m
+            };
+        }
 
-        return exchangeRatesToTwd
+        var normalized = exchangeRatesToTwd
             .Where(x => !string.IsNullOrWhiteSpace(x.Key) && x.Value > 0m)
             .ToDictionary(
                 x => x.Key.Trim().ToUpperInvariant(),
                 x => x.Value,
                 StringComparer.OrdinalIgnoreCase);
+
+        normalized[HomeCurrency] = 1m;
+
+        return normalized;
     }
 
     private static decimal ConvertToTwd(BankAccount account, IReadOnlyDictionary<string, decimal> rates)
-    {
-        var currency = NormalizeCurrency(account.Currency);
-
-        if (string.Equals(currency, HomeCurrency, StringComparison.OrdinalIgnoreCase))
-            return account.TotalAssets;
-
-        if (rates.TryGetValue(currency, out var exchangeRate) && exchangeRate > 0m)
-            return Math.Round(account.TotalAssets * exchangeRate, 4);
-
-        // Missing exchange rate: treat as unconverted and exclude from TWD total.
-        return 0m;
-    }
+        => ConvertAmountToTwd(account.Currency, account.TotalAssets, rates);
 
     private static decimal ConvertInterestToTwd(
         BankAccount account,
         decimal interest,
         IReadOnlyDictionary<string, decimal> rates)
+        => ConvertAmountToTwd(account.Currency, interest, rates);
+
+    private static decimal ConvertAmountToTwd(
+        string? currency,
+        decimal amount,
+        IReadOnlyDictionary<string, decimal> rates)
     {
-        var currency = NormalizeCurrency(account.Currency);
+        var normalizedCurrency = NormalizeCurrency(currency);
 
-        if (string.Equals(currency, HomeCurrency, StringComparison.OrdinalIgnoreCase))
-            return interest;
+        if (string.Equals(normalizedCurrency, HomeCurrency, StringComparison.OrdinalIgnoreCase))
+            return amount;
 
-        if (rates.TryGetValue(currency, out var exchangeRate) && exchangeRate > 0m)
-            return Math.Round(interest * exchangeRate, 4);
+        if (rates.TryGetValue(normalizedCurrency, out var exchangeRate) && exchangeRate > 0m)
+            return Math.Round(amount * exchangeRate, 4);
 
         // Missing exchange rate: treat as unconverted and exclude from TWD total.
         return 0m;
