@@ -5,6 +5,10 @@ export interface MetricCardProps {
   value: string | number;
   percentage?: number;
   trend?: MetricTrend;
+  /** 0-1 之間的比例值，用於顯示進度條 */
+  ratio?: number;
+  /** 進度條下方的說明文字 */
+  description?: string;
 }
 
 const TREND_STYLES: Record<MetricTrend, string> = {
@@ -46,7 +50,9 @@ function formatPercentageBadge(percentage: number, trend: MetricTrend): string {
   return `${formattedValue}%`;
 }
 
-export function MetricCard({ label, value, percentage, trend = 'neutral' }: MetricCardProps) {
+export function MetricCard({ label, value, percentage, trend = 'neutral', ratio, description }: MetricCardProps) {
+  const clampedRatio = typeof ratio === 'number' ? Math.max(0, Math.min(1, ratio)) : undefined;
+
   return (
     <article className="card-dark p-4 sm:p-5">
       <div className="flex items-start justify-between gap-2">
@@ -65,6 +71,20 @@ export function MetricCard({ label, value, percentage, trend = 'neutral' }: Metr
       <p className="mt-3 text-2xl font-bold font-mono text-[var(--text-primary)] number-display">
         {formatMetricValue(value)}
       </p>
+
+      {typeof clampedRatio === 'number' ? (
+        <div className="mt-3">
+          <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[var(--accent-peach)] rounded-full transition-all duration-300"
+              style={{ width: `${clampedRatio * 100}%` }}
+            />
+          </div>
+          {description ? (
+            <p className="mt-1.5 text-xs text-[var(--text-muted)]">{description}</p>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

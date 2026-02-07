@@ -68,8 +68,19 @@ export function AllocationSummary({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm text-[var(--text-secondary)]">
-                    {PURPOSE_DISPLAY_NAMES[allocation.purpose]}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[var(--text-secondary)]">
+                      {PURPOSE_DISPLAY_NAMES[allocation.purpose]}
+                    </span>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded ${
+                        allocation.isDisposable
+                          ? 'bg-[var(--accent-peach)]/20 text-[var(--accent-peach)]'
+                          : 'bg-[var(--text-muted)]/20 text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {allocation.isDisposable ? '可動用' : '不可動用'}
+                    </span>
                   </div>
                   <div className="text-base font-semibold text-[var(--text-primary)] mt-1">
                     {formatCurrency(allocation.amount, 'TWD')}

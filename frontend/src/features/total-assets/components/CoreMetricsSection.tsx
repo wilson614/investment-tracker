@@ -26,8 +26,18 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
 
   return (
     <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <MetricCard label="投資比例" value={formatRatioAsPercentage(investmentRatio)} />
-      <MetricCard label="股票佔比" value={formatRatioAsPercentage(stockRatio)} />
+      <MetricCard
+        label="投資比例"
+        value={formatRatioAsPercentage(investmentRatio)}
+        ratio={investmentRatio}
+        description="投資部位 / 可動用資產"
+      />
+      <MetricCard
+        label="股票佔比"
+        value={formatRatioAsPercentage(stockRatio)}
+        ratio={stockRatio}
+        description="組合市值 / 投資部位"
+      />
     </section>
   );
 }
