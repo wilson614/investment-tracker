@@ -24,8 +24,8 @@
 
 **Purpose**: Database migrations and shared utilities
 
-- [ ] T001 [P] Create AllocationPurpose enum in `backend/src/InvestmentTracker.Domain/Enums/AllocationPurpose.cs`
-- [ ] T002 [P] Create currency formatting utility in `frontend/src/utils/currency.ts`
+- [x] T001 [P] Create AllocationPurpose enum in `backend/src/InvestmentTracker.Domain/Enums/AllocationPurpose.cs` ✅
+- [x] T002 [P] Create currency formatting utility in `frontend/src/utils/currency.ts` ✅
 
 ---
 
@@ -35,9 +35,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Add Currency property to BankAccount entity in `backend/src/InvestmentTracker.Domain/Entities/BankAccount.cs`
-- [ ] T004 Create migration for Currency field in `backend/src/InvestmentTracker.Infrastructure/Migrations/` (AddCurrencyToBankAccount)
-- [ ] T005 Run migration and verify existing accounts have Currency=TWD
+- [x] T003 Add Currency property to BankAccount entity in `backend/src/InvestmentTracker.Domain/Entities/BankAccount.cs` ✅
+- [x] T004 Create migration for Currency field in `backend/src/InvestmentTracker.Infrastructure/Migrations/` (AddCurrencyToBankAccount) ✅
+- [x] T005 Run migration and verify existing accounts have Currency=TWD ✅
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -95,47 +95,98 @@
 
 ### Backend - Entity & Repository
 
-- [ ] T019 [P] [US2] Create FundAllocation entity in `backend/src/InvestmentTracker.Domain/Entities/FundAllocation.cs`
-- [ ] T020 [P] [US2] Create IFundAllocationRepository interface in `backend/src/InvestmentTracker.Domain/Interfaces/IFundAllocationRepository.cs`
-- [ ] T021 [US2] Create FundAllocationRepository implementation in `backend/src/InvestmentTracker.Infrastructure/Repositories/FundAllocationRepository.cs`
-- [ ] T022 [US2] Create migration for FundAllocations table in `backend/src/InvestmentTracker.Infrastructure/Migrations/`
-- [ ] T023 [US2] Register FundAllocation in DbContext in `backend/src/InvestmentTracker.Infrastructure/Data/ApplicationDbContext.cs`
+- [x] T019 [P] [US2] Create FundAllocation entity in `backend/src/InvestmentTracker.Domain/Entities/FundAllocation.cs` ✅
+- [x] T020 [P] [US2] Create IFundAllocationRepository interface in `backend/src/InvestmentTracker.Domain/Interfaces/IFundAllocationRepository.cs` ✅
+- [x] T021 [US2] Create FundAllocationRepository implementation in `backend/src/InvestmentTracker.Infrastructure/Repositories/FundAllocationRepository.cs` ✅
+- [x] T022 [US2] Create migration for FundAllocations table in `backend/src/InvestmentTracker.Infrastructure/Migrations/` ✅
+- [x] T023 [US2] Register FundAllocation in DbContext in `backend/src/InvestmentTracker.Infrastructure/Data/ApplicationDbContext.cs` ✅
 
 ### Backend - DTOs
 
-- [ ] T024 [P] [US2] Create FundAllocationResponse DTO in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs`
-- [ ] T025 [P] [US2] Create CreateFundAllocationRequest DTO in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T026 [P] [US2] Create UpdateFundAllocationRequest DTO in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T027 [P] [US2] Create AllocationSummary DTO in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs`
+- [x] T024 [P] [US2] Create FundAllocationResponse DTO in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs` ✅
+- [x] T025 [P] [US2] Create CreateFundAllocationRequest DTO in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T026 [P] [US2] Create UpdateFundAllocationRequest DTO in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` ✅
+- [x] T027 [P] [US2] Create AllocationSummary DTO in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs` ✅
 
 ### Backend - Use Cases
 
-- [ ] T028 [US2] Create GetFundAllocationsUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/GetFundAllocationsUseCase.cs`
-- [ ] T029 [US2] Create CreateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/CreateFundAllocationUseCase.cs`
+- [x] T028 [US2] Create GetFundAllocationsUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/GetFundAllocationsUseCase.cs` ✅
+- [x] T029 [US2] Create CreateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/CreateFundAllocationUseCase.cs` ✅
 - [ ] T029a [US2] Add unit tests for over-allocation validation in `backend/tests/InvestmentTracker.Application.Tests/`
-- [ ] T030 [US2] Create UpdateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/UpdateFundAllocationUseCase.cs`
-- [ ] T031 [US2] Create DeleteFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/DeleteFundAllocationUseCase.cs`
+- [x] T030 [US2] Create UpdateFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/UpdateFundAllocationUseCase.cs` ✅
+- [x] T031 [US2] Create DeleteFundAllocationUseCase in `backend/src/InvestmentTracker.Application/UseCases/FundAllocation/DeleteFundAllocationUseCase.cs` ✅
 
 ### Backend - Controller & Service Updates
 
-- [ ] T032 [US2] Create FundAllocationsController in `backend/src/InvestmentTracker.API/Controllers/FundAllocationsController.cs`
-- [ ] T033 [US2] Register FundAllocation services in DI in `backend/src/InvestmentTracker.API/Program.cs`
-- [ ] T034 [US2] Update TotalAssetsSummary to include allocations in `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs`
-- [ ] T035 [US2] Update GetTotalAssetsSummaryUseCase to include allocations in `backend/src/InvestmentTracker.Application/UseCases/Assets/GetTotalAssetsSummaryUseCase.cs`
+- [x] T032 [US2] Create FundAllocationsController in `backend/src/InvestmentTracker.API/Controllers/FundAllocationsController.cs` ✅
+- [x] T033 [US2] Register FundAllocation services in DI in `backend/src/InvestmentTracker.API/Program.cs` ✅
+- [x] T034 [US2] Update TotalAssetsSummary to include allocations in `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs` ✅
+- [x] T035 [US2] Update GetTotalAssetsSummaryUseCase to include allocations in `backend/src/InvestmentTracker.Application/UseCases/Assets/GetTotalAssetsSummaryUseCase.cs` ✅
 
 ### Frontend - Types & API
 
-- [ ] T036 [P] [US2] Create FundAllocation types in `frontend/src/features/fund-allocations/types/index.ts`
-- [ ] T037 [US2] Create fund allocations API client in `frontend/src/features/fund-allocations/api/allocationsApi.ts`
-- [ ] T038 [US2] Update TotalAssetsSummary type with allocations in `frontend/src/features/total-assets/types/index.ts`
+- [x] T036 [P] [US2] Create FundAllocation types in `frontend/src/features/fund-allocations/types/index.ts` ✅
+- [x] T037 [US2] Create fund allocations API client in `frontend/src/features/fund-allocations/api/allocationsApi.ts` ✅
+- [x] T038 [US2] Update TotalAssetsSummary type with allocations in `frontend/src/features/total-assets/types/index.ts` ✅
 
 ### Frontend - Components
 
-- [ ] T039 [US2] Create AllocationForm component in `frontend/src/features/fund-allocations/components/AllocationForm.tsx`
-- [ ] T040 [US2] Create AllocationSummary component in `frontend/src/features/fund-allocations/components/AllocationSummary.tsx`
-- [ ] T041 [US2] Update TotalAssetsBanner to show allocations in `frontend/src/features/total-assets/components/TotalAssetsBanner.tsx`
+- [x] T039 [US2] Create AllocationForm component in `frontend/src/features/fund-allocations/components/AllocationForm.tsx` ✅
+- [x] T040 [US2] Create AllocationSummary component in `frontend/src/features/fund-allocations/components/AllocationSummary.tsx` ✅
+- [x] T041 [US2] Update TotalAssetsBanner to show allocations in `frontend/src/features/total-assets/components/TotalAssetsBanner.tsx` ✅
 
 **Checkpoint**: Fund allocation feature complete with dashboard display
+
+---
+
+## Phase 5.5: User Story 6 - Total Assets Dashboard Refactor with Disposable Fund Tracking (Priority: P2)
+
+**Goal**: Refactor dashboard to show Investment Ratio and Stock Ratio, distinguish disposable vs non-disposable funds
+
+**Independent Test**: Create fund allocations with different isDisposable settings, verify dashboard shows correct ratios
+
+### Backend - Entity & Migration
+
+- [ ] T053 [US6] Add IsDisposable field to FundAllocation entity in `backend/src/InvestmentTracker.Domain/Entities/FundAllocation.cs`
+- [ ] T054 [US6] Add Investment and Other to AllocationPurpose enum in `backend/src/InvestmentTracker.Domain/Enums/AllocationPurpose.cs`
+- [ ] T055 [US6] Create migration for IsDisposable field in `backend/src/InvestmentTracker.Infrastructure/Migrations/`
+- [ ] T056 [US6] Add data migration: set IsDisposable based on purpose (false for EmergencyFund/FamilyDeposit, true for others)
+
+### Backend - DTOs & Use Cases
+
+- [ ] T057 [US6] Add IsDisposable to CreateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
+- [ ] T058 [US6] Add IsDisposable to UpdateFundAllocationRequest in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
+- [ ] T059 [US6] Add IsDisposable to FundAllocationResponse in `backend/src/InvestmentTracker.Application/DTOs/ResponseDtos.cs`
+- [ ] T060 [US6] Update CreateFundAllocationUseCase to handle IsDisposable with default logic
+- [ ] T061 [US6] Update UpdateFundAllocationUseCase to handle IsDisposable
+
+### Backend - Summary Calculation
+
+- [ ] T062 [US6] Add PortfolioValue, CashBalance to TotalAssetsSummary DTO
+- [ ] T063 [US6] Add DisposableDeposit, NonDisposableDeposit to TotalAssetsSummary DTO
+- [ ] T064 [US6] Add InvestmentRatio, StockRatio to TotalAssetsSummary DTO
+- [ ] T065 [US6] Update GetTotalAssetsSummaryUseCase to calculate new fields
+
+### Frontend - Types & API
+
+- [ ] T066 [P] [US6] Add IsDisposable to FundAllocation types in `frontend/src/features/fund-allocations/types/index.ts`
+- [ ] T067 [US6] Update TotalAssetsSummary type with new fields in `frontend/src/features/total-assets/types/index.ts`
+
+### Frontend - Form Update
+
+- [ ] T068 [US6] Add IsDisposable toggle to AllocationFormDialog in `frontend/src/features/fund-allocations/components/AllocationFormDialog.tsx`
+- [ ] T069 [US6] Implement default IsDisposable logic based on purpose selection
+
+### Frontend - Dashboard Refactor
+
+- [ ] T070 [US6] Create CoreMetricsSection component in `frontend/src/features/total-assets/components/CoreMetricsSection.tsx`
+- [ ] T071 [US6] Create MetricCard component in `frontend/src/features/total-assets/components/MetricCard.tsx`
+- [ ] T072 [US6] Create DisposableAssetsSection component in `frontend/src/features/total-assets/components/DisposableAssetsSection.tsx`
+- [ ] T073 [US6] Create NonDisposableAssetsSection component in `frontend/src/features/total-assets/components/NonDisposableAssetsSection.tsx`
+- [ ] T074 [US6] Refactor AssetsBreakdownPieChart to 4 slices in `frontend/src/features/total-assets/components/AssetsBreakdownPieChart.tsx`
+- [ ] T075 [US6] Refactor TotalAssetsDashboard layout in `frontend/src/features/total-assets/pages/TotalAssetsDashboard.tsx`
+
+**Checkpoint**: Dashboard refactor complete with Investment Ratio and Stock Ratio
 
 ---
 
@@ -198,14 +249,15 @@
 
 ### Recommended Execution Order
 
-1. **Setup** (T001-T003) - All can run in parallel
-2. **Foundational** (T004-T005) - Sequential
+1. **Setup** (T001-T002) - ✅ Complete
+2. **Foundational** (T003-T005) - ✅ Complete
 3. **US5 Bug Fix** (T006) - Quick win first
 4. **US1 Multi-Currency** (T007-T018) - Core feature
-5. **US2 Fund Allocations** (T019-T041) - Large feature
-6. **US3 Historical Performance** (T042-T045) - Backend refactor
-7. **US4 Display Consistency** (T046-T048) - Polish
-8. **Polish** (T049-T051) - Final verification
+5. **US2 Fund Allocations** (T019-T041) - ✅ Complete
+6. **US6 Dashboard Refactor** (T053-T075) - **NEW** Dashboard with Investment/Stock Ratio
+7. **US3 Historical Performance** (T042-T045) - Backend refactor
+8. **US4 Display Consistency** (T046-T048) - Polish
+9. **Polish** (T049-T052) - Final verification
 
 ### Parallel Opportunities
 
@@ -261,17 +313,18 @@ T024, T025, T026, T027 → Run together
 
 ## Summary
 
-| Phase | User Story | Task Count | Parallel Tasks |
-|-------|------------|------------|----------------|
-| 1 | Setup | 2 | 2 |
-| 2 | Foundational | 3 | 0 |
-| 3 | US5 - Bug Fix | 1 | 0 |
-| 4 | US1 - Multi-Currency | 14 | 6 |
-| 5 | US2 - Fund Allocations | 24 | 7 |
-| 6 | US3 - Historical Performance | 4 | 0 |
-| 7 | US4 - Display Consistency | 3 | 0 |
-| 8 | Polish | 4 | 0 |
-| **Total** | | **55** | **15** |
+| Phase | User Story | Task Count | Parallel Tasks | Status |
+|-------|------------|------------|----------------|--------|
+| 1 | Setup | 2 | 2 | ✅ Complete |
+| 2 | Foundational | 3 | 0 | ✅ Complete |
+| 3 | US5 - Bug Fix | 1 | 0 | Pending |
+| 4 | US1 - Multi-Currency | 14 | 6 | Pending |
+| 5 | US2 - Fund Allocations | 24 | 7 | ✅ Complete |
+| 5.5 | US6 - Dashboard Refactor | 23 | 1 | **NEW** |
+| 6 | US3 - Historical Performance | 4 | 0 | Pending |
+| 7 | US4 - Display Consistency | 3 | 0 | Pending |
+| 8 | Polish | 4 | 0 | Pending |
+| **Total** | | **78** | **16** | |
 
 ---
 

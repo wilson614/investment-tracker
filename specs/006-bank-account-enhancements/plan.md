@@ -5,14 +5,15 @@
 
 ## Summary
 
-This feature adds multi-currency support for bank accounts, virtual fund allocations for mental accounting, generalizes historical performance calculations for multi-currency portfolios, standardizes currency display formatting, and fixes the interest cap zero display bug.
+This feature adds multi-currency support for bank accounts, virtual fund allocations for mental accounting, generalizes historical performance calculations for multi-currency portfolios, standardizes currency display formatting, fixes the interest cap zero display bug, and **refactors the total assets dashboard with disposable fund tracking**.
 
 **Key Changes:**
 1. **P1**: Add `Currency` field to BankAccount entity with multi-currency support (7 currencies)
 2. **P2**: New `FundAllocation` entity for virtual allocation of bank assets to purposes
-3. **P3**: Generalize `HistoricalPerformanceService` to handle any portfolio base currency
-4. **P4**: Create unified currency formatting utility
-5. **P5**: Fix `interestCap=0` display logic bug
+3. **P2**: **NEW** - Refactor Total Assets Dashboard with core metrics (Investment Ratio, Stock Ratio) and disposable/non-disposable fund distinction
+4. **P3**: Generalize `HistoricalPerformanceService` to handle any portfolio base currency
+5. **P4**: Create unified currency formatting utility
+6. **P5**: Fix `interestCap=0` display logic bug
 
 ## Technical Context
 
@@ -64,9 +65,9 @@ backend/
 │   ├── InvestmentTracker.Domain/
 │   │   ├── Entities/
 │   │   │   ├── BankAccount.cs          # MODIFY: Add Currency field
-│   │   │   └── FundAllocation.cs       # NEW: Fund allocation entity
+│   │   │   └── FundAllocation.cs       # NEW: Fund allocation entity (with IsDisposable)
 │   │   ├── Enums/
-│   │   │   └── AllocationPurpose.cs    # NEW: Purpose enum
+│   │   │   └── AllocationPurpose.cs    # NEW: Purpose enum (EmergencyFund, FamilyDeposit, General, Savings, Investment, Other)
 │   │   └── Services/
 │   │       └── TotalAssetsService.cs   # MODIFY: Add fund allocation breakdown
 │   ├── InvestmentTracker.Application/
@@ -97,14 +98,22 @@ frontend/
 │   │   │   └── types/index.ts              # MODIFY: Add currency field
 │   │   ├── fund-allocations/               # NEW: Fund allocation feature
 │   │   │   ├── components/
-│   │   │   │   ├── AllocationForm.tsx
-│   │   │   │   └── AllocationSummary.tsx
+│   │   │   │   ├── AllocationForm.tsx      # MODIFY: Add isDisposable toggle
+│   │   │   │   └── AllocationSummary.tsx   # MODIFY: Show disposable status
 │   │   │   ├── api/
-│   │   │   └── types/
+│   │   │   └── types/                      # MODIFY: Add isDisposable field
 │   │   └── total-assets/
+│   │       ├── pages/
+│   │       │   └── TotalAssetsDashboard.tsx  # MODIFY: New layout with core metrics
 │   │       ├── components/
-│   │       │   └── TotalAssetsBanner.tsx   # MODIFY: Show fund allocations
-│   │       └── types/index.ts              # MODIFY: Add allocations
+│   │       │   ├── TotalAssetsBanner.tsx     # KEEP: Grand total display
+│   │       │   ├── CoreMetricsSection.tsx    # NEW: Investment Ratio + Stock Ratio
+│   │       │   ├── MetricCard.tsx            # NEW: Reusable metric display
+│   │       │   ├── DisposableAssetsSection.tsx   # NEW: Left 2/3 section
+│   │       │   ├── NonDisposableAssetsSection.tsx # NEW: Right 1/3 section
+│   │       │   ├── AssetsBreakdownPieChart.tsx   # MODIFY: 4-slice chart
+│   │       │   └── AssetCategorySummary.tsx  # MODIFY: Investment + Disposable breakdown
+│   │       └── types/index.ts              # MODIFY: Add new summary fields
 │   └── utils/
 │       └── currency.ts                     # NEW: Unified currency formatting
 └── tests/

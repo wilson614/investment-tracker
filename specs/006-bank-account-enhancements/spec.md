@@ -87,12 +87,32 @@ As a user with a bank account that has an interest cap of 0 (no cap), I want the
 
 ---
 
+### User Story 6 - Total Assets Dashboard Refactor with Disposable Fund Tracking (Priority: P2)
+
+As a user managing my finances, I want to distinguish between "disposable" and "non-disposable" fund allocations so that I can see my true investment ratio based on available funds (excluding emergency reserves and family deposits).
+
+**Why this priority**: This fundamentally changes how users understand their investment allocation. The current dashboard shows investment vs total assets, but users actually care about investment vs disposable funds (excluding locked funds like emergency reserves).
+
+**Independent Test**: Can be fully tested by creating fund allocations with different disposable settings and verifying the dashboard shows correct investment ratio calculations.
+
+**Acceptance Scenarios**:
+
+1. **Given** I am creating a fund allocation, **When** I fill the form, **Then** I can toggle whether this allocation is "disposable" (available for investment) or not.
+2. **Given** I have investment portfolio worth NT$ 1,000,000 and disposable bank deposits of NT$ 500,000, **When** I view the total assets dashboard, **Then** I see "Investment Ratio: 66.7%" (1M / 1.5M).
+3. **Given** I have investment portfolio worth NT$ 850,000 (stocks NT$ 800,000 + cash NT$ 50,000), **When** I view the total assets dashboard, **Then** I see "Stock Ratio: 94.1%" (800K / 850K).
+4. **Given** I view the total assets dashboard, **When** I look at the pie chart, **Then** I see 4 slices: Portfolio Value, Ledger Cash Balance, Disposable Bank Deposits, Non-Disposable Bank Deposits.
+5. **Given** I have non-disposable allocations (emergency fund, family deposits), **When** I view the dashboard, **Then** these are displayed in a secondary section on the right (1/3 width) while disposable assets are on the left (2/3 width).
+
+---
+
 ### Edge Cases
 
 - When exchange rate data is unavailable: System uses last known rate and displays visual indicator (e.g., warning icon or "stale" badge) to inform user
 - How does the system handle a currency that is not in the supported list? Only supported currencies are selectable; unsupported currencies cannot be added
 - What happens when total bank assets decrease below allocated amount? System shows warning that allocations exceed available assets; user must adjust allocations
 - How are historical performance charts displayed when exchange rate history is incomplete? Use nearest available rate or interpolate
+- When investment portfolio is empty (no positions, no cash): Investment ratio displays as 0%, stock ratio displays as N/A
+- When all bank deposits are non-disposable: Investment ratio calculation uses only investment portfolio (100% if any investment exists)
 
 ## Requirements *(mandatory)*
 
@@ -125,11 +145,28 @@ As a user with a bank account that has an interest cap of 0 (no cap), I want the
 **Bug Fixes**
 - **FR-015**: System MUST distinguish between interestCap=0, interestCap=null, and interestCap=value in display logic
 
+**Disposable Fund Tracking & Dashboard Refactor**
+- **FR-018**: System MUST allow users to mark each fund allocation as "disposable" or "non-disposable" via a toggle field
+- **FR-019**: System MUST calculate Investment Ratio as: Investment Portfolio / (Investment Portfolio + Disposable Bank Deposits)
+- **FR-020**: System MUST calculate Stock Ratio as: Portfolio Market Value / Investment Portfolio (where Investment Portfolio = Market Value + Ledger Cash Balance)
+- **FR-021**: System MUST display two core metrics (Investment Ratio, Stock Ratio) prominently at the top of the total assets dashboard
+- **FR-022**: System MUST display a 4-slice pie chart showing: Portfolio Market Value, Ledger Cash Balance, Disposable Bank Deposits, Non-Disposable Bank Deposits
+- **FR-023**: System MUST display disposable assets section on the left (2/3 width) and non-disposable section on the right (1/3 width) on desktop
+- **FR-024**: System MUST default isDisposable to false for EmergencyFund and FamilyDeposit purposes, true for other purposes
+- **FR-025**: System MUST allow users to override the default isDisposable value when creating or editing allocations
+
 ### Key Entities
 
 - **BankAccount**: Extended with `Currency` field (string, e.g., "TWD", "USD") for multi-currency support
-- **FundAllocation** (new): Represents virtual allocation of bank assets to a purpose. Fields: Purpose (enum: EmergencyFund, FamilyDeposit, General, Savings), Amount (decimal in TWD)
-- **TotalAssetsSummary**: Extended to include fund allocation breakdown with amounts and unallocated remainder
+- **FundAllocation** (new): Represents virtual allocation of bank assets to a purpose. Fields: Purpose (enum: EmergencyFund, FamilyDeposit, General, Savings, Investment, Other), Amount (decimal in TWD), IsDisposable (boolean)
+- **TotalAssetsSummary**: Extended to include:
+  - Fund allocation breakdown with amounts and unallocated remainder
+  - PortfolioValue (stock/fund market value)
+  - CashBalance (ledger cash balance)
+  - DisposableDeposit (sum of isDisposable=true allocations)
+  - NonDisposableDeposit (sum of isDisposable=false allocations)
+  - InvestmentRatio (calculated percentage)
+  - StockRatio (calculated percentage)
 - **ExchangeRate**: Existing entity used for currency conversion
 
 ## Success Criteria *(mandatory)*
@@ -142,6 +179,10 @@ As a user with a bank account that has an interest cap of 0 (no cap), I want the
 - **SC-004**: Historical performance charts display accurate data for both TWD-based and USD-based portfolios
 - **SC-005**: All currency displays across bank account features use consistent formatting (100% consistency)
 - **SC-006**: Interest cap of 0 displays correctly, distinguishable from null/undefined (bug eliminated)
+- **SC-007**: Users can set isDisposable flag on fund allocations and see the correct Investment Ratio on the dashboard
+- **SC-008**: Dashboard displays Stock Ratio correctly based on portfolio market value vs total investment portfolio
+- **SC-009**: Dashboard pie chart shows 4 distinct slices with appropriate colors (portfolio value, cash balance, disposable deposits, non-disposable deposits)
+- **SC-010**: Dashboard layout correctly places disposable assets on left (2/3) and non-disposable on right (1/3) on desktop screens
 
 ## Clarifications
 
@@ -150,6 +191,13 @@ As a user with a bank account that has an interest cap of 0 (no cap), I want the
 - Q: How should existing bank account data be migrated for new Currency field? → A: Default existing accounts to Currency=TWD
 - Q: How should the system handle unavailable exchange rate data? → A: Use last known rate with visual indicator showing rate is stale
 - Q: What is the Category feature design? → A: Category is NOT per-account. It's a virtual fund allocation on the total bank assets. Users allocate portions of total bank balance (across all currencies, converted to TWD) to purposes like Emergency Fund, Family Deposit, etc. No clickable navigation needed.
+
+### Session 2026-02-07
+
+- Q: Why refactor the total assets dashboard? → A: Current design has information redundancy (same values shown multiple times) and the pie chart only has 2 slices (low information density). User wants to focus on "Investment Ratio relative to disposable funds" rather than total assets.
+- Q: What is "disposable" vs "non-disposable"? → A: User determines this per allocation. Default: EmergencyFund and FamilyDeposit are non-disposable; others are disposable. User can override.
+- Q: What are the two core metrics? → A: (1) Investment Ratio = Investment Portfolio / (Investment Portfolio + Disposable Bank Deposits); (2) Stock Ratio = Portfolio Market Value / Investment Portfolio
+- Q: What about cash waiting for investment that earns interest? → A: Cash waiting for investment is tracked in the ledger (as "cash balance"), not in bank accounts. This is by design - bank deposits are for non-investment purposes.
 
 ## Assumptions
 
@@ -160,3 +208,6 @@ As a user with a bank account that has an interest cap of 0 (no cap), I want the
 - Users cannot create custom allocation purposes in this version
 - Home currency for total assets calculation is always TWD
 - Fund allocations are virtual/mental accounting only; they do not affect actual bank account data
+- Existing fund allocations will be migrated with IsDisposable based on purpose: false for EmergencyFund/FamilyDeposit, true for others
+- Investment portfolio data (market value, cash balance) is available from the existing portfolio system
+- The ledger already tracks "cash balance" as part of the investment portfolio
