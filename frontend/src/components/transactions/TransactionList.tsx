@@ -50,6 +50,11 @@ const marketBadgeStyles: Record<StockMarket, string> = {
   [StockMarketEnum.EU]: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
 };
 
+const defaultMarketBadgeStyle = 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+const defaultMarketLabel = 'N/A';
+const defaultTransactionTypeColor = 'badge-warning';
+const defaultTransactionTypeLabel = '未知';
+
 const currencyLabels: Record<Currency, string> = {
   [CurrencyEnum.TWD]: 'TWD',
   [CurrencyEnum.USD]: 'USD',
@@ -138,80 +143,87 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
           </tr>
         </thead>
         <tbody>
-          {transactions.map((tx) => (
-            <tr key={tx.id}>
-              <td className="whitespace-nowrap">
-                {formatFullDate(tx.transactionDate)}
-              </td>
-              <td className="font-medium text-[var(--accent-cream)]">
-                <span className="flex items-center gap-2">
-                  {tx.ticker}
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${marketBadgeStyles[tx.market] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
-                    {marketLabels[tx.market] || '?'}
-                  </span>
-                </span>
-              </td>
-              <td>
-                <span className={`badge ${transactionTypeColors[tx.transactionType]}`}>
-                  {transactionTypeLabels[tx.transactionType]}
-                </span>
-              </td>
-              <td className="text-right number-display whitespace-nowrap">
-                {renderShares(tx)}
-              </td>
-              <td className="text-right number-display whitespace-nowrap">
-                {renderPrice(tx)}
-              </td>
-              <td className="text-right number-display whitespace-nowrap">
-                {tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : '-'}
-              </td>
-              <td className="text-right number-display whitespace-nowrap">
-                {formatNumber(tx.fees)}
-              </td>
-              <td className="text-right font-medium number-display whitespace-nowrap">
-                {tx.totalCostHome != null
-                  ? `${formatTWD(tx.totalCostHome)} TWD`
-                  : `${formatNumber(tx.totalCostSource, 2)} ${currencyLabels[tx.currency] || '?'}`}
-              </td>
-              <td className="text-right">
-                {tx.realizedPnlHome != null ? (
-                  <span
-                    className={`font-medium number-display ${
-                      tx.realizedPnlHome >= 0 ? 'number-positive' : 'number-negative'
-                    }`}
-                  >
-                    {tx.realizedPnlHome >= 0 ? '+' : ''}{formatTWD(tx.realizedPnlHome)}
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-muted)]">-</span>
-                )}
-              </td>
-              {(onEdit || onDelete) && (
-                <td className="text-center">
-                  <div className="flex justify-center gap-2">
-                    {onEdit && (
-                      <button
-                        onClick={() => onEdit(tx)}
-                        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                        title="編輯"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                    )}
-                    {onDelete && (
-                      <button
-                        onClick={() => onDelete(tx.id)}
-                        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                        title="刪除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+          {transactions.map((tx) => {
+            const marketBadgeStyle = marketBadgeStyles[tx.market] ?? defaultMarketBadgeStyle;
+            const marketLabel = marketLabels[tx.market] ?? defaultMarketLabel;
+            const transactionTypeColor = transactionTypeColors[tx.transactionType] ?? defaultTransactionTypeColor;
+            const transactionTypeLabel = transactionTypeLabels[tx.transactionType] ?? defaultTransactionTypeLabel;
+
+            return (
+              <tr key={tx.id}>
+                <td className="whitespace-nowrap">
+                  {formatFullDate(tx.transactionDate)}
                 </td>
-              )}
-            </tr>
-          ))}
+                <td className="font-medium text-[var(--accent-cream)]">
+                  <span className="flex items-center gap-2">
+                    {tx.ticker}
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${marketBadgeStyle}`}>
+                      {marketLabel}
+                    </span>
+                  </span>
+                </td>
+                <td>
+                  <span className={`badge ${transactionTypeColor}`}>
+                    {transactionTypeLabel}
+                  </span>
+                </td>
+                <td className="text-right number-display whitespace-nowrap">
+                  {renderShares(tx)}
+                </td>
+                <td className="text-right number-display whitespace-nowrap">
+                  {renderPrice(tx)}
+                </td>
+                <td className="text-right number-display whitespace-nowrap">
+                  {tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : '-'}
+                </td>
+                <td className="text-right number-display whitespace-nowrap">
+                  {formatNumber(tx.fees)}
+                </td>
+                <td className="text-right font-medium number-display whitespace-nowrap">
+                  {tx.totalCostHome != null
+                    ? `${formatTWD(tx.totalCostHome)} TWD`
+                    : `${formatNumber(tx.totalCostSource, 2)} ${currencyLabels[tx.currency] || '?'}`}
+                </td>
+                <td className="text-right">
+                  {tx.realizedPnlHome != null ? (
+                    <span
+                      className={`font-medium number-display ${
+                        tx.realizedPnlHome >= 0 ? 'number-positive' : 'number-negative'
+                      }`}
+                    >
+                      {tx.realizedPnlHome >= 0 ? '+' : ''}{formatTWD(tx.realizedPnlHome)}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-muted)]">-</span>
+                  )}
+                </td>
+                {(onEdit || onDelete) && (
+                  <td className="text-center">
+                    <div className="flex justify-center gap-2">
+                      {onEdit && (
+                        <button
+                          onClick={() => onEdit(tx)}
+                          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                          title="編輯"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={() => onDelete(tx.id)}
+                          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+                          title="刪除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

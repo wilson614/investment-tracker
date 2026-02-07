@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Application.DTOs;
@@ -27,6 +28,7 @@ public record StockTransactionDto
     public Guid PortfolioId { get; init; }
     public DateTime TransactionDate { get; init; }
     public string Ticker { get; init; } = string.Empty;
+    [JsonConverter(typeof(JsonNumberEnumConverter<TransactionType>))]
     public TransactionType TransactionType { get; init; }
     public decimal Shares { get; init; }
     public decimal PricePerShare { get; init; }
@@ -58,10 +60,12 @@ public record StockTransactionDto
     /// <summary>此筆交易是否已套用拆股調整。</summary>
     public bool HasSplitAdjustment { get; init; }
 
-    /// <summary>交易所屬市場。</summary>
+    /// <summary>交易所屬市場（以數值序列化，TW=1, US=2, UK=3, EU=4）。</summary>
+    [JsonConverter(typeof(JsonNumberEnumConverter<StockMarket>))]
     public StockMarket Market { get; init; }
 
-    /// <summary>交易計價幣別。</summary>
+    /// <summary>交易計價幣別（以數值序列化）。</summary>
+    [JsonConverter(typeof(JsonNumberEnumConverter<Currency>))]
     public Currency Currency { get; init; }
 }
 
