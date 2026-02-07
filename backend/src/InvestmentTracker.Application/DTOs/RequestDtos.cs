@@ -256,7 +256,7 @@ public record UpdateBankAccountRequest
     public string? Note { get; init; }
 
     [StringLength(3, MinimumLength = 3)]
-    public string? Currency { get; init; }
+    public string Currency { get; init; } = "TWD";
 }
 
 /// <summary>

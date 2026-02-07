@@ -22,7 +22,7 @@ export interface CreateBankAccountRequest {
   interestRate: number;
   interestCap?: number;
   note?: string;
-  currency: string; // Default "TWD" when creating
+  currency?: string; // Optional, defaults to "TWD" when creating
 }
 
 export interface UpdateBankAccountRequest {
