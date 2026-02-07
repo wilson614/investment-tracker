@@ -103,18 +103,18 @@ export function TotalAssetsDashboard() {
         }}
       />
 
-      {/* 左右兩欄佈局 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左側 2/3：可動用資產 */}
-        <div className="lg:col-span-2 space-y-6">
-          <AssetsBreakdownPieChart
-            portfolioMarketValue={assetsData?.investmentTotal ?? 0}
-            cashBalance={assetsData?.cashBalance ?? 0}
-            disposableDeposit={assetsData?.disposableDeposit ?? 0}
-            nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
-            isLoading={isLoading}
-          />
+      {/* 圓餅圖：獨立全寬一行 */}
+      <AssetsBreakdownPieChart
+        portfolioMarketValue={assetsData?.investmentTotal ?? 0}
+        cashBalance={assetsData?.cashBalance ?? 0}
+        disposableDeposit={assetsData?.disposableDeposit ?? 0}
+        nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
+        isLoading={isLoading}
+      />
 
+      {/* 下方左右兩欄：可動用資產 2/3、不可動用資產 1/3 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
           <DisposableAssetsSection
             portfolioValue={assetsData?.portfolioValue ?? 0}
             cashBalance={assetsData?.cashBalance ?? 0}
@@ -123,7 +123,6 @@ export function TotalAssetsDashboard() {
           />
         </div>
 
-        {/* 右側 1/3：不可動用資產 */}
         <div className="lg:col-span-1">
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
