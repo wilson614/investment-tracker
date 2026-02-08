@@ -30,6 +30,7 @@ public class BankAccountsController(
     GetBankAccountUseCase getBankAccountUseCase,
     CreateBankAccountUseCase createBankAccountUseCase,
     UpdateBankAccountUseCase updateBankAccountUseCase,
+    CloseBankAccountUseCase closeBankAccountUseCase,
     DeleteBankAccountUseCase deleteBankAccountUseCase,
     IBankAccountRepository bankAccountRepository,
     ICurrentUserService currentUserService) : ControllerBase
@@ -92,6 +93,23 @@ public class BankAccountsController(
         CancellationToken cancellationToken)
     {
         var account = await updateBankAccountUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(account);
+    }
+
+    /// <summary>
+    /// Close a fixed-deposit bank account.
+    /// </summary>
+    [HttpPost("{id:guid}/close")]
+    [ProducesResponseType(typeof(BankAccountResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<BankAccountResponse>> CloseBankAccount(
+        Guid id,
+        [FromBody] CloseBankAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        var account = await closeBankAccountUseCase.ExecuteAsync(id, request, cancellationToken);
         return Ok(account);
     }
 

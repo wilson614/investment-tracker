@@ -43,33 +43,33 @@ public record CreditCardResponse(
 }
 
 public record CreateCreditCardRequest(
-    [property: Required]
-    [property: StringLength(100)]
+    [Required]
+    [StringLength(100)]
     string BankName,
 
-    [property: Required]
-    [property: StringLength(100)]
+    [Required]
+    [StringLength(100)]
     string CardName,
 
-    [property: Range(1, 31)]
+    [Range(1, 31)]
     int BillingCycleDay,
 
-    [property: StringLength(500)]
+    [StringLength(500)]
     string? Note
 );
 
 public record UpdateCreditCardRequest(
-    [property: Required]
-    [property: StringLength(100)]
+    [Required]
+    [StringLength(100)]
     string BankName,
 
-    [property: Required]
-    [property: StringLength(100)]
+    [Required]
+    [StringLength(100)]
     string CardName,
 
-    [property: Range(1, 31)]
+    [Range(1, 31)]
     int BillingCycleDay,
 
-    [property: StringLength(500)]
+    [StringLength(500)]
     string? Note
 );

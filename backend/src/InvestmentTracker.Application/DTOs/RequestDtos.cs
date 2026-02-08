@@ -270,6 +270,15 @@ public record UpdateBankAccountRequest
 }
 
 /// <summary>
+/// Close bank account request DTO.
+/// </summary>
+public record CloseBankAccountRequest
+{
+    [Range(0, double.MaxValue)]
+    public decimal? ActualInterest { get; init; }
+}
+
+/// <summary>
 /// Create fund allocation request DTO.
 /// </summary>
 public record CreateFundAllocationRequest

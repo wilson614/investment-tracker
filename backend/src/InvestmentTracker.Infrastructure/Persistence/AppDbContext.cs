@@ -19,7 +19,6 @@ public class AppDbContext : DbContext
     public DbSet<CurrencyLedger> CurrencyLedgers => Set<CurrencyLedger>();
     public DbSet<CurrencyTransaction> CurrencyTransactions => Set<CurrencyTransaction>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
-    public DbSet<FixedDeposit> FixedDeposits { get; set; } = null!;
     public DbSet<CreditCard> CreditCards { get; set; } = null!;
     public DbSet<Installment> Installments { get; set; } = null!;
     public DbSet<CapeDataSnapshot> CapeDataSnapshots => Set<CapeDataSnapshot>();
