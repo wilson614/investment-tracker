@@ -13,6 +13,7 @@ using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.UseCases.Assets;
 using InvestmentTracker.Application.UseCases.BankAccount;
+using InvestmentTracker.Application.UseCases.CreditCards;
 using InvestmentTracker.Application.UseCases.FundAllocation;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
@@ -168,6 +169,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IBenchmarkAnnualReturnRepository, BenchmarkAnnualReturnRepository>();
 builder.Services.AddScoped<IFundAllocationRepository, FundAllocationRepository>();
+builder.Services.AddScoped<ICreditCardRepository, CreditCardRepository>();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
@@ -218,6 +220,11 @@ builder.Services.AddScoped<GetFundAllocationsUseCase>();
 builder.Services.AddScoped<CreateFundAllocationUseCase>();
 builder.Services.AddScoped<UpdateFundAllocationUseCase>();
 builder.Services.AddScoped<DeleteFundAllocationUseCase>();
+builder.Services.AddScoped<GetCreditCardsUseCase>();
+builder.Services.AddScoped<GetCreditCardUseCase>();
+builder.Services.AddScoped<CreateCreditCardUseCase>();
+builder.Services.AddScoped<UpdateCreditCardUseCase>();
+builder.Services.AddScoped<DeactivateCreditCardUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 
 // Stock Price Service
