@@ -14,6 +14,7 @@ using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.UseCases.Assets;
 using InvestmentTracker.Application.UseCases.BankAccount;
 using InvestmentTracker.Application.UseCases.CreditCards;
+using InvestmentTracker.Application.UseCases.FixedDeposits;
 using InvestmentTracker.Application.UseCases.FundAllocation;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
@@ -226,6 +227,11 @@ builder.Services.AddScoped<GetCreditCardUseCase>();
 builder.Services.AddScoped<CreateCreditCardUseCase>();
 builder.Services.AddScoped<UpdateCreditCardUseCase>();
 builder.Services.AddScoped<DeactivateCreditCardUseCase>();
+builder.Services.AddScoped<GetFixedDepositsUseCase>();
+builder.Services.AddScoped<GetFixedDepositUseCase>();
+builder.Services.AddScoped<CreateFixedDepositUseCase>();
+builder.Services.AddScoped<UpdateFixedDepositUseCase>();
+builder.Services.AddScoped<CloseFixedDepositUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 
 // Stock Price Service

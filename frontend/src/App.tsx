@@ -15,6 +15,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { PerformancePage } from './pages/Performance';
 import { CreditCardsPage } from './pages/CreditCardsPage';
+import { FixedDepositsPage } from './pages/FixedDepositsPage';
 import { ProtectedRoute, ToastProvider, ScrollToTop } from './components/common';
 import { Navigation } from './components/layout/Navigation';
 import './index.css';
@@ -111,6 +112,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <CreditCardsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fixed-deposits"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <FixedDepositsPage />
             </AppLayout>
           </ProtectedRoute>
         }
