@@ -72,13 +72,11 @@ public class GetTotalAssetsSummaryUseCase(
             bankExchangeRates);
 
         var fundAllocations = await fundAllocationRepository.GetByUserIdAsync(userId, cancellationToken);
-        var disposableDeposit = fundAllocations
-            .Where(x => x.IsDisposable)
-            .Sum(x => x.Amount);
         var nonDisposableDeposit = fundAllocations
             .Where(x => !x.IsDisposable)
             .Sum(x => x.Amount);
-        var totalAllocated = disposableDeposit + nonDisposableDeposit;
+        var disposableDeposit = summary.BankTotal - nonDisposableDeposit;
+        var totalAllocated = fundAllocations.Sum(x => x.Amount);
         var unallocated = summary.BankTotal - totalAllocated;
 
         var investmentRatioDenominator = portfolioValue + disposableDeposit;
