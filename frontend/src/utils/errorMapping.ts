@@ -81,6 +81,10 @@ export function getErrorMessage(originalMessage: string): string {
     return ERROR_MESSAGES['Total allocations cannot exceed total bank assets.'];
   }
 
+  if (lowerMsg.includes('currency ledger') && lowerMsg.includes('already exists')) {
+    return '此幣別的帳本已存在';
+  }
+
   // 特定字詞替換
   if (lowerMsg.includes('not found')) {
     if (lowerMsg.includes('portfolio')) return '找不到投資組合';

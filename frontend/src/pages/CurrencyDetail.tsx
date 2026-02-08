@@ -72,12 +72,67 @@ const transactionTypeBadgeClass: Record<number, string> = {
   [CurrencyTransactionType.OtherExpense]: 'badge-warning',
 };
 
+const transactionTypeNameToValue: Record<string, CurrencyTransactionType> = {
+  ExchangeBuy: CurrencyTransactionType.ExchangeBuy,
+  ExchangeSell: CurrencyTransactionType.ExchangeSell,
+  Deposit: CurrencyTransactionType.Deposit,
+  Withdraw: CurrencyTransactionType.Withdraw,
+  Interest: CurrencyTransactionType.Interest,
+  Spend: CurrencyTransactionType.Spend,
+  InitialBalance: CurrencyTransactionType.InitialBalance,
+  OtherIncome: CurrencyTransactionType.OtherIncome,
+  OtherExpense: CurrencyTransactionType.OtherExpense,
+};
+
+const resolveTransactionType = (
+  type: CurrencyTransaction['transactionType'] | string
+): CurrencyTransactionType | null => {
+  if (typeof type === 'number') {
+    return type;
+  }
+
+  const typeByName = transactionTypeNameToValue[type];
+  if (typeByName !== undefined) {
+    return typeByName;
+  }
+
+  const parsed = Number(type);
+  if (!Number.isNaN(parsed) && parsed in transactionTypeLabels) {
+    return parsed as CurrencyTransactionType;
+  }
+
+  return null;
+};
+
+const getTransactionTypeLabel = (type: CurrencyTransaction['transactionType'] | string): string => {
+  const resolvedType = resolveTransactionType(type);
+  if (resolvedType === null) {
+    return String(type);
+  }
+
+  return transactionTypeLabels[resolvedType] ?? String(type);
+};
+
+const getTransactionTypeBadgeClass = (type: CurrencyTransaction['transactionType'] | string): string => {
+  const resolvedType = resolveTransactionType(type);
+  if (resolvedType === null) {
+    return 'badge-cream';
+  }
+
+  return transactionTypeBadgeClass[resolvedType] ?? 'badge-cream';
+};
+
 /**
  * 計算單筆交易對外幣餘額的影響（+ 增加 / - 減少）。
  * @param tx 外幣交易
  */
 function getBalanceChange(tx: CurrencyTransaction): number {
-  switch (tx.transactionType) {
+  const resolvedType = resolveTransactionType(tx.transactionType);
+  if (resolvedType === null) {
+    return 0;
+  }
+
+  switch (resolvedType) {
     case CurrencyTransactionType.ExchangeBuy:
     case CurrencyTransactionType.InitialBalance:
     case CurrencyTransactionType.Deposit:
@@ -680,8 +735,8 @@ export default function CurrencyDetail() {
                         </td>
                         <td className="whitespace-nowrap">{formatDate(tx.transactionDate)}</td>
                         <td>
-                          <span className={`badge ${transactionTypeBadgeClass[tx.transactionType]}`}>
-                            {transactionTypeLabels[tx.transactionType]}
+                          <span className={`badge ${getTransactionTypeBadgeClass(tx.transactionType)}`}>
+                            {getTransactionTypeLabel(tx.transactionType)}
                           </span>
                         </td>
                         <td className="text-right number-display whitespace-nowrap">

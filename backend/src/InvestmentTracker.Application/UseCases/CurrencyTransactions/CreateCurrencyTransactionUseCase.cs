@@ -22,7 +22,11 @@ public class CreateCurrencyTransactionUseCase(
         CancellationToken cancellationToken = default)
     {
         // Verify ledger exists and belongs to current user
-        var ledger = await ledgerRepository.GetByIdWithTransactionsAsync(
+        // NOTE:
+        // - Create flow only needs ledger metadata (ownership / currency settings)
+        // - Avoid pre-loading transactions here to prevent stale tracked navigation collections
+        //   when other services query the same aggregate later in the same request scope.
+        var ledger = await ledgerRepository.GetByIdAsync(
             request.CurrencyLedgerId, cancellationToken)
             ?? throw new EntityNotFoundException("CurrencyLedger", request.CurrencyLedgerId);
 
