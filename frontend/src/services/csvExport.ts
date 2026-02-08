@@ -3,7 +3,7 @@
  * Exports transactions and positions to CSV with UTF-8 BOM for Excel compatibility
  */
 
-import type { StockTransaction, StockPosition, CurrencyTransaction } from '../types';
+import type { StockTransaction, StockPosition, CurrencyTransaction, BankAccount } from '../types';
 import { TransactionType, CurrencyTransactionType, StockMarket, Currency } from '../types';
 
 // UTF-8 BOM for Excel compatibility
@@ -273,5 +273,49 @@ export function exportCurrencyTransactionsToCsv(
   );
   const csv = generateCurrencyTransactionsCsv(filtered, currencyCode, homeCurrency);
   const defaultFilename = `${currencyCode}_交易紀錄_${new Date().toISOString().split('T')[0]}.csv`;
+  downloadCsv(csv, filename || defaultFilename);
+}
+
+/**
+ * Generate CSV content for bank accounts
+ */
+export function generateBankAccountsCsv(accounts: BankAccount[]): string {
+  const headers = [
+    'BankName',
+    'TotalAssets',
+    'InterestRate',
+    'InterestCap',
+    'Currency',
+    'Note',
+    'IsActive',
+  ];
+
+  const rows = accounts.map((account) => [
+    escapeCSVField(account.bankName),
+    escapeCSVField(formatNumber(account.totalAssets, 2)),
+    escapeCSVField(formatNumber(account.interestRate, 4)),
+    escapeCSVField(account.interestCap != null ? formatNumber(account.interestCap, 2) : ''),
+    escapeCSVField(account.currency),
+    escapeCSVField(account.note || ''),
+    escapeCSVField(String(account.isActive)),
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map((row) => row.join(',')),
+  ].join('\n');
+
+  return UTF8_BOM + csvContent;
+}
+
+/**
+ * Export bank accounts to CSV and trigger download
+ */
+export function exportBankAccountsToCSV(
+  accounts: BankAccount[],
+  filename?: string
+): void {
+  const csv = generateBankAccountsCsv(accounts);
+  const defaultFilename = `bank-accounts-export-${new Date().toISOString().split('T')[0]}.csv`;
   downloadCsv(csv, filename || defaultFilename);
 }

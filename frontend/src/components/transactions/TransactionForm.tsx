@@ -10,7 +10,7 @@
  * - Exchange rate is optional - backend will fetch from transaction date if not provided
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
 import { ConfirmationModal } from '../modals/ConfirmationModal';
 import type { CreateStockTransactionRequest, StockTransaction, TransactionType, CurrencyLedgerSummary, StockMarket, Currency, Portfolio } from '../../types';
@@ -50,7 +50,6 @@ interface TransactionFormProps {
 }
 
 import { getErrorMessage } from '../../utils/errorMapping';
-import { CURRENCY_LABELS } from '../../constants/currencies';
 
 export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -161,7 +160,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   }, []);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => {
@@ -261,22 +260,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
     await executeSubmit(false);
   };
-
-  // Calculate required amount for display
-  const requiredAmount = (() => {
-    const shares = parseFloat(formData.shares) || 0;
-    const price = parseFloat(formData.pricePerShare) || 0;
-    const fees = parseFloat(formData.fees) || 0;
-    return (shares * price) + fees;
-  })();
-
-  const originalAmount = initialData
-    ? (initialData.shares * initialData.pricePerShare + initialData.fees)
-    : 0;
-  const effectiveBalance = boundLedger
-    ? boundLedger.balance + originalAmount
-    : 0;
-  const hasInsufficientBalance = boundLedger && requiredAmount > effectiveBalance && Number(formData.transactionType) === 1;
 
   return (
     <form onSubmit={handleSubmit} className="card-dark space-y-5 p-6">
@@ -458,52 +441,15 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         </div>
       </div>
 
-      {/* Bound Ledger Info */}
-      {boundLedger && (
-        <div className="border-t border-[var(--border-color)] pt-5 mt-5">
-          <h4 className="text-base font-medium text-[var(--text-secondary)] mb-4 flex items-center gap-2">
-            <Info className="w-4 h-4" />
-            連結帳本
-          </h4>
-          <div className="p-3 bg-[var(--accent-cyan-soft)] border border-[var(--accent-cyan)] rounded-lg text-[var(--accent-cyan)] text-sm font-medium">
-            {Number(formData.transactionType) === 1
-              ? `此交易將從 ${CURRENCY_LABELS[boundLedger.ledger.currencyCode] || boundLedger.ledger.currencyCode} 帳本扣款`
-              : `款項將存入 ${CURRENCY_LABELS[boundLedger.ledger.currencyCode] || boundLedger.ledger.currencyCode} 帳本`}
-          </div>
-
-          <div className={`mt-4 p-4 rounded-lg ${hasInsufficientBalance ? 'bg-[var(--color-warning-soft)] border border-[var(--color-warning)]' : 'bg-[var(--accent-sand-soft)] border border-[var(--accent-sand)]'}`}>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-base text-[var(--text-muted)]">可用餘額</p>
-                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--accent-sand)]'}`}>
-                  {effectiveBalance.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {boundLedger.ledger.currencyCode}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-base text-[var(--text-muted)]">所需金額</p>
-                <p className={`text-xl font-bold number-display ${hasInsufficientBalance ? 'text-[var(--color-warning)]' : 'text-[var(--text-primary)]'}`}>
-                  {requiredAmount.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {boundLedger.ledger.currencyCode}
-                </p>
-              </div>
-            </div>
-            {hasInsufficientBalance && (
-              <p className="text-base text-[var(--color-warning)] mt-3">
-                注意：餘額將變成負數
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
           備註
         </label>
-        <textarea
+        <input
+          type="text"
           name="notes"
           value={formData.notes}
           onChange={handleChange}
-          rows={2}
           maxLength={500}
           className="input-dark w-full"
         />
