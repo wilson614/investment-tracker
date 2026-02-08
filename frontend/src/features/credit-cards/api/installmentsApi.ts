@@ -65,9 +65,10 @@ export const installmentsApi = {
   /** 建立分期 */
   createInstallment: (data: CreateInstallmentRequest) => {
     const { creditCardId, ...payload } = data;
+    const bodyPayload = { ...payload, creditCardId };
     return fetchApi<InstallmentResponse>(`/credit-cards/${creditCardId}/installments`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bodyPayload),
     });
   },
 

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Landmark, WalletCards } from 'lucide-react';
+import { ChevronDown, ChevronUp, Landmark, WalletCards, AlertCircle } from 'lucide-react';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
 import { formatCurrency } from '../../../utils/currency';
 import { useAvailableFunds } from '../hooks/useAvailableFunds';
+import { getErrorMessage } from '../../../utils/errorMapping';
 
 export function AvailableFundsSummary() {
-  const { summary, isLoading, error } = useAvailableFunds();
+  const { summary, isLoading, error, refetch } = useAvailableFunds();
   const [isFixedDepositsExpanded, setIsFixedDepositsExpanded] = useState(false);
   const [isInstallmentsExpanded, setIsInstallmentsExpanded] = useState(false);
 
@@ -45,17 +46,27 @@ export function AvailableFundsSummary() {
       <section className="card-dark p-6 space-y-3" role="alert">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">可動用資金</h3>
         <div className="p-3 rounded border border-red-500/40 bg-red-500/10 text-red-200 text-sm">
-          可動用資金資料載入失敗，請稍後再試。
+          可動用資金資料載入失敗：{getErrorMessage(error)}
         </div>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="btn-dark px-3 py-1.5 text-sm"
+        >
+          重試
+        </button>
       </section>
     );
   }
 
   if (!summary) {
     return (
-      <section className="card-dark p-6 space-y-3">
+      <section className="card-dark p-6 space-y-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">可動用資金</h3>
-        <p className="text-sm text-[var(--text-muted)]">尚無可動用資金資料。</p>
+        <div className="text-center py-8 bg-[var(--bg-secondary)] rounded-xl border border-dashed border-[var(--border-color)]">
+          <AlertCircle className="w-10 h-10 text-[var(--text-muted)] mx-auto mb-3" />
+          <p className="text-sm text-[var(--text-muted)]">尚無可動用資金資料。</p>
+        </div>
       </section>
     );
   }

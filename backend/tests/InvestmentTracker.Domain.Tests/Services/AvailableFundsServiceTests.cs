@@ -67,12 +67,14 @@ public class AvailableFundsServiceTests
         var bankAccounts = new List<BankAccount>
         {
             new(userId, "TW", totalAssets: 1_000m, currency: "TWD"),
-            new(userId, "US", totalAssets: 100m, currency: "USD")
+            new(userId, "US", totalAssets: 100m, currency: "USD"),
+            new(userId, "JP", totalAssets: 10_000m, currency: "JPY")
         };
 
         var fixedDeposits = new List<FixedDeposit>
         {
-            new(userId, Guid.NewGuid(), principal: 100m, annualInterestRate: 2m, termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-1), currency: "USD")
+            new(userId, Guid.NewGuid(), principal: 100m, annualInterestRate: 2m, termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-1), currency: "USD"),
+            new(userId, Guid.NewGuid(), principal: 20_000m, annualInterestRate: 1.2m, termMonths: 6, startDate: DateTime.UtcNow.AddMonths(-2), currency: "JPY")
         };
 
         var installments = new List<Installment>
@@ -87,18 +89,19 @@ public class AvailableFundsServiceTests
             return currency switch
             {
                 "USD" => 30m,
+                "JPY" => 0.22m,
                 _ => throw new InvalidOperationException($"Unexpected currency: {currency}")
             };
         }
 
         var result = _service.Calculate(bankAccounts, fixedDeposits, installments, GetExchangeRate);
 
-        result.TotalBankAssets.Should().Be(4_000m); // 1,000 + (100 * 30)
-        result.FixedDepositsPrincipal.Should().Be(3_000m); // 100 * 30
+        result.TotalBankAssets.Should().Be(6_200m); // 1,000 + (100 * 30) + (10,000 * 0.22)
+        result.FixedDepositsPrincipal.Should().Be(7_400m); // (100 * 30) + (20,000 * 0.22)
         result.UnpaidInstallmentBalance.Should().Be(60m); // (120 / 12) * 6
-        result.AvailableFunds.Should().Be(940m);
+        result.AvailableFunds.Should().Be(-1_260m);
 
-        exchangeRateCalls.Should().Equal("USD", "USD");
+        exchangeRateCalls.Should().Equal("USD", "JPY", "USD", "JPY");
     }
 
     [Fact]

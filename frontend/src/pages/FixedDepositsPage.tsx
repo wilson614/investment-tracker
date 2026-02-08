@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Landmark, Plus } from 'lucide-react';
-import { LoadingSpinner, ErrorDisplay } from '../components/common';
+import { ErrorDisplay, Skeleton } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { useBankAccounts } from '../features/bank-accounts/hooks/useBankAccounts';
 import { formatCurrency } from '../utils/currency';
@@ -12,6 +12,52 @@ import type {
   CreateFixedDepositRequest,
   FixedDepositResponse,
 } from '../features/fixed-deposits/types';
+
+function FixedDepositsPageSkeleton() {
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8" aria-label="定存頁面載入中">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-2">
+          <Skeleton width="w-20" height="h-8" />
+          <Skeleton width="w-64" height="h-5" />
+        </div>
+        <Skeleton width="w-28" height="h-10" className="rounded-lg" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {[1, 2].map((item) => (
+          <div key={item} className="metric-card p-6 space-y-3">
+            <div className="flex items-center gap-3">
+              <Skeleton width="w-9" height="h-9" className="rounded-lg" />
+              <Skeleton width="w-36" height="h-4" />
+            </div>
+            <Skeleton width="w-44" height="h-9" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[1, 2, 3].map((item) => (
+          <div key={item} className="card-dark p-5 border border-[var(--border-color)] space-y-4">
+            <div className="space-y-2">
+              <Skeleton width="w-28" height="h-6" />
+              <Skeleton width="w-36" height="h-4" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[1, 2].map((metric) => (
+                <div key={metric} className="space-y-2">
+                  <Skeleton width="w-16" height="h-4" />
+                  <Skeleton width="w-20" height="h-5" />
+                </div>
+              ))}
+            </div>
+            <Skeleton width="w-20" height="h-8" className="rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function FixedDepositsPage() {
   const {
@@ -112,7 +158,7 @@ export function FixedDepositsPage() {
   };
 
   if ((isLoading && fixedDeposits.length === 0) || (isBankAccountsLoading && bankAccounts.length === 0)) {
-    return <LoadingSpinner />;
+    return <FixedDepositsPageSkeleton />;
   }
 
   if (error) {

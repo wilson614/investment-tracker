@@ -15,7 +15,7 @@ export function useAvailableFunds() {
   return {
     summary: query.data,
     isLoading: query.isLoading,
-    error: query.error,
+    error: query.error ? (query.error instanceof Error ? query.error.message : 'Unknown error') : null,
     refetch: query.refetch,
   };
 }

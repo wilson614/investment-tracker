@@ -22,7 +22,7 @@ export function CreditCardList({
       <div className="text-center py-12 bg-[var(--bg-secondary)] rounded-xl border border-dashed border-[var(--border-color)]">
         <CreditCard className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
         <h3 className="text-lg font-medium text-[var(--text-secondary)] mb-2">尚無信用卡</h3>
-        <p className="text-[var(--text-muted)]">新增您的第一張信用卡以開始追蹤分期與未繳金額</p>
+        <p className="text-[var(--text-muted)]">尚無信用卡，點擊新增按鈕建立第一張信用卡</p>
       </div>
     );
   }
