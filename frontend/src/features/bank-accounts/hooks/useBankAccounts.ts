@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bankAccountsApi } from '../api/bankAccountsApi';
-import type { CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
+import type { CloseBankAccountRequest, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
@@ -41,6 +41,19 @@ export function useBankAccounts() {
     },
   });
 
+  const closeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: CloseBankAccountRequest }) =>
+      bankAccountsApi.closeBankAccount(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
+      toast.success('定存帳戶已結清');
+    },
+    onError: (err: Error) => {
+      toast.error(getErrorMessage(err.message || '結清失敗'));
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => bankAccountsApi.delete(id),
     onSuccess: () => {
@@ -60,9 +73,11 @@ export function useBankAccounts() {
     refetch: query.refetch,
     createBankAccount: createMutation.mutateAsync,
     updateBankAccount: (id: string, data: UpdateBankAccountRequest) => updateMutation.mutateAsync({ id, data }),
+    closeBankAccount: (id: string, data?: CloseBankAccountRequest) => closeMutation.mutateAsync({ id, data }),
     deleteBankAccount: deleteMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
+    isClosing: closeMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

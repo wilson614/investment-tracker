@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Building2 } from 'lucide-react';
-import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
+import type {
+  BankAccount,
+  BankAccountType,
+  CreateBankAccountRequest,
+  UpdateBankAccountRequest
+} from '../types';
 
 const CURRENCY_OPTIONS = [
   { value: 'TWD', label: '新台幣' },
@@ -12,11 +17,20 @@ const CURRENCY_OPTIONS = [
   { value: 'AUD', label: '澳幣' },
 ] as const;
 
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: BankAccountType; label: string }> = [
+  { value: 'Savings', label: '活存帳戶' },
+  { value: 'FixedDeposit', label: '定存帳戶' },
+];
+
 const DEFAULT_CURRENCY = 'TWD';
+const DEFAULT_TERM_MONTHS = '12';
+
 type SupportedCurrency = (typeof CURRENCY_OPTIONS)[number]['value'];
 
 const isSupportedCurrency = (currency: string): currency is SupportedCurrency =>
   CURRENCY_OPTIONS.some((option) => option.value === currency);
+
+const getTodayDate = () => new Date().toISOString().slice(0, 10);
 
 interface BankAccountFormProps {
   initialData?: BankAccount;
@@ -27,23 +41,39 @@ interface BankAccountFormProps {
 
 export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: BankAccountFormProps) {
   const [bankName, setBankName] = useState('');
+  const [accountType, setAccountType] = useState<BankAccountType>('Savings');
   const [totalAssets, setTotalAssets] = useState<string>('');
   const [currency, setCurrency] = useState<SupportedCurrency>(DEFAULT_CURRENCY);
   const [interestRate, setInterestRate] = useState<string>('');
   const [interestCap, setInterestCap] = useState<string>('');
+  const [termMonths, setTermMonths] = useState<string>(DEFAULT_TERM_MONTHS);
+  const [startDate, setStartDate] = useState<string>(getTodayDate());
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const isFixedDeposit = accountType === 'FixedDeposit';
 
   useEffect(() => {
     if (initialData) {
       setBankName(initialData.bankName);
+      setAccountType(initialData.accountType);
       setTotalAssets(initialData.totalAssets.toString());
       setCurrency(isSupportedCurrency(initialData.currency) ? initialData.currency : DEFAULT_CURRENCY);
       setInterestRate(initialData.interestRate.toString());
       setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
+      setTermMonths(initialData.termMonths !== undefined ? initialData.termMonths.toString() : DEFAULT_TERM_MONTHS);
+      setStartDate(initialData.startDate ? initialData.startDate.slice(0, 10) : getTodayDate());
       setNote(initialData.note || '');
     } else {
+      setBankName('');
+      setAccountType('Savings');
+      setTotalAssets('');
       setCurrency(DEFAULT_CURRENCY);
+      setInterestRate('');
+      setInterestCap('');
+      setTermMonths(DEFAULT_TERM_MONTHS);
+      setStartDate(getTodayDate());
+      setNote('');
     }
     setErrorMessage('');
   }, [initialData]);
@@ -52,11 +82,13 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
     e.preventDefault();
     setErrorMessage('');
 
+    const trimmedBankName = bankName.trim();
     const assets = parseFloat(totalAssets);
     const rate = parseFloat(interestRate);
     const cap = interestCap === '' ? undefined : parseFloat(interestCap);
+    const parsedTermMonths = termMonths === '' ? NaN : Number(termMonths);
 
-    if (!bankName || isNaN(assets) || isNaN(rate) || (cap !== undefined && isNaN(cap))) {
+    if (!trimmedBankName || isNaN(assets) || isNaN(rate) || (cap !== undefined && isNaN(cap))) {
       return;
     }
 
@@ -75,13 +107,28 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
       return;
     }
 
+    if (isFixedDeposit) {
+      if (!Number.isInteger(parsedTermMonths) || parsedTermMonths <= 0) {
+        setErrorMessage('定存期數（月）需為大於 0 的整數');
+        return;
+      }
+
+      if (!startDate) {
+        setErrorMessage('請選擇定存起始日');
+        return;
+      }
+    }
+
     const data: CreateBankAccountRequest = {
-      bankName,
+      bankName: trimmedBankName,
       totalAssets: assets,
       interestRate: rate,
       interestCap: cap,
       note: note.trim() || undefined,
-      currency
+      currency,
+      accountType,
+      termMonths: isFixedDeposit ? parsedTermMonths : undefined,
+      startDate: isFixedDeposit ? startDate : undefined,
     };
 
     await onSubmit(data);
@@ -123,6 +170,24 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               className="input-dark w-full"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              帳戶類型
+            </label>
+            <select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value as BankAccountType)}
+              className="input-dark w-full"
+              required
+            >
+              {ACCOUNT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -193,6 +258,37 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               />
             </div>
           </div>
+
+          {isFixedDeposit && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+                  定存期數（月）
+                </label>
+                <input
+                  type="number"
+                  value={termMonths}
+                  onChange={(e) => setTermMonths(e.target.value)}
+                  className="input-dark w-full"
+                  min="1"
+                  step="1"
+                  required={isFixedDeposit}
+                />
+              </div>
+              <div>
+                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+                  定存起始日
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="input-dark w-full"
+                  required={isFixedDeposit}
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">

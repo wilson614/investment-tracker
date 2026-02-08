@@ -481,6 +481,9 @@ export interface UpdateStockSplitRequest {
 // Bank Account Types - Now using feature-based types
 export type {
   BankAccount,
+  BankAccountType,
+  FixedDepositStatus,
+  CloseBankAccountRequest,
   CreateBankAccountRequest,
   UpdateBankAccountRequest
 } from '../features/bank-accounts/types';

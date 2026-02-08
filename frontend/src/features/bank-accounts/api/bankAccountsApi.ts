@@ -1,6 +1,7 @@
 import { fetchApi } from '../../../services/api';
 import type {
   BankAccount,
+  CloseBankAccountRequest,
   CreateBankAccountRequest,
   UpdateBankAccountRequest
 } from '../types';
@@ -23,6 +24,13 @@ export const bankAccountsApi = {
   update: (id: string, data: UpdateBankAccountRequest) =>
     fetchApi<BankAccount>(`/bank-accounts/${id}`, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /** 結清定存帳戶 */
+  closeBankAccount: (id: string, data: CloseBankAccountRequest = {}) =>
+    fetchApi<BankAccount>(`/bank-accounts/${id}/close`, {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 

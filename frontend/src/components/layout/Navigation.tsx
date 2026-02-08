@@ -11,7 +11,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { authApi } from '../../services/api';
-import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings, Landmark, PieChart, CreditCard, Timer } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Wallet, Menu, X, LogOut, User, ChevronDown, Lock, Mail, Save, BarChart3, Settings, Landmark, PieChart, CreditCard } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // App version - auto-read from git tag at build time
@@ -269,7 +269,6 @@ export function Navigation() {
               <NavLink to="/ledger" icon={Wallet}>帳本</NavLink>
               <NavLink to="/assets" icon={PieChart}>總資產</NavLink>
               <NavLink to="/bank-accounts" icon={Landmark}>銀行帳戶</NavLink>
-              <NavLink to="/fixed-deposits" icon={Timer}>定存</NavLink>
               <NavLink to="/credit-cards" icon={CreditCard}>信用卡</NavLink>
               <NavLink to="/performance" icon={BarChart3}>績效分析</NavLink>
             </nav>
@@ -380,9 +379,6 @@ export function Navigation() {
             </MobileNavLink>
             <MobileNavLink to="/bank-accounts" icon={Landmark} onClick={closeMobileMenu}>
               銀行帳戶
-            </MobileNavLink>
-            <MobileNavLink to="/fixed-deposits" icon={Timer} onClick={closeMobileMenu}>
-              定存
             </MobileNavLink>
             <MobileNavLink to="/credit-cards" icon={CreditCard} onClick={closeMobileMenu}>
               信用卡
