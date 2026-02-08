@@ -62,7 +62,7 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
-      <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={() => onEdit(account)}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
