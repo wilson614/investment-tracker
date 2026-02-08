@@ -4,6 +4,7 @@ import { AssetsBreakdownPieChart } from '../components/AssetsBreakdownPieChart';
 import { CoreMetricsSection } from '../components/CoreMetricsSection';
 import { DisposableAssetsSection } from '../components/DisposableAssetsSection';
 import { NonDisposableAssetsSection } from '../components/NonDisposableAssetsSection';
+import { AvailableFundsSummary } from '../components/AvailableFundsSummary';
 import { useTotalAssets } from '../hooks/useTotalAssets';
 import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocations';
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
@@ -197,6 +198,8 @@ export function TotalAssetsDashboard() {
           </div>
         </div>
 
+        <AvailableFundsSummary />
+
         <div id="allocation-management-section" className="space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -286,6 +289,9 @@ export function TotalAssetsDashboard() {
           />
         </div>
       </div>
+
+      {/* ROW 4: 可動用資金摘要 */}
+      <AvailableFundsSummary />
 
       {/* 資金配置管理區塊 */}
       {allocationsError ? (

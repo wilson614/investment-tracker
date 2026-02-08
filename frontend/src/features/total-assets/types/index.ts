@@ -36,3 +36,5 @@ export interface TotalAssetsSummary {
   unallocatedAmount?: number;
   hasOverAllocation?: boolean;
 }
+
+export * from './availableFunds';
