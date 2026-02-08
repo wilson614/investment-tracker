@@ -66,8 +66,9 @@ public class FixedDepositConfiguration : IEntityTypeConfiguration<FixedDeposit>
         builder.HasIndex(fd => fd.BankAccountId)
             .HasDatabaseName("IX_FixedDeposit_BankAccountId");
 
-        builder.HasOne<BankAccount>()
+        builder.HasOne(fd => fd.BankAccount)
             .WithMany()
-            .HasForeignKey(fd => fd.BankAccountId);
+            .HasForeignKey(fd => fd.BankAccountId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

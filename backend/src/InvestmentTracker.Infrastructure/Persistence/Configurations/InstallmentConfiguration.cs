@@ -58,9 +58,5 @@ public class InstallmentConfiguration : IEntityTypeConfiguration<Installment>
         builder.HasIndex(i => i.UserId)
             .HasDatabaseName("IX_Installment_UserId");
 
-        builder.HasOne<CreditCard>()
-            .WithMany()
-            .HasForeignKey(i => i.CreditCardId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

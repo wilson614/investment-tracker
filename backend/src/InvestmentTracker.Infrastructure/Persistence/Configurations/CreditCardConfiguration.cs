@@ -43,8 +43,8 @@ public class CreditCardConfiguration : IEntityTypeConfiguration<CreditCard>
         builder.HasIndex(cc => cc.UserId)
             .HasDatabaseName("IX_CreditCard_UserId");
 
-        builder.HasMany<Installment>()
-            .WithOne()
+        builder.HasMany(cc => cc.Installments)
+            .WithOne(i => i.CreditCard)
             .HasForeignKey(i => i.CreditCardId)
             .OnDelete(DeleteBehavior.Cascade);
     }
