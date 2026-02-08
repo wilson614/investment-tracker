@@ -281,13 +281,12 @@ export function exportCurrencyTransactionsToCsv(
  */
 export function generateBankAccountsCsv(accounts: BankAccount[]): string {
   const headers = [
-    'BankName',
-    'TotalAssets',
-    'InterestRate',
-    'InterestCap',
-    'Currency',
-    'Note',
-    'IsActive',
+    '銀行名稱',
+    '總資產',
+    '利率',
+    '優惠利率上限',
+    '幣別',
+    '備註',
   ];
 
   const rows = accounts.map((account) => [
@@ -297,7 +296,6 @@ export function generateBankAccountsCsv(accounts: BankAccount[]): string {
     escapeCSVField(account.interestCap != null ? formatNumber(account.interestCap, 2) : ''),
     escapeCSVField(account.currency),
     escapeCSVField(account.note || ''),
-    escapeCSVField(String(account.isActive)),
   ]);
 
   const csvContent = [
@@ -316,6 +314,6 @@ export function exportBankAccountsToCSV(
   filename?: string
 ): void {
   const csv = generateBankAccountsCsv(accounts);
-  const defaultFilename = `bank-accounts-export-${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultFilename = `銀行帳戶_${new Date().toISOString().split('T')[0]}.csv`;
   downloadCsv(csv, filename || defaultFilename);
 }
