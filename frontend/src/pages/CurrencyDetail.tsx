@@ -9,7 +9,9 @@
  */
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
+import { ASSETS_KEYS } from '../features/total-assets/hooks/useTotalAssets';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
 import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
@@ -170,6 +172,7 @@ function calculateRunningBalances(transactions: CurrencyTransaction[]): Map<stri
 export default function CurrencyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [ledger, setLedger] = useState<CurrencyLedgerSummary | null>(null);
   const [transactions, setTransactions] = useState<CurrencyTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -287,6 +290,7 @@ export default function CurrencyDetail() {
     await currencyTransactionApi.create(data);
     setShowAddForm(false);
     await loadData();
+    queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
   };
 
   const handleSelectAll = () => {
@@ -346,6 +350,7 @@ export default function CurrencyDetail() {
       }
       setShowDeleteConfirm(false);
       await loadData();
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
@@ -363,6 +368,7 @@ export default function CurrencyDetail() {
     try {
       await currencyTransactionApi.delete(deletingTransactionId);
       await loadData();
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
@@ -382,6 +388,7 @@ export default function CurrencyDetail() {
       await currencyTransactionApi.create(data);
       setEditingTransaction(null);
       await loadData();
+      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     }
@@ -397,6 +404,11 @@ export default function CurrencyDetail() {
       ledger.ledger.currencyCode,
       ledger.ledger.homeCurrency
     );
+  };
+
+  const handleImportComplete = async () => {
+    await loadData();
+    queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
   };
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
@@ -664,7 +676,7 @@ export default function CurrencyDetail() {
               </button>
               <CurrencyImportButton
                 ledgerId={ledger.ledger.id}
-                onImportComplete={loadData}
+                onImportComplete={handleImportComplete}
                 renderTrigger={(onClick) => {
                   importTriggerRef.current = onClick;
                   return null;
