@@ -105,6 +105,30 @@ function saveQuoteToCache(ticker: string, price: number, exchangeRate: number): 
  * - UK：以 `.L` 結尾
  * - 其他：預設 US
  */
+const STOCK_MARKET_VALUE_BY_NAME: Record<string, StockMarketType> = {
+  TW: StockMarket.TW,
+  US: StockMarket.US,
+  UK: StockMarket.UK,
+  EU: StockMarket.EU,
+};
+
+function normalizeMarketValue(market: unknown): StockMarketType {
+  if (typeof market === 'number' && Number.isFinite(market)) {
+    return market as StockMarketType;
+  }
+
+  if (typeof market === 'string') {
+    const normalized = market.trim().toUpperCase();
+    if (/^\d+$/.test(normalized)) {
+      return Number(normalized) as StockMarketType;
+    }
+
+    return STOCK_MARKET_VALUE_BY_NAME[normalized] ?? StockMarket.US;
+  }
+
+  return StockMarket.US;
+}
+
 const guessMarket = (ticker: string): StockMarketType => {
   if (/^\d+[A-Za-z]*$/.test(ticker)) {
     return StockMarket.TW;
@@ -128,7 +152,13 @@ function loadCachedCustomBenchmarks(): UserBenchmark[] {
   try {
     const cached = localStorage.getItem(CUSTOM_BENCHMARKS_CACHE_KEY);
     if (cached) {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached) as UserBenchmark[];
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map((benchmark) => ({
+        ...benchmark,
+        market: normalizeMarketValue(benchmark.market),
+      }));
     }
   } catch { /* 忽略 */ }
   return [];
@@ -426,12 +456,16 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
     const loadCustomBenchmarks = async () => {
       try {
         const benchmarks = await userBenchmarkApi.getAll();
-        setCustomBenchmarks(benchmarks);
+        const normalizedBenchmarks = benchmarks.map((benchmark) => ({
+          ...benchmark,
+          market: normalizeMarketValue(benchmark.market),
+        }));
+        setCustomBenchmarks(normalizedBenchmarks);
         // 快取以便下次載入時即時顯示
-        saveCachedCustomBenchmarks(benchmarks);
+        saveCachedCustomBenchmarks(normalizedBenchmarks);
 
         // 清理已刪除的自訂基準：從 selectedBenchmarks 中移除不存在的 custom_ key
-        const validCustomKeys = new Set(benchmarks.map(b => `custom_${b.id}`));
+        const validCustomKeys = new Set(normalizedBenchmarks.map(b => `custom_${b.id}`));
         setSelectedBenchmarks(prev => {
           const cleaned = prev.filter(key => {
             // 保留系統基準和仍存在的自訂基準

@@ -53,6 +53,30 @@ const STOCK_MARKET_LABELS: Record<number, string> = {
   [StockMarket.EU]: '歐股',
 };
 
+const STOCK_MARKET_VALUE_BY_NAME: Record<string, StockMarket> = {
+  TW: StockMarket.TW,
+  US: StockMarket.US,
+  UK: StockMarket.UK,
+  EU: StockMarket.EU,
+};
+
+function normalizeMarketValue(market: unknown): StockMarket {
+  if (typeof market === 'number' && Number.isFinite(market)) {
+    return market as StockMarket;
+  }
+
+  if (typeof market === 'string') {
+    const normalized = market.trim().toUpperCase();
+    if (/^\d+$/.test(normalized)) {
+      return Number(normalized) as StockMarket;
+    }
+
+    return STOCK_MARKET_VALUE_BY_NAME[normalized] ?? StockMarket.US;
+  }
+
+  return StockMarket.US;
+}
+
 /**
  * 系統內建 benchmark 列表（完整 11 個，與後端 MarketYtdService.Benchmarks 一致）。
  * 用於確保 availableBenchmarks 一定包含所有系統 benchmark （即使 API 暫時抓取失敗）。
@@ -97,7 +121,7 @@ function saveSelectedBenchmarksToLocalStorage(benchmarks: string[]): void {
 }
 
 interface CustomBenchmarkCache {
-  benchmarks: Array<{ id: string; ticker: string; market: number }>;
+  benchmarks: Array<{ id: string; ticker: string; market: number | string }>;
   returns: Record<string, number | null>;
 }
 
@@ -210,7 +234,11 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
 
   // Custom user benchmarks - 使用預先載入的快取
   const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>(
-    initialCustomCache.benchmarks.map(b => ({ ...b, addedAt: '' } as UserBenchmark))
+    initialCustomCache.benchmarks.map((b) => ({
+      ...b,
+      market: normalizeMarketValue(b.market),
+      addedAt: '',
+    } as UserBenchmark))
   );
   const [customBenchmarkReturns, setCustomBenchmarkReturns] = useState<Record<string, number | null>>(
     initialCustomCache.returns
@@ -273,10 +301,14 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
 
       try {
         const benchmarks = await userBenchmarkApi.getAll();
-        setCustomBenchmarks(benchmarks);
+        const normalizedBenchmarks = benchmarks.map((benchmark) => ({
+          ...benchmark,
+          market: normalizeMarketValue(benchmark.market),
+        }));
+        setCustomBenchmarks(normalizedBenchmarks);
 
         // 清理已刪除的自訂基準：從 selectedBenchmarks 中移除不存在的 custom_ key
-        const validCustomKeys = new Set(benchmarks.map(b => `custom_${b.id}`));
+        const validCustomKeys = new Set(normalizedBenchmarks.map(b => `custom_${b.id}`));
         setSelectedBenchmarksState(prev => {
           const cleaned = prev.filter(key => {
             // 保留系統基準和仍存在的自訂基準
@@ -291,7 +323,7 @@ export function MarketYtdSection({ className = '' }: MarketYtdSectionProps) {
         });
 
         // 如果沒有自訂基準，直接標記載入完成
-        if (benchmarks.length === 0) {
+        if (normalizedBenchmarks.length === 0) {
           setIsLoadingCustom(false);
           setCustomReturnsLoaded(true);
         }

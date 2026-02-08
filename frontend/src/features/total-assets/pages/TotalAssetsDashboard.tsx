@@ -87,14 +87,14 @@ export function TotalAssetsDashboard() {
         <Skeleton width="w-48" height="h-9" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
-          <section className="card-dark p-6 h-full flex flex-col justify-center space-y-3">
+          <section className="card-dark p-6 h-full min-h-[170px] flex flex-col justify-center space-y-3">
             <Skeleton width="w-20" height="h-6" />
             <Skeleton width="w-40" height="h-10" />
           </section>
-          <section className="card-dark p-6 h-full space-y-4">
+          <section className="card-dark p-3 sm:p-4 h-full min-h-[170px] space-y-3">
             <Skeleton width="w-32" height="h-6" />
-            <Skeleton width="w-full" height="h-8" />
-            <Skeleton width="w-3/4" height="h-8" />
+            <Skeleton width="w-full" height="h-14" />
+            <Skeleton width="w-full" height="h-14" />
           </section>
         </div>
 
@@ -109,22 +109,22 @@ export function TotalAssetsDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          <section className="card-dark p-6 lg:col-span-2 h-full space-y-4">
+          <section className="card-dark p-6 lg:col-span-2 h-full min-h-[200px] lg:min-h-[280px] space-y-4">
             <Skeleton width="w-40" height="h-6" />
             <Skeleton width="w-full" height="h-24" />
           </section>
-          <section className="card-dark p-6 lg:col-span-1 h-full space-y-4">
+          <section className="card-dark p-6 lg:col-span-1 h-full min-h-[200px] lg:min-h-[280px] space-y-4">
             <Skeleton width="w-28" height="h-6" />
             <Skeleton width="w-full" height="h-24" />
           </section>
         </div>
 
-        <section className="space-y-4">
+        <section className="space-y-4 min-h-[300px]">
           <div className="flex items-center justify-between">
             <Skeleton width="w-32" height="h-7" />
             <Skeleton width="w-24" height="h-8" />
           </div>
-          <div className="card-dark p-6 space-y-3">
+          <div className="card-dark p-6 space-y-3 min-h-[220px]">
             <Skeleton width="w-full" height="h-6" />
             <Skeleton width="w-full" height="h-6" />
             <Skeleton width="w-full" height="h-6" />
