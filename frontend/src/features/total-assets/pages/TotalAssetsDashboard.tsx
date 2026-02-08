@@ -139,7 +139,7 @@ export function TotalAssetsDashboard() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
-                  { label: '投資部位總額', link: '前往投資組合' },
+                  { label: '股票市值', link: '前往投資組合' },
                   { label: '帳本現金', link: '前往帳本' },
                   { label: '可動用存款', link: '前往銀行帳戶' },
                 ].map((item) => (
@@ -273,7 +273,6 @@ export function TotalAssetsDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div className="lg:col-span-2 h-full">
           <DisposableAssetsSection
-            portfolioValue={assetsData?.portfolioValue ?? 0}
             cashBalance={assetsData?.cashBalance ?? 0}
             disposableDeposit={assetsData?.disposableDeposit ?? 0}
             investmentTotal={assetsData?.investmentTotal ?? 0}
