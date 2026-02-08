@@ -12,6 +12,7 @@ using InvestmentTracker.Application.UseCases.UserPreferences;
 using InvestmentTracker.Application.UseCases.StockSplits;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Application.UseCases.Assets;
+using InvestmentTracker.Application.UseCases.AvailableFunds;
 using InvestmentTracker.Application.UseCases.BankAccount;
 using InvestmentTracker.Application.UseCases.CreditCards;
 using InvestmentTracker.Application.UseCases.FixedDeposits;
@@ -188,6 +189,7 @@ builder.Services.AddScoped<CurrencyLedgerCashFlowStrategy>();
 builder.Services.AddScoped<ReturnCashFlowStrategyProvider>();
 builder.Services.AddScoped<InterestEstimationService>();
 builder.Services.AddScoped<TotalAssetsService>();
+builder.Services.AddScoped<AvailableFundsService>();
 
 // Register Use Cases
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
@@ -242,6 +244,7 @@ builder.Services.AddScoped<CreateFixedDepositUseCase>();
 builder.Services.AddScoped<UpdateFixedDepositUseCase>();
 builder.Services.AddScoped<CloseFixedDepositUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
+builder.Services.AddScoped<GetAvailableFundsSummaryUseCase>();
 
 // Stock Price Service
 builder.Services.AddSingleton<ITwseRateLimiter, TwseRateLimiter>(); // Singleton to share rate limit across all requests
