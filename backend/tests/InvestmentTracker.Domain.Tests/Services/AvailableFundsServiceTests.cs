@@ -13,8 +13,8 @@ public class AvailableFundsServiceTests
     public void Calculate_EmptyCollections_ReturnsAllZeros()
     {
         var result = _service.Calculate(
+            ledgers: [],
             bankAccounts: [],
-            fixedDeposits: [],
             installments: [],
             getExchangeRate: _ => 1m);
 
@@ -30,15 +30,22 @@ public class AvailableFundsServiceTests
         var userId = Guid.NewGuid();
         var creditCardId = Guid.NewGuid();
 
-        var bankAccounts = new List<BankAccount>
+        var ledgers = new List<LedgerBalance>
         {
-            new(userId, "Bank A", totalAssets: 1_000m, currency: "TWD"),
-            new(userId, "Bank B", totalAssets: 500m, currency: "TWD")
+            new(Balance: 1_000m, Currency: "TWD")
         };
 
-        var fixedDeposits = new List<FixedDeposit>
+        var maturedFixedDeposit = CreateMaturedFixedDepositAccount(
+            userId,
+            bankName: "FD Bank",
+            principal: 300m,
+            currency: "TWD",
+            expectedInterest: 30m);
+
+        var bankAccounts = new List<BankAccount>
         {
-            new(userId, Guid.NewGuid(), principal: 300m, annualInterestRate: 1.5m, termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-2), currency: "TWD")
+            new(userId, "Bank A", totalAssets: 500m, currency: "TWD"),
+            maturedFixedDeposit
         };
 
         var installments = new List<Installment>
@@ -47,15 +54,15 @@ public class AvailableFundsServiceTests
         };
 
         var result = _service.Calculate(
+            ledgers,
             bankAccounts,
-            fixedDeposits,
             installments,
             _ => throw new InvalidOperationException("Should not query exchange rate for TWD"));
 
-        result.TotalBankAssets.Should().Be(1_500m);
-        result.FixedDepositsPrincipal.Should().Be(300m);
+        result.TotalBankAssets.Should().Be(1_830m); // 1,000(ledger) + 500 + 300 + 30(matured interest)
+        result.FixedDepositsPrincipal.Should().Be(330m); // principal + expected interest
         result.UnpaidInstallmentBalance.Should().Be(300m); // 600/6 * 3
-        result.AvailableFunds.Should().Be(900m);
+        result.AvailableFunds.Should().Be(1_530m);
     }
 
     [Fact]
@@ -64,17 +71,23 @@ public class AvailableFundsServiceTests
         var userId = Guid.NewGuid();
         var creditCardId = Guid.NewGuid();
 
+        var ledgers = new List<LedgerBalance>
+        {
+            new(Balance: 50m, Currency: "USD")
+        };
+
+        var maturedFixedDeposit = CreateMaturedFixedDepositAccount(
+            userId,
+            bankName: "FD US",
+            principal: 100m,
+            currency: "USD",
+            expectedInterest: 5m);
+
         var bankAccounts = new List<BankAccount>
         {
             new(userId, "TW", totalAssets: 1_000m, currency: "TWD"),
-            new(userId, "US", totalAssets: 100m, currency: "USD"),
-            new(userId, "JP", totalAssets: 10_000m, currency: "JPY")
-        };
-
-        var fixedDeposits = new List<FixedDeposit>
-        {
-            new(userId, Guid.NewGuid(), principal: 100m, annualInterestRate: 2m, termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-1), currency: "USD"),
-            new(userId, Guid.NewGuid(), principal: 20_000m, annualInterestRate: 1.2m, termMonths: 6, startDate: DateTime.UtcNow.AddMonths(-2), currency: "JPY")
+            new(userId, "JP", totalAssets: 10_000m, currency: "JPY"),
+            maturedFixedDeposit
         };
 
         var installments = new List<Installment>
@@ -94,68 +107,75 @@ public class AvailableFundsServiceTests
             };
         }
 
-        var result = _service.Calculate(bankAccounts, fixedDeposits, installments, GetExchangeRate);
+        var result = _service.Calculate(ledgers, bankAccounts, installments, GetExchangeRate);
 
-        result.TotalBankAssets.Should().Be(6_200m); // 1,000 + (100 * 30) + (10,000 * 0.22)
-        result.FixedDepositsPrincipal.Should().Be(7_400m); // (100 * 30) + (20,000 * 0.22)
+        result.TotalBankAssets.Should().Be(7_850m); // ledger 1,500 + bank 6,200 + matured interest 150
+        result.FixedDepositsPrincipal.Should().Be(3_150m); // (100 + 5) * 30
         result.UnpaidInstallmentBalance.Should().Be(60m); // (120 / 12) * 6
-        result.AvailableFunds.Should().Be(-1_260m);
+        result.AvailableFunds.Should().Be(7_790m);
 
-        exchangeRateCalls.Should().Equal("USD", "JPY", "USD", "JPY");
+        exchangeRateCalls.Should().Equal("USD", "JPY", "USD", "USD", "USD");
     }
 
     [Fact]
-    public void Calculate_OnlyActiveFixedDepositsAreCounted()
+    public void Calculate_OnlyMaturedFixedDepositsAreCountedForInterest()
     {
         var userId = Guid.NewGuid();
 
-        var active = new FixedDeposit(
+        var active = CreateFixedDepositAccount(
             userId,
-            Guid.NewGuid(),
+            bankName: "Active FD",
             principal: 200m,
-            annualInterestRate: 1m,
-            termMonths: 12,
-            startDate: DateTime.UtcNow.AddMonths(-2),
-            currency: "TWD");
+            currency: "TWD",
+            status: FixedDepositStatus.Active,
+            expectedInterest: 20m,
+            maturedByDate: false);
 
-        var matured = new FixedDeposit(
+        var matured = CreateFixedDepositAccount(
             userId,
-            Guid.NewGuid(),
+            bankName: "Matured FD",
             principal: 300m,
-            annualInterestRate: 1m,
-            termMonths: 6,
-            startDate: DateTime.UtcNow.AddMonths(-8),
-            currency: "TWD");
-        matured.MarkAsMatured();
+            currency: "TWD",
+            status: FixedDepositStatus.Matured,
+            expectedInterest: 30m,
+            maturedByDate: true);
 
-        var closed = new FixedDeposit(
+        var closed = CreateFixedDepositAccount(
             userId,
-            Guid.NewGuid(),
+            bankName: "Closed FD",
             principal: 400m,
-            annualInterestRate: 1m,
-            termMonths: 6,
-            startDate: DateTime.UtcNow.AddMonths(-8),
-            currency: "TWD");
-        closed.Close(actualInterest: 10m);
+            currency: "TWD",
+            status: FixedDepositStatus.Closed,
+            expectedInterest: 40m,
+            maturedByDate: true,
+            actualInterest: 10m);
 
-        var earlyWithdrawal = new FixedDeposit(
+        var earlyWithdrawal = CreateFixedDepositAccount(
             userId,
-            Guid.NewGuid(),
+            bankName: "Early FD",
             principal: 500m,
-            annualInterestRate: 1m,
-            termMonths: 6,
-            startDate: DateTime.UtcNow.AddMonths(-8),
-            currency: "TWD");
-        earlyWithdrawal.MarkAsEarlyWithdrawal(actualInterest: 2m);
+            currency: "TWD",
+            status: FixedDepositStatus.EarlyWithdrawal,
+            expectedInterest: 50m,
+            maturedByDate: true,
+            actualInterest: 2m);
 
         var result = _service.Calculate(
-            bankAccounts: [new BankAccount(userId, "Bank", totalAssets: 2_000m, currency: "TWD")],
-            fixedDeposits: [active, matured, closed, earlyWithdrawal],
+            ledgers: [new LedgerBalance(0m, "TWD")],
+            bankAccounts:
+            [
+                new BankAccount(userId, "Savings", totalAssets: 2_000m, currency: "TWD"),
+                active,
+                matured,
+                closed,
+                earlyWithdrawal
+            ],
             installments: [],
             getExchangeRate: _ => 1m);
 
-        result.FixedDepositsPrincipal.Should().Be(200m);
-        result.AvailableFunds.Should().Be(1_800m);
+        result.FixedDepositsPrincipal.Should().Be(330m); // only matured FD total (principal + interest)
+        result.TotalBankAssets.Should().Be(3_430m); // all bank totals 3,400 + matured interest 30
+        result.AvailableFunds.Should().Be(3_430m);
     }
 
     [Fact]
@@ -193,8 +213,8 @@ public class AvailableFundsServiceTests
         cancelled.Cancel();
 
         var result = _service.Calculate(
+            ledgers: [],
             bankAccounts: [new BankAccount(userId, "Bank", totalAssets: 5_000m, currency: "TWD")],
-            fixedDeposits: [],
             installments: [active, completed, cancelled],
             getExchangeRate: _ => 1m);
 
@@ -203,19 +223,19 @@ public class AvailableFundsServiceTests
     }
 
     [Fact]
-    public void Calculate_ZeroBalances_ReturnsZeroWithoutExchangeRateCalls()
+    public void Calculate_ZeroBalances_ReturnsZeroWithoutExtraValues()
     {
         var userId = Guid.NewGuid();
         var creditCardId = Guid.NewGuid();
 
+        var ledgers = new List<LedgerBalance>
+        {
+            new(Balance: 0m, Currency: "EUR")
+        };
+
         var bankAccounts = new List<BankAccount>
         {
             new(userId, "Bank", totalAssets: 0m, currency: "USD")
-        };
-
-        var fixedDeposits = new List<FixedDeposit>
-        {
-            new(userId, Guid.NewGuid(), principal: 0m, annualInterestRate: 1m, termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-1), currency: "EUR")
         };
 
         var installments = new List<Installment>
@@ -226,8 +246,8 @@ public class AvailableFundsServiceTests
         var exchangeRateCallCount = 0;
 
         var result = _service.Calculate(
+            ledgers,
             bankAccounts,
-            fixedDeposits,
             installments,
             _ =>
             {
@@ -239,33 +259,33 @@ public class AvailableFundsServiceTests
         result.FixedDepositsPrincipal.Should().Be(0m);
         result.UnpaidInstallmentBalance.Should().Be(0m);
         result.AvailableFunds.Should().Be(0m);
-        exchangeRateCallCount.Should().Be(2); // bank USD + deposit EUR conversion paths still execute
+        exchangeRateCallCount.Should().Be(2); // EUR ledger + USD bank account
     }
 
     [Fact]
     public void Calculate_NullInputs_ThrowsArgumentNullException()
     {
         var act1 = () => _service.Calculate(
-            bankAccounts: null!,
-            fixedDeposits: [],
+            ledgers: null!,
+            bankAccounts: [],
             installments: [],
             getExchangeRate: _ => 1m);
 
         var act2 = () => _service.Calculate(
-            bankAccounts: [],
-            fixedDeposits: null!,
+            ledgers: [],
+            bankAccounts: null!,
             installments: [],
             getExchangeRate: _ => 1m);
 
         var act3 = () => _service.Calculate(
+            ledgers: [],
             bankAccounts: [],
-            fixedDeposits: [],
             installments: null!,
             getExchangeRate: _ => 1m);
 
         var act4 = () => _service.Calculate(
+            ledgers: [],
             bankAccounts: [],
-            fixedDeposits: [],
             installments: [],
             getExchangeRate: null!);
 
@@ -273,5 +293,58 @@ public class AvailableFundsServiceTests
         act2.Should().Throw<ArgumentNullException>();
         act3.Should().Throw<ArgumentNullException>();
         act4.Should().Throw<ArgumentNullException>();
+    }
+
+    private static BankAccount CreateMaturedFixedDepositAccount(
+        Guid userId,
+        string bankName,
+        decimal principal,
+        string currency,
+        decimal expectedInterest)
+    {
+        var account = new BankAccount(
+            userId,
+            bankName,
+            totalAssets: principal,
+            interestRate: 1m,
+            currency: currency,
+            accountType: BankAccountType.FixedDeposit);
+
+        account.ConfigureFixedDeposit(termMonths: 12, startDate: DateTime.UtcNow.AddMonths(-13));
+        account.SetExpectedInterest(expectedInterest);
+        account.SetFixedDepositStatus(FixedDepositStatus.Matured);
+
+        return account;
+    }
+
+    private static BankAccount CreateFixedDepositAccount(
+        Guid userId,
+        string bankName,
+        decimal principal,
+        string currency,
+        FixedDepositStatus status,
+        decimal expectedInterest,
+        bool maturedByDate,
+        decimal? actualInterest = null)
+    {
+        var account = new BankAccount(
+            userId,
+            bankName,
+            totalAssets: principal,
+            interestRate: 1m,
+            currency: currency,
+            accountType: BankAccountType.FixedDeposit);
+
+        account.ConfigureFixedDeposit(
+            termMonths: 12,
+            startDate: maturedByDate ? DateTime.UtcNow.AddMonths(-13) : DateTime.UtcNow.AddMonths(-1));
+
+        account.SetExpectedInterest(expectedInterest);
+
+        if (actualInterest.HasValue)
+            account.SetActualInterest(actualInterest.Value);
+
+        account.SetFixedDepositStatus(status);
+        return account;
     }
 }

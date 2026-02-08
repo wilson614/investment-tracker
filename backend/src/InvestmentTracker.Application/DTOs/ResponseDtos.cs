@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Services;
 
 namespace InvestmentTracker.Application.DTOs;
@@ -16,6 +17,13 @@ public record BankAccountResponse
     public decimal InterestCap { get; init; }
     public string Currency { get; init; } = string.Empty;
     public string? Note { get; init; }
+    public BankAccountType AccountType { get; init; }
+    public int? TermMonths { get; init; }
+    public DateTime? StartDate { get; init; }
+    public DateTime? MaturityDate { get; init; }
+    public decimal? ExpectedInterest { get; init; }
+    public decimal? ActualInterest { get; init; }
+    public FixedDepositStatus? FixedDepositStatus { get; init; }
 
     public decimal MonthlyInterest { get; init; }
     public decimal YearlyInterest { get; init; }
@@ -37,6 +45,13 @@ public record BankAccountResponse
             InterestCap = entity.InterestCap,
             Currency = entity.Currency,
             Note = entity.Note,
+            AccountType = entity.AccountType,
+            TermMonths = entity.TermMonths,
+            StartDate = entity.StartDate,
+            MaturityDate = entity.MaturityDate,
+            ExpectedInterest = entity.ExpectedInterest,
+            ActualInterest = entity.ActualInterest,
+            FixedDepositStatus = entity.FixedDepositStatus,
             MonthlyInterest = estimation.MonthlyInterest,
             YearlyInterest = estimation.YearlyInterest,
             CreatedAt = entity.CreatedAt,

@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -33,7 +34,19 @@ public class CreateBankAccountUseCase(
             request.InterestRate,
             request.InterestCap,
             request.Note,
-            currency);
+            currency,
+            request.AccountType);
+
+        if (request.AccountType == BankAccountType.FixedDeposit &&
+            request.TermMonths.HasValue &&
+            request.StartDate.HasValue)
+        {
+            bankAccount.ConfigureFixedDeposit(request.TermMonths.Value, request.StartDate.Value);
+        }
+        else
+        {
+            bankAccount.SetAccountType(request.AccountType);
+        }
 
         await bankAccountRepository.AddAsync(bankAccount, cancellationToken);
 

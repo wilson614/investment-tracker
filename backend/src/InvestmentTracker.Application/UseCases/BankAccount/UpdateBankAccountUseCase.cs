@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -36,6 +37,40 @@ public class UpdateBankAccountUseCase(
             bankAccount.SetCurrency(ValidateCurrency(request.Currency));
 
         bankAccount.SetNote(request.Note);
+
+        var targetAccountType = request.AccountType ?? bankAccount.AccountType;
+        var changingToFixedDeposit =
+            bankAccount.AccountType != BankAccountType.FixedDeposit &&
+            targetAccountType == BankAccountType.FixedDeposit;
+
+        if (changingToFixedDeposit &&
+            request.TermMonths.HasValue &&
+            request.StartDate.HasValue)
+        {
+            bankAccount.ConfigureFixedDeposit(request.TermMonths.Value, request.StartDate.Value);
+        }
+        else
+        {
+            bankAccount.SetAccountType(targetAccountType);
+
+            if (targetAccountType == BankAccountType.FixedDeposit)
+            {
+                if (request.TermMonths.HasValue)
+                    bankAccount.SetTermMonths(request.TermMonths.Value);
+
+                if (request.StartDate.HasValue)
+                    bankAccount.SetStartDate(request.StartDate.Value);
+            }
+        }
+
+        if (targetAccountType == BankAccountType.FixedDeposit)
+        {
+            if (request.ActualInterest.HasValue)
+                bankAccount.SetActualInterest(request.ActualInterest.Value);
+
+            if (request.FixedDepositStatus.HasValue)
+                bankAccount.SetFixedDepositStatus(request.FixedDepositStatus.Value);
+        }
 
         await bankAccountRepository.UpdateAsync(bankAccount, cancellationToken);
 

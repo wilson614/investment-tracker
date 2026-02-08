@@ -1,9 +1,12 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using BankAccountEntity = InvestmentTracker.Domain.Entities.BankAccount;
+using CurrencyLedgerEntity = InvestmentTracker.Domain.Entities.CurrencyLedger;
 
 namespace InvestmentTracker.Application.UseCases.AvailableFunds;
 
@@ -11,11 +14,12 @@ namespace InvestmentTracker.Application.UseCases.AvailableFunds;
 /// Get available funds summary for current user.
 /// </summary>
 public class GetAvailableFundsSummaryUseCase(
+    ICurrencyLedgerRepository ledgerRepository,
     IBankAccountRepository bankAccountRepository,
-    IFixedDepositRepository fixedDepositRepository,
     IInstallmentRepository installmentRepository,
     IYahooHistoricalPriceService yahooHistoricalPriceService,
     AvailableFundsService availableFundsService,
+    CurrencyLedgerService currencyLedgerService,
     ICurrentUserService currentUserService)
 {
     private const string BaseCurrency = "TWD";
@@ -28,25 +32,26 @@ public class GetAvailableFundsSummaryUseCase(
 
         var valuationDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
 
+        var ledgersTask = ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
         var bankAccountsTask = bankAccountRepository.GetByUserIdAsync(userId, cancellationToken);
-        var fixedDepositsTask = fixedDepositRepository.GetAllByUserIdAsync(userId, cancellationToken);
         var installmentsTask = installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
 
-        await Task.WhenAll(bankAccountsTask, fixedDepositsTask, installmentsTask);
+        await Task.WhenAll(ledgersTask, bankAccountsTask, installmentsTask);
 
+        var ledgers = await ledgersTask;
         var bankAccounts = await bankAccountsTask;
-        var fixedDeposits = await fixedDepositsTask;
         var installments = await installmentsTask;
+        var ledgerBalances = await GetLedgerBalancesAsync(ledgers, cancellationToken);
 
         var exchangeRatesToBaseCurrency = await GetExchangeRatesToBaseCurrencyAsync(
             bankAccounts.Select(account => account.Currency)
-                .Concat(fixedDeposits.Select(deposit => deposit.Currency)),
+                .Concat(ledgerBalances.Select(ledger => ledger.Currency)),
             valuationDate,
             cancellationToken);
 
         var calculation = availableFundsService.Calculate(
+            ledgerBalances,
             bankAccounts,
-            fixedDeposits,
             installments,
             currency =>
             {
@@ -57,17 +62,22 @@ public class GetAvailableFundsSummaryUseCase(
                     : 0m;
             });
 
-        var fixedDepositSummaries = fixedDeposits
-            .Where(deposit => deposit.Status == FixedDepositStatus.Active)
-            .Select(deposit => new FixedDepositSummary(
-                Id: deposit.Id,
-                BankName: deposit.BankAccount.BankName,
-                Principal: deposit.Principal,
-                Currency: deposit.Currency,
-                PrincipalInBaseCurrency: ConvertToBaseCurrency(
-                    deposit.Principal,
-                    deposit.Currency,
-                    exchangeRatesToBaseCurrency)))
+        var utcToday = DateTime.UtcNow.Date;
+        var fixedDepositSummaries = bankAccounts
+            .Where(account => IsMaturedFixedDeposit(account, utcToday))
+            .Select(account =>
+            {
+                var maturedAmount = GetMaturedFixedDepositAmount(account);
+                return new FixedDepositSummary(
+                    Id: account.Id,
+                    BankName: account.BankName,
+                    Principal: maturedAmount,
+                    Currency: account.Currency,
+                    PrincipalInBaseCurrency: ConvertToBaseCurrency(
+                        maturedAmount,
+                        account.Currency,
+                        exchangeRatesToBaseCurrency));
+            })
             .ToList();
 
         var installmentSummaries = installments
@@ -91,6 +101,28 @@ public class GetAvailableFundsSummaryUseCase(
                 FixedDeposits: fixedDepositSummaries,
                 Installments: installmentSummaries),
             Currency: BaseCurrency);
+    }
+
+    private async Task<IReadOnlyList<LedgerBalance>> GetLedgerBalancesAsync(
+        IReadOnlyList<CurrencyLedgerEntity> ledgers,
+        CancellationToken cancellationToken)
+    {
+        var activeLedgers = ledgers
+            .Where(ledger => ledger.IsActive)
+            .ToList();
+
+        if (activeLedgers.Count == 0)
+            return [];
+
+        var ledgersWithTransactions = await Task.WhenAll(activeLedgers
+            .Select(ledger => ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken)));
+
+        return ledgersWithTransactions
+            .Where(ledger => ledger is not null)
+            .Select(ledger => new LedgerBalance(
+                Balance: currencyLedgerService.CalculateBalance(ledger!.Transactions),
+                Currency: ledger.CurrencyCode))
+            .ToList();
     }
 
     private async Task<IReadOnlyDictionary<string, decimal>> GetExchangeRatesToBaseCurrencyAsync(
@@ -127,6 +159,24 @@ public class GetAvailableFundsSummaryUseCase(
         }
 
         return rates;
+    }
+
+    private static bool IsMaturedFixedDeposit(BankAccountEntity account, DateTime utcToday)
+    {
+        if (account.AccountType != BankAccountType.FixedDeposit)
+            return false;
+
+        if (account.FixedDepositStatus is FixedDepositStatus.Closed or FixedDepositStatus.EarlyWithdrawal)
+            return false;
+
+        return account.FixedDepositStatus == FixedDepositStatus.Matured
+            || (account.MaturityDate.HasValue && account.MaturityDate.Value.Date <= utcToday.Date);
+    }
+
+    private static decimal GetMaturedFixedDepositAmount(BankAccountEntity account)
+    {
+        var interest = account.ActualInterest ?? account.ExpectedInterest ?? 0m;
+        return account.TotalAssets + interest;
     }
 
     private static decimal ConvertToBaseCurrency(

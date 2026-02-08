@@ -230,6 +230,10 @@ public record CreateBankAccountRequest
 
     [StringLength(3, MinimumLength = 3)]
     public string Currency { get; init; } = "TWD";
+
+    public BankAccountType AccountType { get; init; } = BankAccountType.Savings;
+    public int? TermMonths { get; init; }
+    public DateTime? StartDate { get; init; }
 }
 
 /// <summary>
@@ -257,6 +261,12 @@ public record UpdateBankAccountRequest
 
     [StringLength(3, MinimumLength = 3)]
     public string Currency { get; init; } = "TWD";
+
+    public BankAccountType? AccountType { get; init; }
+    public int? TermMonths { get; init; }
+    public DateTime? StartDate { get; init; }
+    public decimal? ActualInterest { get; init; }
+    public FixedDepositStatus? FixedDepositStatus { get; init; }
 }
 
 /// <summary>
