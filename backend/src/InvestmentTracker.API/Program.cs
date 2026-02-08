@@ -16,6 +16,7 @@ using InvestmentTracker.Application.UseCases.BankAccount;
 using InvestmentTracker.Application.UseCases.CreditCards;
 using InvestmentTracker.Application.UseCases.FixedDeposits;
 using InvestmentTracker.Application.UseCases.FundAllocation;
+using InvestmentTracker.Application.UseCases.Installments;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
@@ -172,6 +173,7 @@ builder.Services.AddScoped<IBenchmarkAnnualReturnRepository, BenchmarkAnnualRetu
 builder.Services.AddScoped<IFundAllocationRepository, FundAllocationRepository>();
 builder.Services.AddScoped<IFixedDepositRepository, FixedDepositRepository>();
 builder.Services.AddScoped<ICreditCardRepository, CreditCardRepository>();
+builder.Services.AddScoped<IInstallmentRepository, InstallmentRepository>();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();
@@ -227,6 +229,13 @@ builder.Services.AddScoped<GetCreditCardUseCase>();
 builder.Services.AddScoped<CreateCreditCardUseCase>();
 builder.Services.AddScoped<UpdateCreditCardUseCase>();
 builder.Services.AddScoped<DeactivateCreditCardUseCase>();
+builder.Services.AddScoped<GetInstallmentsUseCase>();
+builder.Services.AddScoped<GetAllUserInstallmentsUseCase>();
+builder.Services.AddScoped<CreateInstallmentUseCase>();
+builder.Services.AddScoped<UpdateInstallmentUseCase>();
+builder.Services.AddScoped<RecordPaymentUseCase>();
+builder.Services.AddScoped<PayoffInstallmentUseCase>();
+builder.Services.AddScoped<GetUpcomingPaymentsUseCase>();
 builder.Services.AddScoped<GetFixedDepositsUseCase>();
 builder.Services.AddScoped<GetFixedDepositUseCase>();
 builder.Services.AddScoped<CreateFixedDepositUseCase>();

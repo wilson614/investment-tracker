@@ -24,3 +24,5 @@ export interface UpdateCreditCardRequest {
   billingCycleDay: number;
   note?: string | null;
 }
+
+export * from './installment';

@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
 import { LoadingSpinner, ErrorDisplay } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { CreditCardForm } from '../features/credit-cards/components/CreditCardForm';
 import { CreditCardList } from '../features/credit-cards/components/CreditCardList';
+import { InstallmentForm } from '../features/credit-cards/components/InstallmentForm';
+import { InstallmentList } from '../features/credit-cards/components/InstallmentList';
+import { UpcomingPayments } from '../features/credit-cards/components/UpcomingPayments';
 import { useCreditCards } from '../features/credit-cards/hooks/useCreditCards';
+import { useInstallments } from '../features/credit-cards/hooks/useInstallments';
 import type {
   CreditCardResponse,
   CreateCreditCardRequest,
   UpdateCreditCardRequest,
+  CreateInstallmentRequest,
+  UpdateInstallmentRequest,
+  InstallmentResponse,
 } from '../features/credit-cards/types';
 
 export function CreditCardsPage() {
@@ -22,22 +29,66 @@ export function CreditCardsPage() {
     deactivateCreditCard,
   } = useCreditCards();
 
-  const [showForm, setShowForm] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardResponse | undefined>(undefined);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCardSubmitting, setIsCardSubmitting] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [deactivatingCardId, setDeactivatingCardId] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
-  const activeCards = creditCards.filter((card) => card.isActive);
+  const [showInstallmentForm, setShowInstallmentForm] = useState(false);
+  const [editingInstallment, setEditingInstallment] = useState<InstallmentResponse | undefined>(undefined);
+  const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
+  const [processingInstallmentId, setProcessingInstallmentId] = useState<string | null>(null);
+  const [payoffInstallmentTarget, setPayoffInstallmentTarget] = useState<InstallmentResponse | null>(null);
 
-  const handleCreate = () => {
+  const activeCards = useMemo(() => creditCards.filter((card) => card.isActive), [creditCards]);
+
+  useEffect(() => {
+    if (activeCards.length === 0) {
+      setSelectedCardId(null);
+      return;
+    }
+
+    setSelectedCardId((previous) => {
+      if (previous && activeCards.some((card) => card.id === previous)) {
+        return previous;
+      }
+      return activeCards[0].id;
+    });
+  }, [activeCards]);
+
+  const selectedCard = useMemo(
+    () => activeCards.find((card) => card.id === selectedCardId) ?? null,
+    [activeCards, selectedCardId]
+  );
+
+  const {
+    installments,
+    upcomingPayments,
+    isLoading: isInstallmentsLoading,
+    isUpcomingLoading,
+    error: installmentsError,
+    upcomingError,
+    refetch: refetchInstallments,
+    refetchUpcoming,
+    createInstallment,
+    updateInstallment,
+    recordPayment,
+    payoffInstallment,
+  } = useInstallments({
+    creditCardId: selectedCard?.id,
+    upcomingMonths: 3,
+  });
+
+  const handleCreateCard = () => {
     setEditingCard(undefined);
-    setShowForm(true);
+    setShowCardForm(true);
   };
 
-  const handleEdit = (card: CreditCardResponse) => {
+  const handleEditCard = (card: CreditCardResponse) => {
     setEditingCard(card);
-    setShowForm(true);
+    setShowCardForm(true);
   };
 
   const handleDeactivateClick = (id: string) => {
@@ -46,25 +97,89 @@ export function CreditCardsPage() {
   };
 
   const handleConfirmDeactivate = async () => {
-    if (!deactivatingCardId) return;
+    if (!deactivatingCardId) {
+      return;
+    }
+
     await deactivateCreditCard(deactivatingCardId);
     setDeactivatingCardId(null);
   };
 
-  const handleSubmit = async (data: CreateCreditCardRequest | UpdateCreditCardRequest) => {
-    setIsSubmitting(true);
+  const handleCardSubmit = async (data: CreateCreditCardRequest | UpdateCreditCardRequest) => {
+    setIsCardSubmitting(true);
     try {
       if (editingCard) {
         await updateCreditCard(editingCard.id, data as UpdateCreditCardRequest);
       } else {
         await createCreditCard(data as CreateCreditCardRequest);
       }
-      setShowForm(false);
+      setShowCardForm(false);
       return true;
     } catch {
       return false;
     } finally {
-      setIsSubmitting(false);
+      setIsCardSubmitting(false);
+    }
+  };
+
+  const handleCreateInstallment = () => {
+    if (!selectedCard) {
+      return;
+    }
+
+    setEditingInstallment(undefined);
+    setShowInstallmentForm(true);
+  };
+
+  const handleEditInstallment = (installment: InstallmentResponse) => {
+    setEditingInstallment(installment);
+    setShowInstallmentForm(true);
+  };
+
+  const handleInstallmentSubmit = async (data: CreateInstallmentRequest | UpdateInstallmentRequest) => {
+    setIsInstallmentSubmitting(true);
+    try {
+      if (editingInstallment) {
+        await updateInstallment(editingInstallment.id, data as UpdateInstallmentRequest);
+      } else {
+        await createInstallment(data as CreateInstallmentRequest);
+      }
+
+      setShowInstallmentForm(false);
+      setEditingInstallment(undefined);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setIsInstallmentSubmitting(false);
+    }
+  };
+
+  const handleRecordPayment = async (installment: InstallmentResponse) => {
+    setProcessingInstallmentId(installment.id);
+    try {
+      await recordPayment(installment.id);
+    } finally {
+      setProcessingInstallmentId(null);
+    }
+  };
+
+  const handlePayoffClick = (installment: InstallmentResponse) => {
+    setPayoffInstallmentTarget(installment);
+  };
+
+  const handleConfirmPayoff = async () => {
+    const targetId = payoffInstallmentTarget?.id;
+    if (!targetId) {
+      return;
+    }
+
+    setProcessingInstallmentId(targetId);
+    try {
+      await payoffInstallment(targetId);
+      setPayoffInstallmentTarget(null);
+    } finally {
+      setProcessingInstallmentId(null);
     }
   };
 
@@ -85,7 +200,7 @@ export function CreditCardsPage() {
         </div>
         <button
           type="button"
-          onClick={handleCreate}
+          onClick={handleCreateCard}
           className="btn-accent flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
@@ -125,16 +240,76 @@ export function CreditCardsPage() {
 
       <CreditCardList
         creditCards={activeCards}
-        onEdit={handleEdit}
+        selectedCardId={selectedCard?.id ?? null}
+        onSelect={(card) => setSelectedCardId(card.id)}
+        onEdit={handleEditCard}
         onDeactivate={handleDeactivateClick}
       />
 
-      {showForm && (
+      {selectedCard ? (
+        <div className="space-y-6">
+          <div className="card-dark p-5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-[var(--text-primary)]">{selectedCard.cardName} 分期清單</h2>
+                <p className="text-sm text-[var(--text-muted)]">
+                  {selectedCard.bankName} · 可單擊「記錄月付」快速扣減一期（SC-005）
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCreateInstallment}
+                className="btn-accent inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                新增分期
+              </button>
+            </div>
+
+            {isInstallmentsLoading && installments.length === 0 ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : installmentsError ? (
+              <ErrorDisplay message={installmentsError} onRetry={() => void refetchInstallments()} />
+            ) : (
+              <InstallmentList
+                installments={installments}
+                processingInstallmentId={processingInstallmentId}
+                onEdit={handleEditInstallment}
+                onRecordPayment={handleRecordPayment}
+                onPayoff={handlePayoffClick}
+              />
+            )}
+          </div>
+
+          {upcomingError ? (
+            <ErrorDisplay message={upcomingError} onRetry={() => void refetchUpcoming()} />
+          ) : (
+            <UpcomingPayments months={upcomingPayments} isLoading={isUpcomingLoading} />
+          )}
+        </div>
+      ) : null}
+
+      {showCardForm && (
         <CreditCardForm
           initialData={editingCard}
-          onSubmit={handleSubmit}
-          onCancel={() => setShowForm(false)}
-          isLoading={isSubmitting}
+          onSubmit={handleCardSubmit}
+          onCancel={() => setShowCardForm(false)}
+          isLoading={isCardSubmitting}
+        />
+      )}
+
+      {showInstallmentForm && selectedCard && (
+        <InstallmentForm
+          creditCardId={selectedCard.id}
+          initialData={editingInstallment}
+          onSubmit={handleInstallmentSubmit}
+          onCancel={() => {
+            setShowInstallmentForm(false);
+            setEditingInstallment(undefined);
+          }}
+          isLoading={isInstallmentSubmitting}
         />
       )}
 
@@ -146,6 +321,25 @@ export function CreditCardsPage() {
         message="確定要停用此信用卡嗎？停用後將無法再新增該卡分期。"
         confirmText="停用"
         isDestructive={true}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(payoffInstallmentTarget)}
+        onClose={() => setPayoffInstallmentTarget(null)}
+        onConfirm={handleConfirmPayoff}
+        title="提前清償分期"
+        message={
+          payoffInstallmentTarget ? (
+            <span>
+              確定要將「{payoffInstallmentTarget.description}」標記為提前清償嗎？
+              <br />
+              清償後將不再計入未來待付金額。
+            </span>
+          ) : (
+            ''
+          )
+        }
+        confirmText="確認清償"
       />
     </div>
   );
