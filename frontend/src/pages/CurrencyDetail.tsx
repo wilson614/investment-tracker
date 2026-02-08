@@ -10,12 +10,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
+import { Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
 import { ASSETS_KEYS } from '../features/total-assets/hooks/useTotalAssets';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
 import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
+import { LedgerSelector } from '../components/ledger/LedgerSelector';
 import { CurrencyImportButton } from '../components/import';
+import { useLedger } from '../contexts/LedgerContext';
 import { FileDropdown } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
@@ -173,6 +175,7 @@ export default function CurrencyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { selectLedger } = useLedger();
   const [ledger, setLedger] = useState<CurrencyLedgerSummary | null>(null);
   const [transactions, setTransactions] = useState<CurrencyTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,8 +242,15 @@ export default function CurrencyDetail() {
   };
 
   useEffect(() => {
+    hasFetchedRate.current = false;
     loadData();
   }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      selectLedger(id);
+    }
+  }, [id, selectLedger]);
 
   /**
    * 取得最新匯率並寫入 state + localStorage 快取。
@@ -446,10 +456,10 @@ export default function CurrencyDetail() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         <p className="text-[var(--color-danger)] text-lg">找不到帳本</p>
         <button
-          onClick={() => navigate('/currency')}
+          onClick={() => navigate('/ledger')}
           className="text-[var(--accent-peach)] hover:underline mt-2 text-base"
         >
-          返回列表
+          返回帳本入口
         </button>
       </div>
     );
@@ -467,14 +477,15 @@ export default function CurrencyDetail() {
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
-        <button
-          onClick={() => navigate('/currency')}
-          className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-6 text-base transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          返回帳本
-        </button>
+        {/* Header */}
+        <div className="mb-6">
+          <LedgerSelector
+            className="w-fit"
+            onLedgerChange={(ledgerId) => {
+              navigate(`/ledger/${ledgerId}`);
+            }}
+          />
+        </div>
 
         {/* Error Alert */}
         {error && (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Wallet, AlertCircle } from 'lucide-react';
+import { Plus, Wallet, AlertCircle, Download } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
 import { BankAccountCard } from '../components/BankAccountCard';
@@ -7,6 +7,8 @@ import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
 import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
 import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
+import { BankAccountImportButton, BankAccountImportModal } from '../../../components/import';
+import { exportBankAccountsToCSV } from '../../../services/csvExport';
 import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
@@ -30,6 +32,8 @@ export function BankAccountsPage() {
   // Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
 
   const totalAssets = assetsSummary?.bankTotal ?? 0;
   const totalYearlyInterest = assetsSummary?.totalYearlyInterest ?? 0;
@@ -75,6 +79,21 @@ export function BankAccountsPage() {
     }
   };
 
+  const handleExport = () => {
+    if (bankAccounts.length === 0) return;
+    exportBankAccountsToCSV(bankAccounts);
+  };
+
+  const handleFileSelected = (file: File) => {
+    setSelectedImportFile(file);
+    setShowImportModal(true);
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+    setSelectedImportFile(null);
+  };
+
 
   if ((isLoading && bankAccounts.length === 0) || (isAssetsLoading && !assetsSummary)) {
     return <LoadingSpinner />;
@@ -92,13 +111,28 @@ export function BankAccountsPage() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">銀行帳戶</h1>
           <p className="text-[var(--text-secondary)]">管理您的銀行存款帳戶</p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="btn-accent flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          新增帳戶
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={bankAccounts.length === 0}
+            className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            匯出
+          </button>
+          <BankAccountImportButton
+            onFileSelected={handleFileSelected}
+            compact
+          />
+          <button
+            onClick={handleCreate}
+            className="btn-accent flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            新增帳戶
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -173,6 +207,14 @@ export function BankAccountsPage() {
         confirmText="刪除"
         isDestructive={true}
       />
+
+      {selectedImportFile && (
+        <BankAccountImportModal
+          isOpen={showImportModal}
+          onClose={handleCloseImportModal}
+          file={selectedImportFile}
+        />
+      )}
     </div>
   );
 }

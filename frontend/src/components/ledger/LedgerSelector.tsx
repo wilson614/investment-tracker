@@ -6,9 +6,10 @@ import type { CurrencyLedgerSummary } from '../../types';
 
 interface LedgerSelectorProps {
   className?: string;
+  onLedgerChange?: (ledgerId: string) => void;
 }
 
-export function LedgerSelector({ className = '' }: LedgerSelectorProps) {
+export function LedgerSelector({ className = '', onLedgerChange }: LedgerSelectorProps) {
   const { ledgers, currentLedgerId, selectLedger, isLoading } = useLedger();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -71,6 +72,7 @@ export function LedgerSelector({ className = '' }: LedgerSelectorProps) {
                         key={ledgerSummary.ledger.id}
                         onClick={() => {
                           selectLedger(ledgerSummary.ledger.id);
+                          onLedgerChange?.(ledgerSummary.ledger.id);
                           setIsOpen(false);
                         }}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors ${

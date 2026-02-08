@@ -41,7 +41,7 @@ export function DisposableAssetsSection({
 
         <button
           type="button"
-          onClick={() => navigate('/currency')}
+          onClick={() => navigate('/ledger')}
           className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left transition-colors hover:border-[var(--accent-peach)]/40 hover:bg-[var(--bg-tertiary)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]/40"
         >
           <div className="flex items-start justify-between gap-2">

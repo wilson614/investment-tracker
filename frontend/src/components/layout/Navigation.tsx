@@ -266,7 +266,7 @@ export function Navigation() {
                 <Briefcase className="w-5 h-5" />
                 投資組合
               </a>
-              <NavLink to="/currency" icon={Wallet}>帳本</NavLink>
+              <NavLink to="/ledger" icon={Wallet}>帳本</NavLink>
               <NavLink to="/assets" icon={PieChart}>總資產</NavLink>
               <NavLink to="/bank-accounts" icon={Landmark}>銀行帳戶</NavLink>
               <NavLink to="/performance" icon={BarChart3}>績效分析</NavLink>
@@ -370,7 +370,7 @@ export function Navigation() {
               <Briefcase className="w-6 h-6" />
               投資組合
             </a>
-            <MobileNavLink to="/currency" icon={Wallet} onClick={closeMobileMenu}>
+            <MobileNavLink to="/ledger" icon={Wallet} onClick={closeMobileMenu}>
               帳本
             </MobileNavLink>
             <MobileNavLink to="/assets" icon={PieChart} onClick={closeMobileMenu}>

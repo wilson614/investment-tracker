@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './hooks/useAuth';
 import { PortfolioProvider } from './contexts/PortfolioContext';
+import { LedgerProvider } from './contexts/LedgerContext';
 import { DashboardPage } from './pages/Dashboard';
 import { PortfolioPage } from './pages/Portfolio';
 import { PositionDetailPage } from './pages/PositionDetail';
@@ -33,6 +34,16 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+function LegacyCurrencyDetailRedirect() {
+  const { id } = useParams<{ id: string }>();
+
+  if (!id) {
+    return <Navigate to="/ledger" replace />;
+  }
+
+  return <Navigate to={`/ledger/${id}`} replace />;
 }
 
 function AppRoutes() {
@@ -107,6 +118,14 @@ function AppRoutes() {
         path="/currency"
         element={
           <ProtectedRoute>
+            <Navigate to="/ledger" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ledger"
+        element={
+          <ProtectedRoute>
             <AppLayout>
               <Currency />
             </AppLayout>
@@ -115,6 +134,14 @@ function AppRoutes() {
       />
       <Route
         path="/currency/:id"
+        element={
+          <ProtectedRoute>
+            <LegacyCurrencyDetailRedirect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ledger/:id"
         element={
           <ProtectedRoute>
             <AppLayout>
@@ -154,11 +181,13 @@ function App() {
       <ScrollToTop />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <PortfolioProvider>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
-          </PortfolioProvider>
+          <LedgerProvider>
+            <PortfolioProvider>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </PortfolioProvider>
+          </LedgerProvider>
         </AuthProvider>
       </QueryClientProvider>
     </BrowserRouter>
