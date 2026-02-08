@@ -372,6 +372,7 @@ select.input-dark option {
 .badge {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   padding: 0.35rem 0.75rem;
   font-size: 0.8rem;
   font-weight: 500;

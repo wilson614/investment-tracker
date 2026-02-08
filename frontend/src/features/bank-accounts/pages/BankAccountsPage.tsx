@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Plus, Wallet, AlertCircle, Download } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Plus, Wallet, AlertCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
 import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
 import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
+import { FileDropdown } from '../../../components/common/FileDropdown';
 import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
 import { BankAccountImportButton, BankAccountImportModal } from '../../../components/import';
 import { exportBankAccountsToCSV } from '../../../services/csvExport';
@@ -34,6 +35,7 @@ export function BankAccountsPage() {
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
+  const importTriggerRef = useRef<(() => void) | null>(null);
 
   const totalAssets = assetsSummary?.bankTotal ?? 0;
   const totalYearlyInterest = assetsSummary?.totalYearlyInterest ?? 0;
@@ -112,18 +114,10 @@ export function BankAccountsPage() {
           <p className="text-[var(--text-secondary)]">管理您的銀行存款帳戶</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={bankAccounts.length === 0}
-            className="btn-dark flex items-center gap-2 px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            匯出
-          </button>
-          <BankAccountImportButton
-            onFileSelected={handleFileSelected}
-            compact
+          <FileDropdown
+            onImport={() => importTriggerRef.current?.()}
+            onExport={handleExport}
+            exportDisabled={bankAccounts.length === 0}
           />
           <button
             onClick={handleCreate}
@@ -215,6 +209,14 @@ export function BankAccountsPage() {
           file={selectedImportFile}
         />
       )}
+
+      <BankAccountImportButton
+        onFileSelected={handleFileSelected}
+        renderTrigger={(onClick) => {
+          importTriggerRef.current = onClick;
+          return null;
+        }}
+      />
     </div>
   );
 }

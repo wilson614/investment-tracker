@@ -757,7 +757,7 @@ export default function CurrencyDetail() {
                           />
                         </td>
                         <td className="whitespace-nowrap">{formatDate(tx.transactionDate)}</td>
-                        <td>
+                        <td className="whitespace-nowrap">
                           <span className={`badge ${getTransactionTypeBadgeClass(tx.transactionType)}`}>
                             {getTransactionTypeLabel(tx.transactionType)}
                           </span>
