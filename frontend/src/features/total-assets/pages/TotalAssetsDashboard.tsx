@@ -17,6 +17,7 @@ export function TotalAssetsDashboard() {
   const {
     allocations,
     error: allocationsError,
+    isLoading: isAllocationsLoading,
     createAllocation,
     updateAllocation,
     deleteAllocation,
@@ -80,56 +81,132 @@ export function TotalAssetsDashboard() {
   const investmentRatioDenominator = investmentTotal + disposableDeposit;
   const correctedInvestmentRatio =
     investmentRatioDenominator > 0 ? investmentTotal / investmentRatioDenominator : 0;
+  const isPageLoading = isLoading || isAllocationsLoading;
 
-  if (isLoading) {
+  if (isPageLoading) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Skeleton width="w-48" height="h-9" />
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+          <Skeleton width="w-40" height="h-8" />
+        </h1>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
-          <section className="card-dark p-6 h-full min-h-[170px] flex flex-col justify-center space-y-3">
-            <Skeleton width="w-20" height="h-6" />
-            <Skeleton width="w-40" height="h-10" />
+          <section className="card-dark p-6 h-full min-h-[170px] flex flex-col justify-center">
+            <Skeleton width="w-16" height="h-7" />
+            <Skeleton width="w-52" height="h-10" className="mt-1" />
           </section>
-          <section className="card-dark p-3 sm:p-4 h-full min-h-[170px] space-y-3">
-            <Skeleton width="w-32" height="h-6" />
-            <Skeleton width="w-full" height="h-14" />
-            <Skeleton width="w-full" height="h-14" />
+
+          <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-full min-h-[170px]">
+            <Skeleton width="w-32" height="h-7" />
+            <div className="space-y-2.5">
+              {[1, 2].map((row) => (
+                <div key={row} className="flex items-center gap-3">
+                  <Skeleton width="w-28" height="h-5" />
+                  <Skeleton width="w-full" height="h-2" />
+                  <Skeleton width="w-12" height="h-5" />
+                </div>
+              ))}
+            </div>
           </section>
         </div>
 
-        <div className="card-dark p-6 h-[400px] flex flex-col items-center justify-center">
-          <Skeleton width="w-48" height="h-48" circle />
-          <div className="mt-4 flex gap-4">
-            <Skeleton width="w-20" height="h-4" />
-            <Skeleton width="w-20" height="h-4" />
-            <Skeleton width="w-20" height="h-4" />
-            <Skeleton width="w-20" height="h-4" />
+        <div className="card-dark p-6 h-[400px]">
+          <Skeleton width="w-36" height="h-7" className="mb-4" />
+          <div className="w-full h-[320px] flex flex-col items-center justify-center">
+            <Skeleton width="w-48" height="h-48" circle />
+            <div className="mt-4 flex gap-4">
+              <Skeleton width="w-20" height="h-4" />
+              <Skeleton width="w-20" height="h-4" />
+              <Skeleton width="w-20" height="h-4" />
+              <Skeleton width="w-20" height="h-4" />
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          <section className="card-dark p-6 lg:col-span-2 h-full min-h-[200px] lg:min-h-[280px] space-y-4">
-            <Skeleton width="w-40" height="h-6" />
-            <Skeleton width="w-full" height="h-24" />
-          </section>
-          <section className="card-dark p-6 lg:col-span-1 h-full min-h-[200px] lg:min-h-[280px] space-y-4">
-            <Skeleton width="w-28" height="h-6" />
-            <Skeleton width="w-full" height="h-24" />
-          </section>
+          <div className="lg:col-span-2 h-full">
+            <section className="card-dark p-6 space-y-5 min-h-[200px] lg:min-h-[280px] h-full flex flex-col">
+              <header className="space-y-1">
+                <Skeleton width="w-28" height="h-7" />
+                <Skeleton width="w-full" height="h-5" />
+              </header>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50">
+                    <div className="flex items-start justify-between gap-2">
+                      <Skeleton width="w-20" height="h-5" />
+                      <Skeleton width="w-4" height="h-4" />
+                    </div>
+                    <Skeleton width="w-full" height="h-8" className="mt-2" />
+                    <Skeleton width="w-20" height="h-5" className="mt-2" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="lg:col-span-1 h-full">
+            <section className="card-dark p-6 h-full flex flex-col min-h-[200px] lg:min-h-[280px]">
+              <header className="space-y-1">
+                <Skeleton width="w-32" height="h-7" />
+                <Skeleton width="w-full" height="h-5" />
+              </header>
+
+              <div className="flex-1 flex flex-col justify-center mt-4">
+                <div className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 space-y-2">
+                  <Skeleton width="w-28" height="h-5" />
+                  <Skeleton width="w-full" height="h-8" />
+                  <Skeleton width="w-20" height="h-5" />
+                </div>
+              </div>
+
+              <Skeleton width="w-28" height="h-5" className="mt-4" />
+            </section>
+          </div>
         </div>
 
-        <section className="space-y-4 min-h-[300px]">
+        <div id="allocation-management-section" className="space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between">
-            <Skeleton width="w-32" height="h-7" />
+            <Skeleton width="w-36" height="h-7" />
             <Skeleton width="w-24" height="h-8" />
           </div>
-          <div className="card-dark p-6 space-y-3 min-h-[220px]">
-            <Skeleton width="w-full" height="h-6" />
-            <Skeleton width="w-full" height="h-6" />
-            <Skeleton width="w-full" height="h-6" />
+
+          <div className="card-dark p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              {[1, 2].map((summaryCard) => (
+                <div
+                  key={summaryCard}
+                  className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center"
+                >
+                  <Skeleton width="w-20" height="h-5" className="mb-1" />
+                  <Skeleton width="w-full" height="h-8" />
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              {[1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="border border-[var(--border-color)] rounded-lg p-3 bg-[var(--bg-tertiary)]/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <Skeleton width="w-32" height="h-5" />
+                      <Skeleton width="w-28" height="h-6" />
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Skeleton width="w-8" height="h-8" />
+                      <Skeleton width="w-8" height="h-8" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </section>
+        </div>
       </div>
     );
   }
@@ -140,7 +217,7 @@ export function TotalAssetsDashboard() {
 
       {/* ROW 1: 總金額 + 資金配置效率 並排 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
-        <section className="card-dark p-6 h-full flex flex-col justify-center">
+        <section className="card-dark p-6 h-full min-h-[170px] flex flex-col justify-center">
           <p className="text-lg font-semibold text-[var(--text-muted)]">總資產</p>
           <p className="mt-1 text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
             {formatCurrency(totalAssets, 'TWD')}
