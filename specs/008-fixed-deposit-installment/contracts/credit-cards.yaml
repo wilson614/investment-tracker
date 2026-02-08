@@ -1,0 +1,199 @@
+openapi: 3.0.3
+info:
+  title: Credit Cards API
+  version: 1.0.0
+  description: API for managing credit card accounts
+
+paths:
+  /api/credit-cards:
+    get:
+      summary: Get all credit cards for current user
+      operationId: getCreditCards
+      tags: [CreditCards]
+      parameters:
+        - name: includeInactive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include deactivated cards
+      responses:
+        '200':
+          description: List of credit cards with installment summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreditCardResponse'
+        '401':
+          description: Unauthorized
+
+    post:
+      summary: Create a new credit card
+      operationId: createCreditCard
+      tags: [CreditCards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCreditCardRequest'
+      responses:
+        '201':
+          description: Credit card created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditCardResponse'
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /api/credit-cards/{id}:
+    get:
+      summary: Get a credit card by ID
+      operationId: getCreditCard
+      tags: [CreditCards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Credit card details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditCardResponse'
+        '404':
+          description: Not found
+        '403':
+          description: Access denied
+
+    put:
+      summary: Update a credit card
+      operationId: updateCreditCard
+      tags: [CreditCards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCreditCardRequest'
+      responses:
+        '200':
+          description: Credit card updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditCardResponse'
+        '400':
+          description: Validation error
+        '404':
+          description: Not found
+
+    delete:
+      summary: Deactivate a credit card (soft delete)
+      operationId: deactivateCreditCard
+      tags: [CreditCards]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Credit card deactivated
+        '400':
+          description: Cannot deactivate (has active installments)
+        '404':
+          description: Not found
+
+components:
+  schemas:
+    CreditCardResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        bankName:
+          type: string
+        cardName:
+          type: string
+        billingCycleDay:
+          type: integer
+        isActive:
+          type: boolean
+        note:
+          type: string
+          nullable: true
+        activeInstallmentsCount:
+          type: integer
+          description: Number of active installments
+        totalUnpaidBalance:
+          type: number
+          format: decimal
+          description: Sum of all active installments' unpaid balance
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateCreditCardRequest:
+      type: object
+      required:
+        - bankName
+        - cardName
+        - billingCycleDay
+      properties:
+        bankName:
+          type: string
+          maxLength: 100
+        cardName:
+          type: string
+          maxLength: 100
+        billingCycleDay:
+          type: integer
+          minimum: 1
+          maximum: 31
+        note:
+          type: string
+          maxLength: 500
+
+    UpdateCreditCardRequest:
+      type: object
+      properties:
+        bankName:
+          type: string
+          maxLength: 100
+        cardName:
+          type: string
+          maxLength: 100
+        billingCycleDay:
+          type: integer
+          minimum: 1
+          maximum: 31
+        note:
+          type: string
+          maxLength: 500

@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: Available Funds API
+  version: 1.0.0
+  description: API for calculating available funds summary
+
+paths:
+  /api/available-funds:
+    get:
+      summary: Get available funds summary for current user
+      operationId: getAvailableFundsSummary
+      tags: [AvailableFunds]
+      responses:
+        '200':
+          description: Available funds summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableFundsSummaryResponse'
+        '401':
+          description: Unauthorized
+
+components:
+  schemas:
+    AvailableFundsSummaryResponse:
+      type: object
+      properties:
+        totalBankAssets:
+          type: number
+          format: decimal
+          description: Total bank account assets in TWD
+        committedFunds:
+          type: object
+          properties:
+            fixedDepositsTotal:
+              type: number
+              format: decimal
+              description: Sum of active fixed deposits principal in TWD
+            unpaidInstallmentsTotal:
+              type: number
+              format: decimal
+              description: Sum of unpaid installment balance in TWD
+            total:
+              type: number
+              format: decimal
+              description: fixedDepositsTotal + unpaidInstallmentsTotal
+        availableFunds:
+          type: number
+          format: decimal
+          description: totalBankAssets - committedFunds.total
+        breakdown:
+          type: object
+          properties:
+            fixedDeposits:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  bankName:
+                    type: string
+                  principal:
+                    type: number
+                    format: decimal
+                  principalInTwd:
+                    type: number
+                    format: decimal
+                  currency:
+                    type: string
+                  maturityDate:
+                    type: string
+                    format: date
+                  daysRemaining:
+                    type: integer
+            installments:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  description:
+                    type: string
+                  creditCardName:
+                    type: string
+                  unpaidBalance:
+                    type: number
+                    format: decimal
+                  remainingInstallments:
+                    type: integer
+        asOfDate:
+          type: string
+          format: date-time
+          description: Timestamp of calculation

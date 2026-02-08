@@ -1,0 +1,245 @@
+openapi: 3.0.3
+info:
+  title: Fixed Deposits API
+  version: 1.0.0
+  description: API for managing fixed deposits (time deposits)
+
+paths:
+  /api/fixed-deposits:
+    get:
+      summary: Get all fixed deposits for current user
+      operationId: getFixedDeposits
+      tags: [FixedDeposits]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Active, Matured, Closed, EarlyWithdrawal]
+          description: Filter by status
+      responses:
+        '200':
+          description: List of fixed deposits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FixedDepositResponse'
+        '401':
+          description: Unauthorized
+
+    post:
+      summary: Create a new fixed deposit
+      operationId: createFixedDeposit
+      tags: [FixedDeposits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFixedDepositRequest'
+      responses:
+        '201':
+          description: Fixed deposit created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedDepositResponse'
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /api/fixed-deposits/{id}:
+    get:
+      summary: Get a fixed deposit by ID
+      operationId: getFixedDeposit
+      tags: [FixedDeposits]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fixed deposit details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedDepositResponse'
+        '404':
+          description: Not found
+        '403':
+          description: Access denied
+
+    put:
+      summary: Update a fixed deposit
+      operationId: updateFixedDeposit
+      tags: [FixedDeposits]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFixedDepositRequest'
+      responses:
+        '200':
+          description: Fixed deposit updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedDepositResponse'
+        '400':
+          description: Validation error
+        '404':
+          description: Not found
+
+  /api/fixed-deposits/{id}/close:
+    post:
+      summary: Close a fixed deposit (maturity acknowledgment or early withdrawal)
+      operationId: closeFixedDeposit
+      tags: [FixedDeposits]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseFixedDepositRequest'
+      responses:
+        '200':
+          description: Fixed deposit closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedDepositResponse'
+        '400':
+          description: Cannot close (already closed)
+        '404':
+          description: Not found
+
+components:
+  schemas:
+    FixedDepositResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        bankName:
+          type: string
+        principal:
+          type: number
+          format: decimal
+        annualInterestRate:
+          type: number
+          format: decimal
+        termMonths:
+          type: integer
+        startDate:
+          type: string
+          format: date
+        maturityDate:
+          type: string
+          format: date
+        expectedInterest:
+          type: number
+          format: decimal
+        actualInterest:
+          type: number
+          format: decimal
+          nullable: true
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [Active, Matured, Closed, EarlyWithdrawal]
+        daysRemaining:
+          type: integer
+          description: Days until maturity (negative if past due)
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateFixedDepositRequest:
+      type: object
+      required:
+        - bankName
+        - principal
+        - annualInterestRate
+        - termMonths
+        - startDate
+      properties:
+        bankName:
+          type: string
+          maxLength: 100
+        principal:
+          type: number
+          format: decimal
+          minimum: 0
+        annualInterestRate:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Annual rate as decimal (e.g., 0.015 for 1.5%)
+        termMonths:
+          type: integer
+          minimum: 1
+        startDate:
+          type: string
+          format: date
+        currency:
+          type: string
+          default: TWD
+        note:
+          type: string
+          maxLength: 500
+
+    UpdateFixedDepositRequest:
+      type: object
+      properties:
+        bankName:
+          type: string
+          maxLength: 100
+        note:
+          type: string
+          maxLength: 500
+
+    CloseFixedDepositRequest:
+      type: object
+      required:
+        - isEarlyWithdrawal
+      properties:
+        isEarlyWithdrawal:
+          type: boolean
+          description: True if withdrawing before maturity
+        actualInterest:
+          type: number
+          format: decimal
+          description: Actual interest received (may differ from expected if early withdrawal)
