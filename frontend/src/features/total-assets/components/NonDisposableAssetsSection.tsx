@@ -17,7 +17,7 @@ export function NonDisposableAssetsSection({
   };
 
   return (
-    <section className="card-dark p-6 h-full flex flex-col min-h-[200px] lg:min-h-[280px]">
+    <section className="card-dark p-6 min-h-[200px] lg:h-[280px] h-full flex flex-col">
       <header className="space-y-1">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">不可動用資產</h3>
         <p className="text-sm text-[var(--text-muted)]">緊急預備金、家庭存款等不納入可動用資產</p>
