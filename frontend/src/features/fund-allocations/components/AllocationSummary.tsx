@@ -56,7 +56,7 @@ export function AllocationSummary({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 min-h-[104px]">
         {allocations.length === 0 ? (
           <div className="text-sm text-[var(--text-muted)] border border-dashed border-[var(--border-color)] rounded-lg p-4 text-center">
             尚未建立任何資金配置

@@ -71,13 +71,18 @@ export function AssetsBreakdownPieChart({
 
   if (isLoading) {
     return (
-      <div className="card-dark p-6 h-[400px] flex flex-col items-center justify-center">
-        <Skeleton width="w-48" height="h-48" circle />
-        <div className="mt-4 flex gap-4">
-          <Skeleton width="w-20" height="h-4" />
-          <Skeleton width="w-20" height="h-4" />
-          <Skeleton width="w-20" height="h-4" />
-          <Skeleton width="w-20" height="h-4" />
+      <div className="card-dark p-6 h-[400px]">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+          <span className="invisible">資產配置分析</span>
+        </h3>
+        <div className="w-full h-[320px] flex flex-col items-center justify-center">
+          <Skeleton width="w-48" height="h-48" circle />
+          <div className="mt-4 flex gap-4">
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+            <Skeleton width="w-20" height="h-4" />
+          </div>
         </div>
       </div>
     );

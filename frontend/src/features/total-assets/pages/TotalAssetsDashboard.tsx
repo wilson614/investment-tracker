@@ -111,7 +111,9 @@ export function TotalAssetsDashboard() {
         </div>
 
         <div className="card-dark p-6 h-[400px]">
-          <Skeleton width="w-36" height="h-7" className="mb-4" />
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+            <span className="invisible">資產配置分析</span>
+          </h3>
           <div className="w-full h-[320px] flex flex-col items-center justify-center">
             <Skeleton width="w-48" height="h-48" circle />
             <div className="mt-4 flex gap-4">
@@ -127,19 +129,36 @@ export function TotalAssetsDashboard() {
           <div className="lg:col-span-2 h-full">
             <section className="card-dark p-6 space-y-5 min-h-[200px] lg:h-[280px] h-full flex flex-col">
               <header className="space-y-1">
-                <Skeleton width="w-28" height="h-7" />
-                <Skeleton width="w-full" height="h-5" />
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                  <span className="invisible">可動用資產</span>
+                </h3>
+                <p className="text-sm text-[var(--text-muted)]">
+                  <span className="invisible">聚焦可動用存款與投資部位，追蹤資金配置效率</span>
+                </p>
               </header>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50">
+                {[
+                  { label: '投資部位總額', link: '前往投資組合' },
+                  { label: '帳本現金', link: '前往帳本' },
+                  { label: '可動用存款', link: '前往銀行帳戶' },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 text-left"
+                  >
                     <div className="flex items-start justify-between gap-2">
-                      <Skeleton width="w-20" height="h-5" />
-                      <Skeleton width="w-4" height="h-4" />
+                      <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">
+                        <span className="invisible">{item.label}</span>
+                      </p>
+                      <span className="mt-0.5 shrink-0 w-4 h-4" />
                     </div>
-                    <Skeleton width="w-full" height="h-8" className="mt-2" />
-                    <Skeleton width="w-20" height="h-5" className="mt-2" />
+                    <p className="mt-2 text-xl font-semibold font-mono text-[var(--text-primary)]">
+                      <span className="invisible">$0,000,000</span>
+                    </p>
+                    <p className="mt-2 text-sm text-[var(--accent-peach)]">
+                      <span className="invisible">{item.link}</span>
+                    </p>
                   </div>
                 ))}
               </div>
@@ -149,61 +168,70 @@ export function TotalAssetsDashboard() {
           <div className="lg:col-span-1 h-full">
             <section className="card-dark p-6 min-h-[200px] lg:h-[280px] h-full flex flex-col">
               <header className="space-y-1">
-                <Skeleton width="w-32" height="h-7" />
-                <Skeleton width="w-full" height="h-5" />
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                  <span className="invisible">不可動用資產</span>
+                </h3>
+                <p className="text-sm text-[var(--text-muted)]">
+                  <span className="invisible">緊急預備金、家庭存款等不納入可動用資產</span>
+                </p>
               </header>
 
               <div className="flex-1 flex flex-col justify-center mt-4">
                 <div className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/50 space-y-2">
-                  <Skeleton width="w-28" height="h-5" />
-                  <Skeleton width="w-full" height="h-8" />
-                  <Skeleton width="w-20" height="h-5" />
+                  <p className="text-sm uppercase tracking-wide text-[var(--text-muted)]">
+                    <span className="invisible">不可動用存款總額</span>
+                  </p>
+                  <p className="text-xl font-semibold font-mono text-[var(--text-primary)]">
+                    <span className="invisible">$0,000,000</span>
+                  </p>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    <span className="invisible">共 0 筆配置</span>
+                  </p>
                 </div>
               </div>
 
-              <Skeleton width="w-28" height="h-5" className="mt-4" />
+              <span className="mt-4 self-start text-sm font-medium text-[var(--accent-peach)]">
+                <span className="invisible">查看配置明細 →</span>
+              </span>
             </section>
           </div>
         </div>
 
         <div id="allocation-management-section" className="space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between">
-            <Skeleton width="w-36" height="h-7" />
-            <Skeleton width="w-24" height="h-8" />
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              <span className="invisible">資金配置管理</span>
+            </h2>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg">
+              <span className="w-4 h-4" />
+              <span className="invisible">新增配置</span>
+            </span>
           </div>
 
           <div className="card-dark p-6 space-y-5">
             <div className="grid grid-cols-2 gap-4 mb-5">
-              {[1, 2].map((summaryCard) => (
-                <div
-                  key={summaryCard}
-                  className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center"
-                >
-                  <Skeleton width="w-20" height="h-5" className="mb-1" />
-                  <Skeleton width="w-full" height="h-8" />
-                </div>
-              ))}
+              <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
+                <p className="text-sm font-medium text-[var(--text-muted)] mb-1">
+                  <span className="invisible">特殊配置</span>
+                </p>
+                <p className="text-xl font-bold text-[var(--text-primary)]">
+                  <span className="invisible">$0,000,000</span>
+                </p>
+              </div>
+              <div className="rounded-lg bg-[var(--bg-tertiary)]/50 p-4 text-center">
+                <p className="text-sm font-medium text-[var(--text-muted)] mb-1">
+                  <span className="invisible">一般存款</span>
+                </p>
+                <p className="text-xl font-bold text-[var(--accent-peach)]">
+                  <span className="invisible">$0,000,000</span>
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="border border-[var(--border-color)] rounded-lg p-3 bg-[var(--bg-tertiary)]/50"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <Skeleton width="w-32" height="h-5" />
-                      <Skeleton width="w-28" height="h-6" />
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Skeleton width="w-8" height="h-8" />
-                      <Skeleton width="w-8" height="h-8" />
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-2 min-h-[104px]">
+              <div className="border border-dashed border-[var(--border-color)] rounded-lg p-4 text-center text-sm text-[var(--text-muted)]">
+                <span className="invisible">載入中...</span>
+              </div>
             </div>
           </div>
         </div>
