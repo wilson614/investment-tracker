@@ -62,8 +62,8 @@ public class CreditCard : BaseEntity
 
     public void SetBillingCycleDay(int billingCycleDay)
     {
-        if (billingCycleDay < 1 || billingCycleDay > 28)
-            throw new ArgumentException("Billing cycle day must be between 1 and 28", nameof(billingCycleDay));
+        if (billingCycleDay < 1 || billingCycleDay > 31)
+            throw new ArgumentException("Billing cycle day must be between 1 and 31", nameof(billingCycleDay));
 
         BillingCycleDay = billingCycleDay;
     }
