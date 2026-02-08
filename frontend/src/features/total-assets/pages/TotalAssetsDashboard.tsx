@@ -91,12 +91,12 @@ export function TotalAssetsDashboard() {
         </h1>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
-          <section className="card-dark p-6 h-[170px] flex flex-col justify-center">
+          <section className="card-dark p-6 h-[120px] flex flex-col justify-center">
             <Skeleton width="w-16" height="h-7" />
             <Skeleton width="w-52" height="h-10" className="mt-1" />
           </section>
 
-          <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-[170px]">
+          <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-[120px]">
             <Skeleton width="w-32" height="h-7" />
             <div className="space-y-2.5">
               {[1, 2].map((row) => (
@@ -217,7 +217,7 @@ export function TotalAssetsDashboard() {
 
       {/* ROW 1: 總金額 + 資金配置效率 並排 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
-        <section className="card-dark p-6 h-[170px] flex flex-col justify-center">
+        <section className="card-dark p-6 h-[120px] flex flex-col justify-center">
           <p className="text-lg font-semibold text-[var(--text-muted)]">總資產</p>
           <p className="mt-1 text-3xl sm:text-4xl font-bold font-mono text-[var(--text-primary)]">
             {formatCurrency(totalAssets, 'TWD')}

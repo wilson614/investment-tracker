@@ -66,6 +66,40 @@ Controllers should NOT contain try-catch. Use Cases throw Domain Exceptions.
 
 QA engineer handles build verification. Do not manually kill processes during team execution.
 
+### Main Agent Prohibited Operations
+
+The following operations **MUST NOT** be executed directly by Main Agent. Always delegate to the appropriate SubAgent:
+
+| Operation | Prohibited | Correct |
+|:---|:---|:---|
+| Build verification | `Bash(dotnet build)` | `Task(subagent_type="qa-engineer")` |
+| Test execution | `Bash(dotnet test)` | `Task(subagent_type="qa-engineer")` |
+| Type checking | `Bash(npm run type-check)` | `Task(subagent_type="qa-engineer")` |
+| E2E testing | `Bash(npx playwright test)` | `Task(subagent_type="qa-engineer")` |
+
+**Even for "simple commands", delegation is mandatory.** Main Agent's role is coordination, not execution.
+
+### Quality Gate Verification
+
+**The formal QA verification step in the workflow MUST be performed by `qa-engineer`, not by the implementing engineer.**
+
+| Phase | Who Can Run Tests |
+|:---|:---|
+| During implementation | Engineer may run tests for own development |
+| Quality Gate (formal verification) | **MUST be `qa-engineer`** - no exceptions |
+
+**Wrong workflow:**
+```
+backend-engineer implements → backend-engineer verifies → code-reviewer
+```
+
+**Correct workflow:**
+```
+backend-engineer implements → qa-engineer verifies → code-reviewer
+```
+
+Engineers verifying their own work in the formal QA step defeats the purpose of independent verification.
+
 **On conversation end** (when user takes over for testing):
 ```bash
 taskkill /F /IM node.exe    # Stop frontend

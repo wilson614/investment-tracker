@@ -10,7 +10,7 @@ export function CoreMetricsSection({ data }: CoreMetricsSectionProps) {
   const stockRatio = data?.stockRatio ?? 0;
 
   return (
-    <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-[170px]">
+    <section className="card-dark p-3 sm:p-4 space-y-2 w-full h-[120px]">
       <h3 className="text-lg font-semibold text-[var(--text-primary)]">資金配置效率</h3>
 
       <div className="space-y-2.5">
