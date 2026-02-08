@@ -1,0 +1,75 @@
+using System.ComponentModel.DataAnnotations;
+using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
+
+namespace InvestmentTracker.Application.DTOs;
+
+public record CreditCardResponse(
+    Guid Id,
+    string BankName,
+    string CardName,
+    int BillingCycleDay,
+    string? Note,
+    bool IsActive,
+    int ActiveInstallmentsCount,
+    decimal TotalUnpaidBalance,
+    DateTime CreatedAt,
+    DateTime UpdatedAt
+)
+{
+    public static CreditCardResponse FromEntity(CreditCard creditCard)
+    {
+        var activeInstallments = creditCard.Installments
+            .Where(i => i.Status == InstallmentStatus.Active)
+            .ToList();
+
+        var activeInstallmentsCount = activeInstallments.Count;
+        var totalUnpaidBalance = activeInstallments
+            .Sum(i => Math.Round(i.MonthlyPayment * i.RemainingInstallments, 2));
+
+        return new CreditCardResponse(
+            creditCard.Id,
+            creditCard.BankName,
+            creditCard.CardName,
+            creditCard.BillingCycleDay,
+            creditCard.Note,
+            creditCard.IsActive,
+            activeInstallmentsCount,
+            totalUnpaidBalance,
+            creditCard.CreatedAt,
+            creditCard.UpdatedAt
+        );
+    }
+}
+
+public record CreateCreditCardRequest(
+    [property: Required]
+    [property: StringLength(100)]
+    string BankName,
+
+    [property: Required]
+    [property: StringLength(100)]
+    string CardName,
+
+    [property: Range(1, 31)]
+    int BillingCycleDay,
+
+    [property: StringLength(500)]
+    string? Note
+);
+
+public record UpdateCreditCardRequest(
+    [property: Required]
+    [property: StringLength(100)]
+    string BankName,
+
+    [property: Required]
+    [property: StringLength(100)]
+    string CardName,
+
+    [property: Range(1, 31)]
+    int BillingCycleDay,
+
+    [property: StringLength(500)]
+    string? Note
+);
