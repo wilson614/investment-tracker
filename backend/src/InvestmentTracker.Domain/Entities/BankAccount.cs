@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Common;
+using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Domain.Entities;
 
@@ -16,6 +17,14 @@ public class BankAccount : BaseEntity
     public string? Note { get; private set; }
     public bool IsActive { get; private set; } = true;
 
+    public BankAccountType AccountType { get; private set; } = BankAccountType.Savings;
+    public int? TermMonths { get; private set; }
+    public DateTime? StartDate { get; private set; }
+    public DateTime? MaturityDate { get; private set; }
+    public decimal? ExpectedInterest { get; private set; }
+    public decimal? ActualInterest { get; private set; }
+    public FixedDepositStatus? FixedDepositStatus { get; private set; }
+
     // Navigation property
     public User User { get; private set; } = null!;
 
@@ -29,7 +38,8 @@ public class BankAccount : BaseEntity
         decimal interestRate = 0m,
         decimal interestCap = 0m,
         string? note = null,
-        string currency = "TWD")
+        string currency = "TWD",
+        BankAccountType accountType = BankAccountType.Savings)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("User ID is required", nameof(userId));
@@ -40,6 +50,7 @@ public class BankAccount : BaseEntity
         SetInterestSettings(interestRate, interestCap);
         SetCurrency(currency);
         SetNote(note);
+        SetAccountType(accountType);
     }
 
     public void SetBankName(string bankName)
@@ -59,6 +70,7 @@ public class BankAccount : BaseEntity
             throw new ArgumentException("Total assets cannot be negative", nameof(totalAssets));
 
         TotalAssets = Math.Round(totalAssets, 2);
+        RecalculateFixedDepositComputedFields();
     }
 
     public void SetInterestSettings(decimal interestRate, decimal interestCap)
@@ -71,6 +83,7 @@ public class BankAccount : BaseEntity
 
         InterestRate = Math.Round(interestRate, 4);
         InterestCap = Math.Round(interestCap, 2);
+        RecalculateFixedDepositComputedFields();
     }
 
     public void SetCurrency(string currency)
@@ -89,6 +102,115 @@ public class BankAccount : BaseEntity
         Note = note?.Trim();
     }
 
+    public void SetAccountType(BankAccountType accountType)
+    {
+        if (!Enum.IsDefined(typeof(BankAccountType), accountType))
+            throw new ArgumentException("Invalid bank account type", nameof(accountType));
+
+        AccountType = accountType;
+
+        if (AccountType != BankAccountType.FixedDeposit)
+            ClearFixedDepositFields();
+    }
+
+    public void SetTermMonths(int? termMonths)
+    {
+        if (termMonths.HasValue && termMonths.Value <= 0)
+            throw new ArgumentException("Term months must be greater than 0", nameof(termMonths));
+
+        TermMonths = termMonths;
+        RecalculateFixedDepositComputedFields();
+    }
+
+    public void SetStartDate(DateTime? startDate)
+    {
+        if (startDate.HasValue && startDate.Value > DateTime.UtcNow.AddDays(1))
+            throw new ArgumentException("Start date cannot be in the future", nameof(startDate));
+
+        StartDate = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+            : null;
+
+        RecalculateFixedDepositComputedFields();
+    }
+
+    public void SetMaturityDate(DateTime? maturityDate)
+    {
+        if (maturityDate.HasValue && StartDate.HasValue && maturityDate.Value.Date < StartDate.Value.Date)
+            throw new ArgumentException("Maturity date cannot be earlier than start date", nameof(maturityDate));
+
+        MaturityDate = maturityDate.HasValue
+            ? DateTime.SpecifyKind(maturityDate.Value.Date, DateTimeKind.Utc)
+            : null;
+    }
+
+    public void SetExpectedInterest(decimal? expectedInterest)
+    {
+        if (expectedInterest < 0)
+            throw new ArgumentException("Expected interest cannot be negative", nameof(expectedInterest));
+
+        ExpectedInterest = expectedInterest.HasValue
+            ? Math.Round(expectedInterest.Value, 2)
+            : null;
+    }
+
+    public void SetActualInterest(decimal? actualInterest)
+    {
+        if (actualInterest < 0)
+            throw new ArgumentException("Actual interest cannot be negative", nameof(actualInterest));
+
+        ActualInterest = actualInterest.HasValue
+            ? Math.Round(actualInterest.Value, 2)
+            : null;
+    }
+
+    public void SetFixedDepositStatus(FixedDepositStatus? fixedDepositStatus)
+    {
+        if (fixedDepositStatus.HasValue && !Enum.IsDefined(typeof(FixedDepositStatus), fixedDepositStatus.Value))
+            throw new ArgumentException("Invalid fixed deposit status", nameof(fixedDepositStatus));
+
+        FixedDepositStatus = fixedDepositStatus;
+    }
+
+    public void ConfigureFixedDeposit(int termMonths, DateTime startDate)
+    {
+        SetAccountType(BankAccountType.FixedDeposit);
+        SetTermMonths(termMonths);
+        SetStartDate(startDate);
+        SetFixedDepositStatus(global::InvestmentTracker.Domain.Enums.FixedDepositStatus.Active);
+        SetActualInterest(null);
+        RecalculateFixedDepositComputedFields();
+    }
+
     public void Deactivate() => IsActive = false;
     public void Activate() => IsActive = true;
+
+    private void RecalculateFixedDepositComputedFields()
+    {
+        if (AccountType != BankAccountType.FixedDeposit)
+            return;
+
+        if (!StartDate.HasValue || !TermMonths.HasValue || TermMonths.Value <= 0)
+        {
+            MaturityDate = null;
+            ExpectedInterest = null;
+            return;
+        }
+
+        MaturityDate = DateTime.SpecifyKind(StartDate.Value.AddMonths(TermMonths.Value), DateTimeKind.Utc);
+
+        // For fixed deposit accounts, TotalAssets represents principal amount.
+        var annualRateDecimal = InterestRate / 100m;
+        ExpectedInterest = Math.Round(TotalAssets * annualRateDecimal * (TermMonths.Value / 12m), 2);
+    }
+
+    private void ClearFixedDepositFields()
+    {
+        TermMonths = null;
+        StartDate = null;
+        MaturityDate = null;
+        ExpectedInterest = null;
+        ActualInterest = null;
+        FixedDepositStatus = null;
+    }
 }

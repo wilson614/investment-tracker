@@ -1,4 +1,5 @@
 using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -33,6 +34,24 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
             .HasMaxLength(3)
             .HasDefaultValue("TWD");
 
+        builder.Property(ba => ba.AccountType)
+            .IsRequired()
+            .HasDefaultValue(BankAccountType.Savings);
+
+        builder.Property(ba => ba.TermMonths);
+
+        builder.Property(ba => ba.StartDate);
+
+        builder.Property(ba => ba.MaturityDate);
+
+        builder.Property(ba => ba.ExpectedInterest)
+            .HasPrecision(18, 2);
+
+        builder.Property(ba => ba.ActualInterest)
+            .HasPrecision(18, 2);
+
+        builder.Property(ba => ba.FixedDepositStatus);
+
         builder.Property(ba => ba.Note)
             .HasMaxLength(500);
 
@@ -49,5 +68,8 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
         // Indexes
         builder.HasIndex(ba => ba.UserId)
             .HasDatabaseName("IX_BankAccount_UserId");
+
+        builder.HasIndex(ba => ba.AccountType)
+            .HasDatabaseName("IX_BankAccount_AccountType");
     }
 }
