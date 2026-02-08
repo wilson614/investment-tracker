@@ -90,6 +90,7 @@ public record StockPositionDto
     public decimal? UnrealizedPnlSource { get; init; }
     public decimal? UnrealizedPnlSourcePercentage { get; init; }
 
+    [JsonConverter(typeof(JsonNumberEnumConverter<StockMarket>))]
     public StockMarket? Market { get; init; }
     public string? Currency { get; init; }
 }
