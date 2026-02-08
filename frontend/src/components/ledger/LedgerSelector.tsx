@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { ChevronDown, DollarSign } from 'lucide-react';
 import { useLedger } from '../../contexts/LedgerContext';
+import { CURRENCY_LABELS } from '../../constants/currencies';
+
+const getCurrencyLabel = (code: string) => CURRENCY_LABELS[code] || code;
 
 interface LedgerSelectorProps {
   className?: string;
@@ -32,7 +35,7 @@ export function LedgerSelector({ className = '', onLedgerChange }: LedgerSelecto
       >
         <DollarSign className="w-4 h-4 text-[var(--accent-butter)]" />
         <span className="text-[var(--text-primary)] text-sm font-medium">
-          {currentLedger ? currentLedger.ledger.currencyCode : '選擇帳本'}
+          {currentLedger ? getCurrencyLabel(currentLedger.ledger.currencyCode) : '選擇帳本'}
         </span>
         <ChevronDown
           className={`w-4 h-4 text-[var(--text-secondary)] transition-transform ${
@@ -69,7 +72,7 @@ export function LedgerSelector({ className = '', onLedgerChange }: LedgerSelecto
                   >
                     <DollarSign className="w-4 h-4 text-[var(--accent-butter)]" />
                     <div className="flex-1 min-w-0 text-sm font-medium text-[var(--text-primary)] truncate">
-                      {ledgerSummary.ledger.currencyCode}
+                      {getCurrencyLabel(ledgerSummary.ledger.currencyCode)}
                     </div>
                   </button>
                 ))
