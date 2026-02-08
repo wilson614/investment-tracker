@@ -25,7 +25,7 @@
 
 **Purpose**: No new project setup needed - all changes are to existing codebase
 
-- [ ] T001 Verify branch is on `007-ui-enhancements` and sync with master
+- [x] T001 Verify branch is on `007-ui-enhancements` and sync with master
 
 **Checkpoint**: Ready to implement user stories
 
@@ -49,12 +49,12 @@
 
 ### Implementation for User Story 1
 
-- [ ] T002 [US1] Remove Linked Ledger section from `frontend/src/components/transactions/TransactionForm.tsx` (lines ~461-500)
-- [ ] T003 [US1] Change notes field from textarea to single-line input in `frontend/src/components/transactions/TransactionForm.tsx`
-- [ ] T004 [US1] Remove unused imports and state related to boundLedger in `frontend/src/components/transactions/TransactionForm.tsx`
-- [ ] T005 [US1] Verify dialog layout fits viewport on 1080p without scrolling
+- [x] T002 [US1] Remove Linked Ledger section from `frontend/src/components/transactions/TransactionForm.tsx` (lines ~461-500)
+- [x] T003 [US1] Change notes field from textarea to single-line input in `frontend/src/components/transactions/TransactionForm.tsx`
+- [x] T004 [US1] Remove unused imports and state related to boundLedger in `frontend/src/components/transactions/TransactionForm.tsx`
+- [x] T005 [US1] Verify dialog layout fits viewport on 1080p without scrolling
 
-**Checkpoint**: Stock trading dialog renders without flicker and fits viewport
+**Checkpoint**: Stock trading dialog renders without flicker and fits viewport ✅
 
 ---
 
@@ -66,15 +66,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T006 [P] [US2] Create `frontend/src/contexts/LedgerContext.tsx` following PortfolioContext pattern
-- [ ] T007 [P] [US2] Create `frontend/src/components/ledger/LedgerSelector.tsx` following PortfolioSelector pattern
-- [ ] T008 [US2] Add LedgerProvider to app wrapper in `frontend/src/App.tsx`
-- [ ] T009 [US2] Refactor `frontend/src/pages/Currency.tsx` to auto-redirect to last selected ledger using LedgerContext
-- [ ] T010 [US2] Integrate LedgerSelector into header of `frontend/src/pages/CurrencyDetail.tsx`
-- [ ] T011 [US2] Update navigation/routing to remove ledger overview page link (direct to CurrencyDetail)
-- [ ] T012 [US2] Add localStorage persistence for selected ledger (key: `selected_ledger_id`)
+- [x] T006 [P] [US2] Create `frontend/src/contexts/LedgerContext.tsx` following PortfolioContext pattern
+- [x] T007 [P] [US2] Create `frontend/src/components/ledger/LedgerSelector.tsx` following PortfolioSelector pattern
+- [x] T008 [US2] Add LedgerProvider to app wrapper in `frontend/src/App.tsx`
+- [x] T009 [US2] Refactor `frontend/src/pages/Currency.tsx` to auto-redirect to last selected ledger using LedgerContext
+- [x] T010 [US2] Integrate LedgerSelector into header of `frontend/src/pages/CurrencyDetail.tsx`
+- [x] T011 [US2] Update navigation/routing to remove ledger overview page link (direct to CurrencyDetail)
+- [x] T012 [US2] Add localStorage persistence for selected ledger (key: `selected_ledger_id`)
+- [x] T028 [US2] Change LedgerSelector to display Chinese currency labels (台幣, 美金) instead of codes (TWD, USD)
 
-**Checkpoint**: Ledger navigation works via dropdown, selection persists across sessions
+**Checkpoint**: Ledger navigation works via dropdown, selection persists across sessions ✅
 
 ---
 
@@ -86,23 +87,26 @@
 
 ### Backend Implementation for User Story 3
 
-- [ ] T013 [P] [US3] Create DTOs in `backend/src/InvestmentTracker.Api/Dtos/BankAccountImportDto.cs`
-- [ ] T014 [US3] Add Export endpoint (GET /api/bank-accounts/export) to `backend/src/InvestmentTracker.Api/Controllers/BankAccountsController.cs`
-- [ ] T015 [US3] Add Import endpoint (POST /api/bank-accounts/import) with preview/execute modes to `backend/src/InvestmentTracker.Api/Controllers/BankAccountsController.cs`
-- [ ] T016 [US3] Implement duplicate detection logic (by BankName) in import endpoint
+- [x] T013 [P] [US3] Create DTOs in `backend/src/InvestmentTracker.Api/Dtos/BankAccountImportDto.cs`
+- [x] T014 [US3] Add Export endpoint (GET /api/bank-accounts/export) to `backend/src/InvestmentTracker.Api/Controllers/BankAccountsController.cs`
+- [x] T015 [US3] Add Import endpoint (POST /api/bank-accounts/import) with preview/execute modes to `backend/src/InvestmentTracker.Api/Controllers/BankAccountsController.cs`
+- [x] T016 [US3] Implement duplicate detection logic (by BankName) in import endpoint
 
 ### Frontend Implementation for User Story 3
 
-- [ ] T017 [P] [US3] Add `exportBankAccountsToCSV` function to `frontend/src/services/csvExport.ts`
-- [ ] T018 [P] [US3] Create `frontend/src/components/import/BankAccountImportButton.tsx` following StockImportButton pattern
-- [ ] T019 [US3] Create `frontend/src/components/import/BankAccountImportModal.tsx` with preview functionality
-- [ ] T020 [US3] Add Export button to `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
-- [ ] T021 [US3] Add Import button to `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
-- [ ] T022 [US3] Implement CSV parsing and validation in import modal
-- [ ] T023 [US3] Implement import preview display showing create/update actions
-- [ ] T024 [US3] Implement import confirmation and execution flow
+- [x] T017 [P] [US3] Add `exportBankAccountsToCSV` function to `frontend/src/services/csvExport.ts`
+- [x] T018 [P] [US3] Create `frontend/src/components/import/BankAccountImportButton.tsx` following StockImportButton pattern
+- [x] T019 [US3] Create `frontend/src/components/import/BankAccountImportModal.tsx` with preview functionality
+- [x] T020 [US3] Add Export button to `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
+- [x] T021 [US3] Add Import button to `frontend/src/features/bank-accounts/pages/BankAccountsPage.tsx`
+- [x] T022 [US3] Implement CSV parsing and validation in import modal
+- [x] T023 [US3] Implement import preview display showing create/update actions
+- [x] T024 [US3] Implement import confirmation and execution flow
+- [x] T029 [US3] Replace separate Import/Export buttons with FileDropdown component
+- [x] T030 [US3] Change export CSV headers to Chinese (銀行名稱, 總資產, 利率, etc.)
+- [x] T031 [US3] Remove unnecessary IsActive field from export
 
-**Checkpoint**: Bank account export/import works with full round-trip data integrity
+**Checkpoint**: Bank account export/import works with full round-trip data integrity ✅
 
 ---
 
@@ -110,9 +114,25 @@
 
 **Purpose**: Final verification and cleanup
 
-- [ ] T025 Run manual verification per quickstart.md scenarios
-- [ ] T026 Verify all acceptance scenarios from spec.md pass
-- [ ] T027 Code cleanup - remove any dead code from removed Linked Ledger section
+- [x] T025 Run manual verification per quickstart.md scenarios
+- [x] T026 Verify all acceptance scenarios from spec.md pass
+- [x] T027 Code cleanup - remove any dead code from removed Linked Ledger section
+- [x] T032 Fix transaction type badge text wrapping in CurrencyDetail.tsx
+
+---
+
+## Completion Summary
+
+**All tasks completed**: 32/32 ✅
+
+### Commits
+1. `9a073ed` docs(specs): 新增 007-ui-enhancements 規格文件
+2. `a8a6ad3` feat(ui): add US1 dialog fix, US2 ledger context, US3 import prereqs
+3. `c653f47` feat(ui): complete US2 ledger dropdown and US3 backend endpoints
+4. `9280ef9` feat(bank-accounts): complete import modal with preview and execute flow
+5. `e169f05` fix(ui): 修正帳本選擇器與匯入匯出介面問題
+6. `637ca21` fix(bank-accounts): 修正匯出欄位名稱為中文並移除 IsActive
+7. `8f3b981` fix(ledger): 帳本選擇器改顯示中文幣別名稱
 
 ---
 
@@ -132,73 +152,6 @@
 - **User Story 3 (P3)**: No dependencies - full-stack, follows existing patterns
 
 **Note**: All three user stories are completely independent and can be implemented in parallel.
-
-### Within Each User Story
-
-- Backend tasks before frontend integration (US3 only)
-- Context/state before components that consume it (US2)
-- Core changes before cleanup tasks
-
-### Parallel Opportunities
-
-- T006 and T007 can run in parallel (different new files)
-- T013, T017, T018 can run in parallel (different files, no dependencies)
-- All three user stories can be assigned to different developers simultaneously
-
----
-
-## Parallel Example: User Story 2
-
-```bash
-# Launch context and component creation together:
-Task: "Create LedgerContext.tsx" (T006)
-Task: "Create LedgerSelector.tsx" (T007)
-
-# Then sequentially:
-Task: "Add LedgerProvider to App.tsx" (T008)
-Task: "Refactor Currency.tsx" (T009)
-Task: "Integrate LedgerSelector into CurrencyDetail.tsx" (T010)
-```
-
-## Parallel Example: User Story 3
-
-```bash
-# Launch backend DTO and frontend export function together:
-Task: "Create DTOs" (T013)
-Task: "Add exportBankAccountsToCSV" (T017)
-Task: "Create BankAccountImportButton" (T018)
-
-# Then sequentially:
-Task: "Add Export endpoint" (T014)
-Task: "Add Import endpoint" (T015)
-Task: "Create BankAccountImportModal" (T019)
-# ... etc
-```
-
----
-
-## Implementation Strategy
-
-### MVP First (User Story 1 Only)
-
-1. Complete T001 (Setup verification)
-2. Complete T002-T005 (User Story 1)
-3. **STOP and VALIDATE**: Test dialog manually
-4. Deploy/demo if ready
-
-### Incremental Delivery
-
-1. User Story 1 → Bug fix deployed (immediate user value)
-2. User Story 2 → UX improvement deployed
-3. User Story 3 → New feature deployed
-4. Each story adds value without breaking previous stories
-
-### Parallel Team Strategy
-
-With multiple developers:
-1. Developer A: User Story 1 (P1) - Quick win
-2. Developer B: User Story 2 (P2) - Frontend focus
-3. Developer C: User Story 3 (P3) - Full-stack
 
 ---
 
