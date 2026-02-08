@@ -169,6 +169,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IBenchmarkAnnualReturnRepository, BenchmarkAnnualReturnRepository>();
 builder.Services.AddScoped<IFundAllocationRepository, FundAllocationRepository>();
+builder.Services.AddScoped<IFixedDepositRepository, FixedDepositRepository>();
 builder.Services.AddScoped<ICreditCardRepository, CreditCardRepository>();
 
 // Register External API Clients

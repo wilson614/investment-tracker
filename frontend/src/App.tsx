@@ -14,6 +14,7 @@ import CurrencyDetail from './pages/CurrencyDetail';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { PerformancePage } from './pages/Performance';
+import { CreditCardsPage } from './pages/CreditCardsPage';
 import { ProtectedRoute, ToastProvider, ScrollToTop } from './components/common';
 import { Navigation } from './components/layout/Navigation';
 import './index.css';
@@ -100,6 +101,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <BankAccountsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/credit-cards"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <CreditCardsPage />
             </AppLayout>
           </ProtectedRoute>
         }
