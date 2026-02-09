@@ -83,7 +83,7 @@ export function InstallmentList({
                   <span className={getStatusBadgeClass(installment.status)}>{getStatusLabel(installment.status)}</span>
                 </div>
                 <p className="text-sm text-[var(--text-muted)]">
-                  起始日：{formatDate(installment.startDate)}
+                  首次還款日：{formatDate(installment.firstPaymentDate)}
                   {installment.note ? ` · 備註：${installment.note}` : ''}
                 </p>
               </div>

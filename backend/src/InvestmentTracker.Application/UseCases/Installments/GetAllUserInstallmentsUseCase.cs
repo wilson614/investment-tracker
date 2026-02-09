@@ -69,7 +69,7 @@ public class GetAllUserInstallmentsUseCase(
             installment.NumberOfInstallments,
             remainingInstallments,
             installment.MonthlyPayment,
-            installment.StartDate,
+            installment.FirstPaymentDate,
             effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,

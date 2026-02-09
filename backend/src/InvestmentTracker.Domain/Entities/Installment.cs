@@ -15,7 +15,7 @@ public class Installment : BaseEntity
     public int NumberOfInstallments { get; private set; }
     public int RemainingInstallments { get; private set; }
     public decimal MonthlyPayment { get; private set; }
-    public DateTime StartDate { get; private set; }
+    public DateTime FirstPaymentDate { get; private set; }
     public InstallmentStatus Status { get; private set; } = InstallmentStatus.Active;
     public string? Note { get; private set; }
 
@@ -32,7 +32,7 @@ public class Installment : BaseEntity
         decimal totalAmount,
         int numberOfInstallments,
         int remainingInstallments,
-        DateTime startDate,
+        DateTime firstPaymentDate,
         string? note = null)
     {
         if (creditCardId == Guid.Empty)
@@ -46,7 +46,7 @@ public class Installment : BaseEntity
         SetDescription(description);
         SetPaymentPlan(totalAmount, numberOfInstallments);
         SetRemainingInstallments(remainingInstallments);
-        SetStartDate(startDate);
+        SetFirstPaymentDate(firstPaymentDate);
         SetNote(note);
     }
 
@@ -91,12 +91,14 @@ public class Installment : BaseEntity
         SyncStatusFromRemainingInstallments();
     }
 
-    public void SetStartDate(DateTime startDate)
+    public void SetFirstPaymentDate(DateTime firstPaymentDate)
     {
-        if (startDate > DateTime.UtcNow.AddDays(1))
-            throw new ArgumentException("Start date cannot be in the future", nameof(startDate));
+        var today = DateTime.UtcNow.Date;
 
-        StartDate = DateTime.SpecifyKind(startDate.Date, DateTimeKind.Utc);
+        if (firstPaymentDate.Date < today.AddYears(-1))
+            throw new ArgumentException("First payment date cannot be more than 1 year in the past", nameof(firstPaymentDate));
+
+        FirstPaymentDate = DateTime.SpecifyKind(firstPaymentDate.Date, DateTimeKind.Utc);
     }
 
     public void SetStatus(InstallmentStatus status)
@@ -118,29 +120,34 @@ public class Installment : BaseEntity
         Note = note?.Trim();
     }
 
-    public int GetPaidInstallments(int billingCycleDay, DateTime? utcNow = null)
+    public int GetPaidInstallments(int paymentDueDay, DateTime? utcNow = null)
     {
-        ValidatePaymentDueDay(billingCycleDay);
+        ValidatePaymentDueDay(paymentDueDay);
 
         var currentDate = (utcNow ?? DateTime.UtcNow).Date;
-        var startDate = StartDate.Date;
+        var firstPaymentDate = FirstPaymentDate.Date;
 
-        var elapsedMonths =
-            (currentDate.Year - startDate.Year) * 12
+        if (currentDate < firstPaymentDate)
+            return 0;
+
+        var monthsElapsed =
+            (currentDate.Year - firstPaymentDate.Year) * 12
             + currentDate.Month
-            - startDate.Month;
+            - firstPaymentDate.Month;
 
-        var billingDayInCurrentMonth = Math.Min(
-            billingCycleDay,
+        var paymentDayThisMonth = Math.Min(
+            firstPaymentDate.Day,
             DateTime.DaysInMonth(currentDate.Year, currentDate.Month));
 
-        if (currentDate.Day < billingDayInCurrentMonth)
-            elapsedMonths--;
+        if (currentDate.Day < paymentDayThisMonth)
+            monthsElapsed--;
 
-        return Math.Clamp(elapsedMonths, 0, NumberOfInstallments);
+        var paidCount = monthsElapsed + 1;
+
+        return Math.Clamp(paidCount, 0, NumberOfInstallments);
     }
 
-    public int GetRemainingInstallments(int billingCycleDay, DateTime? utcNow = null)
+    public int GetRemainingInstallments(int paymentDueDay, DateTime? utcNow = null)
     {
         if (Status == InstallmentStatus.Cancelled)
             return RemainingInstallments;
@@ -148,26 +155,26 @@ public class Installment : BaseEntity
         if (Status == InstallmentStatus.Completed)
             return 0;
 
-        var paidInstallments = GetPaidInstallments(billingCycleDay, utcNow);
+        var paidInstallments = GetPaidInstallments(paymentDueDay, utcNow);
         return Math.Max(NumberOfInstallments - paidInstallments, 0);
     }
 
-    public InstallmentStatus GetEffectiveStatus(int billingCycleDay, DateTime? utcNow = null)
+    public InstallmentStatus GetEffectiveStatus(int paymentDueDay, DateTime? utcNow = null)
     {
         if (Status == InstallmentStatus.Cancelled)
             return InstallmentStatus.Cancelled;
 
-        return GetRemainingInstallments(billingCycleDay, utcNow) <= 0
+        return GetRemainingInstallments(paymentDueDay, utcNow) <= 0
             ? InstallmentStatus.Completed
             : InstallmentStatus.Active;
     }
 
     public void Cancel() => Status = InstallmentStatus.Cancelled;
 
-    private static void ValidatePaymentDueDay(int billingCycleDay)
+    private static void ValidatePaymentDueDay(int paymentDueDay)
     {
-        if (billingCycleDay < 1 || billingCycleDay > 31)
-            throw new ArgumentException("Billing cycle day must be between 1 and 31", nameof(billingCycleDay));
+        if (paymentDueDay < 1 || paymentDueDay > 31)
+            throw new ArgumentException("Payment due day must be between 1 and 31", nameof(paymentDueDay));
     }
 
     private void SyncStatusFromRemainingInstallments()

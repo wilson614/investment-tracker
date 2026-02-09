@@ -7,7 +7,7 @@ export interface InstallmentResponse {
   numberOfInstallments: number;
   remainingInstallments: number;
   monthlyPayment: number;
-  startDate: string;
+  firstPaymentDate: string;
   status: 'Active' | 'Completed' | 'Cancelled';
   note: string | null;
   unpaidBalance: number;
@@ -22,7 +22,7 @@ export interface CreateInstallmentRequest {
   description: string;
   totalAmount: number;
   numberOfInstallments: number;
-  startDate: string;
+  firstPaymentDate: string;
   note?: string | null;
 }
 

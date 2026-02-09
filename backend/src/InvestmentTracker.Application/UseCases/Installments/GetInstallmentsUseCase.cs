@@ -66,7 +66,7 @@ public class GetInstallmentsUseCase(
             installment.NumberOfInstallments,
             remainingInstallments,
             installment.MonthlyPayment,
-            installment.StartDate,
+            installment.FirstPaymentDate,
             effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,

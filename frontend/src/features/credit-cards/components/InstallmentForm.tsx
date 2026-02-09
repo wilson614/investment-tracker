@@ -24,7 +24,7 @@ export function InstallmentForm({
   const [description, setDescription] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [numberOfInstallments, setNumberOfInstallments] = useState('3');
-  const [startDate, setStartDate] = useState('');
+  const [firstPaymentDate, setFirstPaymentDate] = useState('');
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -33,13 +33,13 @@ export function InstallmentForm({
       setDescription(initialData.description);
       setTotalAmount(initialData.totalAmount.toString());
       setNumberOfInstallments(initialData.numberOfInstallments.toString());
-      setStartDate(initialData.startDate.slice(0, 10));
+      setFirstPaymentDate(initialData.firstPaymentDate.slice(0, 10));
       setNote(initialData.note ?? '');
     } else {
       setDescription('');
       setTotalAmount('');
       setNumberOfInstallments('3');
-      setStartDate(new Date().toISOString().slice(0, 10));
+      setFirstPaymentDate(new Date().toISOString().slice(0, 10));
       setNote('');
     }
     setErrorMessage('');
@@ -68,8 +68,8 @@ export function InstallmentForm({
       return;
     }
 
-    if (!startDate) {
-      setErrorMessage('請選擇起始日');
+    if (!firstPaymentDate) {
+      setErrorMessage('請選擇首次還款日');
       return;
     }
 
@@ -88,7 +88,7 @@ export function InstallmentForm({
       description: normalizedDescription,
       totalAmount: parsedTotalAmount,
       numberOfInstallments: parsedInstallments,
-      startDate,
+      firstPaymentDate,
       note: note.trim() || undefined,
     };
 
@@ -199,12 +199,12 @@ export function InstallmentForm({
             {!initialData ? (
               <div>
                 <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  起始日
+                  首次還款日
                 </label>
                 <input
                   type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={firstPaymentDate}
+                  onChange={(e) => setFirstPaymentDate(e.target.value)}
                   className="input-dark w-full"
                   required
                 />
@@ -212,11 +212,11 @@ export function InstallmentForm({
             ) : (
               <div>
                 <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  起始日
+                  首次還款日
                 </label>
                 <input
                   type="date"
-                  value={startDate}
+                  value={firstPaymentDate}
                   className="input-dark w-full opacity-70 cursor-not-allowed"
                   disabled
                 />

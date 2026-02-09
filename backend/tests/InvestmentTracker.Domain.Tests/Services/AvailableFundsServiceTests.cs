@@ -50,7 +50,7 @@ public class AvailableFundsServiceTests
 
         var installments = new List<Installment>
         {
-            new(creditCardId, userId, "Laptop", totalAmount: 600m, numberOfInstallments: 6, remainingInstallments: 3, startDate: DateTime.UtcNow.AddMonths(-3))
+            new(creditCardId, userId, "Laptop", totalAmount: 600m, numberOfInstallments: 6, remainingInstallments: 3, firstPaymentDate: DateTime.UtcNow.AddMonths(-3))
         };
 
         var result = _service.Calculate(
@@ -92,7 +92,7 @@ public class AvailableFundsServiceTests
 
         var installments = new List<Installment>
         {
-            new(creditCardId, userId, "Phone", totalAmount: 120m, numberOfInstallments: 12, remainingInstallments: 6, startDate: DateTime.UtcNow.AddMonths(-6))
+            new(creditCardId, userId, "Phone", totalAmount: 120m, numberOfInstallments: 12, remainingInstallments: 6, firstPaymentDate: DateTime.UtcNow.AddMonths(-6))
         };
 
         var exchangeRateCalls = new List<string>();
@@ -191,7 +191,7 @@ public class AvailableFundsServiceTests
             totalAmount: 1_200m,
             numberOfInstallments: 12,
             remainingInstallments: 4,
-            startDate: DateTime.UtcNow.AddMonths(-8));
+            firstPaymentDate: DateTime.UtcNow.AddMonths(-8));
 
         var completed = new Installment(
             creditCardId,
@@ -200,7 +200,7 @@ public class AvailableFundsServiceTests
             totalAmount: 1_200m,
             numberOfInstallments: 12,
             remainingInstallments: 0,
-            startDate: DateTime.UtcNow.AddMonths(-12));
+            firstPaymentDate: DateTime.UtcNow.AddMonths(-12));
 
         var cancelled = new Installment(
             creditCardId,
@@ -209,7 +209,7 @@ public class AvailableFundsServiceTests
             totalAmount: 1_200m,
             numberOfInstallments: 12,
             remainingInstallments: 8,
-            startDate: DateTime.UtcNow.AddMonths(-4));
+            firstPaymentDate: DateTime.UtcNow.AddMonths(-4));
         cancelled.Cancel();
 
         var result = _service.Calculate(
@@ -240,7 +240,7 @@ public class AvailableFundsServiceTests
 
         var installments = new List<Installment>
         {
-            new(creditCardId, userId, "Zero", totalAmount: 1m, numberOfInstallments: 1, remainingInstallments: 0, startDate: DateTime.UtcNow.AddMonths(-1))
+            new(creditCardId, userId, "Zero", totalAmount: 1m, numberOfInstallments: 1, remainingInstallments: 0, firstPaymentDate: DateTime.UtcNow.AddMonths(-1))
         };
 
         var exchangeRateCallCount = 0;

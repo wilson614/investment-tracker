@@ -31,7 +31,7 @@ public class CreateInstallmentUseCase(
             request.TotalAmount,
             request.NumberOfInstallments,
             request.NumberOfInstallments,
-            request.StartDate,
+            request.FirstPaymentDate,
             request.Note);
 
         await installmentRepository.AddAsync(installment, cancellationToken);
@@ -67,7 +67,7 @@ public class CreateInstallmentUseCase(
             installment.NumberOfInstallments,
             remainingInstallments,
             installment.MonthlyPayment,
-            installment.StartDate,
+            installment.FirstPaymentDate,
             effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,

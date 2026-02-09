@@ -36,7 +36,7 @@ public class InstallmentConfiguration : IEntityTypeConfiguration<Installment>
             .IsRequired()
             .HasPrecision(18, 2);
 
-        builder.Property(i => i.StartDate)
+        builder.Property(i => i.FirstPaymentDate)
             .IsRequired();
 
         builder.Property(i => i.Status)

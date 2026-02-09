@@ -79,8 +79,8 @@ public class GetUpcomingPaymentsUseCase(
 
             var paidInstallments = installment.GetPaidInstallments(creditCard.PaymentDueDay, utcNow);
             var scheduleStartMonth = new DateTime(
-                installment.StartDate.Year,
-                installment.StartDate.Month,
+                installment.FirstPaymentDate.Year,
+                installment.FirstPaymentDate.Month,
                 1,
                 0,
                 0,

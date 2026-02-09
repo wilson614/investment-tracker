@@ -11,7 +11,7 @@ public record InstallmentResponse(
     int NumberOfInstallments,
     int RemainingInstallments,
     decimal MonthlyPayment,
-    DateTime StartDate,
+    DateTime FirstPaymentDate,
     string Status,
     string? Note,
     decimal UnpaidBalance,
@@ -46,7 +46,7 @@ public record InstallmentResponse(
             entity.NumberOfInstallments,
             remainingInstallments,
             entity.MonthlyPayment,
-            entity.StartDate,
+            entity.FirstPaymentDate,
             effectiveStatus.ToString(),
             entity.Note,
             unpaidBalance,
@@ -63,7 +63,7 @@ public record CreateInstallmentRequest(
     string Description,
     decimal TotalAmount,
     int NumberOfInstallments,
-    DateTime StartDate,
+    DateTime FirstPaymentDate,
     string? Note
 );
 
