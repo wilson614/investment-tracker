@@ -53,7 +53,7 @@ public class GetAvailableFundsSummaryUseCase(
 
         var billingCycleDayMap = creditCards.ToDictionary(
             card => card.Id,
-            card => card.BillingCycleDay);
+            card => card.PaymentDueDay);
 
         var calculation = availableFundsService.Calculate(
             ledgerBalances,

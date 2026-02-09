@@ -24,7 +24,7 @@ public class GetAllUserInstallmentsUseCase(
         var creditCards = await creditCardRepository.GetAllByUserIdAsync(userId, cancellationToken);
 
         var creditCardInfoMap = creditCards
-            .ToDictionary(c => c.Id, c => new { c.CardName, c.BillingCycleDay });
+            .ToDictionary(c => c.Id, c => new { c.CardName, c.PaymentDueDay });
 
         var utcNow = DateTime.UtcNow;
 
@@ -36,7 +36,7 @@ public class GetAllUserInstallmentsUseCase(
                     return MapToResponse(i, string.Empty, 1, utcNow);
                 }
 
-                return MapToResponse(i, cardInfo.CardName, cardInfo.BillingCycleDay, utcNow);
+                return MapToResponse(i, cardInfo.CardName, cardInfo.PaymentDueDay, utcNow);
             })
             .ToList();
     }

@@ -16,7 +16,7 @@ interface CreditCardFormProps {
 export function CreditCardForm({ initialData, onSubmit, onCancel, isLoading }: CreditCardFormProps) {
   const [bankName, setBankName] = useState('');
   const [cardName, setCardName] = useState('');
-  const [billingCycleDay, setBillingCycleDay] = useState<string>('1');
+  const [paymentDueDay, setPaymentDueDay] = useState<string>('1');
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -24,12 +24,12 @@ export function CreditCardForm({ initialData, onSubmit, onCancel, isLoading }: C
     if (initialData) {
       setBankName(initialData.bankName);
       setCardName(initialData.cardName);
-      setBillingCycleDay(initialData.billingCycleDay.toString());
+      setPaymentDueDay(initialData.paymentDueDay.toString());
       setNote(initialData.note ?? '');
     } else {
       setBankName('');
       setCardName('');
-      setBillingCycleDay('1');
+      setPaymentDueDay('1');
       setNote('');
     }
     setErrorMessage('');
@@ -41,22 +41,22 @@ export function CreditCardForm({ initialData, onSubmit, onCancel, isLoading }: C
 
     const normalizedBankName = bankName.trim();
     const normalizedCardName = cardName.trim();
-    const parsedBillingCycleDay = Number(billingCycleDay);
+    const parsedPaymentDueDay = Number(paymentDueDay);
 
     if (!normalizedBankName || !normalizedCardName) {
       setErrorMessage('銀行名稱與卡片名稱為必填');
       return;
     }
 
-    if (!Number.isInteger(parsedBillingCycleDay) || parsedBillingCycleDay < 1 || parsedBillingCycleDay > 31) {
-      setErrorMessage('結帳日需介於 1 到 31 之間');
+    if (!Number.isInteger(parsedPaymentDueDay) || parsedPaymentDueDay < 1 || parsedPaymentDueDay > 31) {
+      setErrorMessage('還款日需介於 1 到 31 之間');
       return;
     }
 
     const data: CreateCreditCardRequest = {
       bankName: normalizedBankName,
       cardName: normalizedCardName,
-      billingCycleDay: parsedBillingCycleDay,
+      paymentDueDay: parsedPaymentDueDay,
       note: note.trim() || undefined,
     };
 
@@ -120,11 +120,11 @@ export function CreditCardForm({ initialData, onSubmit, onCancel, isLoading }: C
 
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-              結帳日
+              還款日
             </label>
             <select
-              value={billingCycleDay}
-              onChange={(e) => setBillingCycleDay(e.target.value)}
+              value={paymentDueDay}
+              onChange={(e) => setPaymentDueDay(e.target.value)}
               className="input-dark w-full"
               required
             >

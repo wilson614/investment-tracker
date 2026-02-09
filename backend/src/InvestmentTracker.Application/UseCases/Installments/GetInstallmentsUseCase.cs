@@ -30,7 +30,7 @@ public class GetInstallmentsUseCase(
         var utcNow = DateTime.UtcNow;
 
         var responses = installments
-            .Select(i => MapToResponse(i, creditCard.CardName, creditCard.BillingCycleDay, utcNow))
+            .Select(i => MapToResponse(i, creditCard.CardName, creditCard.PaymentDueDay, utcNow))
             .ToList();
 
         return status.HasValue

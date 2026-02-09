@@ -23,8 +23,9 @@ public class CreditCardConfiguration : IEntityTypeConfiguration<CreditCard>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(cc => cc.BillingCycleDay)
-            .IsRequired();
+        builder.Property(cc => cc.PaymentDueDay)
+            .IsRequired()
+            .HasColumnName("PaymentDueDay");
 
         builder.Property(cc => cc.Note)
             .IsRequired(false)

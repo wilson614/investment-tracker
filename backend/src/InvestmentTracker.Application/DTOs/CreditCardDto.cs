@@ -8,7 +8,7 @@ public record CreditCardResponse(
     Guid Id,
     string BankName,
     string CardName,
-    int BillingCycleDay,
+    int PaymentDueDay,
     string? Note,
     int ActiveInstallmentsCount,
     decimal TotalUnpaidBalance,
@@ -24,8 +24,8 @@ public record CreditCardResponse(
             .Select(i => new
             {
                 Installment = i,
-                EffectiveStatus = i.GetEffectiveStatus(creditCard.BillingCycleDay, utcNow),
-                RemainingInstallments = i.GetRemainingInstallments(creditCard.BillingCycleDay, utcNow)
+                EffectiveStatus = i.GetEffectiveStatus(creditCard.PaymentDueDay, utcNow),
+                RemainingInstallments = i.GetRemainingInstallments(creditCard.PaymentDueDay, utcNow)
             })
             .Where(x => x.EffectiveStatus == InstallmentStatus.Active)
             .ToList();
@@ -38,7 +38,7 @@ public record CreditCardResponse(
             creditCard.Id,
             creditCard.BankName,
             creditCard.CardName,
-            creditCard.BillingCycleDay,
+            creditCard.PaymentDueDay,
             creditCard.Note,
             activeInstallmentsCount,
             totalUnpaidBalance,
@@ -58,7 +58,7 @@ public record CreateCreditCardRequest(
     string CardName,
 
     [Range(1, 31)]
-    int BillingCycleDay,
+    int PaymentDueDay,
 
     [StringLength(500)]
     string? Note
@@ -74,7 +74,7 @@ public record UpdateCreditCardRequest(
     string CardName,
 
     [Range(1, 31)]
-    int BillingCycleDay,
+    int PaymentDueDay,
 
     [StringLength(500)]
     string? Note

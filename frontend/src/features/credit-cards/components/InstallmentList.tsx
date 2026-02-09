@@ -1,10 +1,11 @@
-import { Edit, CircleDollarSign } from 'lucide-react';
+import { Edit, CircleDollarSign, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { InstallmentResponse } from '../types';
 
 interface InstallmentListProps {
   installments: InstallmentResponse[];
   onEdit: (installment: InstallmentResponse) => void;
+  onDelete: (installment: InstallmentResponse) => void;
 }
 
 function getStatusBadgeClass(status: InstallmentResponse['status']) {
@@ -51,6 +52,7 @@ function formatDate(dateString: string): string {
 export function InstallmentList({
   installments,
   onEdit,
+  onDelete,
 }: InstallmentListProps) {
   if (installments.length === 0) {
     return (
@@ -95,6 +97,15 @@ export function InstallmentList({
                 >
                   <Edit size={14} />
                   編輯
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(installment)}
+                  className="btn-danger px-3 py-1.5 text-sm inline-flex items-center gap-1"
+                  title="刪除"
+                >
+                  <Trash2 size={14} />
+                  刪除
                 </button>
               </div>
             </div>

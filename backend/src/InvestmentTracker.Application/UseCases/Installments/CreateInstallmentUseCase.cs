@@ -36,7 +36,7 @@ public class CreateInstallmentUseCase(
 
         await installmentRepository.AddAsync(installment, cancellationToken);
 
-        return MapToResponse(installment, creditCard.CardName, creditCard.BillingCycleDay, DateTime.UtcNow);
+        return MapToResponse(installment, creditCard.CardName, creditCard.PaymentDueDay, DateTime.UtcNow);
     }
 
     private static InstallmentResponse MapToResponse(

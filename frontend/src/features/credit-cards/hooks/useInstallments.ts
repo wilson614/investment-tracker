@@ -72,6 +72,17 @@ export function useInstallments(options?: {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => installmentsApi.deleteInstallment(id),
+    onSuccess: () => {
+      invalidateInstallmentQueries();
+      toast.success('分期刪除成功');
+    },
+    onError: (err: Error) => {
+      toast.error(getErrorMessage(err.message || '刪除失敗'));
+    },
+  });
+
   return {
     installments: installmentsQuery.data ?? [],
     upcomingPayments: upcomingQuery.data ?? [],
@@ -92,7 +103,9 @@ export function useInstallments(options?: {
     createInstallment: createMutation.mutateAsync,
     updateInstallment: (id: string, data: UpdateInstallmentRequest) =>
       updateMutation.mutateAsync({ id, data }),
+    deleteInstallment: deleteMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   };
 }

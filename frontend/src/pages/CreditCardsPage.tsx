@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
 import { ErrorDisplay, Skeleton } from '../components/common';
+import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { CreditCardForm } from '../features/credit-cards/components/CreditCardForm';
 import { CreditCardList } from '../features/credit-cards/components/CreditCardList';
 import { InstallmentForm } from '../features/credit-cards/components/InstallmentForm';
@@ -125,6 +126,7 @@ export function CreditCardsPage() {
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
   const [editingInstallment, setEditingInstallment] = useState<InstallmentResponse | undefined>(undefined);
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
+  const [deletingInstallment, setDeletingInstallment] = useState<InstallmentResponse | null>(null);
 
   useEffect(() => {
     if (creditCards.length === 0) {
@@ -156,6 +158,7 @@ export function CreditCardsPage() {
     refetchUpcoming,
     createInstallment,
     updateInstallment,
+    deleteInstallment,
   } = useInstallments({
     creditCardId: selectedCard?.id,
     upcomingMonths: 3,
@@ -220,6 +223,20 @@ export function CreditCardsPage() {
     } finally {
       setIsInstallmentSubmitting(false);
     }
+  };
+
+  const handleDeleteInstallment = (installment: InstallmentResponse) => {
+    setDeletingInstallment(installment);
+  };
+
+  const handleConfirmDeleteInstallment = async () => {
+    const targetId = deletingInstallment?.id;
+    if (!targetId) {
+      return;
+    }
+
+    await deleteInstallment(targetId);
+    setDeletingInstallment(null);
   };
 
   if (isLoading && creditCards.length === 0) {
@@ -312,6 +329,7 @@ export function CreditCardsPage() {
               <InstallmentList
                 installments={installments}
                 onEdit={handleEditInstallment}
+                onDelete={handleDeleteInstallment}
               />
             )}
           </div>
@@ -345,6 +363,26 @@ export function CreditCardsPage() {
           isLoading={isInstallmentSubmitting}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={Boolean(deletingInstallment)}
+        onClose={() => setDeletingInstallment(null)}
+        onConfirm={handleConfirmDeleteInstallment}
+        title="刪除分期"
+        message={
+          deletingInstallment ? (
+            <span>
+              確定要刪除「{deletingInstallment.description}」嗎？
+              <br />
+              此動作無法復原。
+            </span>
+          ) : (
+            ''
+          )
+        }
+        confirmText="刪除"
+        isDestructive={true}
+      />
 
     </div>
   );

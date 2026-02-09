@@ -23,7 +23,7 @@ public class CreateCreditCardUseCase(
             userId,
             request.BankName,
             request.CardName,
-            request.BillingCycleDay,
+            request.PaymentDueDay,
             request.Note);
 
         await creditCardRepository.AddAsync(creditCard, cancellationToken);

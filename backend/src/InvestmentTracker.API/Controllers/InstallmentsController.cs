@@ -23,6 +23,7 @@ public class InstallmentsController(
     GetAllUserInstallmentsUseCase getAllUserInstallmentsUseCase,
     CreateInstallmentUseCase createInstallmentUseCase,
     UpdateInstallmentUseCase updateInstallmentUseCase,
+    DeleteInstallmentUseCase deleteInstallmentUseCase,
     GetUpcomingPaymentsUseCase getUpcomingPaymentsUseCase) : ControllerBase
 {
     /// <summary>
@@ -112,6 +113,19 @@ public class InstallmentsController(
     {
         var installment = await updateInstallmentUseCase.ExecuteAsync(id, request, cancellationToken);
         return Ok(installment);
+    }
+
+    /// <summary>
+    /// Delete an installment.
+    /// </summary>
+    [HttpDelete("installments/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        await deleteInstallmentUseCase.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 
     /// <summary>

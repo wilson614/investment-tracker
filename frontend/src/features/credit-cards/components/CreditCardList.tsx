@@ -55,7 +55,7 @@ export function CreditCardList({
             <div className="mb-4">
               <h3 className="text-xl font-bold text-[var(--accent-cream)] truncate mb-1">{card.cardName}</h3>
               <p className="text-sm text-[var(--text-secondary)]">{card.bankName}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-1">結帳日：每月 {card.billingCycleDay} 日</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">還款日：每月 {card.paymentDueDay} 日</p>
               {card.note ? (
                 <p className="text-sm text-[var(--text-muted)] mt-2 line-clamp-2">{card.note}</p>
               ) : null}

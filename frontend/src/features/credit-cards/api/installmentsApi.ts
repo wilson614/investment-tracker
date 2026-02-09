@@ -79,6 +79,12 @@ export const installmentsApi = {
       body: JSON.stringify(data),
     }),
 
+  /** 刪除分期 */
+  deleteInstallment: (id: string) =>
+    fetchApi<void>(`/installments/${id}`, {
+      method: 'DELETE',
+    }),
+
   /** 取得未來 N 個月分期付款預覽 */
   getUpcomingPayments: async (months = 3) => {
     const response = await fetchApi<UpcomingPaymentsApiResponse>(

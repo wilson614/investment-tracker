@@ -120,7 +120,7 @@ public class Installment : BaseEntity
 
     public int GetPaidInstallments(int billingCycleDay, DateTime? utcNow = null)
     {
-        ValidateBillingCycleDay(billingCycleDay);
+        ValidatePaymentDueDay(billingCycleDay);
 
         var currentDate = (utcNow ?? DateTime.UtcNow).Date;
         var startDate = StartDate.Date;
@@ -164,7 +164,7 @@ public class Installment : BaseEntity
 
     public void Cancel() => Status = InstallmentStatus.Cancelled;
 
-    private static void ValidateBillingCycleDay(int billingCycleDay)
+    private static void ValidatePaymentDueDay(int billingCycleDay)
     {
         if (billingCycleDay < 1 || billingCycleDay > 31)
             throw new ArgumentException("Billing cycle day must be between 1 and 31", nameof(billingCycleDay));

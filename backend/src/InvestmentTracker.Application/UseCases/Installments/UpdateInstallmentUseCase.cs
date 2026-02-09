@@ -33,7 +33,7 @@ public class UpdateInstallmentUseCase(
         var creditCard = await creditCardRepository.GetByIdAsync(installment.CreditCardId, userId, cancellationToken)
             ?? throw new EntityNotFoundException("CreditCard", installment.CreditCardId);
 
-        return MapToResponse(installment, creditCard.CardName, creditCard.BillingCycleDay, DateTime.UtcNow);
+        return MapToResponse(installment, creditCard.CardName, creditCard.PaymentDueDay, DateTime.UtcNow);
     }
 
     private static InstallmentResponse MapToResponse(

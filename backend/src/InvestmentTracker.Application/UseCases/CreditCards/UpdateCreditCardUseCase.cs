@@ -25,7 +25,7 @@ public class UpdateCreditCardUseCase(
 
         creditCard.SetBankName(request.BankName);
         creditCard.SetCardName(request.CardName);
-        creditCard.SetBillingCycleDay(request.BillingCycleDay);
+        creditCard.SetPaymentDueDay(request.PaymentDueDay);
         creditCard.SetNote(request.Note);
 
         await creditCardRepository.UpdateAsync(creditCard, cancellationToken);

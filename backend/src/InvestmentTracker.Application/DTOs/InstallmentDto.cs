@@ -24,8 +24,8 @@ public record InstallmentResponse(
     public static InstallmentResponse FromEntity(Installment entity)
     {
         var utcNow = DateTime.UtcNow;
-        var remainingInstallments = entity.GetRemainingInstallments(entity.CreditCard.BillingCycleDay, utcNow);
-        var effectiveStatus = entity.GetEffectiveStatus(entity.CreditCard.BillingCycleDay, utcNow);
+        var remainingInstallments = entity.GetRemainingInstallments(entity.CreditCard.PaymentDueDay, utcNow);
+        var effectiveStatus = entity.GetEffectiveStatus(entity.CreditCard.PaymentDueDay, utcNow);
         var unpaidBalance = Math.Round(entity.MonthlyPayment * remainingInstallments, 2);
         var paidAmount = Math.Round(entity.TotalAmount - unpaidBalance, 2);
 

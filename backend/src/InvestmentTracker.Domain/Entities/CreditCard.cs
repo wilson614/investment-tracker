@@ -10,7 +10,7 @@ public class CreditCard : BaseEntity
     public Guid UserId { get; private set; }
     public string BankName { get; private set; } = string.Empty;
     public string CardName { get; private set; } = string.Empty;
-    public int BillingCycleDay { get; private set; }
+    public int PaymentDueDay { get; private set; }
     public string? Note { get; private set; }
 
     // Navigation property
@@ -33,7 +33,7 @@ public class CreditCard : BaseEntity
         UserId = userId;
         SetBankName(bankName);
         SetCardName(cardName);
-        SetBillingCycleDay(billingCycleDay);
+        SetPaymentDueDay(billingCycleDay);
         SetNote(note);
     }
 
@@ -59,12 +59,12 @@ public class CreditCard : BaseEntity
         CardName = cardName.Trim();
     }
 
-    public void SetBillingCycleDay(int billingCycleDay)
+    public void SetPaymentDueDay(int paymentDueDay)
     {
-        if (billingCycleDay < 1 || billingCycleDay > 31)
-            throw new ArgumentException("Billing cycle day must be between 1 and 31", nameof(billingCycleDay));
+        if (paymentDueDay < 1 || paymentDueDay > 31)
+            throw new ArgumentException("Payment due day must be between 1 and 31", nameof(paymentDueDay));
 
-        BillingCycleDay = billingCycleDay;
+        PaymentDueDay = paymentDueDay;
     }
 
     public void SetNote(string? note)

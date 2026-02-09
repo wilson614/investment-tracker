@@ -34,7 +34,7 @@ public class AvailableFundsService
                 group =>
                 {
                     var billingCycleDay = group
-                        .Select(installment => installment.CreditCard?.BillingCycleDay)
+                        .Select(installment => installment.CreditCard?.PaymentDueDay)
                         .FirstOrDefault(day => day.HasValue)
                         ?? 1;
 
@@ -54,14 +54,14 @@ public class AvailableFundsService
         IEnumerable<LedgerBalance> ledgers,
         IEnumerable<BankAccount> bankAccounts,
         IEnumerable<Installment> installments,
-        IReadOnlyDictionary<Guid, int> creditCardBillingCycleDayMap,
+        IReadOnlyDictionary<Guid, int> creditCardPaymentDueDayMap,
         DateTime utcNow,
         Func<string, decimal> getExchangeRate)
     {
         ArgumentNullException.ThrowIfNull(ledgers);
         ArgumentNullException.ThrowIfNull(bankAccounts);
         ArgumentNullException.ThrowIfNull(installments);
-        ArgumentNullException.ThrowIfNull(creditCardBillingCycleDayMap);
+        ArgumentNullException.ThrowIfNull(creditCardPaymentDueDayMap);
         ArgumentNullException.ThrowIfNull(getExchangeRate);
 
         var utcToday = utcNow.Date;
@@ -95,7 +95,7 @@ public class AvailableFundsService
         var unpaidInstallmentBalance = installments
             .Select(installment =>
             {
-                if (!creditCardBillingCycleDayMap.TryGetValue(installment.CreditCardId, out var billingCycleDay))
+                if (!creditCardPaymentDueDayMap.TryGetValue(installment.CreditCardId, out var billingCycleDay))
                     return 0m;
 
                 var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);

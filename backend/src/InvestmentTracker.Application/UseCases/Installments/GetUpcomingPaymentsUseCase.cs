@@ -49,8 +49,8 @@ public class GetUpcomingPaymentsUseCase(
                 if (!creditCardMap.TryGetValue(installment.CreditCardId, out var creditCard))
                     return null;
 
-                var remainingInstallments = installment.GetRemainingInstallments(creditCard.BillingCycleDay, utcNow);
-                var effectiveStatus = installment.GetEffectiveStatus(creditCard.BillingCycleDay, utcNow);
+                var remainingInstallments = installment.GetRemainingInstallments(creditCard.PaymentDueDay, utcNow);
+                var effectiveStatus = installment.GetEffectiveStatus(creditCard.PaymentDueDay, utcNow);
 
                 return new
                 {
@@ -77,7 +77,7 @@ public class GetUpcomingPaymentsUseCase(
             var creditCard = view.CreditCard;
             var creditCardName = creditCard.CardName;
 
-            var paidInstallments = installment.GetPaidInstallments(creditCard.BillingCycleDay, utcNow);
+            var paidInstallments = installment.GetPaidInstallments(creditCard.PaymentDueDay, utcNow);
             var scheduleStartMonth = new DateTime(
                 installment.StartDate.Year,
                 installment.StartDate.Month,
