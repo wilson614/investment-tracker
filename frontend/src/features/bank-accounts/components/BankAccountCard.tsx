@@ -9,6 +9,7 @@ interface BankAccountCardProps {
   account: BankAccount;
   onEdit: (account: BankAccount) => void;
   onDelete: (id: string) => void;
+  onClose?: (account: BankAccount) => void;
   showCurrencyBadge?: boolean;
 }
 
@@ -33,7 +34,7 @@ const FIXED_DEPOSIT_STATUS_CLASS: Record<NonNullable<BankAccount['fixedDepositSt
   EarlyWithdrawal: 'border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]',
 };
 
-export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge = true }: BankAccountCardProps) {
+export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurrencyBadge = true }: BankAccountCardProps) {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
@@ -191,6 +192,16 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
               <p className="font-medium text-[var(--text-primary)]">{account.maturityDate ? account.maturityDate.slice(0, 10) : '-'}</p>
             </div>
           </div>
+
+          {onClose && (fixedDepositStatus === 'Active' || fixedDepositStatus === 'Matured') && (
+            <button
+              type="button"
+              onClick={() => onClose(account)}
+              className="w-full mt-4 py-2 btn-dark border border-[var(--accent-butter)]/40 hover:bg-[var(--accent-butter)]/10 text-sm"
+            >
+              結清定存
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 text-sm">

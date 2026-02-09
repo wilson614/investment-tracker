@@ -249,30 +249,18 @@ export function BankAccountsPage() {
             <p className="text-[var(--text-secondary)]">目前沒有定存帳戶</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {fixedDepositAccounts.map((account) => (
-                <div key={account.id} className="space-y-3">
-                  <BankAccountCard
-                    account={account}
-                    onEdit={handleEdit}
-                    onDelete={handleDeleteClick}
-                    showCurrencyBadge
-                  />
-
-                  {(account.fixedDepositStatus === 'Active' || account.fixedDepositStatus === 'Matured') && (
-                    <button
-                      type="button"
-                      onClick={() => handleCloseClick(account)}
-                      className="w-full btn-dark border border-[var(--accent-butter)]/40 hover:bg-[var(--accent-butter)]/10"
-                    >
-                      結清定存
-                    </button>
-                  )}
-                </div>
+                <BankAccountCard
+                  key={account.id}
+                  account={account}
+                  onEdit={handleEdit}
+                  onDelete={handleDeleteClick}
+                  onClose={handleCloseClick}
+                  showCurrencyBadge
+                />
               ))}
             </div>
-          </div>
         )}
       </section>
 
