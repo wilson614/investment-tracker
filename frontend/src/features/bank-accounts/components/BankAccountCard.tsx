@@ -81,15 +81,15 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
 
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
-      <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
+      <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <button type="button"
           onClick={() => onEdit(account)}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
           title="編輯"
         >
           <Edit size={16} />
         </button>
-        <button
+        <button type="button"
           onClick={() => onDelete(account.id)}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
           title="刪除"
