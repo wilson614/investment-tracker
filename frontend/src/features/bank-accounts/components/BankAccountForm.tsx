@@ -56,7 +56,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
   useEffect(() => {
     if (initialData) {
       setBankName(initialData.bankName);
-      setAccountType(initialData.accountType);
+      setAccountType(initialData.accountType ?? 'Savings');
       setTotalAssets(initialData.totalAssets.toString());
       setCurrency(isSupportedCurrency(initialData.currency) ? initialData.currency : DEFAULT_CURRENCY);
       setInterestRate(initialData.interestRate.toString());

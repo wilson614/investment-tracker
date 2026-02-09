@@ -29,10 +29,16 @@ public class CloseBankAccountUseCase(
         if (bankAccount.AccountType != BankAccountType.FixedDeposit)
             throw new BusinessRuleException("Only fixed-deposit bank accounts can be closed.");
 
-        if (request.ActualInterest.HasValue)
-            bankAccount.SetActualInterest(request.ActualInterest.Value);
-
+        // Set actual interest (use expected if not provided)
+        var actualInterest = request.ActualInterest ?? bankAccount.ExpectedInterest ?? 0m;
+        bankAccount.SetActualInterest(actualInterest);
         bankAccount.SetFixedDepositStatus(FixedDepositStatus.Closed);
+
+        // Convert to savings account: principal + interest becomes new total
+        var newTotal = bankAccount.TotalAssets + actualInterest;
+        bankAccount.SetTotalAssets(newTotal);
+        bankAccount.SetAccountType(BankAccountType.Savings);
+        bankAccount.SetInterestSettings(0m, 0m); // Reset interest rate to 0
 
         await bankAccountRepository.UpdateAsync(bankAccount, cancellationToken);
 
