@@ -13,7 +13,6 @@ public class GetCreditCardsUseCase(
     ICurrentUserService currentUserService)
 {
     public async Task<IReadOnlyList<CreditCardResponse>> ExecuteAsync(
-        bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
         var userId = currentUserService.UserId
@@ -21,11 +20,7 @@ public class GetCreditCardsUseCase(
 
         var creditCards = await creditCardRepository.GetAllByUserIdAsync(userId, cancellationToken);
 
-        var filteredCards = includeInactive
-            ? creditCards
-            : creditCards.Where(cc => cc.IsActive).ToList();
-
-        return filteredCards
+        return creditCards
             .Select(CreditCardResponse.FromEntity)
             .ToList();
     }

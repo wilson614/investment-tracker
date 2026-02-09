@@ -7,10 +7,7 @@ import type {
 
 export const creditCardsApi = {
   /** 取得信用卡清單 */
-  getCreditCards: (includeInactive?: boolean) => {
-    const query = includeInactive === undefined ? '' : `?includeInactive=${includeInactive}`;
-    return fetchApi<CreditCardResponse[]>(`/credit-cards${query}`);
-  },
+  getCreditCards: () => fetchApi<CreditCardResponse[]>('/credit-cards'),
 
   /** 依 ID 取得信用卡 */
   getCreditCard: (id: string) =>
@@ -30,7 +27,4 @@ export const creditCardsApi = {
       body: JSON.stringify(data),
     }),
 
-  /** 停用信用卡 */
-  deactivateCreditCard: (id: string) =>
-    fetchApi<void>(`/credit-cards/${id}`, { method: 'DELETE' }),
 };

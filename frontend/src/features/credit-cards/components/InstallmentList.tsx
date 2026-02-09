@@ -1,4 +1,4 @@
-import { Edit, CircleDollarSign, CheckCircle2 } from 'lucide-react';
+import { Edit, CircleDollarSign } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { InstallmentResponse } from '../types';
 
@@ -7,7 +7,6 @@ interface InstallmentListProps {
   processingInstallmentId?: string | null;
   onEdit: (installment: InstallmentResponse) => void;
   onRecordPayment: (installment: InstallmentResponse) => void;
-  onPayoff: (installment: InstallmentResponse) => void;
 }
 
 function getStatusBadgeClass(status: InstallmentResponse['status']) {
@@ -56,7 +55,6 @@ export function InstallmentList({
   processingInstallmentId,
   onEdit,
   onRecordPayment,
-  onPayoff,
 }: InstallmentListProps) {
   if (installments.length === 0) {
     return (
@@ -116,19 +114,6 @@ export function InstallmentList({
                   <Edit size={14} />
                   編輯
                 </button>
-
-                {isActive ? (
-                  <button
-                    type="button"
-                    onClick={() => onPayoff(installment)}
-                    disabled={isProcessing}
-                    className="btn-dark px-3 py-1.5 text-sm inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="提前清償"
-                  >
-                    <CheckCircle2 size={14} />
-                    清償
-                  </button>
-                ) : null}
               </div>
             </div>
 

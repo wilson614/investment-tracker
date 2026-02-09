@@ -21,8 +21,7 @@ public class CreditCardsController(
     GetCreditCardsUseCase getCreditCardsUseCase,
     GetCreditCardUseCase getCreditCardUseCase,
     CreateCreditCardUseCase createCreditCardUseCase,
-    UpdateCreditCardUseCase updateCreditCardUseCase,
-    DeactivateCreditCardUseCase deactivateCreditCardUseCase) : ControllerBase
+    UpdateCreditCardUseCase updateCreditCardUseCase) : ControllerBase
 {
     /// <summary>
     /// Get all credit cards for current user.
@@ -31,10 +30,9 @@ public class CreditCardsController(
     [ProducesResponseType(typeof(IEnumerable<CreditCardResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IEnumerable<CreditCardResponse>>> GetAll(
-        [FromQuery] bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var creditCards = await getCreditCardsUseCase.ExecuteAsync(includeInactive, cancellationToken);
+        var creditCards = await getCreditCardsUseCase.ExecuteAsync(cancellationToken);
         return Ok(creditCards);
     }
 
@@ -83,17 +81,4 @@ public class CreditCardsController(
         return Ok(creditCard);
     }
 
-    /// <summary>
-    /// Deactivate (soft delete) a credit card.
-    /// </summary>
-    [HttpDelete("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
-    {
-        await deactivateCreditCardUseCase.ExecuteAsync(id, cancellationToken);
-        return NoContent();
-    }
 }

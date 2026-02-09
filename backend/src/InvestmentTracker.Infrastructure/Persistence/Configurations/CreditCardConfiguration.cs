@@ -26,10 +26,6 @@ public class CreditCardConfiguration : IEntityTypeConfiguration<CreditCard>
         builder.Property(cc => cc.BillingCycleDay)
             .IsRequired();
 
-        builder.Property(cc => cc.IsActive)
-            .IsRequired()
-            .HasDefaultValue(true);
-
         builder.Property(cc => cc.Note)
             .IsRequired(false)
             .HasMaxLength(500);

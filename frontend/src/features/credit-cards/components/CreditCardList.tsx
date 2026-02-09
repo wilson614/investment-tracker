@@ -1,4 +1,4 @@
-import { Edit, Power, CreditCard } from 'lucide-react';
+import { Edit, CreditCard } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { CreditCardResponse } from '../types';
 
@@ -7,7 +7,6 @@ interface CreditCardListProps {
   selectedCardId?: string | null;
   onSelect?: (card: CreditCardResponse) => void;
   onEdit: (card: CreditCardResponse) => void;
-  onDeactivate: (id: string) => void;
 }
 
 export function CreditCardList({
@@ -15,7 +14,6 @@ export function CreditCardList({
   selectedCardId,
   onSelect,
   onEdit,
-  onDeactivate,
 }: CreditCardListProps) {
   if (creditCards.length === 0) {
     return (
@@ -52,28 +50,10 @@ export function CreditCardList({
               >
                 <Edit size={16} />
               </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeactivate(card.id);
-                }}
-                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
-                title="停用"
-              >
-                <Power size={16} />
-              </button>
             </div>
 
             <div className="mb-4">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <h3 className="text-xl font-bold text-[var(--accent-cream)] truncate">{card.cardName}</h3>
-                {!card.isActive && (
-                  <span className="inline-flex items-center rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300">
-                    已停用
-                  </span>
-                )}
-              </div>
+              <h3 className="text-xl font-bold text-[var(--accent-cream)] truncate mb-1">{card.cardName}</h3>
               <p className="text-sm text-[var(--text-secondary)]">{card.bankName}</p>
               <p className="text-xs text-[var(--text-muted)] mt-1">結帳日：每月 {card.billingCycleDay} 日</p>
               {card.note ? (

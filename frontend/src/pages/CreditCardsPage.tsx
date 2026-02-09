@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
 import { ErrorDisplay, Skeleton } from '../components/common';
-import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { CreditCardForm } from '../features/credit-cards/components/CreditCardForm';
 import { CreditCardList } from '../features/credit-cards/components/CreditCardList';
 import { InstallmentForm } from '../features/credit-cards/components/InstallmentForm';
@@ -116,48 +115,35 @@ function InstallmentListSkeleton() {
 }
 
 export function CreditCardsPage() {
-  const {
-    creditCards,
-    isLoading,
-    error,
-    refetch,
-    createCreditCard,
-    updateCreditCard,
-    deactivateCreditCard,
-  } = useCreditCards();
+  const { creditCards, isLoading, error, refetch, createCreditCard, updateCreditCard } = useCreditCards();
 
   const [showCardForm, setShowCardForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardResponse | undefined>(undefined);
   const [isCardSubmitting, setIsCardSubmitting] = useState(false);
-  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
-  const [deactivatingCardId, setDeactivatingCardId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
   const [editingInstallment, setEditingInstallment] = useState<InstallmentResponse | undefined>(undefined);
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
   const [processingInstallmentId, setProcessingInstallmentId] = useState<string | null>(null);
-  const [payoffInstallmentTarget, setPayoffInstallmentTarget] = useState<InstallmentResponse | null>(null);
-
-  const activeCards = useMemo(() => creditCards.filter((card) => card.isActive), [creditCards]);
 
   useEffect(() => {
-    if (activeCards.length === 0) {
+    if (creditCards.length === 0) {
       setSelectedCardId(null);
       return;
     }
 
     setSelectedCardId((previous) => {
-      if (previous && activeCards.some((card) => card.id === previous)) {
+      if (previous && creditCards.some((card) => card.id === previous)) {
         return previous;
       }
-      return activeCards[0].id;
+      return creditCards[0].id;
     });
-  }, [activeCards]);
+  }, [creditCards]);
 
   const selectedCard = useMemo(
-    () => activeCards.find((card) => card.id === selectedCardId) ?? null,
-    [activeCards, selectedCardId]
+    () => creditCards.find((card) => card.id === selectedCardId) ?? null,
+    [creditCards, selectedCardId]
   );
 
   const {
@@ -172,7 +158,6 @@ export function CreditCardsPage() {
     createInstallment,
     updateInstallment,
     recordPayment,
-    payoffInstallment,
   } = useInstallments({
     creditCardId: selectedCard?.id,
     upcomingMonths: 3,
@@ -188,19 +173,6 @@ export function CreditCardsPage() {
     setShowCardForm(true);
   };
 
-  const handleDeactivateClick = (id: string) => {
-    setDeactivatingCardId(id);
-    setShowDeactivateModal(true);
-  };
-
-  const handleConfirmDeactivate = async () => {
-    if (!deactivatingCardId) {
-      return;
-    }
-
-    await deactivateCreditCard(deactivatingCardId);
-    setDeactivatingCardId(null);
-  };
 
   const handleCardSubmit = async (data: CreateCreditCardRequest | UpdateCreditCardRequest) => {
     setIsCardSubmitting(true);
@@ -261,25 +233,6 @@ export function CreditCardsPage() {
     }
   };
 
-  const handlePayoffClick = (installment: InstallmentResponse) => {
-    setPayoffInstallmentTarget(installment);
-  };
-
-  const handleConfirmPayoff = async () => {
-    const targetId = payoffInstallmentTarget?.id;
-    if (!targetId) {
-      return;
-    }
-
-    setProcessingInstallmentId(targetId);
-    try {
-      await payoffInstallment(targetId);
-      setPayoffInstallmentTarget(null);
-    } finally {
-      setProcessingInstallmentId(null);
-    }
-  };
-
   if (isLoading && creditCards.length === 0) {
     return <CreditCardsPageSkeleton />;
   }
@@ -312,11 +265,11 @@ export function CreditCardsPage() {
               <CreditCardIcon className="w-5 h-5" />
             </div>
             <span className="text-sm font-medium text-[var(--accent-peach)] uppercase tracking-wider">
-              啟用信用卡
+              信用卡總數
             </span>
           </div>
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4">
-            {activeCards.length.toLocaleString('zh-TW')} 張
+            {creditCards.length.toLocaleString('zh-TW')} 張
           </div>
         </div>
 
@@ -336,11 +289,10 @@ export function CreditCardsPage() {
       </div>
 
       <CreditCardList
-        creditCards={activeCards}
+        creditCards={creditCards}
         selectedCardId={selectedCard?.id ?? null}
         onSelect={(card) => setSelectedCardId(card.id)}
         onEdit={handleEditCard}
-        onDeactivate={handleDeactivateClick}
       />
 
       {selectedCard ? (
@@ -373,7 +325,6 @@ export function CreditCardsPage() {
                 processingInstallmentId={processingInstallmentId}
                 onEdit={handleEditInstallment}
                 onRecordPayment={handleRecordPayment}
-                onPayoff={handlePayoffClick}
               />
             )}
           </div>
@@ -408,34 +359,6 @@ export function CreditCardsPage() {
         />
       )}
 
-      <ConfirmationModal
-        isOpen={showDeactivateModal}
-        onClose={() => setShowDeactivateModal(false)}
-        onConfirm={handleConfirmDeactivate}
-        title="停用信用卡"
-        message="確定要停用此信用卡嗎？停用後將無法再新增該卡分期。"
-        confirmText="停用"
-        isDestructive={true}
-      />
-
-      <ConfirmationModal
-        isOpen={Boolean(payoffInstallmentTarget)}
-        onClose={() => setPayoffInstallmentTarget(null)}
-        onConfirm={handleConfirmPayoff}
-        title="提前清償分期"
-        message={
-          payoffInstallmentTarget ? (
-            <span>
-              確定要將「{payoffInstallmentTarget.description}」標記為提前清償嗎？
-              <br />
-              清償後將不再計入未來待付金額。
-            </span>
-          ) : (
-            ''
-          )
-        }
-        confirmText="確認清償"
-      />
     </div>
   );
 }

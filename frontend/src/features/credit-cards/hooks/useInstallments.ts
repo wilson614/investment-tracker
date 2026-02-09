@@ -83,17 +83,6 @@ export function useInstallments(options?: {
     },
   });
 
-  const payoffMutation = useMutation({
-    mutationFn: (id: string) => installmentsApi.payoffInstallment(id),
-    onSuccess: () => {
-      invalidateInstallmentQueries();
-      toast.success('分期已提前清償');
-    },
-    onError: (err: Error) => {
-      toast.error(getErrorMessage(err.message || '提前清償失敗'));
-    },
-  });
-
   return {
     installments: installmentsQuery.data ?? [],
     upcomingPayments: upcomingQuery.data ?? [],
@@ -115,10 +104,8 @@ export function useInstallments(options?: {
     updateInstallment: (id: string, data: UpdateInstallmentRequest) =>
       updateMutation.mutateAsync({ id, data }),
     recordPayment: recordPaymentMutation.mutateAsync,
-    payoffInstallment: payoffMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isRecordingPayment: recordPaymentMutation.isPending,
-    isPayingOff: payoffMutation.isPending,
   };
 }

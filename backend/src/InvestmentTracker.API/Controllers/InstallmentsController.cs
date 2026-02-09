@@ -24,7 +24,6 @@ public class InstallmentsController(
     CreateInstallmentUseCase createInstallmentUseCase,
     UpdateInstallmentUseCase updateInstallmentUseCase,
     RecordPaymentUseCase recordPaymentUseCase,
-    PayoffInstallmentUseCase payoffInstallmentUseCase,
     GetUpcomingPaymentsUseCase getUpcomingPaymentsUseCase) : ControllerBase
 {
     /// <summary>
@@ -127,20 +126,6 @@ public class InstallmentsController(
     public async Task<ActionResult<InstallmentResponse>> RecordPayment(Guid id, CancellationToken cancellationToken)
     {
         var installment = await recordPaymentUseCase.ExecuteAsync(id, cancellationToken);
-        return Ok(installment);
-    }
-
-    /// <summary>
-    /// Early payoff an installment.
-    /// </summary>
-    [HttpPost("installments/{id:guid}/payoff")]
-    [ProducesResponseType(typeof(InstallmentResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<InstallmentResponse>> Payoff(Guid id, CancellationToken cancellationToken)
-    {
-        var installment = await payoffInstallmentUseCase.ExecuteAsync(id, cancellationToken);
         return Ok(installment);
     }
 

@@ -38,17 +38,6 @@ export function useCreditCards() {
     },
   });
 
-  const deactivateMutation = useMutation({
-    mutationFn: (id: string) => creditCardsApi.deactivateCreditCard(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: CREDIT_CARDS_QUERY_KEY });
-      toast.success('信用卡已停用');
-    },
-    onError: (err: Error) => {
-      toast.error(getErrorMessage(err.message || '停用失敗'));
-    },
-  });
-
   return {
     creditCards: query.data || [],
     isLoading: query.isLoading,
@@ -56,9 +45,7 @@ export function useCreditCards() {
     refetch: query.refetch,
     createCreditCard: createMutation.mutateAsync,
     updateCreditCard: (id: string, data: UpdateCreditCardRequest) => updateMutation.mutateAsync({ id, data }),
-    deactivateCreditCard: deactivateMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
-    isDeactivating: deactivateMutation.isPending,
   };
 }

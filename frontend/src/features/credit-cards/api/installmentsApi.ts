@@ -85,12 +85,6 @@ export const installmentsApi = {
       method: 'POST',
     }),
 
-  /** 提前清償 */
-  payoffInstallment: (id: string) =>
-    fetchApi<InstallmentResponse>(`/installments/${id}/payoff`, {
-      method: 'POST',
-    }),
-
   /** 取得未來 N 個月分期付款預覽 */
   getUpcomingPayments: async (months = 3) => {
     const response = await fetchApi<UpcomingPaymentsApiResponse>(

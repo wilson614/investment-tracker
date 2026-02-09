@@ -12,7 +12,6 @@ public class CreditCard : BaseEntity
     public string CardName { get; private set; } = string.Empty;
     public int BillingCycleDay { get; private set; }
     public string? Note { get; private set; }
-    public bool IsActive { get; private set; } = true;
 
     // Navigation property
     private readonly List<Installment> _installments = [];
@@ -76,6 +75,4 @@ public class CreditCard : BaseEntity
         Note = note?.Trim();
     }
 
-    public void Deactivate() => IsActive = false;
-    public void Activate() => IsActive = true;
 }

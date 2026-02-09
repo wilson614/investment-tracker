@@ -4,7 +4,6 @@ export interface CreditCardResponse {
   cardName: string;
   billingCycleDay: number;
   note: string | null;
-  isActive: boolean;
   activeInstallmentsCount: number;
   totalUnpaidBalance: number;
   createdAt: string;

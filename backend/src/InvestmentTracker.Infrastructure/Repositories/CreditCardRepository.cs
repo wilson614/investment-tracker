@@ -42,7 +42,7 @@ public class CreditCardRepository(AppDbContext context) : ICreditCardRepository
 
     public async Task DeleteAsync(CreditCard entity, CancellationToken cancellationToken = default)
     {
-        entity.Deactivate();
+        context.CreditCards.Remove(entity);
         await context.SaveChangesAsync(cancellationToken);
     }
 }
