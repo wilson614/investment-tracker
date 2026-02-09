@@ -10,6 +10,7 @@ public record AvailableFundsSummaryResponse(
 
 public record CommittedFundsBreakdown(
     decimal FixedDepositsPrincipal,
+    decimal FixedDepositsExpectedInterest,
     decimal UnpaidInstallmentBalance,
     IReadOnlyList<FixedDepositSummary> FixedDeposits,
     IReadOnlyList<InstallmentSummary> Installments
@@ -20,7 +21,9 @@ public record FixedDepositSummary(
     string BankName,
     decimal Principal,
     string Currency,
-    decimal PrincipalInBaseCurrency
+    decimal PrincipalInBaseCurrency,
+    decimal ExpectedInterest,
+    decimal ExpectedInterestInBaseCurrency
 );
 
 public record InstallmentSummary(

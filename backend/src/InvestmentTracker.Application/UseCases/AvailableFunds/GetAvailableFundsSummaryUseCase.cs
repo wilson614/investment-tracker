@@ -58,22 +58,34 @@ public class GetAvailableFundsSummaryUseCase(
             });
 
         var utcToday = DateTime.UtcNow.Date;
-        var fixedDepositSummaries = bankAccounts
-            .Where(account => IsMaturedFixedDeposit(account, utcToday))
+        var activeFixedDeposits = bankAccounts
+            .Where(account => account.AccountType == BankAccountType.FixedDeposit)
+            .Where(account => account.FixedDepositStatus is not (FixedDepositStatus.Closed or FixedDepositStatus.EarlyWithdrawal))
+            .ToList();
+
+        var fixedDepositSummaries = activeFixedDeposits
             .Select(account =>
             {
-                var maturedAmount = GetMaturedFixedDepositAmount(account);
+                var expectedInterest = account.ExpectedInterest ?? 0m;
                 return new FixedDepositSummary(
                     Id: account.Id,
                     BankName: account.BankName,
-                    Principal: maturedAmount,
+                    Principal: account.TotalAssets,
                     Currency: account.Currency,
                     PrincipalInBaseCurrency: ConvertToBaseCurrency(
-                        maturedAmount,
+                        account.TotalAssets,
+                        account.Currency,
+                        exchangeRatesToBaseCurrency),
+                    ExpectedInterest: expectedInterest,
+                    ExpectedInterestInBaseCurrency: ConvertToBaseCurrency(
+                        expectedInterest,
                         account.Currency,
                         exchangeRatesToBaseCurrency));
             })
             .ToList();
+
+        var fixedDepositsPrincipalTotal = fixedDepositSummaries.Sum(fd => fd.PrincipalInBaseCurrency);
+        var fixedDepositsExpectedInterestTotal = fixedDepositSummaries.Sum(fd => fd.ExpectedInterestInBaseCurrency);
 
         var installmentSummaries = installments
             .Where(installment => installment.Status == InstallmentStatus.Active)
@@ -84,14 +96,15 @@ public class GetAvailableFundsSummaryUseCase(
                 UnpaidBalance: Math.Round(installment.MonthlyPayment * installment.RemainingInstallments, 2)))
             .ToList();
 
-        var committedFunds = calculation.FixedDepositsPrincipal + calculation.UnpaidInstallmentBalance;
+        var committedFunds = fixedDepositsPrincipalTotal + calculation.UnpaidInstallmentBalance;
 
         return new AvailableFundsSummaryResponse(
             TotalBankAssets: calculation.TotalBankAssets,
             AvailableFunds: calculation.AvailableFunds,
             CommittedFunds: committedFunds,
             Breakdown: new CommittedFundsBreakdown(
-                FixedDepositsPrincipal: calculation.FixedDepositsPrincipal,
+                FixedDepositsPrincipal: fixedDepositsPrincipalTotal,
+                FixedDepositsExpectedInterest: fixedDepositsExpectedInterestTotal,
                 UnpaidInstallmentBalance: calculation.UnpaidInstallmentBalance,
                 FixedDeposits: fixedDepositSummaries,
                 Installments: installmentSummaries),

@@ -8,6 +8,7 @@ export interface AvailableFundsSummaryResponse {
 
 export interface CommittedFundsBreakdown {
   fixedDepositsPrincipal: number;
+  fixedDepositsExpectedInterest: number;
   unpaidInstallmentBalance: number;
   fixedDeposits: FixedDepositSummary[];
   installments: InstallmentSummary[];
@@ -19,6 +20,8 @@ export interface FixedDepositSummary {
   principal: number;
   currency: string;
   principalInBaseCurrency: number;
+  expectedInterest: number;
+  expectedInterestInBaseCurrency: number;
 }
 
 export interface InstallmentSummary {

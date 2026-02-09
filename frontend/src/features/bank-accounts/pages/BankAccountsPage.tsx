@@ -51,11 +51,7 @@ export function BankAccountsPage() {
 
   // Use converted values from availableFundsSummary (already in TWD)
   const fixedDepositPrincipal = availableFundsSummary?.breakdown?.fixedDepositsPrincipal ?? 0;
-  // Note: expectedInterest is not converted - shown as mixed currency total for now
-  const activeFixedDeposits = fixedDepositAccounts.filter((account) =>
-    account.fixedDepositStatus === 'Active' || account.fixedDepositStatus === 'Matured'
-  );
-  const expectedInterestTotal = activeFixedDeposits.reduce((sum, account) => sum + (account.expectedInterest ?? 0), 0);
+  const expectedInterestTotal = availableFundsSummary?.breakdown?.fixedDepositsExpectedInterest ?? 0;
 
   const handleCreate = () => {
     setEditingAccount(undefined);
@@ -199,7 +195,7 @@ export function BankAccountsPage() {
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <span className="text-sm font-medium text-[var(--accent-cream)] uppercase tracking-wider">
-              預期利息（進行中）
+              定存預期利息
             </span>
           </div>
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
