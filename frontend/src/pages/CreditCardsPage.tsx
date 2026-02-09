@@ -125,7 +125,6 @@ export function CreditCardsPage() {
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
   const [editingInstallment, setEditingInstallment] = useState<InstallmentResponse | undefined>(undefined);
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
-  const [processingInstallmentId, setProcessingInstallmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (creditCards.length === 0) {
@@ -157,7 +156,6 @@ export function CreditCardsPage() {
     refetchUpcoming,
     createInstallment,
     updateInstallment,
-    recordPayment,
   } = useInstallments({
     creditCardId: selectedCard?.id,
     upcomingMonths: 3,
@@ -221,15 +219,6 @@ export function CreditCardsPage() {
       return false;
     } finally {
       setIsInstallmentSubmitting(false);
-    }
-  };
-
-  const handleRecordPayment = async (installment: InstallmentResponse) => {
-    setProcessingInstallmentId(installment.id);
-    try {
-      await recordPayment(installment.id);
-    } finally {
-      setProcessingInstallmentId(null);
     }
   };
 
@@ -302,7 +291,7 @@ export function CreditCardsPage() {
               <div>
                 <h2 className="text-xl font-bold text-[var(--text-primary)]">{selectedCard.cardName} 分期清單</h2>
                 <p className="text-sm text-[var(--text-muted)]">
-                  {selectedCard.bankName} · 可單擊「記錄月付」快速扣減一期（SC-005）
+                  {selectedCard.bankName} · 管理該卡分期與未繳餘額
                 </p>
               </div>
               <button
@@ -322,9 +311,7 @@ export function CreditCardsPage() {
             ) : (
               <InstallmentList
                 installments={installments}
-                processingInstallmentId={processingInstallmentId}
                 onEdit={handleEditInstallment}
-                onRecordPayment={handleRecordPayment}
               />
             )}
           </div>

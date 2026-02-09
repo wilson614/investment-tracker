@@ -79,12 +79,6 @@ export const installmentsApi = {
       body: JSON.stringify(data),
     }),
 
-  /** 記錄單次月付（SC-005） */
-  recordPayment: (id: string) =>
-    fetchApi<InstallmentResponse>(`/installments/${id}/record-payment`, {
-      method: 'POST',
-    }),
-
   /** 取得未來 N 個月分期付款預覽 */
   getUpcomingPayments: async (months = 3) => {
     const response = await fetchApi<UpcomingPaymentsApiResponse>(

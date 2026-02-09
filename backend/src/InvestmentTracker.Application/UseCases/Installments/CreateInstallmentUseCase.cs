@@ -36,18 +36,24 @@ public class CreateInstallmentUseCase(
 
         await installmentRepository.AddAsync(installment, cancellationToken);
 
-        return MapToResponse(installment, creditCard.CardName);
+        return MapToResponse(installment, creditCard.CardName, creditCard.BillingCycleDay, DateTime.UtcNow);
     }
 
-    private static InstallmentResponse MapToResponse(Installment installment, string creditCardName)
+    private static InstallmentResponse MapToResponse(
+        Installment installment,
+        string creditCardName,
+        int billingCycleDay,
+        DateTime utcNow)
     {
-        var unpaidBalance = Math.Round(installment.MonthlyPayment * installment.RemainingInstallments, 2);
+        var remainingInstallments = installment.GetRemainingInstallments(billingCycleDay, utcNow);
+        var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);
+        var unpaidBalance = Math.Round(installment.MonthlyPayment * remainingInstallments, 2);
         var paidAmount = Math.Round(installment.TotalAmount - unpaidBalance, 2);
 
         var progressPercentage = installment.NumberOfInstallments == 0
             ? 0m
             : Math.Round(
-                (decimal)(installment.NumberOfInstallments - installment.RemainingInstallments)
+                (decimal)(installment.NumberOfInstallments - remainingInstallments)
                 / installment.NumberOfInstallments
                 * 100m,
                 2);
@@ -59,10 +65,10 @@ public class CreateInstallmentUseCase(
             installment.Description,
             installment.TotalAmount,
             installment.NumberOfInstallments,
-            installment.RemainingInstallments,
+            remainingInstallments,
             installment.MonthlyPayment,
             installment.StartDate,
-            installment.Status.ToString(),
+            effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,
             paidAmount,

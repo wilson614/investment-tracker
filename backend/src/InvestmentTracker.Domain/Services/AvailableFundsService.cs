@@ -23,12 +23,48 @@ public class AvailableFundsService
         IEnumerable<Installment> installments,
         Func<string, decimal> getExchangeRate)
     {
+        ArgumentNullException.ThrowIfNull(installments);
+
+        var installmentsList = installments.ToList();
+
+        var billingCycleDayMap = installmentsList
+            .GroupBy(installment => installment.CreditCardId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var billingCycleDay = group
+                        .Select(installment => installment.CreditCard?.BillingCycleDay)
+                        .FirstOrDefault(day => day.HasValue)
+                        ?? 1;
+
+                    return Math.Clamp(billingCycleDay, 1, 31);
+                });
+
+        return Calculate(
+            ledgers,
+            bankAccounts,
+            installmentsList,
+            billingCycleDayMap,
+            DateTime.UtcNow,
+            getExchangeRate);
+    }
+
+    public AvailableFundsCalculation Calculate(
+        IEnumerable<LedgerBalance> ledgers,
+        IEnumerable<BankAccount> bankAccounts,
+        IEnumerable<Installment> installments,
+        IReadOnlyDictionary<Guid, int> creditCardBillingCycleDayMap,
+        DateTime utcNow,
+        Func<string, decimal> getExchangeRate)
+    {
         ArgumentNullException.ThrowIfNull(ledgers);
         ArgumentNullException.ThrowIfNull(bankAccounts);
         ArgumentNullException.ThrowIfNull(installments);
+        ArgumentNullException.ThrowIfNull(creditCardBillingCycleDayMap);
         ArgumentNullException.ThrowIfNull(getExchangeRate);
 
-        var utcToday = DateTime.UtcNow.Date;
+        var utcToday = utcNow.Date;
 
         var totalLedgerBalances = ledgers.Sum(ledger =>
             ConvertToBaseCurrency(ledger.Balance, ledger.Currency, getExchangeRate));
@@ -57,8 +93,19 @@ public class AvailableFundsService
         var totalAssetsForAvailableFunds = totalLedgerBalances + totalBankBalances + maturedFixedDepositInterest;
 
         var unpaidInstallmentBalance = installments
-            .Where(installment => installment.Status == InstallmentStatus.Active)
-            .Sum(installment => installment.MonthlyPayment * installment.RemainingInstallments);
+            .Select(installment =>
+            {
+                if (!creditCardBillingCycleDayMap.TryGetValue(installment.CreditCardId, out var billingCycleDay))
+                    return 0m;
+
+                var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);
+                if (effectiveStatus != InstallmentStatus.Active)
+                    return 0m;
+
+                var remainingInstallments = installment.GetRemainingInstallments(billingCycleDay, utcNow);
+                return installment.MonthlyPayment * remainingInstallments;
+            })
+            .Sum();
 
         var availableFunds = totalAssetsForAvailableFunds - unpaidInstallmentBalance;
 

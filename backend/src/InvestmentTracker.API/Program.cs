@@ -233,7 +233,6 @@ builder.Services.AddScoped<GetInstallmentsUseCase>();
 builder.Services.AddScoped<GetAllUserInstallmentsUseCase>();
 builder.Services.AddScoped<CreateInstallmentUseCase>();
 builder.Services.AddScoped<UpdateInstallmentUseCase>();
-builder.Services.AddScoped<RecordPaymentUseCase>();
 builder.Services.AddScoped<GetUpcomingPaymentsUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 builder.Services.AddScoped<GetAvailableFundsSummaryUseCase>();

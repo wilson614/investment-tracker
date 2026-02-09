@@ -27,25 +27,32 @@ public class GetInstallmentsUseCase(
             ?? throw new EntityNotFoundException("CreditCard", creditCardId);
 
         var installments = await installmentRepository.GetByCreditCardIdAsync(creditCardId, cancellationToken);
+        var utcNow = DateTime.UtcNow;
 
-        var filteredInstallments = status.HasValue
-            ? installments.Where(i => i.Status == status.Value).ToList()
-            : installments;
-
-        return filteredInstallments
-            .Select(i => MapToResponse(i, creditCard.CardName))
+        var responses = installments
+            .Select(i => MapToResponse(i, creditCard.CardName, creditCard.BillingCycleDay, utcNow))
             .ToList();
+
+        return status.HasValue
+            ? responses.Where(i => i.Status == status.Value.ToString()).ToList()
+            : responses;
     }
 
-    private static InstallmentResponse MapToResponse(Installment installment, string creditCardName)
+    private static InstallmentResponse MapToResponse(
+        Installment installment,
+        string creditCardName,
+        int billingCycleDay,
+        DateTime utcNow)
     {
-        var unpaidBalance = Math.Round(installment.MonthlyPayment * installment.RemainingInstallments, 2);
+        var remainingInstallments = installment.GetRemainingInstallments(billingCycleDay, utcNow);
+        var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);
+        var unpaidBalance = Math.Round(installment.MonthlyPayment * remainingInstallments, 2);
         var paidAmount = Math.Round(installment.TotalAmount - unpaidBalance, 2);
 
         var progressPercentage = installment.NumberOfInstallments == 0
             ? 0m
             : Math.Round(
-                (decimal)(installment.NumberOfInstallments - installment.RemainingInstallments)
+                (decimal)(installment.NumberOfInstallments - remainingInstallments)
                 / installment.NumberOfInstallments
                 * 100m,
                 2);
@@ -57,10 +64,10 @@ public class GetInstallmentsUseCase(
             installment.Description,
             installment.TotalAmount,
             installment.NumberOfInstallments,
-            installment.RemainingInstallments,
+            remainingInstallments,
             installment.MonthlyPayment,
             installment.StartDate,
-            installment.Status.ToString(),
+            effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,
             paidAmount,

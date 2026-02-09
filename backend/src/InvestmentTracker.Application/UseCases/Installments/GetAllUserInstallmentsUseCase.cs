@@ -23,30 +23,39 @@ public class GetAllUserInstallmentsUseCase(
         var installments = await installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
         var creditCards = await creditCardRepository.GetAllByUserIdAsync(userId, cancellationToken);
 
-        var creditCardNameMap = creditCards
-            .ToDictionary(c => c.Id, c => c.CardName);
+        var creditCardInfoMap = creditCards
+            .ToDictionary(c => c.Id, c => new { c.CardName, c.BillingCycleDay });
+
+        var utcNow = DateTime.UtcNow;
 
         return installments
             .Select(i =>
             {
-                var creditCardName = creditCardNameMap.TryGetValue(i.CreditCardId, out var cardName)
-                    ? cardName
-                    : string.Empty;
+                if (!creditCardInfoMap.TryGetValue(i.CreditCardId, out var cardInfo))
+                {
+                    return MapToResponse(i, string.Empty, 1, utcNow);
+                }
 
-                return MapToResponse(i, creditCardName);
+                return MapToResponse(i, cardInfo.CardName, cardInfo.BillingCycleDay, utcNow);
             })
             .ToList();
     }
 
-    private static InstallmentResponse MapToResponse(Installment installment, string creditCardName)
+    private static InstallmentResponse MapToResponse(
+        Installment installment,
+        string creditCardName,
+        int billingCycleDay,
+        DateTime utcNow)
     {
-        var unpaidBalance = Math.Round(installment.MonthlyPayment * installment.RemainingInstallments, 2);
+        var remainingInstallments = installment.GetRemainingInstallments(billingCycleDay, utcNow);
+        var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);
+        var unpaidBalance = Math.Round(installment.MonthlyPayment * remainingInstallments, 2);
         var paidAmount = Math.Round(installment.TotalAmount - unpaidBalance, 2);
 
         var progressPercentage = installment.NumberOfInstallments == 0
             ? 0m
             : Math.Round(
-                (decimal)(installment.NumberOfInstallments - installment.RemainingInstallments)
+                (decimal)(installment.NumberOfInstallments - remainingInstallments)
                 / installment.NumberOfInstallments
                 * 100m,
                 2);
@@ -58,10 +67,10 @@ public class GetAllUserInstallmentsUseCase(
             installment.Description,
             installment.TotalAmount,
             installment.NumberOfInstallments,
-            installment.RemainingInstallments,
+            remainingInstallments,
             installment.MonthlyPayment,
             installment.StartDate,
-            installment.Status.ToString(),
+            effectiveStatus.ToString(),
             installment.Note,
             unpaidBalance,
             paidAmount,

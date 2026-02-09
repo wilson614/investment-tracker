@@ -118,19 +118,57 @@ public class Installment : BaseEntity
         Note = note?.Trim();
     }
 
-    public void RecordPayment()
+    public int GetPaidInstallments(int billingCycleDay, DateTime? utcNow = null)
     {
-        if (Status != InstallmentStatus.Active)
-            throw new InvalidOperationException("Only active installments can record payments");
+        ValidateBillingCycleDay(billingCycleDay);
 
-        if (RemainingInstallments <= 0)
-            throw new InvalidOperationException("No remaining installments to pay");
+        var currentDate = (utcNow ?? DateTime.UtcNow).Date;
+        var startDate = StartDate.Date;
 
-        RemainingInstallments--;
-        SyncStatusFromRemainingInstallments();
+        var elapsedMonths =
+            (currentDate.Year - startDate.Year) * 12
+            + currentDate.Month
+            - startDate.Month;
+
+        var billingDayInCurrentMonth = Math.Min(
+            billingCycleDay,
+            DateTime.DaysInMonth(currentDate.Year, currentDate.Month));
+
+        if (currentDate.Day < billingDayInCurrentMonth)
+            elapsedMonths--;
+
+        return Math.Clamp(elapsedMonths, 0, NumberOfInstallments);
+    }
+
+    public int GetRemainingInstallments(int billingCycleDay, DateTime? utcNow = null)
+    {
+        if (Status == InstallmentStatus.Cancelled)
+            return RemainingInstallments;
+
+        if (Status == InstallmentStatus.Completed)
+            return 0;
+
+        var paidInstallments = GetPaidInstallments(billingCycleDay, utcNow);
+        return Math.Max(NumberOfInstallments - paidInstallments, 0);
+    }
+
+    public InstallmentStatus GetEffectiveStatus(int billingCycleDay, DateTime? utcNow = null)
+    {
+        if (Status == InstallmentStatus.Cancelled)
+            return InstallmentStatus.Cancelled;
+
+        return GetRemainingInstallments(billingCycleDay, utcNow) <= 0
+            ? InstallmentStatus.Completed
+            : InstallmentStatus.Active;
     }
 
     public void Cancel() => Status = InstallmentStatus.Cancelled;
+
+    private static void ValidateBillingCycleDay(int billingCycleDay)
+    {
+        if (billingCycleDay < 1 || billingCycleDay > 31)
+            throw new ArgumentException("Billing cycle day must be between 1 and 31", nameof(billingCycleDay));
+    }
 
     private void SyncStatusFromRemainingInstallments()
     {

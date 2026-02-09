@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
@@ -37,29 +38,46 @@ public class GetUpcomingPaymentsUseCase(
             months = 1;
 
         var installments = await installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
-        var activeInstallments = installments
-            .Where(i => i.Status == InstallmentStatus.Active)
-            .ToList();
-
-        if (activeInstallments.Count == 0)
-            return [];
-
         var creditCards = await creditCardRepository.GetAllByUserIdAsync(userId, cancellationToken);
-        var creditCardNameMap = creditCards.ToDictionary(c => c.Id, c => c.CardName);
+        var creditCardMap = creditCards.ToDictionary(c => c.Id, c => c);
 
         var utcNow = DateTime.UtcNow;
+
+        var activeInstallmentViews = installments
+            .Select(installment =>
+            {
+                if (!creditCardMap.TryGetValue(installment.CreditCardId, out var creditCard))
+                    return null;
+
+                var remainingInstallments = installment.GetRemainingInstallments(creditCard.BillingCycleDay, utcNow);
+                var effectiveStatus = installment.GetEffectiveStatus(creditCard.BillingCycleDay, utcNow);
+
+                return new
+                {
+                    Installment = installment,
+                    CreditCard = creditCard,
+                    RemainingInstallments = remainingInstallments,
+                    EffectiveStatus = effectiveStatus
+                };
+            })
+            .Where(view => view is not null && view.EffectiveStatus == InstallmentStatus.Active && view.RemainingInstallments > 0)
+            .ToList();
+
+        if (activeInstallmentViews.Count == 0)
+            return [];
+
         var monthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var endExclusive = monthStart.AddMonths(months);
 
         var grouped = new Dictionary<DateTime, List<UpcomingInstallmentPayment>>();
 
-        foreach (var installment in activeInstallments)
+        foreach (var view in activeInstallmentViews)
         {
-            var creditCardName = creditCardNameMap.TryGetValue(installment.CreditCardId, out var cardName)
-                ? cardName
-                : string.Empty;
+            var installment = view!.Installment;
+            var creditCard = view.CreditCard;
+            var creditCardName = creditCard.CardName;
 
-            var paidInstallments = installment.NumberOfInstallments - installment.RemainingInstallments;
+            var paidInstallments = installment.GetPaidInstallments(creditCard.BillingCycleDay, utcNow);
             var scheduleStartMonth = new DateTime(
                 installment.StartDate.Year,
                 installment.StartDate.Month,
@@ -69,7 +87,7 @@ public class GetUpcomingPaymentsUseCase(
                 0,
                 DateTimeKind.Utc);
 
-            for (var i = 0; i < installment.RemainingInstallments; i++)
+            for (var i = 0; i < view.RemainingInstallments; i++)
             {
                 var dueMonth = scheduleStartMonth.AddMonths(paidInstallments + i);
 

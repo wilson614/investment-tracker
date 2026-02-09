@@ -4,9 +4,7 @@ import type { InstallmentResponse } from '../types';
 
 interface InstallmentListProps {
   installments: InstallmentResponse[];
-  processingInstallmentId?: string | null;
   onEdit: (installment: InstallmentResponse) => void;
-  onRecordPayment: (installment: InstallmentResponse) => void;
 }
 
 function getStatusBadgeClass(status: InstallmentResponse['status']) {
@@ -52,9 +50,7 @@ function formatDate(dateString: string): string {
 
 export function InstallmentList({
   installments,
-  processingInstallmentId,
   onEdit,
-  onRecordPayment,
 }: InstallmentListProps) {
   if (installments.length === 0) {
     return (
@@ -69,8 +65,6 @@ export function InstallmentList({
   return (
     <div className="space-y-4">
       {installments.map((installment) => {
-        const isActive = installment.status === 'Active';
-        const isProcessing = processingInstallmentId === installment.id;
         const progress = clampPercentage(installment.progressPercentage);
 
         return (
@@ -93,18 +87,6 @@ export function InstallmentList({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {isActive ? (
-                  <button
-                    type="button"
-                    onClick={() => onRecordPayment(installment)}
-                    disabled={isProcessing}
-                    className="btn-accent px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="記錄月付"
-                  >
-                    {isProcessing ? '處理中...' : '記錄月付'}
-                  </button>
-                ) : null}
-
                 <button
                   type="button"
                   onClick={() => onEdit(installment)}

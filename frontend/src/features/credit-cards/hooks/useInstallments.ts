@@ -72,17 +72,6 @@ export function useInstallments(options?: {
     },
   });
 
-  const recordPaymentMutation = useMutation({
-    mutationFn: (id: string) => installmentsApi.recordPayment(id),
-    onSuccess: () => {
-      invalidateInstallmentQueries();
-      toast.success('已記錄月付');
-    },
-    onError: (err: Error) => {
-      toast.error(getErrorMessage(err.message || '記錄付款失敗'));
-    },
-  });
-
   return {
     installments: installmentsQuery.data ?? [],
     upcomingPayments: upcomingQuery.data ?? [],
@@ -103,9 +92,7 @@ export function useInstallments(options?: {
     createInstallment: createMutation.mutateAsync,
     updateInstallment: (id: string, data: UpdateInstallmentRequest) =>
       updateMutation.mutateAsync({ id, data }),
-    recordPayment: recordPaymentMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
-    isRecordingPayment: recordPaymentMutation.isPending,
   };
 }

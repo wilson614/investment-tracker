@@ -23,13 +23,16 @@ public record InstallmentResponse(
 {
     public static InstallmentResponse FromEntity(Installment entity)
     {
-        var unpaidBalance = Math.Round(entity.MonthlyPayment * entity.RemainingInstallments, 2);
+        var utcNow = DateTime.UtcNow;
+        var remainingInstallments = entity.GetRemainingInstallments(entity.CreditCard.BillingCycleDay, utcNow);
+        var effectiveStatus = entity.GetEffectiveStatus(entity.CreditCard.BillingCycleDay, utcNow);
+        var unpaidBalance = Math.Round(entity.MonthlyPayment * remainingInstallments, 2);
         var paidAmount = Math.Round(entity.TotalAmount - unpaidBalance, 2);
 
         var progressPercentage = entity.NumberOfInstallments == 0
             ? 0m
             : Math.Round(
-                (decimal)(entity.NumberOfInstallments - entity.RemainingInstallments)
+                (decimal)(entity.NumberOfInstallments - remainingInstallments)
                 / entity.NumberOfInstallments
                 * 100m,
                 2);
@@ -41,10 +44,10 @@ public record InstallmentResponse(
             entity.Description,
             entity.TotalAmount,
             entity.NumberOfInstallments,
-            entity.RemainingInstallments,
+            remainingInstallments,
             entity.MonthlyPayment,
             entity.StartDate,
-            entity.Status.ToString(),
+            effectiveStatus.ToString(),
             entity.Note,
             unpaidBalance,
             paidAmount,

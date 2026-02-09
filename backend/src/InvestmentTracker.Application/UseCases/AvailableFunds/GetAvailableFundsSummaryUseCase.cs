@@ -36,6 +36,11 @@ public class GetAvailableFundsSummaryUseCase(
         var ledgers = await ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
         var bankAccounts = await bankAccountRepository.GetByUserIdAsync(userId, cancellationToken);
         var installments = await installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
+        var creditCards = installments
+            .Select(i => i.CreditCard)
+            .Where(c => c is not null)
+            .DistinctBy(c => c.Id)
+            .ToList();
         var ledgerBalances = await GetLedgerBalancesAsync(ledgers, cancellationToken);
 
         var exchangeRatesToBaseCurrency = await GetExchangeRatesToBaseCurrencyAsync(
@@ -44,10 +49,18 @@ public class GetAvailableFundsSummaryUseCase(
             valuationDate,
             cancellationToken);
 
+        var utcNow = DateTime.UtcNow;
+
+        var billingCycleDayMap = creditCards.ToDictionary(
+            card => card.Id,
+            card => card.BillingCycleDay);
+
         var calculation = availableFundsService.Calculate(
             ledgerBalances,
             bankAccounts,
             installments,
+            billingCycleDayMap,
+            utcNow,
             currency =>
             {
                 var normalizedCurrency = NormalizeCurrency(currency);
@@ -57,7 +70,7 @@ public class GetAvailableFundsSummaryUseCase(
                     : 0m;
             });
 
-        var utcToday = DateTime.UtcNow.Date;
+        var utcToday = utcNow.Date;
         var activeFixedDeposits = bankAccounts
             .Where(account => account.AccountType == BankAccountType.FixedDeposit)
             .Where(account => account.FixedDepositStatus is not (FixedDepositStatus.Closed or FixedDepositStatus.EarlyWithdrawal))
@@ -88,12 +101,25 @@ public class GetAvailableFundsSummaryUseCase(
         var fixedDepositsExpectedInterestTotal = fixedDepositSummaries.Sum(fd => fd.ExpectedInterestInBaseCurrency);
 
         var installmentSummaries = installments
-            .Where(installment => installment.Status == InstallmentStatus.Active)
-            .Select(installment => new InstallmentSummary(
-                Id: installment.Id,
-                Description: installment.Description,
-                CreditCardName: installment.CreditCard.CardName,
-                UnpaidBalance: Math.Round(installment.MonthlyPayment * installment.RemainingInstallments, 2)))
+            .Select(installment =>
+            {
+                if (!billingCycleDayMap.TryGetValue(installment.CreditCardId, out var billingCycleDay))
+                    return null;
+
+                var effectiveStatus = installment.GetEffectiveStatus(billingCycleDay, utcNow);
+                if (effectiveStatus != InstallmentStatus.Active)
+                    return null;
+
+                var remainingInstallments = installment.GetRemainingInstallments(billingCycleDay, utcNow);
+
+                return new InstallmentSummary(
+                    Id: installment.Id,
+                    Description: installment.Description,
+                    CreditCardName: installment.CreditCard.CardName,
+                    UnpaidBalance: Math.Round(installment.MonthlyPayment * remainingInstallments, 2));
+            })
+            .Where(summary => summary is not null)
+            .Select(summary => summary!)
             .ToList();
 
         var committedFunds = fixedDepositsPrincipalTotal + calculation.UnpaidInstallmentBalance;

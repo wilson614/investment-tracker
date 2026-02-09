@@ -18,13 +18,21 @@ public record CreditCardResponse(
 {
     public static CreditCardResponse FromEntity(CreditCard creditCard)
     {
+        var utcNow = DateTime.UtcNow;
+
         var activeInstallments = creditCard.Installments
-            .Where(i => i.Status == InstallmentStatus.Active)
+            .Select(i => new
+            {
+                Installment = i,
+                EffectiveStatus = i.GetEffectiveStatus(creditCard.BillingCycleDay, utcNow),
+                RemainingInstallments = i.GetRemainingInstallments(creditCard.BillingCycleDay, utcNow)
+            })
+            .Where(x => x.EffectiveStatus == InstallmentStatus.Active)
             .ToList();
 
         var activeInstallmentsCount = activeInstallments.Count;
         var totalUnpaidBalance = activeInstallments
-            .Sum(i => Math.Round(i.MonthlyPayment * i.RemainingInstallments, 2));
+            .Sum(x => Math.Round(x.Installment.MonthlyPayment * x.RemainingInstallments, 2));
 
         return new CreditCardResponse(
             creditCard.Id,

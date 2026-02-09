@@ -23,7 +23,6 @@ public class InstallmentsController(
     GetAllUserInstallmentsUseCase getAllUserInstallmentsUseCase,
     CreateInstallmentUseCase createInstallmentUseCase,
     UpdateInstallmentUseCase updateInstallmentUseCase,
-    RecordPaymentUseCase recordPaymentUseCase,
     GetUpcomingPaymentsUseCase getUpcomingPaymentsUseCase) : ControllerBase
 {
     /// <summary>
@@ -112,20 +111,6 @@ public class InstallmentsController(
         CancellationToken cancellationToken)
     {
         var installment = await updateInstallmentUseCase.ExecuteAsync(id, request, cancellationToken);
-        return Ok(installment);
-    }
-
-    /// <summary>
-    /// Record one monthly payment for an installment.
-    /// </summary>
-    [HttpPost("installments/{id:guid}/record-payment")]
-    [ProducesResponseType(typeof(InstallmentResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<InstallmentResponse>> RecordPayment(Guid id, CancellationToken cancellationToken)
-    {
-        var installment = await recordPaymentUseCase.ExecuteAsync(id, cancellationToken);
         return Ok(installment);
     }
 
