@@ -32,15 +32,10 @@ public class GetAvailableFundsSummaryUseCase(
 
         var valuationDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
 
-        var ledgersTask = ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
-        var bankAccountsTask = bankAccountRepository.GetByUserIdAsync(userId, cancellationToken);
-        var installmentsTask = installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
-
-        await Task.WhenAll(ledgersTask, bankAccountsTask, installmentsTask);
-
-        var ledgers = await ledgersTask;
-        var bankAccounts = await bankAccountsTask;
-        var installments = await installmentsTask;
+        // Sequential queries to avoid DbContext concurrency issues
+        var ledgers = await ledgerRepository.GetByUserIdAsync(userId, cancellationToken);
+        var bankAccounts = await bankAccountRepository.GetByUserIdAsync(userId, cancellationToken);
+        var installments = await installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
         var ledgerBalances = await GetLedgerBalancesAsync(ledgers, cancellationToken);
 
         var exchangeRatesToBaseCurrency = await GetExchangeRatesToBaseCurrencyAsync(
@@ -114,8 +109,13 @@ public class GetAvailableFundsSummaryUseCase(
         if (activeLedgers.Count == 0)
             return [];
 
-        var ledgersWithTransactions = await Task.WhenAll(activeLedgers
-            .Select(ledger => ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken)));
+        // Sequential queries to avoid DbContext concurrency issues
+        var ledgersWithTransactions = new List<CurrencyLedgerEntity?>();
+        foreach (var ledger in activeLedgers)
+        {
+            var ledgerWithTransactions = await ledgerRepository.GetByIdWithTransactionsAsync(ledger.Id, cancellationToken);
+            ledgersWithTransactions.Add(ledgerWithTransactions);
+        }
 
         return ledgersWithTransactions
             .Where(ledger => ledger is not null)
