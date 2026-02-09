@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Plus, Wallet, AlertCircle, Landmark, CheckCircle2, XCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
+import { useAvailableFunds } from '../../total-assets/hooks/useAvailableFunds';
 import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
@@ -26,6 +27,7 @@ export function BankAccountsPage() {
   } = useBankAccounts();
 
   const { summary: assetsSummary, isLoading: isAssetsLoading } = useTotalAssets();
+  const { summary: availableFundsSummary } = useAvailableFunds();
 
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | undefined>(undefined);
@@ -47,10 +49,12 @@ export function BankAccountsPage() {
   const savingsAccounts = bankAccounts.filter((account) => account.accountType === 'Savings');
   const fixedDepositAccounts = bankAccounts.filter((account) => account.accountType === 'FixedDeposit');
 
+  // Use converted values from availableFundsSummary (already in TWD)
+  const fixedDepositPrincipal = availableFundsSummary?.breakdown?.fixedDepositsPrincipal ?? 0;
+  // Note: expectedInterest is not converted - shown as mixed currency total for now
   const activeFixedDeposits = fixedDepositAccounts.filter((account) =>
     account.fixedDepositStatus === 'Active' || account.fixedDepositStatus === 'Matured'
   );
-  const fixedDepositPrincipal = activeFixedDeposits.reduce((sum, account) => sum + account.totalAssets, 0);
   const expectedInterestTotal = activeFixedDeposits.reduce((sum, account) => sum + (account.expectedInterest ?? 0), 0);
 
   const handleCreate = () => {
