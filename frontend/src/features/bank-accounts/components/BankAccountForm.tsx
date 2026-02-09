@@ -60,8 +60,8 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
       setTotalAssets(initialData.totalAssets.toString());
       setCurrency(isSupportedCurrency(initialData.currency) ? initialData.currency : DEFAULT_CURRENCY);
       setInterestRate(initialData.interestRate.toString());
-      setInterestCap(initialData.interestCap !== undefined ? initialData.interestCap.toString() : '');
-      setTermMonths(initialData.termMonths !== undefined ? initialData.termMonths.toString() : DEFAULT_TERM_MONTHS);
+      setInterestCap(initialData.interestCap != null ? initialData.interestCap.toString() : '');
+      setTermMonths(initialData.termMonths != null ? initialData.termMonths.toString() : DEFAULT_TERM_MONTHS);
       setStartDate(initialData.startDate ? initialData.startDate.slice(0, 10) : getTodayDate());
       setNote(initialData.note || '');
     } else {
