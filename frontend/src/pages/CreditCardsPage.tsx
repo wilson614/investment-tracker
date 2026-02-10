@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
 import { ErrorDisplay, Skeleton } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
@@ -126,24 +126,8 @@ export function CreditCardsPage() {
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
   const [deletingInstallment, setDeletingInstallment] = useState<InstallmentResponse | null>(null);
 
-  useEffect(() => {
-    if (creditCards.length === 0) {
-      setSelectedCardId(null);
-      return;
-    }
-
-    setSelectedCardId((previous) => {
-      if (previous && creditCards.some((card) => card.id === previous)) {
-        return previous;
-      }
-      return creditCards[0].id;
-    });
-  }, [creditCards]);
-
-  const selectedCard = useMemo(
-    () => creditCards.find((card) => card.id === selectedCardId) ?? null,
-    [creditCards, selectedCardId]
-  );
+  const effectiveSelectedCard =
+    creditCards.find((card) => card.id === selectedCardId) ?? (creditCards.length > 0 ? creditCards[0] : null);
 
   const {
     installments,
@@ -157,7 +141,7 @@ export function CreditCardsPage() {
     createInstallment,
     deleteInstallment,
   } = useInstallments({
-    creditCardId: selectedCard?.id,
+    creditCardId: effectiveSelectedCard?.id,
     upcomingMonths: 3,
   });
 
@@ -190,7 +174,7 @@ export function CreditCardsPage() {
   };
 
   const handleCreateInstallment = () => {
-    if (!selectedCard) {
+    if (!effectiveSelectedCard) {
       return;
     }
 
@@ -281,19 +265,19 @@ export function CreditCardsPage() {
 
       <CreditCardList
         creditCards={creditCards}
-        selectedCardId={selectedCard?.id ?? null}
+        selectedCardId={effectiveSelectedCard?.id ?? null}
         onSelect={(card) => setSelectedCardId(card.id)}
         onEdit={handleEditCard}
       />
 
-      {selectedCard ? (
+      {effectiveSelectedCard ? (
         <div className="space-y-6">
           <div className="card-dark p-5 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
-                <h2 className="text-xl font-bold text-[var(--text-primary)]">{selectedCard.cardName} 分期清單</h2>
+                <h2 className="text-xl font-bold text-[var(--text-primary)]">{effectiveSelectedCard.cardName} 分期清單</h2>
                 <p className="text-sm text-[var(--text-muted)]">
-                  {selectedCard.bankName} · 管理該卡分期與未繳餘額
+                  {effectiveSelectedCard.bankName} · 管理該卡分期與未繳餘額
                 </p>
               </div>
               <button
@@ -324,40 +308,6 @@ export function CreditCardsPage() {
             <UpcomingPayments months={upcomingPayments} isLoading={isUpcomingLoading} />
           )}
         </div>
-      ) : creditCards.length > 0 ? (
-        <div className="space-y-6" aria-label="信用卡明細載入中">
-          <div className="card-dark p-5 space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="space-y-2">
-                <Skeleton width="w-48" height="h-7" />
-                <Skeleton width="w-72" height="h-4" />
-              </div>
-              <Skeleton width="w-24" height="h-9" className="rounded-lg" />
-            </div>
-
-            <InstallmentListSkeleton />
-          </div>
-
-          <div className="card-dark p-5 space-y-4">
-            <div className="space-y-2">
-              <Skeleton width="w-40" height="h-6" />
-              <Skeleton width="w-56" height="h-4" />
-            </div>
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]/20">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="space-y-2">
-                      <Skeleton width="w-32" height="h-4" />
-                      <Skeleton width="w-24" height="h-3" />
-                    </div>
-                    <Skeleton width="w-20" height="h-4" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       ) : null}
 
       {showCardForm && (
@@ -369,9 +319,9 @@ export function CreditCardsPage() {
         />
       )}
 
-      {showInstallmentForm && selectedCard && (
+      {showInstallmentForm && effectiveSelectedCard && (
         <InstallmentForm
-          creditCardId={selectedCard.id}
+          creditCardId={effectiveSelectedCard.id}
           onSubmit={handleInstallmentSubmit}
           onCancel={() => setShowInstallmentForm(false)}
           isLoading={isInstallmentSubmitting}

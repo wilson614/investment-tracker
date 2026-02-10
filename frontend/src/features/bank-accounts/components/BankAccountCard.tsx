@@ -6,7 +6,6 @@ interface BankAccountCardProps {
   account: BankAccount;
   onEdit: (account: BankAccount) => void;
   onDelete: (id: string) => void;
-  onClose?: (account: BankAccount) => void;
   showCurrencyBadge?: boolean;
 }
 
@@ -24,7 +23,7 @@ const FIXED_DEPOSIT_STATUS_CLASS: Record<NonNullable<BankAccount['fixedDepositSt
   EarlyWithdrawal: 'border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]',
 };
 
-export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurrencyBadge = true }: BankAccountCardProps) {
+export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge = true }: BankAccountCardProps) {
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
     if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
@@ -41,16 +40,6 @@ export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurren
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
       <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-        {isFixedDeposit && onClose && (fixedDepositStatus === 'Active' || fixedDepositStatus === 'Matured') && (
-          <button
-            type="button"
-            onClick={() => onClose(account)}
-            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
-            title="結清定存"
-          >
-            <CheckCircle2 size={16} />
-          </button>
-        )}
         <button type="button"
           onClick={() => onEdit(account)}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"

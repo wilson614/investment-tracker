@@ -25,12 +25,7 @@ export function InstallmentsOverview() {
           <Skeleton width="w-32" height="h-4" />
           <Skeleton width="w-40" height="h-9" className="mt-2" />
         </div>
-        <div className="rounded-lg border border-[var(--border-color)] p-4 bg-[var(--bg-tertiary)]/30">
-          <div className="flex items-center justify-between">
-            <Skeleton width="w-36" height="h-5" />
-            <Skeleton width="w-5" height="h-5" />
-          </div>
-        </div>
+        <Skeleton width="w-28" height="h-5" />
       </section>
     );
   }

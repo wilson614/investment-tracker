@@ -207,6 +207,7 @@ export function TotalAssetsDashboard() {
             <Skeleton width="w-32" height="h-4" />
             <Skeleton width="w-40" height="h-9" className="mt-2" />
           </div>
+          <Skeleton width="w-28" height="h-5" />
         </section>
 
         <div id="allocation-management-section" className="space-y-4 scroll-mt-24">

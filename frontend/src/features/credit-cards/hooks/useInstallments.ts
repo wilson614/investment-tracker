@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
@@ -31,11 +31,13 @@ export function useInstallments(options?: {
       creditCardId
         ? installmentsApi.getInstallments(creditCardId, status)
         : installmentsApi.getAllInstallments(status),
+    placeholderData: keepPreviousData,
   });
 
   const upcomingQuery = useQuery({
     queryKey: upcomingPaymentsKey(upcomingMonths),
     queryFn: () => installmentsApi.getUpcomingPayments(upcomingMonths),
+    placeholderData: keepPreviousData,
   });
 
   const invalidateInstallmentQueries = () => {

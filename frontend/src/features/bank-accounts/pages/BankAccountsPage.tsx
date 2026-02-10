@@ -20,7 +20,6 @@ export function BankAccountsPage() {
     error,
     createBankAccount,
     updateBankAccount,
-    closeBankAccount,
     deleteBankAccount,
     refetch
   } = useBankAccounts();
@@ -34,8 +33,6 @@ export function BankAccountsPage() {
   // Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
-  const [showCloseModal, setShowCloseModal] = useState(false);
-  const [closingAccount, setClosingAccount] = useState<BankAccount | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
   const importTriggerRef = useRef<(() => void) | null>(null);
@@ -138,29 +135,12 @@ export function BankAccountsPage() {
     setShowDeleteModal(true);
   };
 
-  const handleCloseClick = (account: BankAccount) => {
-    setClosingAccount(account);
-    setShowCloseModal(true);
-  };
-
   const handleConfirmDelete = async () => {
     if (deletingAccountId) {
       await deleteBankAccount(deletingAccountId);
       setDeletingAccountId(null);
       setShowDeleteModal(false);
     }
-  };
-
-  const handleConfirmClose = async () => {
-    if (!closingAccount) {
-      return;
-    }
-
-    await closeBankAccount(closingAccount.id, {
-      actualInterest: closingAccount.expectedInterest,
-    });
-    setClosingAccount(null);
-    setShowCloseModal(false);
   };
 
   const handleSubmit = async (data: CreateBankAccountRequest | UpdateBankAccountRequest) => {
@@ -336,7 +316,6 @@ export function BankAccountsPage() {
                   account={account}
                   onEdit={handleEdit}
                   onDelete={handleDeleteClick}
-                  onClose={handleCloseClick}
                   showCurrencyBadge
                 />
               ))}
@@ -368,30 +347,6 @@ export function BankAccountsPage() {
         message="確定要刪除此銀行帳戶嗎？此動作無法復原。"
         confirmText="刪除"
         isDestructive={true}
-      />
-
-      <ConfirmationModal
-        isOpen={showCloseModal}
-        onClose={() => {
-          setShowCloseModal(false);
-          setClosingAccount(null);
-        }}
-        onConfirm={() => {
-          void handleConfirmClose();
-        }}
-        title="結清定存"
-        message={
-          closingAccount ? (
-            <span>
-              確定要結清「{closingAccount.bankName}」這筆定存嗎？
-              <br />
-              系統將以預期利息 {formatCurrency(closingAccount.expectedInterest ?? 0, closingAccount.currency)} 作為實際利息。
-            </span>
-          ) : (
-            ''
-          )
-        }
-        confirmText="確認結清"
       />
 
       {selectedImportFile && (
