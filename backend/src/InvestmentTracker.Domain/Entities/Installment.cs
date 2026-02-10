@@ -136,7 +136,7 @@ public class Installment : BaseEntity
             - firstPaymentDate.Month;
 
         var paymentDayThisMonth = Math.Min(
-            firstPaymentDate.Day,
+            paymentDueDay,
             DateTime.DaysInMonth(currentDate.Year, currentDate.Month));
 
         if (currentDate.Day < paymentDayThisMonth)

@@ -24,6 +24,11 @@ public class CreateInstallmentUseCase(
         var creditCard = await creditCardRepository.GetByIdAsync(request.CreditCardId, userId, cancellationToken)
             ?? throw new EntityNotFoundException("CreditCard", request.CreditCardId);
 
+        var firstPaymentDate = request.FirstPaymentDate;
+        var paymentDueDay = creditCard.PaymentDueDay;
+        var adjustedDay = Math.Min(paymentDueDay, DateTime.DaysInMonth(firstPaymentDate.Year, firstPaymentDate.Month));
+        var adjustedFirstPaymentDate = new DateTime(firstPaymentDate.Year, firstPaymentDate.Month, adjustedDay, 0, 0, 0, DateTimeKind.Utc);
+
         var installment = new Domain.Entities.Installment(
             request.CreditCardId,
             userId,
@@ -31,7 +36,7 @@ public class CreateInstallmentUseCase(
             request.TotalAmount,
             request.NumberOfInstallments,
             request.NumberOfInstallments,
-            request.FirstPaymentDate,
+            adjustedFirstPaymentDate,
             request.Note);
 
         await installmentRepository.AddAsync(installment, cancellationToken);

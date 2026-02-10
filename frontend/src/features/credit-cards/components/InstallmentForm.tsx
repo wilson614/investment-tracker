@@ -18,7 +18,7 @@ export function InstallmentForm({
   const [description, setDescription] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [numberOfInstallments, setNumberOfInstallments] = useState('3');
-  const [firstPaymentDate, setFirstPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [firstPaymentDate, setFirstPaymentDate] = useState(() => new Date().toISOString().slice(0, 7));
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -46,7 +46,7 @@ export function InstallmentForm({
     }
 
     if (!firstPaymentDate) {
-      setErrorMessage('請選擇首次還款日');
+      setErrorMessage('請選擇首次還款月');
       return;
     }
 
@@ -55,7 +55,7 @@ export function InstallmentForm({
       description: normalizedDescription,
       totalAmount: parsedTotalAmount,
       numberOfInstallments: parsedInstallments,
-      firstPaymentDate,
+      firstPaymentDate: `${firstPaymentDate}-01`,
       note: note.trim() || undefined,
     };
 
@@ -136,10 +136,10 @@ export function InstallmentForm({
 
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                首次還款日
+                首次還款月
               </label>
               <input
-                type="date"
+                type="month"
                 value={firstPaymentDate}
                 onChange={(e) => setFirstPaymentDate(e.target.value)}
                 className="input-dark w-full"
