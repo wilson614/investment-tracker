@@ -201,7 +201,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               className="input-dark w-full"
               required
               min="0"
-              step="1"
+              step="any"
             />
           </div>
 
