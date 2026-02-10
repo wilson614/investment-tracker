@@ -40,15 +40,15 @@ interface BankAccountFormProps {
 }
 
 export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: BankAccountFormProps) {
-  const [bankName, setBankName] = useState('');
-  const [accountType, setAccountType] = useState<BankAccountType>('Savings');
-  const [totalAssets, setTotalAssets] = useState<string>('');
-  const [currency, setCurrency] = useState<SupportedCurrency>(DEFAULT_CURRENCY);
-  const [interestRate, setInterestRate] = useState<string>('');
-  const [interestCap, setInterestCap] = useState<string>('');
-  const [termMonths, setTermMonths] = useState<string>(DEFAULT_TERM_MONTHS);
-  const [startDate, setStartDate] = useState<string>(getTodayDate());
-  const [note, setNote] = useState('');
+  const [bankName, setBankName] = useState(initialData?.bankName ?? '');
+  const [accountType, setAccountType] = useState<BankAccountType>(initialData?.accountType ?? 'Savings');
+  const [totalAssets, setTotalAssets] = useState<string>(initialData?.totalAssets != null ? initialData.totalAssets.toString() : '');
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialData?.currency && isSupportedCurrency(initialData.currency) ? initialData.currency : DEFAULT_CURRENCY);
+  const [interestRate, setInterestRate] = useState<string>(initialData?.interestRate != null ? initialData.interestRate.toString() : '');
+  const [interestCap, setInterestCap] = useState<string>(initialData?.interestCap != null ? initialData.interestCap.toString() : '');
+  const [termMonths, setTermMonths] = useState<string>(initialData?.termMonths != null ? initialData.termMonths.toString() : DEFAULT_TERM_MONTHS);
+  const [startDate, setStartDate] = useState<string>(initialData?.startDate ? initialData.startDate.slice(0, 10) : getTodayDate());
+  const [note, setNote] = useState(initialData?.note || '');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const isFixedDeposit = accountType === 'FixedDeposit';
