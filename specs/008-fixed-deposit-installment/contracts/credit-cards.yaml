@@ -1,8 +1,14 @@
 openapi: 3.0.3
 info:
   title: Credit Cards API
-  version: 1.0.0
-  description: API for managing credit card accounts
+  version: 2.0.0
+  description: |
+    API for managing credit card accounts.
+
+    Contract updates:
+    - `billingCycleDay` renamed to `paymentDueDay`.
+    - `includeInactive` query parameter removed.
+    - DELETE semantics are documented as hard delete in this updated specification.
 
 paths:
   /api/credit-cards:
@@ -10,14 +16,6 @@ paths:
       summary: Get all credit cards for current user
       operationId: getCreditCards
       tags: [CreditCards]
-      parameters:
-        - name: includeInactive
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: Include deactivated cards
       responses:
         '200':
           description: List of credit cards with installment summaries
@@ -106,8 +104,8 @@ paths:
           description: Not found
 
     delete:
-      summary: Deactivate a credit card (soft delete)
-      operationId: deactivateCreditCard
+      summary: Delete a credit card (hard delete)
+      operationId: deleteCreditCard
       tags: [CreditCards]
       parameters:
         - name: id
@@ -118,9 +116,9 @@ paths:
             format: uuid
       responses:
         '204':
-          description: Credit card deactivated
+          description: Credit card deleted
         '400':
-          description: Cannot deactivate (has active installments)
+          description: Cannot delete due to business constraints
         '404':
           description: Not found
 
@@ -132,17 +130,14 @@ components:
         id:
           type: string
           format: uuid
-        userId:
-          type: string
-          format: uuid
         bankName:
           type: string
         cardName:
           type: string
-        billingCycleDay:
+        paymentDueDay:
           type: integer
-        isActive:
-          type: boolean
+          minimum: 1
+          maximum: 31
         note:
           type: string
           nullable: true
@@ -165,7 +160,7 @@ components:
       required:
         - bankName
         - cardName
-        - billingCycleDay
+        - paymentDueDay
       properties:
         bankName:
           type: string
@@ -173,7 +168,7 @@ components:
         cardName:
           type: string
           maxLength: 100
-        billingCycleDay:
+        paymentDueDay:
           type: integer
           minimum: 1
           maximum: 31
@@ -190,10 +185,15 @@ components:
         cardName:
           type: string
           maxLength: 100
-        billingCycleDay:
+        paymentDueDay:
           type: integer
           minimum: 1
           maximum: 31
         note:
           type: string
           maxLength: 500
+
+x-notes:
+  - includeInactive query parameter removed because card deactivation flow is no longer exposed.
+  - DELETE is documented as hard delete in current specification state.
+  - The current backend controller set does not expose DELETE /api/credit-cards/{id}; this contract reflects target implementation state.

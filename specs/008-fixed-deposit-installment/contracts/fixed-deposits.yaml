@@ -1,144 +1,35 @@
 openapi: 3.0.3
 info:
-  title: Fixed Deposits API
-  version: 1.0.0
-  description: API for managing fixed deposits (time deposits)
+  title: Fixed Deposits API (Superseded)
+  version: 2.0.0
+  description: |
+    This contract is superseded.
 
-paths:
-  /api/fixed-deposits:
-    get:
-      summary: Get all fixed deposits for current user
-      operationId: getFixedDeposits
-      tags: [FixedDeposits]
-      parameters:
-        - name: status
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [Active, Matured, Closed, EarlyWithdrawal]
-          description: Filter by status
-      responses:
-        '200':
-          description: List of fixed deposits
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/FixedDepositResponse'
-        '401':
-          description: Unauthorized
+    Fixed deposits are no longer managed through a standalone `/api/fixed-deposits` API.
+    They are now modeled as `BankAccount` resources with `accountType = FixedDeposit`
+    under the existing `/api/bank-accounts` endpoints.
 
-    post:
-      summary: Create a new fixed deposit
-      operationId: createFixedDeposit
-      tags: [FixedDeposits]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateFixedDepositRequest'
-      responses:
-        '201':
-          description: Fixed deposit created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FixedDepositResponse'
-        '400':
-          description: Validation error
-        '401':
-          description: Unauthorized
+    Use the BankAccount API for create/read/update/delete operations.
 
-  /api/fixed-deposits/{id}:
-    get:
-      summary: Get a fixed deposit by ID
-      operationId: getFixedDeposit
-      tags: [FixedDeposits]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Fixed deposit details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FixedDepositResponse'
-        '404':
-          description: Not found
-        '403':
-          description: Access denied
+tags:
+  - name: Superseded
+    description: Reference note for deprecated standalone fixed-deposit API
 
-    put:
-      summary: Update a fixed deposit
-      operationId: updateFixedDeposit
-      tags: [FixedDeposits]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateFixedDepositRequest'
-      responses:
-        '200':
-          description: Fixed deposit updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FixedDepositResponse'
-        '400':
-          description: Validation error
-        '404':
-          description: Not found
-
-  /api/fixed-deposits/{id}/close:
-    post:
-      summary: Close a fixed deposit (maturity acknowledgment or early withdrawal)
-      operationId: closeFixedDeposit
-      tags: [FixedDeposits]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CloseFixedDepositRequest'
-      responses:
-        '200':
-          description: Fixed deposit closed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FixedDepositResponse'
-        '400':
-          description: Cannot close (already closed)
-        '404':
-          description: Not found
+paths: {}
 
 components:
   schemas:
-    FixedDepositResponse:
+    FixedDepositViaBankAccount:
       type: object
+      description: BankAccount fields relevant when accountType is FixedDeposit
+      required:
+        - accountType
+        - bankName
+        - totalAssets
+        - interestRate
+        - currency
+        - termMonths
+        - startDate
       properties:
         id:
           type: string
@@ -146,37 +37,48 @@ components:
         userId:
           type: string
           format: uuid
+        accountType:
+          type: string
+          enum: [Savings, FixedDeposit]
+          example: FixedDeposit
         bankName:
           type: string
-        principal:
+          maxLength: 100
+        totalAssets:
           type: number
           format: decimal
-        annualInterestRate:
+          description: Principal amount for fixed deposits
+        interestRate:
           type: number
           format: decimal
+          description: Annual interest rate (%)
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: TWD
         termMonths:
           type: integer
+          minimum: 1
         startDate:
           type: string
-          format: date
+          format: date-time
         maturityDate:
           type: string
-          format: date
+          format: date-time
+          nullable: true
         expectedInterest:
           type: number
           format: decimal
+          nullable: true
         actualInterest:
           type: number
           format: decimal
           nullable: true
-        currency:
-          type: string
-        status:
+        fixedDepositStatus:
           type: string
           enum: [Active, Matured, Closed, EarlyWithdrawal]
-        daysRemaining:
-          type: integer
-          description: Days until maturity (negative if past due)
+          nullable: true
         note:
           type: string
           nullable: true
@@ -187,59 +89,10 @@ components:
           type: string
           format: date-time
 
-    CreateFixedDepositRequest:
-      type: object
-      required:
-        - bankName
-        - principal
-        - annualInterestRate
-        - termMonths
-        - startDate
-      properties:
-        bankName:
-          type: string
-          maxLength: 100
-        principal:
-          type: number
-          format: decimal
-          minimum: 0
-        annualInterestRate:
-          type: number
-          format: decimal
-          minimum: 0
-          description: Annual rate as decimal (e.g., 0.015 for 1.5%)
-        termMonths:
-          type: integer
-          minimum: 1
-        startDate:
-          type: string
-          format: date
-        currency:
-          type: string
-          default: TWD
-        note:
-          type: string
-          maxLength: 500
-
-    UpdateFixedDepositRequest:
-      type: object
-      properties:
-        bankName:
-          type: string
-          maxLength: 100
-        note:
-          type: string
-          maxLength: 500
-
-    CloseFixedDepositRequest:
-      type: object
-      required:
-        - isEarlyWithdrawal
-      properties:
-        isEarlyWithdrawal:
-          type: boolean
-          description: True if withdrawing before maturity
-        actualInterest:
-          type: number
-          format: decimal
-          description: Actual interest received (may differ from expected if early withdrawal)
+x-superseded:
+  replacedBy: /api/bank-accounts
+  migrationGuidance:
+    - Set `accountType` to `FixedDeposit` when creating fixed deposits.
+    - Use `totalAssets` as principal amount.
+    - Provide `termMonths` and `startDate` for fixed-deposit schedule calculation.
+    - Read `maturityDate`, `expectedInterest`, and `fixedDepositStatus` from bank-account responses.

@@ -12,58 +12,68 @@
 
 ## Backend Setup
 
-### 1. Apply Database Migration
+### 1. Apply Database Migrations
 
 ```bash
 cd backend/src/InvestmentTracker.API
-dotnet ef migrations add AddFixedDepositAndInstallment -p ../InvestmentTracker.Infrastructure
 dotnet ef database update
 ```
 
-### 2. Register New Services
+This feature's evolution includes these relevant migrations:
+- `AddFixedDepositAndInstallment`
+- `MergeFixedDepositIntoBankAccount`
+- `RemoveCreditCardIsActive`
+- `RenameCreditCardBillingCycleDayToPaymentDueDay`
+- `RenameStartDateToFirstPaymentDate`
 
-Add to `Program.cs` or DI configuration:
+### 2. DI Registration Reference
+
+In `Program.cs`, ensure these services are registered:
 
 ```csharp
 // Repositories
-builder.Services.AddScoped<IFixedDepositRepository, FixedDepositRepository>();
+builder.Services.AddScoped<IBankAccountRepository, BankAccountRepository>();
 builder.Services.AddScoped<ICreditCardRepository, CreditCardRepository>();
 builder.Services.AddScoped<IInstallmentRepository, InstallmentRepository>();
 
 // Domain Services
-builder.Services.AddScoped<AvailableFundsService>();
+builder.Services.AddScoped<InterestEstimationService>();
+builder.Services.AddScoped<TotalAssetsService>();
 
-// Use Cases - Fixed Deposits
-builder.Services.AddScoped<GetFixedDepositsUseCase>();
-builder.Services.AddScoped<CreateFixedDepositUseCase>();
-builder.Services.AddScoped<UpdateFixedDepositUseCase>();
-builder.Services.AddScoped<CloseFixedDepositUseCase>();
+// Use Cases - Bank Accounts (fixed deposits included)
+builder.Services.AddScoped<GetBankAccountsUseCase>();
+builder.Services.AddScoped<GetBankAccountUseCase>();
+builder.Services.AddScoped<CreateBankAccountUseCase>();
+builder.Services.AddScoped<UpdateBankAccountUseCase>();
+builder.Services.AddScoped<DeleteBankAccountUseCase>();
+builder.Services.AddScoped<CloseBankAccountUseCase>();
 
 // Use Cases - Credit Cards
 builder.Services.AddScoped<GetCreditCardsUseCase>();
+builder.Services.AddScoped<GetCreditCardUseCase>();
 builder.Services.AddScoped<CreateCreditCardUseCase>();
 builder.Services.AddScoped<UpdateCreditCardUseCase>();
-builder.Services.AddScoped<DeactivateCreditCardUseCase>();
 
 // Use Cases - Installments
 builder.Services.AddScoped<GetInstallmentsUseCase>();
+builder.Services.AddScoped<GetAllUserInstallmentsUseCase>();
 builder.Services.AddScoped<CreateInstallmentUseCase>();
-builder.Services.AddScoped<UpdateInstallmentUseCase>();
-builder.Services.AddScoped<RecordPaymentUseCase>();
-builder.Services.AddScoped<PayoffInstallmentUseCase>();
+builder.Services.AddScoped<DeleteInstallmentUseCase>();
 builder.Services.AddScoped<GetUpcomingPaymentsUseCase>();
 
-// Use Cases - Available Funds
-builder.Services.AddScoped<GetAvailableFundsSummaryUseCase>();
+// Use Cases - Assets Summary (installments integrated)
+builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();
 ```
 
-### 3. Add DbSet to AppDbContext
+### 3. AppDbContext Reference
 
 ```csharp
-public DbSet<FixedDeposit> FixedDeposits => Set<FixedDeposit>();
+public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
 public DbSet<CreditCard> CreditCards => Set<CreditCard>();
 public DbSet<Installment> Installments => Set<Installment>();
 ```
+
+> Note: There is no standalone `DbSet<FixedDeposit>` in the current implementation.
 
 ### 4. Run Backend
 
@@ -76,35 +86,20 @@ API available at `http://localhost:5000`
 
 ## Frontend Setup
 
-### 1. Create Feature Folders
+### 1. Feature Structure Reference
 
-```bash
-cd frontend/src/features
-mkdir -p fixed-deposits/{api,components,hooks,types}
-mkdir -p credit-cards/{api,components,hooks,types}
+Current implementation uses:
+
+```text
+frontend/src/features/
+├── bank-accounts/   # savings + fixed deposit UI
+├── credit-cards/    # card + installment UI
+└── total-assets/    # summary includes installment unpaid balance
 ```
 
-### 2. Add Routes
+> There is no `frontend/src/features/fixed-deposits/` folder in current implementation.
 
-In router configuration:
-
-```tsx
-// Add routes for new features
-{ path: '/fixed-deposits', element: <FixedDepositsPage /> },
-{ path: '/credit-cards', element: <CreditCardsPage /> },
-{ path: '/credit-cards/:cardId/installments', element: <InstallmentsPage /> },
-```
-
-### 3. Add Navigation
-
-Add menu items for new sections:
-
-```tsx
-<NavItem to="/fixed-deposits">定存</NavItem>
-<NavItem to="/credit-cards">信用卡</NavItem>
-```
-
-### 4. Run Frontend
+### 2. Run Frontend
 
 ```bash
 cd frontend
@@ -115,19 +110,21 @@ App available at `http://localhost:3000`
 
 ## API Testing
 
-### Create Fixed Deposit
+### Create Fixed Deposit (via BankAccount API)
 
 ```bash
-curl -X POST http://localhost:5000/api/fixed-deposits \
+curl -X POST http://localhost:5000/api/bank-accounts \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "bankName": "台灣銀行",
-    "principal": 100000,
-    "annualInterestRate": 0.015,
+    "bankName": "Bank of Taiwan",
+    "totalAssets": 100000,
+    "interestRate": 1.5,
+    "interestCap": 0,
+    "currency": "TWD",
+    "accountType": "FixedDeposit",
     "termMonths": 12,
-    "startDate": "2026-02-01",
-    "currency": "TWD"
+    "startDate": "2026-02-01T00:00:00Z"
   }'
 ```
 
@@ -138,9 +135,9 @@ curl -X POST http://localhost:5000/api/credit-cards \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "bankName": "中國信託",
-    "cardName": "Costco聯名卡",
-    "billingCycleDay": 15
+    "bankName": "CTBC Bank",
+    "cardName": "Costco Co-Branded Card",
+    "paymentDueDay": 15
   }'
 ```
 
@@ -154,14 +151,14 @@ curl -X POST http://localhost:5000/api/credit-cards/{cardId}/installments \
     "description": "iPhone 15 Pro",
     "totalAmount": 45900,
     "numberOfInstallments": 12,
-    "startDate": "2026-02-01"
+    "firstPaymentDate": "2026-03-01T00:00:00Z"
   }'
 ```
 
-### Get Available Funds Summary
+### Get Total Assets Summary (includes installment unpaid balance)
 
 ```bash
-curl http://localhost:5000/api/available-funds \
+curl http://localhost:5000/api/assets/summary \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -169,27 +166,31 @@ curl http://localhost:5000/api/available-funds \
 
 | Layer | Path | Description |
 |-------|------|-------------|
-| Domain Entity | `Domain/Entities/FixedDeposit.cs` | Fixed deposit entity |
-| Domain Entity | `Domain/Entities/CreditCard.cs` | Credit card entity |
-| Domain Entity | `Domain/Entities/Installment.cs` | Installment entity |
-| Domain Service | `Domain/Services/AvailableFundsService.cs` | Available funds calculation |
-| Repository | `Infrastructure/Repositories/FixedDepositRepository.cs` | Fixed deposit data access |
-| Use Case | `Application/UseCases/FixedDeposits/` | Fixed deposit business logic |
-| Controller | `API/Controllers/FixedDepositsController.cs` | Fixed deposit API endpoints |
-| Frontend API | `features/fixed-deposits/api/` | API client functions |
-| Frontend Hook | `features/fixed-deposits/hooks/` | React Query hooks |
-| Frontend Component | `features/fixed-deposits/components/` | UI components |
+| Domain Entity | `backend/src/InvestmentTracker.Domain/Entities/BankAccount.cs` | Unified account model (savings + fixed deposit) |
+| Domain Entity | `backend/src/InvestmentTracker.Domain/Entities/CreditCard.cs` | Credit card aggregate |
+| Domain Entity | `backend/src/InvestmentTracker.Domain/Entities/Installment.cs` | Installment aggregate |
+| Domain Service | `backend/src/InvestmentTracker.Domain/Services/TotalAssetsService.cs` | Assets summary calculation |
+| Use Case | `backend/src/InvestmentTracker.Application/UseCases/BankAccount/` | Bank-account use cases (includes fixed deposit lifecycle) |
+| Use Case | `backend/src/InvestmentTracker.Application/UseCases/CreditCards/` | Credit card business logic |
+| Use Case | `backend/src/InvestmentTracker.Application/UseCases/Installments/` | Installment business logic |
+| Controller | `backend/src/InvestmentTracker.API/Controllers/BankAccountsController.cs` | Bank account API (fixed deposits included) |
+| Controller | `backend/src/InvestmentTracker.API/Controllers/CreditCardsController.cs` | Credit card API |
+| Controller | `backend/src/InvestmentTracker.API/Controllers/InstallmentsController.cs` | Installment API |
+| Controller | `backend/src/InvestmentTracker.API/Controllers/AssetsController.cs` | Total assets summary API |
+| Frontend API | `frontend/src/features/bank-accounts/api/bankAccountsApi.ts` | Bank account client (fixed deposits included) |
+| Frontend API | `frontend/src/features/credit-cards/api/` | Credit card + installment clients |
+| Frontend Summary | `frontend/src/features/total-assets/components/NonDisposableAssetsSection.tsx` | Displays installment unpaid balance |
 
 ## Testing Checklist
 
-- [ ] Create fixed deposit with various currencies
-- [ ] Verify maturity date calculation
-- [ ] Close fixed deposit (normal maturity)
-- [ ] Close fixed deposit (early withdrawal)
-- [ ] Create credit card
-- [ ] Create installment on card
-- [ ] Record monthly payment
-- [ ] Early payoff installment
-- [ ] View upcoming payments
-- [ ] Verify available funds calculation
-- [ ] Check dashboard displays correct breakdown
+- [ ] Create fixed deposit account via `/api/bank-accounts` with `accountType = FixedDeposit`
+- [ ] Verify fixed deposit maturity date and expected interest are returned
+- [ ] Verify fixed-deposit UI appears under bank-accounts feature
+- [ ] Verify fixed-deposit form hides interest cap field
+- [ ] Create credit card with `paymentDueDay`
+- [ ] Create installment with `firstPaymentDate`
+- [ ] Verify installment day is auto-adjusted to card payment due day
+- [ ] Verify installment remaining/unpaid values are auto-calculated over time
+- [ ] Delete installment and confirm list/summary updates
+- [ ] Verify total-assets summary includes installment unpaid balance in non-disposable assets
+- [ ] Verify TWD total assets input enforces integer entry while foreign currencies allow decimals

@@ -7,61 +7,70 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                              User                                    │
-│                         (existing entity)                            │
+│                              User                                   │
+│                        (existing entity)                            │
 └─────────────────────────────────────────────────────────────────────┘
-           │                        │                        │
-           │ 1:N                    │ 1:N                    │ 1:N
-           ▼                        ▼                        ▼
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   BankAccount   │      │  FixedDeposit   │      │   CreditCard    │
-│   (existing)    │      │     (NEW)       │      │     (NEW)       │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
-                                                           │
-                                                           │ 1:N
-                                                           ▼
-                                                  ┌─────────────────┐
-                                                  │   Installment   │
-                                                  │     (NEW)       │
-                                                  └─────────────────┘
+           │                         │
+           │ 1:N                     │ 1:N
+           ▼                         ▼
+┌─────────────────┐         ┌─────────────────┐
+│   BankAccount   │         │   CreditCard    │
+│ (extended model)│         │     (NEW)       │
+└─────────────────┘         └─────────────────┘
+                                      │
+                                      │ 1:N
+                                      ▼
+                             ┌─────────────────┐
+                             │   Installment   │
+                             │     (NEW)       │
+                             └─────────────────┘
 ```
 
 ---
 
-## New Entities
+## Entities
 
-### 1. FixedDeposit
+### 1. BankAccount (Extended for Fixed Deposits)
 
-Represents a time deposit with locked principal.
+Bank accounts now represent both regular savings accounts and fixed-deposit accounts.
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
 | Id | Guid | PK | Unique identifier |
-| UserId | Guid | FK, Required | Owner of the deposit |
-| BankName | string | Required, Max 100 | Bank name (text, not FK) |
-| Principal | decimal | Required, >= 0 | Deposit amount |
-| AnnualInterestRate | decimal | Required, >= 0 | Annual interest rate (e.g., 0.015 for 1.5%) |
-| TermMonths | int | Required, >= 1 | Term length in months |
-| StartDate | DateOnly | Required | When the deposit started |
-| MaturityDate | DateOnly | Computed | StartDate + TermMonths |
-| ExpectedInterest | decimal | Computed | Principal × Rate × (Term/12) |
-| ActualInterest | decimal? | Optional | Recorded at closure (may differ if early withdrawal) |
+| UserId | Guid | FK, Required | Owner of the account |
+| BankName | string | Required, Max 100 | Bank name |
+| TotalAssets | decimal | Required, >= 0 | Account balance; for fixed deposit, this is principal |
+| InterestRate | decimal | Required, >= 0 | Annual interest rate (%) |
+| InterestCap | decimal | Required, >= 0 | Preferential cap (used by savings accounts) |
 | Currency | string | Required, 3 chars | Currency code (TWD, USD, etc.) |
-| Status | FixedDepositStatus | Required | Active, Matured, Closed, EarlyWithdrawal |
 | Note | string? | Max 500 | Optional notes |
+| IsActive | bool | Default true | Soft-delete flag |
+| AccountType | BankAccountType | Required | Savings or FixedDeposit |
+| TermMonths | int? | Optional, > 0 when fixed deposit | Term length in months |
+| StartDate | DateTime? | Optional | Fixed deposit start date |
+| MaturityDate | DateTime? | Computed for fixed deposit | StartDate + TermMonths |
+| ExpectedInterest | decimal? | Computed for fixed deposit | Principal × annualRate × (term/12) |
+| ActualInterest | decimal? | Optional | Actual interest at closure/withdrawal |
+| FixedDepositStatus | FixedDepositStatus? | Optional | Active, Matured, Closed, EarlyWithdrawal |
 | CreatedAt | DateTime | Auto | Record creation timestamp |
 | UpdatedAt | DateTime | Auto | Last update timestamp |
 
-**Status Enum: FixedDepositStatus**
-- `Active` (0): Deposit is locked, contributing to committed funds
-- `Matured` (1): Term ended, awaiting user acknowledgment
-- `Closed` (2): User acknowledged maturity, funds released
-- `EarlyWithdrawal` (3): User withdrew before maturity
+**Enums**:
 
-**Validation Rules**:
-- StartDate cannot be in the future (max +1 day for timezone tolerance)
-- MaturityDate = StartDate.AddMonths(TermMonths)
-- Currency must be valid ISO code (TWD, USD, EUR, JPY, CNY, GBP, AUD)
+`BankAccountType`
+- `Savings` (0)
+- `FixedDeposit` (1)
+
+`FixedDepositStatus`
+- `Active` (0)
+- `Matured` (1)
+- `Closed` (2)
+- `EarlyWithdrawal` (3)
+
+**Validation/Behavior Notes**:
+- Non-fixed-deposit accounts clear fixed-deposit-only fields.
+- `StartDate` cannot be too far in the future (max +1 day tolerance).
+- Fixed-deposit computed fields are recalculated when principal/rate/term/start changes.
 
 ---
 
@@ -74,9 +83,8 @@ Represents a credit card account that contains installment purchases.
 | Id | Guid | PK | Unique identifier |
 | UserId | Guid | FK, Required | Owner of the card |
 | BankName | string | Required, Max 100 | Issuing bank name |
-| CardName | string | Required, Max 100 | Card nickname (e.g., "Costco聯名卡") |
-| BillingCycleDay | int | 1-31 | Day of month for billing cycle |
-| IsActive | bool | Default true | Soft delete flag |
+| CardName | string | Required, Max 100 | Card nickname |
+| PaymentDueDay | int | Required, 1-31 | Monthly payment due day |
 | Note | string? | Max 500 | Optional notes |
 | CreatedAt | DateTime | Auto | Record creation timestamp |
 | UpdatedAt | DateTime | Auto | Last update timestamp |
@@ -85,7 +93,7 @@ Represents a credit card account that contains installment purchases.
 - `Installments`: Collection of Installment entities
 
 **Validation Rules**:
-- BillingCycleDay must be between 1 and 31
+- `PaymentDueDay` must be between 1 and 31.
 
 ---
 
@@ -97,60 +105,68 @@ Represents an installment purchase on a credit card.
 |-------|------|-------------|-------------|
 | Id | Guid | PK | Unique identifier |
 | CreditCardId | Guid | FK, Required | Parent credit card |
+| UserId | Guid | Required | Installment owner |
 | Description | string | Required, Max 200 | Purchase description |
-| TotalAmount | decimal | Required, > 0 | Total payable amount (including any fees) |
-| NumberOfInstallments | int | Required, >= 2 | Total number of installments |
-| RemainingInstallments | int | Required, >= 0 | Remaining unpaid installments |
+| TotalAmount | decimal | Required, > 0 | Total payable amount |
+| NumberOfInstallments | int | Required, >= 1 | Total installment count |
+| RemainingInstallments | int | Stored | Persisted value; API uses dynamic remaining count |
 | MonthlyPayment | decimal | Computed | TotalAmount / NumberOfInstallments |
-| StartDate | DateOnly | Required | First installment date |
+| FirstPaymentDate | DateTime | Required | First scheduled payment date |
 | Status | InstallmentStatus | Required | Active, Completed, Cancelled |
 | Note | string? | Max 500 | Optional notes |
 | CreatedAt | DateTime | Auto | Record creation timestamp |
 | UpdatedAt | DateTime | Auto | Last update timestamp |
 
 **Status Enum: InstallmentStatus**
-- `Active` (0): Ongoing installment, contributing to committed funds
-- `Completed` (1): All payments made (RemainingInstallments = 0)
-- `Cancelled` (2): Early payoff or cancelled
+- `Active` (0)
+- `Completed` (1)
+- `Cancelled` (2)
 
-**Computed Properties** (not stored):
-- `UnpaidBalance`: MonthlyPayment × RemainingInstallments
-- `PaidAmount`: TotalAmount - UnpaidBalance
-- `ProgressPercentage`: (NumberOfInstallments - RemainingInstallments) / NumberOfInstallments × 100
+**Computed Runtime Properties** (not persisted separately):
+- `PaidInstallments`: calculated from current date, `FirstPaymentDate`, and credit card `PaymentDueDay`
+- `RemainingInstallments`: effective remaining count from `GetRemainingInstallments(paymentDueDay)`
+- `UnpaidBalance`: `MonthlyPayment × effectiveRemainingInstallments`
+- `PaidAmount`: `TotalAmount - UnpaidBalance`
+- `ProgressPercentage`: `(NumberOfInstallments - effectiveRemainingInstallments) / NumberOfInstallments × 100`
 
 **Validation Rules**:
-- NumberOfInstallments must be >= 2 (single payment is not an installment)
-- RemainingInstallments cannot exceed NumberOfInstallments
-- RemainingInstallments cannot be negative
+- `TotalAmount` must be > 0.
+- `NumberOfInstallments` must be > 0.
+- `RemainingInstallments` cannot be negative or exceed `NumberOfInstallments`.
+- `FirstPaymentDate` cannot be more than 1 year in the past.
 
 ---
 
 ## Database Schema
 
-### Table: fixed_deposits
+### Table: bank_accounts
 
 ```sql
-CREATE TABLE fixed_deposits (
+CREATE TABLE bank_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
     bank_name VARCHAR(100) NOT NULL,
-    principal DECIMAL(18,2) NOT NULL CHECK (principal >= 0),
-    annual_interest_rate DECIMAL(18,6) NOT NULL CHECK (annual_interest_rate >= 0),
-    term_months INTEGER NOT NULL CHECK (term_months >= 1),
-    start_date DATE NOT NULL,
-    maturity_date DATE NOT NULL,
-    expected_interest DECIMAL(18,2) NOT NULL,
-    actual_interest DECIMAL(18,2),
+    total_assets DECIMAL(18,2) NOT NULL CHECK (total_assets >= 0),
+    interest_rate DECIMAL(18,4) NOT NULL CHECK (interest_rate >= 0),
+    interest_cap DECIMAL(18,2) NOT NULL CHECK (interest_cap >= 0),
     currency VARCHAR(3) NOT NULL DEFAULT 'TWD',
-    status INTEGER NOT NULL DEFAULT 0,
     note VARCHAR(500),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    account_type INTEGER NOT NULL DEFAULT 0,
+    term_months INTEGER NULL,
+    start_date TIMESTAMP WITH TIME ZONE NULL,
+    maturity_date TIMESTAMP WITH TIME ZONE NULL,
+    expected_interest DECIMAL(18,2) NULL,
+    actual_interest DECIMAL(18,2) NULL,
+    fixed_deposit_status INTEGER NULL,
+
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_fixed_deposits_user_id ON fixed_deposits(user_id);
-CREATE INDEX idx_fixed_deposits_status ON fixed_deposits(status);
-CREATE INDEX idx_fixed_deposits_maturity_date ON fixed_deposits(maturity_date);
+CREATE INDEX idx_bank_accounts_user_id ON bank_accounts(user_id);
+CREATE INDEX idx_bank_accounts_account_type ON bank_accounts(account_type);
 ```
 
 ### Table: credit_cards
@@ -161,15 +177,13 @@ CREATE TABLE credit_cards (
     user_id UUID NOT NULL REFERENCES users(id),
     bank_name VARCHAR(100) NOT NULL,
     card_name VARCHAR(100) NOT NULL,
-    billing_cycle_day INTEGER NOT NULL CHECK (billing_cycle_day BETWEEN 1 AND 31),
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    payment_due_day INTEGER NOT NULL CHECK (payment_due_day BETWEEN 1 AND 31),
     note VARCHAR(500),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_credit_cards_user_id ON credit_cards(user_id);
-CREATE INDEX idx_credit_cards_is_active ON credit_cards(is_active);
 ```
 
 ### Table: installments
@@ -178,33 +192,46 @@ CREATE INDEX idx_credit_cards_is_active ON credit_cards(is_active);
 CREATE TABLE installments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     credit_card_id UUID NOT NULL REFERENCES credit_cards(id),
+    user_id UUID NOT NULL,
     description VARCHAR(200) NOT NULL,
     total_amount DECIMAL(18,2) NOT NULL CHECK (total_amount > 0),
-    number_of_installments INTEGER NOT NULL CHECK (number_of_installments >= 2),
+    number_of_installments INTEGER NOT NULL CHECK (number_of_installments > 0),
     remaining_installments INTEGER NOT NULL CHECK (remaining_installments >= 0),
     monthly_payment DECIMAL(18,2) NOT NULL,
-    start_date DATE NOT NULL,
+    first_payment_date TIMESTAMP WITH TIME ZONE NOT NULL,
     status INTEGER NOT NULL DEFAULT 0,
     note VARCHAR(500),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT chk_remaining_not_exceed CHECK (remaining_installments <= number_of_installments)
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_installments_credit_card_id ON installments(credit_card_id);
-CREATE INDEX idx_installments_status ON installments(status);
+CREATE INDEX idx_installments_user_id ON installments(user_id);
 ```
+
+### Removed Table: fixed_deposits
+
+`fixed_deposits` existed in the initial migration design but was removed after the merge strategy. Fixed-deposit data is now persisted in `bank_accounts` (`account_type = FixedDeposit` + fixed-deposit-specific columns).
 
 ---
 
 ## Migration Notes
 
-**Migration Name**: `AddFixedDepositAndInstallment`
+**Relevant Migrations**:
 
-1. Create `fixed_deposits` table
-2. Create `credit_cards` table
-3. Create `installments` table with FK to credit_cards
-4. Add indexes for query performance
+1. `AddFixedDepositAndInstallment`
+   - Created `fixed_deposits`, `credit_cards`, and `installments`.
+2. `MergeFixedDepositIntoBankAccount`
+   - Added fixed-deposit columns to `bank_accounts`.
+   - Migrated data from `fixed_deposits` into `bank_accounts`.
+   - Dropped `fixed_deposits`.
+3. `RemoveCreditCardIsActive`
+   - Removed soft-deactivation flag from `credit_cards`.
+4. `RenameCreditCardBillingCycleDayToPaymentDueDay`
+   - Renamed credit card day field for clarity.
+5. `RenameStartDateToFirstPaymentDate`
+   - Renamed installment date field.
 
-**Rollback**: Drop tables in reverse order (installments → credit_cards → fixed_deposits)
+**Rollback Considerations**:
+- Reintroducing standalone `fixed_deposits` requires reverse data migration from `bank_accounts` where `account_type = FixedDeposit`.
+- `payment_due_day` and `first_payment_date` would need reverse column renames if rolling back field naming changes.

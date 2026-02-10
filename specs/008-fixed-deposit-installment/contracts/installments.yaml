@@ -1,8 +1,15 @@
 openapi: 3.0.3
 info:
   title: Installments API
-  version: 1.0.0
-  description: API for managing credit card installment purchases
+  version: 2.1.0
+  description: |
+    API for managing credit card installment purchases.
+
+    Notes:
+    - Installments support create, read, delete, and upcoming-payment preview.
+    - Editing (`PUT`) and manual payment recording endpoints were removed.
+    - Remaining installments are auto-calculated from current date, `firstPaymentDate`,
+      and credit card `paymentDueDay`.
 
 paths:
   /api/credit-cards/{creditCardId}/installments:
@@ -113,69 +120,9 @@ paths:
         '403':
           description: Access denied
 
-    put:
-      summary: Update an installment
-      operationId: updateInstallment
-      tags: [Installments]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateInstallmentRequest'
-      responses:
-        '200':
-          description: Installment updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstallmentResponse'
-        '400':
-          description: Validation error
-        '404':
-          description: Not found
-
-  /api/installments/{id}/record-payment:
-    post:
-      summary: Record a monthly payment
-      operationId: recordInstallmentPayment
-      tags: [Installments]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecordPaymentRequest'
-      responses:
-        '200':
-          description: Payment recorded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstallmentResponse'
-        '400':
-          description: No remaining installments
-        '404':
-          description: Not found
-
-  /api/installments/{id}/payoff:
-    post:
-      summary: Early payoff - mark installment as completed
-      operationId: payoffInstallment
+    delete:
+      summary: Delete an installment
+      operationId: deleteInstallment
       tags: [Installments]
       parameters:
         - name: id
@@ -185,16 +132,12 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
-          description: Installment paid off
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstallmentResponse'
-        '400':
-          description: Already completed
+        '204':
+          description: Installment deleted
         '404':
           description: Not found
+        '403':
+          description: Access denied
 
   /api/installments/upcoming:
     get:
@@ -241,25 +184,27 @@ components:
           type: integer
         remainingInstallments:
           type: integer
+          description: Auto-calculated from current date and payment due day
         monthlyPayment:
           type: number
           format: decimal
         unpaidBalance:
           type: number
           format: decimal
-          description: monthlyPayment × remainingInstallments
+          description: monthlyPayment × remainingInstallments (dynamic)
         paidAmount:
           type: number
           format: decimal
         progressPercentage:
           type: number
           format: decimal
-        startDate:
+        firstPaymentDate:
           type: string
-          format: date
+          format: date-time
         status:
           type: string
           enum: [Active, Completed, Cancelled]
+          description: Effective status derived from dynamic remaining count
         note:
           type: string
           nullable: true
@@ -276,7 +221,7 @@ components:
         - description
         - totalAmount
         - numberOfInstallments
-        - startDate
+        - firstPaymentDate
       properties:
         description:
           type: string
@@ -289,31 +234,15 @@ components:
         numberOfInstallments:
           type: integer
           minimum: 2
-        startDate:
+        firstPaymentDate:
           type: string
-          format: date
+          pattern: '^\\d{4}-\\d{2}$'
+          description: |
+            First payment month in YYYY-MM format (from month picker intent).
+            Backend aligns the day-of-month to credit card `paymentDueDay`.
         note:
           type: string
           maxLength: 500
-
-    UpdateInstallmentRequest:
-      type: object
-      properties:
-        description:
-          type: string
-          maxLength: 200
-        note:
-          type: string
-          maxLength: 500
-
-    RecordPaymentRequest:
-      type: object
-      properties:
-        numberOfPayments:
-          type: integer
-          minimum: 1
-          default: 1
-          description: Number of payments to record (default 1)
 
     UpcomingPaymentsResponse:
       type: object
@@ -345,3 +274,14 @@ components:
                     monthlyPayment:
                       type: number
                       format: decimal
+
+x-removed-endpoints:
+  - path: /api/installments/{id}
+    method: put
+    reason: Installment editing removed
+  - path: /api/installments/{id}/record-payment
+    method: post
+    reason: Manual payment recording removed
+  - path: /api/installments/{id}/payoff
+    method: post
+    reason: Manual payoff flow removed from current contract

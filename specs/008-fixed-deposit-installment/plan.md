@@ -11,6 +11,8 @@ Implement two related features to improve financial liquidity visibility:
 
 Both features contribute to a new "Available Funds" calculation that shows users their true liquid assets by subtracting committed funds (fixed deposits + unpaid installments) from total bank assets.
 
+**Post-implementation note**: Fixed deposits were merged into `BankAccount` (`AccountType = FixedDeposit`) instead of keeping a standalone `FixedDeposit` aggregate/module.
+
 ## Technical Context
 
 **Language/Version**: C# 12 / .NET 8 (Backend), TypeScript 5.x (Frontend)
@@ -29,11 +31,11 @@ Both features contribute to a new "Available Funds" calculation that shows users
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Clean Architecture | ✅ PASS | New entities in Domain, repositories in Infrastructure, use cases in Application |
-| II. Multi-Tenancy | ✅ PASS | All entities have UserId, queries filtered by current user |
-| III. Accuracy First | ✅ PASS | Using decimal for all monetary values, interest calculations documented |
-| IV. Self-Hosted Friendly | ✅ PASS | No external service dependencies, PostgreSQL only |
-| V. Technology Stack | ✅ PASS | C# .NET 8 backend, React frontend, PostgreSQL |
+| I. Clean Architecture | PASS | New entities in Domain, repositories in Infrastructure, use cases in Application |
+| II. Multi-Tenancy | PASS | All entities have UserId, queries filtered by current user |
+| III. Accuracy First | PASS | Using decimal for all monetary values, interest calculations documented |
+| IV. Self-Hosted Friendly | PASS | No external service dependencies, PostgreSQL only |
+| V. Technology Stack | PASS | C# .NET 8 backend, React frontend, PostgreSQL |
 
 ## Project Structure
 
@@ -60,79 +62,87 @@ backend/
 ├── src/
 │   ├── InvestmentTracker.Domain/
 │   │   ├── Entities/
-│   │   │   ├── FixedDeposit.cs          # NEW
+│   │   │   ├── BankAccount.cs           # MODIFIED (fixed deposit fields merged)
 │   │   │   ├── CreditCard.cs            # NEW
 │   │   │   └── Installment.cs           # NEW
 │   │   ├── Enums/
-│   │   │   ├── FixedDepositStatus.cs    # NEW
+│   │   │   ├── BankAccountType.cs       # MODIFIED (Savings / FixedDeposit)
+│   │   │   ├── FixedDepositStatus.cs    # NEW (used by BankAccount)
 │   │   │   └── InstallmentStatus.cs     # NEW
 │   │   ├── Interfaces/
-│   │   │   ├── IFixedDepositRepository.cs    # NEW
-│   │   │   ├── ICreditCardRepository.cs      # NEW
-│   │   │   └── IInstallmentRepository.cs     # NEW
+│   │   │   ├── IBankAccountRepository.cs    # EXISTING, reused for fixed deposits
+│   │   │   ├── ICreditCardRepository.cs     # NEW
+│   │   │   └── IInstallmentRepository.cs    # NEW
 │   │   └── Services/
-│   │       └── AvailableFundsService.cs      # NEW
+│   │       └── TotalAssetsService.cs        # MODIFIED (summary integration)
 │   ├── InvestmentTracker.Application/
 │   │   ├── DTOs/
-│   │   │   ├── FixedDepositDto.cs       # NEW
+│   │   │   ├── ResponseDtos.cs          # MODIFIED (BankAccount fixed-deposit fields)
+│   │   │   ├── RequestDtos.cs           # MODIFIED (BankAccount fixed-deposit requests)
 │   │   │   ├── CreditCardDto.cs         # NEW
-│   │   │   ├── InstallmentDto.cs        # NEW
-│   │   │   └── AvailableFundsSummaryDto.cs  # NEW
+│   │   │   └── InstallmentDto.cs        # NEW
 │   │   └── UseCases/
-│   │       ├── FixedDeposits/           # NEW folder
+│   │       ├── BankAccount/             # MODIFIED (fixed deposit create/update/close via bank account)
 │   │       ├── CreditCards/             # NEW folder
-│   │       └── Installments/            # NEW folder
+│   │       ├── Installments/            # NEW folder
+│   │       └── Assets/                  # MODIFIED (installment unpaid in total assets summary)
 │   ├── InvestmentTracker.Infrastructure/
 │   │   ├── Persistence/
 │   │   │   ├── Configurations/
-│   │   │   │   ├── FixedDepositConfiguration.cs   # NEW
-│   │   │   │   ├── CreditCardConfiguration.cs     # NEW
-│   │   │   │   └── InstallmentConfiguration.cs    # NEW
+│   │   │   │   ├── BankAccountConfiguration.cs  # MODIFIED (merged fixed deposit columns)
+│   │   │   │   ├── CreditCardConfiguration.cs   # NEW
+│   │   │   │   └── InstallmentConfiguration.cs  # NEW
 │   │   │   └── Migrations/
-│   │   │       └── YYYYMMDDHHMMSS_AddFixedDepositAndInstallment.cs  # NEW
+│   │   │       ├── *AddFixedDepositAndInstallment*.cs        # CREATED initial tables
+│   │   │       ├── *MergeFixedDepositIntoBankAccount*.cs      # MERGE migration
+│   │   │       ├── *RenameCreditCardBillingCycleDayToPaymentDueDay*.cs
+│   │   │       └── *RenameStartDateToFirstPaymentDate*.cs
 │   │   └── Repositories/
-│   │       ├── FixedDepositRepository.cs    # NEW
-│   │       ├── CreditCardRepository.cs      # NEW
-│   │       └── InstallmentRepository.cs     # NEW
+│   │       ├── BankAccountRepository.cs      # EXISTING, reused for fixed deposits
+│   │       ├── CreditCardRepository.cs       # NEW
+│   │       └── InstallmentRepository.cs      # NEW
 │   └── InvestmentTracker.API/
 │       └── Controllers/
-│           ├── FixedDepositsController.cs   # NEW
-│           ├── CreditCardsController.cs     # NEW
-│           └── InstallmentsController.cs    # NEW
+│           ├── BankAccountsController.cs     # MODIFIED (fixed deposit operations under /api/bank-accounts)
+│           ├── CreditCardsController.cs      # NEW
+│           ├── InstallmentsController.cs     # NEW
+│           └── AssetsController.cs           # MODIFIED (summary endpoint)
 
 frontend/
 └── src/
     └── features/
-        ├── fixed-deposits/          # NEW feature folder
+        ├── bank-accounts/           # MODIFIED: fixed-deposit UI integrated here
         │   ├── api/
-        │   │   └── fixedDepositsApi.ts
+        │   │   └── bankAccountsApi.ts
         │   ├── components/
-        │   │   ├── FixedDepositList.tsx
-        │   │   ├── FixedDepositForm.tsx
-        │   │   └── FixedDepositCard.tsx
+        │   │   ├── BankAccountList/Card/Form (fixed + savings rendering)
+        │   │   └── ...
         │   ├── hooks/
-        │   │   └── useFixedDeposits.ts
-        │   ├── types/
-        │   │   └── index.ts
-        │   └── index.ts
-        ├── credit-cards/            # NEW feature folder
+        │   │   └── useBankAccounts.ts
+        │   ├── pages/
+        │   │   └── BankAccountsPage.tsx
+        │   └── types/
+        │       └── index.ts
+        ├── credit-cards/
         │   ├── api/
-        │   │   └── creditCardsApi.ts
+        │   │   ├── creditCardsApi.ts
+        │   │   └── installmentsApi.ts
         │   ├── components/
-        │   │   ├── CreditCardList.tsx
-        │   │   ├── CreditCardForm.tsx
-        │   │   └── InstallmentList.tsx
+        │   │   ├── CreditCardList/Form
+        │   │   ├── InstallmentList/Form
+        │   │   └── UpcomingPayments.tsx
         │   ├── hooks/
-        │   │   └── useCreditCards.ts
-        │   ├── types/
-        │   │   └── index.ts
-        │   └── index.ts
-        └── total-assets/            # MODIFY existing
+        │   │   ├── useCreditCards.ts
+        │   │   └── useInstallments.ts
+        │   └── types/
+        │       ├── index.ts
+        │       └── installment.ts
+        └── total-assets/            # MODIFIED existing summary module
             └── components/
-                └── AvailableFundsSummary.tsx  # NEW component
+                └── NonDisposableAssetsSection.tsx  # includes installment unpaid balance
 ```
 
-**Structure Decision**: Following existing web application pattern with separate backend (Clean Architecture) and frontend (feature-based) structures. New features organized as parallel feature modules.
+**Structure Decision**: Following existing web application pattern with separate backend (Clean Architecture) and frontend (feature-based) structures. Fixed deposits are integrated into the existing bank-account feature and API surface instead of a dedicated fixed-deposit module.
 
 ## Complexity Tracking
 

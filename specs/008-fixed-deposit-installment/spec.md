@@ -2,7 +2,7 @@
 
 **Feature Branch**: `008-fixed-deposit-installment`
 **Created**: 2026-02-08
-**Status**: Draft
+**Status**: Implemented (Specification Updated to Match Actual Delivery)
 **Input**: User description: "Bank Account Fixed Deposit and Credit Card Installment Tracking - Support fixed deposits for bank accounts with maturity tracking, and credit card installment tracking to accurately calculate available funds"
 
 ## User Scenarios & Testing *(mandatory)*
@@ -133,14 +133,62 @@ As a user, I want to manage my credit card accounts so that I can associate inst
 
 ### Session 2026-02-08
 
-- Q: Fixed Deposit 與 BankAccount 的關聯方式？ → A: 獨立實體，定存只需輸入銀行名稱（文字欄位），不關聯既有 BankAccount。
-- Q: 分期付款逾期時系統如何處理？ → A: 忽略逾期概念，系統不追蹤付款時間，只計算剩餘未付總額，均視為如期還款。
+- Q: How should FixedDeposit relate to BankAccount? → A (original draft): independent entity; fixed deposit only required bank name as text, without linking to existing BankAccount.
+- Q: How should overdue installment payments be handled? → A: ignore overdue concept; system does not track payment timing and only computes remaining unpaid balance.
+
+## Post-Implementation Changes
+
+### Architecture Change: FixedDeposit Merged into BankAccount
+
+- **Implemented architecture**: Fixed deposits are no longer a standalone entity/table/API.
+- **Current model**: `BankAccount` now supports two account types: `Savings` and `FixedDeposit`.
+- **Fixed-deposit fields on BankAccount**: `AccountType`, `TermMonths`, `StartDate`, `MaturityDate`, `ExpectedInterest`, `InterestRate`, `FixedDepositStatus`.
+- **Why this changed**: The unified account model simplifies UX, reduces duplicate CRUD flows, and keeps total-assets calculations in one account aggregate.
+
+### Removed Features (with rationale)
+
+1. **Standalone fixed-deposit module and API** removed.
+   - Rationale: avoid duplicated concepts and keep all deposit assets under one account flow.
+2. **Bank account settlement/close action in UI** removed (no close button in bank account cards).
+   - Rationale: reduce accidental state transitions in day-to-day use; fixed-deposit lifecycle remains data-driven.
+3. **Credit card deactivation flow** removed.
+   - Rationale: simplified lifecycle; no inactive-state filtering UX.
+4. **Installment manual payment recording** removed.
+   - Rationale: avoid manual maintenance and date drift; derive progress automatically from dates.
+5. **Installment editing (`PUT`)** removed.
+   - Rationale: avoid inconsistency in recalculated schedules; installments are create/delete oriented.
+6. **Standalone Available Funds summary component** removed.
+   - Rationale: unpaid installment balance is now integrated in the existing Total Assets summary under non-disposable assets.
+
+### Changed Features
+
+- **Installment field rename**: `startDate` → `firstPaymentDate`.
+- **Installment date input UX**: frontend uses a month picker (`YYYY-MM`) for first payment month.
+- **Backend payment day alignment**: `CreateInstallmentUseCase` aligns the day part of first payment date to the credit card `paymentDueDay`.
+- **Credit card field rename**: `billingCycleDay` → `paymentDueDay`.
+- **Installment progress calculation**: remaining/paid installments are derived dynamically by date (`GetPaidInstallments(paymentDueDay)` / `GetRemainingInstallments(...)`), not manually advanced.
+
+### Functional Requirement Supersession Log
+
+| FR | Original Requirement | Status | Implemented Behavior |
+|----|----------------------|--------|----------------------|
+| FR-001 | Create standalone fixed deposit records | **Superseded** | Create a `BankAccount` with `accountType = FixedDeposit` and fixed-deposit fields. |
+| FR-004 | Display days remaining until maturity | **Superseded** | UI focuses on start/maturity dates and expected interest; days-remaining is not a mandatory contract field. |
+| FR-005 | Mark fixed deposit as matured/early withdrawal through dedicated flow | **Superseded** | No standalone fixed-deposit flow; status is managed in the unified bank-account model. |
+| FR-008 | Credit card uses `billingCycleDay` | **Superseded** | Field renamed to `paymentDueDay`. |
+| FR-009 | Deactivate credit cards and include inactive handling | **Superseded** | Deactivation model removed from contracts; lifecycle simplified. |
+| FR-010 | Installment request uses `startDate` | **Superseded** | Request uses `firstPaymentDate` (month-based input intent). |
+| FR-012 | Remaining installments are manually tracked | **Superseded** | Remaining/paid counts are computed dynamically from current date and `paymentDueDay`. |
+| FR-013 | Record monthly payment endpoint | **Superseded** | Manual record-payment endpoint removed. |
+| FR-014 | Manual early payoff endpoint | **Superseded** | Manual payoff/edit flow removed from current installment contract. |
+| FR-016 | Available Funds shown as standalone equation output | **Superseded** | Unpaid installments are integrated into Total Assets summary as non-disposable assets. |
+| FR-017 | Dedicated Available Funds summary component | **Superseded** | Existing Total Assets summary components now carry this information. |
 
 ## Assumptions
 
-- Fixed deposits are tracked for informational purposes; the system does not integrate with actual bank systems.
-- Installment payments are manually recorded by users; no automatic bank statement integration.
-- Interest calculation for fixed deposits uses simple interest (principal × rate × term/12) unless user specifies otherwise.
-- Credit card billing cycle date is informational; system does not enforce payment schedules.
+- Fixed deposits are tracked as a `BankAccount` subtype for informational and planning purposes; there is no bank-system integration.
+- Installment progress is derived automatically from `firstPaymentDate`, current date, and `paymentDueDay`; no manual payment-recording workflow exists.
+- Interest calculation for fixed deposits uses simple interest (principal × rate × term/12).
+- `paymentDueDay` is used for installment progression calculations and date alignment.
 - All monetary calculations round to 2 decimal places.
 - Exchange rates are sourced from the existing exchange rate system in the application.
