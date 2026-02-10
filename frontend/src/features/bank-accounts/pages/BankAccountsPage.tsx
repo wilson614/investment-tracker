@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Wallet, AlertCircle, Landmark, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Wallet, AlertCircle, Landmark, Banknote, XCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
 import { BankAccountCard } from '../components/BankAccountCard';
@@ -122,19 +122,7 @@ export function BankAccountsPage() {
     [fixedDepositAccounts, exchangeRatesToTwd]
   );
 
-  const expectedInterestTotal = useMemo(
-    () =>
-      fixedDepositAccounts.reduce((sum, account) => {
-        const normalizedCurrency = account.currency.trim().toUpperCase();
-        if (normalizedCurrency === 'TWD') {
-          return sum + (account.expectedInterest ?? 0);
-        }
-
-        const exchangeRate = exchangeRatesToTwd[normalizedCurrency] ?? 0;
-        return sum + (account.expectedInterest ?? 0) * exchangeRate;
-      }, 0),
-    [fixedDepositAccounts, exchangeRatesToTwd]
-  );
+  const savingsTotal = totalAssets - fixedDepositPrincipal;
 
   const handleCreate = () => {
     setEditingAccount(undefined);
@@ -264,7 +252,7 @@ export function BankAccountsPage() {
               <Landmark className="w-5 h-5" />
             </div>
             <span className="text-sm font-medium text-[var(--accent-butter)] uppercase tracking-wider">
-              定存本金（進行中）
+              定存總額
             </span>
           </div>
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
@@ -272,17 +260,17 @@ export function BankAccountsPage() {
           </div>
         </div>
 
-        <div className="metric-card metric-card-cream">
+        <div className="metric-card metric-card-peach">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-[var(--accent-cream)] rounded-lg text-[var(--bg-primary)]">
-              <CheckCircle2 className="w-5 h-5" />
+            <div className="p-2 bg-[var(--accent-peach)] rounded-lg text-[var(--bg-primary)]">
+              <Banknote className="w-5 h-5" />
             </div>
-            <span className="text-sm font-medium text-[var(--accent-cream)] uppercase tracking-wider">
-              定存預期利息
+            <span className="text-sm font-medium text-[var(--accent-peach)] uppercase tracking-wider">
+              活存總額
             </span>
           </div>
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
-            {formatCurrency(expectedInterestTotal, 'TWD')}
+            {formatCurrency(savingsTotal, 'TWD')}
           </div>
         </div>
 
