@@ -4,9 +4,10 @@ import { AssetsBreakdownPieChart } from '../components/AssetsBreakdownPieChart';
 import { CoreMetricsSection } from '../components/CoreMetricsSection';
 import { DisposableAssetsSection } from '../components/DisposableAssetsSection';
 import { NonDisposableAssetsSection } from '../components/NonDisposableAssetsSection';
-import { AvailableFundsSummary } from '../components/AvailableFundsSummary';
+import { InstallmentsOverview } from '../components/InstallmentsOverview';
 import { useTotalAssets } from '../hooks/useTotalAssets';
 import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocations';
+import { useBankAccounts } from '../../bank-accounts/hooks/useBankAccounts';
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
 import { AllocationFormDialog } from '../../fund-allocations/components/AllocationFormDialog';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
@@ -23,12 +24,23 @@ export function TotalAssetsDashboard() {
     updateAllocation,
     deleteAllocation,
   } = useFundAllocations();
+  const { bankAccounts, isLoading: isBankAccountsLoading } = useBankAccounts();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAllocation, setEditingAllocation] = useState<AllocationSummaryItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const nonDisposableAllocationCount = allocations.filter((allocation) => !allocation.isDisposable).length;
+
+  const fixedDeposits = bankAccounts
+    .filter((account) => account.accountType === 'FixedDeposit')
+    .map((account) => ({
+      id: account.id,
+      bankName: account.bankName,
+      principal: account.totalAssets,
+      currency: account.currency,
+      maturityDate: account.maturityDate,
+    }));
 
   const allocationItems: AllocationSummaryItem[] = allocations.map((allocation) => ({
     id: allocation.id,
@@ -82,7 +94,7 @@ export function TotalAssetsDashboard() {
   const investmentRatioDenominator = investmentTotal + disposableDeposit;
   const correctedInvestmentRatio =
     investmentRatioDenominator > 0 ? investmentTotal / investmentRatioDenominator : 0;
-  const isPageLoading = isLoading || isAllocationsLoading;
+  const isPageLoading = isLoading || isAllocationsLoading || isBankAccountsLoading;
 
   if (isPageLoading) {
     return (
@@ -198,7 +210,16 @@ export function TotalAssetsDashboard() {
           </div>
         </div>
 
-        <AvailableFundsSummary />
+        <section className="card-dark p-6 space-y-4" aria-label="分期付款總覽載入中">
+          <div className="space-y-1">
+            <Skeleton width="w-36" height="h-7" />
+            <Skeleton width="w-52" height="h-4" />
+          </div>
+          <div className="rounded-lg border border-[var(--accent-peach)]/40 p-4 bg-[var(--accent-peach)]/10">
+            <Skeleton width="w-32" height="h-4" />
+            <Skeleton width="w-40" height="h-9" className="mt-2" />
+          </div>
+        </section>
 
         <div id="allocation-management-section" className="space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between">
@@ -286,12 +307,13 @@ export function TotalAssetsDashboard() {
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
             allocationCount={nonDisposableAllocationCount}
+            fixedDeposits={fixedDeposits}
           />
         </div>
       </div>
 
-      {/* ROW 4: 可動用資金摘要 */}
-      <AvailableFundsSummary />
+      {/* ROW 4: 分期付款總覽 */}
+      <InstallmentsOverview />
 
       {/* 資金配置管理區塊 */}
       {allocationsError ? (

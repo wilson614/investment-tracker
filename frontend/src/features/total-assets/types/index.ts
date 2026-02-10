@@ -37,4 +37,3 @@ export interface TotalAssetsSummary {
   hasOverAllocation?: boolean;
 }
 
-export * from './availableFunds';

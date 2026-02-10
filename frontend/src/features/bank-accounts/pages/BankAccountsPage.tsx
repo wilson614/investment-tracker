@@ -1,8 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Wallet, AlertCircle, Landmark, CheckCircle2, XCircle } from 'lucide-react';
 import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
-import { useAvailableFunds } from '../../total-assets/hooks/useAvailableFunds';
 import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
 import { InterestEstimationCard } from '../components/InterestEstimationCard';
@@ -11,6 +10,7 @@ import { FileDropdown } from '../../../components/common/FileDropdown';
 import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
 import { BankAccountImportButton, BankAccountImportModal } from '../../../components/import';
 import { exportBankAccountsToCSV } from '../../../services/csvExport';
+import { stockPriceApi } from '../../../services/api';
 import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
@@ -27,7 +27,6 @@ export function BankAccountsPage() {
   } = useBankAccounts();
 
   const { summary: assetsSummary, isLoading: isAssetsLoading } = useTotalAssets();
-  const { summary: availableFundsSummary } = useAvailableFunds();
 
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | undefined>(undefined);
@@ -46,12 +45,96 @@ export function BankAccountsPage() {
   const totalYearlyInterest = assetsSummary?.totalYearlyInterest ?? 0;
   const totalMonthlyInterest = assetsSummary?.totalMonthlyInterest ?? 0;
 
-  const savingsAccounts = bankAccounts.filter((account) => account.accountType === 'Savings');
-  const fixedDepositAccounts = bankAccounts.filter((account) => account.accountType === 'FixedDeposit');
+  const savingsAccounts = useMemo(
+    () => bankAccounts.filter((account) => account.accountType === 'Savings'),
+    [bankAccounts]
+  );
+  const fixedDepositAccounts = useMemo(
+    () => bankAccounts.filter((account) => account.accountType === 'FixedDeposit'),
+    [bankAccounts]
+  );
 
-  // Use converted values from availableFundsSummary (already in TWD)
-  const fixedDepositPrincipal = availableFundsSummary?.breakdown?.fixedDepositsPrincipal ?? 0;
-  const expectedInterestTotal = availableFundsSummary?.breakdown?.fixedDepositsExpectedInterest ?? 0;
+  const fixedDepositCurrenciesKey = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          fixedDepositAccounts
+            .map((account) => account.currency.trim().toUpperCase())
+            .filter(Boolean)
+        )
+      )
+        .sort()
+        .join(','),
+    [fixedDepositAccounts]
+  );
+
+  const [exchangeRatesToTwd, setExchangeRatesToTwd] = useState<Record<string, number>>({ TWD: 1 });
+
+  useEffect(() => {
+    const currencies = fixedDepositCurrenciesKey
+      ? fixedDepositCurrenciesKey.split(',').filter(Boolean)
+      : [];
+
+    const targetCurrencies = currencies.filter((currency) => currency !== 'TWD');
+    if (targetCurrencies.length === 0) {
+      setExchangeRatesToTwd({ TWD: 1 });
+      return;
+    }
+
+    let isCancelled = false;
+
+    const fetchRates = async () => {
+      const entries = await Promise.all(
+        targetCurrencies.map(async (currency) => {
+          const rate = await stockPriceApi.getExchangeRateValue(currency, 'TWD');
+          return [currency, rate ?? 0] as const;
+        })
+      );
+
+      if (isCancelled) {
+        return;
+      }
+
+      setExchangeRatesToTwd({
+        TWD: 1,
+        ...Object.fromEntries(entries),
+      });
+    };
+
+    void fetchRates();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [fixedDepositCurrenciesKey]);
+
+  const fixedDepositPrincipal = useMemo(
+    () =>
+      fixedDepositAccounts.reduce((sum, account) => {
+        const normalizedCurrency = account.currency.trim().toUpperCase();
+        if (normalizedCurrency === 'TWD') {
+          return sum + (account.totalAssets ?? 0);
+        }
+
+        const exchangeRate = exchangeRatesToTwd[normalizedCurrency] ?? 0;
+        return sum + (account.totalAssets ?? 0) * exchangeRate;
+      }, 0),
+    [fixedDepositAccounts, exchangeRatesToTwd]
+  );
+
+  const expectedInterestTotal = useMemo(
+    () =>
+      fixedDepositAccounts.reduce((sum, account) => {
+        const normalizedCurrency = account.currency.trim().toUpperCase();
+        if (normalizedCurrency === 'TWD') {
+          return sum + (account.expectedInterest ?? 0);
+        }
+
+        const exchangeRate = exchangeRatesToTwd[normalizedCurrency] ?? 0;
+        return sum + (account.expectedInterest ?? 0) * exchangeRate;
+      }, 0),
+    [fixedDepositAccounts, exchangeRatesToTwd]
+  );
 
   const handleCreate = () => {
     setEditingAccount(undefined);
