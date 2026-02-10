@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, CreditCard as CreditCardIcon } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { ErrorDisplay, Skeleton } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import { CreditCardForm } from '../features/credit-cards/components/CreditCardForm';
@@ -26,18 +26,6 @@ function CreditCardsPageSkeleton() {
           <Skeleton width="w-64" height="h-5" />
         </div>
         <Skeleton width="w-32" height="h-10" className="rounded-lg" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {[1, 2].map((item) => (
-          <div key={item} className="metric-card p-6 space-y-3">
-            <div className="flex items-center gap-3">
-              <Skeleton width="w-9" height="h-9" className="rounded-lg" />
-              <Skeleton width="w-24" height="h-4" />
-            </div>
-            <Skeleton width="w-20" height="h-9" />
-          </div>
-        ))}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -231,36 +219,6 @@ export function CreditCardsPage() {
           <Plus className="w-5 h-5" />
           新增信用卡
         </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="metric-card metric-card-peach">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-[var(--accent-peach)] rounded-lg text-[var(--bg-primary)]">
-              <CreditCardIcon className="w-5 h-5" />
-            </div>
-            <span className="text-sm font-medium text-[var(--accent-peach)] uppercase tracking-wider">
-              信用卡總數
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)] mt-4">
-            {creditCards.length.toLocaleString('zh-TW')} 張
-          </div>
-        </div>
-
-        <div className="metric-card metric-card-butter">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-[var(--accent-butter)] rounded-lg text-[var(--bg-primary)]">
-              <CreditCardIcon className="w-5 h-5" />
-            </div>
-            <span className="text-sm font-medium text-[var(--accent-butter)] uppercase tracking-wider">
-              全部信用卡
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)] mt-4">
-            {creditCards.length.toLocaleString('zh-TW')} 張
-          </div>
-        </div>
       </div>
 
       <CreditCardList
