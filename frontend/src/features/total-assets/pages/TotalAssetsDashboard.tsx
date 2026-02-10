@@ -7,7 +7,6 @@ import { NonDisposableAssetsSection } from '../components/NonDisposableAssetsSec
 import { InstallmentsOverview } from '../components/InstallmentsOverview';
 import { useTotalAssets } from '../hooks/useTotalAssets';
 import { useFundAllocations } from '../../fund-allocations/hooks/useFundAllocations';
-import { useBankAccounts } from '../../bank-accounts/hooks/useBankAccounts';
 import { AllocationSummary, type AllocationSummaryItem } from '../../fund-allocations/components/AllocationSummary';
 import { AllocationFormDialog } from '../../fund-allocations/components/AllocationFormDialog';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
@@ -24,23 +23,12 @@ export function TotalAssetsDashboard() {
     updateAllocation,
     deleteAllocation,
   } = useFundAllocations();
-  const { bankAccounts, isLoading: isBankAccountsLoading } = useBankAccounts();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAllocation, setEditingAllocation] = useState<AllocationSummaryItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const nonDisposableAllocationCount = allocations.filter((allocation) => !allocation.isDisposable).length;
-
-  const fixedDeposits = bankAccounts
-    .filter((account) => account.accountType === 'FixedDeposit')
-    .map((account) => ({
-      id: account.id,
-      bankName: account.bankName,
-      principal: account.totalAssets,
-      currency: account.currency,
-      maturityDate: account.maturityDate,
-    }));
 
   const allocationItems: AllocationSummaryItem[] = allocations.map((allocation) => ({
     id: allocation.id,
@@ -94,7 +82,7 @@ export function TotalAssetsDashboard() {
   const investmentRatioDenominator = investmentTotal + disposableDeposit;
   const correctedInvestmentRatio =
     investmentRatioDenominator > 0 ? investmentTotal / investmentRatioDenominator : 0;
-  const isPageLoading = isLoading || isAllocationsLoading || isBankAccountsLoading;
+  const isPageLoading = isLoading || isAllocationsLoading;
 
   if (isPageLoading) {
     return (
@@ -307,7 +295,6 @@ export function TotalAssetsDashboard() {
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
             allocationCount={nonDisposableAllocationCount}
-            fixedDeposits={fixedDeposits}
           />
         </div>
       </div>
