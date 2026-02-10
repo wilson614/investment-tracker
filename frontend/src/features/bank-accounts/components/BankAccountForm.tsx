@@ -201,7 +201,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
               className="input-dark w-full"
               required
               min="0"
-              step="any"
+              step={currency === 'TWD' ? '1' : 'any'}
             />
           </div>
 
@@ -228,7 +228,7 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid ${isFixedDeposit ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
                 年利率 (%)
@@ -243,20 +243,22 @@ export function BankAccountForm({ initialData, onSubmit, onCancel, isLoading }: 
                 step="0.01"
               />
             </div>
-            <div>
-              <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                優惠上限 ({currency})
-              </label>
-              <input
-                type="number"
-                value={interestCap}
-                onChange={(e) => setInterestCap(e.target.value)}
-                className="input-dark w-full"
-                min="0"
-                step="1"
-                placeholder="留空為無上限"
-              />
-            </div>
+            {!isFixedDeposit && (
+              <div>
+                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+                  優惠上限 ({currency})
+                </label>
+                <input
+                  type="number"
+                  value={interestCap}
+                  onChange={(e) => setInterestCap(e.target.value)}
+                  className="input-dark w-full"
+                  min="0"
+                  step="1"
+                  placeholder="留空為無上限"
+                />
+              </div>
+            )}
           </div>
 
           {isFixedDeposit && (
