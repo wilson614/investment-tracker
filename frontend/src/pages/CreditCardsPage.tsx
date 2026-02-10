@@ -14,7 +14,6 @@ import type {
   CreateCreditCardRequest,
   UpdateCreditCardRequest,
   CreateInstallmentRequest,
-  UpdateInstallmentRequest,
   InstallmentResponse,
 } from '../features/credit-cards/types';
 
@@ -124,7 +123,6 @@ export function CreditCardsPage() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
-  const [editingInstallment, setEditingInstallment] = useState<InstallmentResponse | undefined>(undefined);
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
   const [deletingInstallment, setDeletingInstallment] = useState<InstallmentResponse | null>(null);
 
@@ -157,7 +155,6 @@ export function CreditCardsPage() {
     refetch: refetchInstallments,
     refetchUpcoming,
     createInstallment,
-    updateInstallment,
     deleteInstallment,
   } = useInstallments({
     creditCardId: selectedCard?.id,
@@ -197,26 +194,14 @@ export function CreditCardsPage() {
       return;
     }
 
-    setEditingInstallment(undefined);
     setShowInstallmentForm(true);
   };
 
-  const handleEditInstallment = (installment: InstallmentResponse) => {
-    setEditingInstallment(installment);
-    setShowInstallmentForm(true);
-  };
-
-  const handleInstallmentSubmit = async (data: CreateInstallmentRequest | UpdateInstallmentRequest) => {
+  const handleInstallmentSubmit = async (data: CreateInstallmentRequest) => {
     setIsInstallmentSubmitting(true);
     try {
-      if (editingInstallment) {
-        await updateInstallment(editingInstallment.id, data as UpdateInstallmentRequest);
-      } else {
-        await createInstallment(data as CreateInstallmentRequest);
-      }
-
+      await createInstallment(data);
       setShowInstallmentForm(false);
-      setEditingInstallment(undefined);
       return true;
     } catch {
       return false;
@@ -328,7 +313,6 @@ export function CreditCardsPage() {
             ) : (
               <InstallmentList
                 installments={installments}
-                onEdit={handleEditInstallment}
                 onDelete={handleDeleteInstallment}
               />
             )}
@@ -354,12 +338,8 @@ export function CreditCardsPage() {
       {showInstallmentForm && selectedCard && (
         <InstallmentForm
           creditCardId={selectedCard.id}
-          initialData={editingInstallment}
           onSubmit={handleInstallmentSubmit}
-          onCancel={() => {
-            setShowInstallmentForm(false);
-            setEditingInstallment(undefined);
-          }}
+          onCancel={() => setShowInstallmentForm(false)}
           isLoading={isInstallmentSubmitting}
         />
       )}

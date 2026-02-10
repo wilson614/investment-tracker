@@ -26,11 +26,6 @@ export interface CreateInstallmentRequest {
   note?: string | null;
 }
 
-export interface UpdateInstallmentRequest {
-  description: string;
-  note?: string | null;
-}
-
 export interface UpcomingPaymentMonth {
   month: string; // YYYY-MM
   totalAmount: number;

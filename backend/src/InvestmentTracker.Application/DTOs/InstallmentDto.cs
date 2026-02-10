@@ -67,7 +67,3 @@ public record CreateInstallmentRequest(
     string? Note
 );
 
-public record UpdateInstallmentRequest(
-    string Description,
-    string? Note
-);

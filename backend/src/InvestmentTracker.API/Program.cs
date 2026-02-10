@@ -232,7 +232,6 @@ builder.Services.AddScoped<UpdateCreditCardUseCase>();
 builder.Services.AddScoped<GetInstallmentsUseCase>();
 builder.Services.AddScoped<GetAllUserInstallmentsUseCase>();
 builder.Services.AddScoped<CreateInstallmentUseCase>();
-builder.Services.AddScoped<UpdateInstallmentUseCase>();
 builder.Services.AddScoped<DeleteInstallmentUseCase>();
 builder.Services.AddScoped<GetUpcomingPaymentsUseCase>();
 builder.Services.AddScoped<GetTotalAssetsSummaryUseCase>();

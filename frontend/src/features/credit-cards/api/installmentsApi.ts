@@ -1,10 +1,5 @@
 import { fetchApi } from '../../../services/api';
-import type {
-  InstallmentResponse,
-  CreateInstallmentRequest,
-  UpdateInstallmentRequest,
-  UpcomingPaymentMonth,
-} from '../types';
+import type { InstallmentResponse, CreateInstallmentRequest, UpcomingPaymentMonth } from '../types';
 
 type InstallmentStatus = InstallmentResponse['status'];
 
@@ -71,13 +66,6 @@ export const installmentsApi = {
       body: JSON.stringify(bodyPayload),
     });
   },
-
-  /** 更新分期 */
-  updateInstallment: (id: string, data: UpdateInstallmentRequest) =>
-    fetchApi<InstallmentResponse>(`/installments/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
 
   /** 刪除分期 */
   deleteInstallment: (id: string) =>

@@ -3,11 +3,7 @@ import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
 import { installmentsApi } from '../api/installmentsApi';
-import type {
-  CreateInstallmentRequest,
-  InstallmentResponse,
-  UpdateInstallmentRequest,
-} from '../types';
+import type { CreateInstallmentRequest, InstallmentResponse } from '../types';
 
 export const INSTALLMENTS_QUERY_KEY = ['installments'];
 export const INSTALLMENTS_UPCOMING_QUERY_KEY = ['installmentsUpcoming'];
@@ -60,18 +56,6 @@ export function useInstallments(options?: {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateInstallmentRequest }) =>
-      installmentsApi.updateInstallment(id, data),
-    onSuccess: () => {
-      invalidateInstallmentQueries();
-      toast.success('分期更新成功');
-    },
-    onError: (err: Error) => {
-      toast.error(getErrorMessage(err.message || '更新失敗'));
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: string) => installmentsApi.deleteInstallment(id),
     onSuccess: () => {
@@ -101,11 +85,8 @@ export function useInstallments(options?: {
     refetch: installmentsQuery.refetch,
     refetchUpcoming: upcomingQuery.refetch,
     createInstallment: createMutation.mutateAsync,
-    updateInstallment: (id: string, data: UpdateInstallmentRequest) =>
-      updateMutation.mutateAsync({ id, data }),
     deleteInstallment: deleteMutation.mutateAsync,
     isCreating: createMutation.isPending,
-    isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

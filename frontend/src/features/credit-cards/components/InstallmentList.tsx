@@ -1,10 +1,9 @@
-import { Edit, CircleDollarSign, Trash2 } from 'lucide-react';
+import { CircleDollarSign, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { InstallmentResponse } from '../types';
 
 interface InstallmentListProps {
   installments: InstallmentResponse[];
-  onEdit: (installment: InstallmentResponse) => void;
   onDelete: (installment: InstallmentResponse) => void;
 }
 
@@ -51,7 +50,6 @@ function formatDate(dateString: string): string {
 
 export function InstallmentList({
   installments,
-  onEdit,
   onDelete,
 }: InstallmentListProps) {
   if (installments.length === 0) {
@@ -89,15 +87,6 @@ export function InstallmentList({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onEdit(installment)}
-                  className="btn-dark px-3 py-1.5 text-sm inline-flex items-center gap-1"
-                  title="編輯"
-                >
-                  <Edit size={14} />
-                  編輯
-                </button>
                 <button
                   type="button"
                   onClick={() => onDelete(installment)}

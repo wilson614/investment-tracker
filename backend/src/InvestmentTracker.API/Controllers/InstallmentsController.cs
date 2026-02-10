@@ -22,7 +22,6 @@ public class InstallmentsController(
     GetInstallmentsUseCase getInstallmentsUseCase,
     GetAllUserInstallmentsUseCase getAllUserInstallmentsUseCase,
     CreateInstallmentUseCase createInstallmentUseCase,
-    UpdateInstallmentUseCase updateInstallmentUseCase,
     DeleteInstallmentUseCase deleteInstallmentUseCase,
     GetUpcomingPaymentsUseCase getUpcomingPaymentsUseCase) : ControllerBase
 {
@@ -96,23 +95,6 @@ public class InstallmentsController(
         var installment = await createInstallmentUseCase.ExecuteAsync(createRequest, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = installment.Id }, installment);
-    }
-
-    /// <summary>
-    /// Update an installment.
-    /// </summary>
-    [HttpPut("installments/{id:guid}")]
-    [ProducesResponseType(typeof(InstallmentResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<InstallmentResponse>> Update(
-        Guid id,
-        [FromBody] UpdateInstallmentRequest request,
-        CancellationToken cancellationToken)
-    {
-        var installment = await updateInstallmentUseCase.ExecuteAsync(id, request, cancellationToken);
-        return Ok(installment);
     }
 
     /// <summary>

@@ -1,22 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X, Save, CalendarRange } from 'lucide-react';
-import type {
-  CreateInstallmentRequest,
-  InstallmentResponse,
-  UpdateInstallmentRequest,
-} from '../types';
+import type { CreateInstallmentRequest } from '../types';
 
 interface InstallmentFormProps {
   creditCardId: string;
-  initialData?: InstallmentResponse;
-  onSubmit: (data: CreateInstallmentRequest | UpdateInstallmentRequest) => Promise<boolean>;
+  onSubmit: (data: CreateInstallmentRequest) => Promise<boolean>;
   onCancel: () => void;
   isLoading: boolean;
 }
 
 export function InstallmentForm({
   creditCardId,
-  initialData,
   onSubmit,
   onCancel,
   isLoading,
@@ -24,26 +18,9 @@ export function InstallmentForm({
   const [description, setDescription] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [numberOfInstallments, setNumberOfInstallments] = useState('3');
-  const [firstPaymentDate, setFirstPaymentDate] = useState('');
+  const [firstPaymentDate, setFirstPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-
-  useEffect(() => {
-    if (initialData) {
-      setDescription(initialData.description);
-      setTotalAmount(initialData.totalAmount.toString());
-      setNumberOfInstallments(initialData.numberOfInstallments.toString());
-      setFirstPaymentDate(initialData.firstPaymentDate.slice(0, 10));
-      setNote(initialData.note ?? '');
-    } else {
-      setDescription('');
-      setTotalAmount('');
-      setNumberOfInstallments('3');
-      setFirstPaymentDate(new Date().toISOString().slice(0, 10));
-      setNote('');
-    }
-    setErrorMessage('');
-  }, [initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,16 +50,6 @@ export function InstallmentForm({
       return;
     }
 
-    if (initialData) {
-      const updatePayload: UpdateInstallmentRequest = {
-        description: normalizedDescription,
-        note: note.trim() || undefined,
-      };
-
-      await onSubmit(updatePayload);
-      return;
-    }
-
     const createPayload: CreateInstallmentRequest = {
       creditCardId,
       description: normalizedDescription,
@@ -101,7 +68,7 @@ export function InstallmentForm({
         <div className="p-6 border-b border-[var(--border-color)] flex justify-between items-center">
           <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
             <CalendarRange className="w-5 h-5 text-[var(--accent-peach)]" />
-            {initialData ? '編輯分期' : '新增分期'}
+            新增分期
           </h2>
           <button
             type="button"
@@ -136,92 +103,49 @@ export function InstallmentForm({
             />
           </div>
 
-          {!initialData ? (
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              總金額
+            </label>
+            <input
+              type="number"
+              value={totalAmount}
+              onChange={(e) => setTotalAmount(e.target.value)}
+              className="input-dark w-full"
+              min="0"
+              step="1"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                總金額
+                分期期數
               </label>
               <input
                 type="number"
-                value={totalAmount}
-                onChange={(e) => setTotalAmount(e.target.value)}
+                value={numberOfInstallments}
+                onChange={(e) => setNumberOfInstallments(e.target.value)}
                 className="input-dark w-full"
-                min="0"
+                min="2"
                 step="1"
                 required
               />
             </div>
-          ) : (
+
             <div>
               <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                總金額
+                首次還款日
               </label>
               <input
-                type="number"
-                value={totalAmount}
-                className="input-dark w-full opacity-70 cursor-not-allowed"
-                disabled
+                type="date"
+                value={firstPaymentDate}
+                onChange={(e) => setFirstPaymentDate(e.target.value)}
+                className="input-dark w-full"
+                required
               />
-              <p className="text-xs text-[var(--text-muted)] mt-1">編輯模式不可變更金額</p>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {!initialData ? (
-              <div>
-                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  分期期數
-                </label>
-                <input
-                  type="number"
-                  value={numberOfInstallments}
-                  onChange={(e) => setNumberOfInstallments(e.target.value)}
-                  className="input-dark w-full"
-                  min="2"
-                  step="1"
-                  required
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  分期期數
-                </label>
-                <input
-                  type="number"
-                  value={numberOfInstallments}
-                  className="input-dark w-full opacity-70 cursor-not-allowed"
-                  disabled
-                />
-              </div>
-            )}
-
-            {!initialData ? (
-              <div>
-                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  首次還款日
-                </label>
-                <input
-                  type="date"
-                  value={firstPaymentDate}
-                  onChange={(e) => setFirstPaymentDate(e.target.value)}
-                  className="input-dark w-full"
-                  required
-                />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-                  首次還款日
-                </label>
-                <input
-                  type="date"
-                  value={firstPaymentDate}
-                  className="input-dark w-full opacity-70 cursor-not-allowed"
-                  disabled
-                />
-              </div>
-            )}
           </div>
 
           <div>
