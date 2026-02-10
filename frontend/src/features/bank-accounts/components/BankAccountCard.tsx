@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Edit, Trash2, Timer, CheckCircle2, XCircle } from 'lucide-react';
+import { Edit, Trash2, Timer, CheckCircle2, XCircle } from 'lucide-react';
 import { formatCurrency } from '../../../utils/currency';
 import type { BankAccount } from '../types';
-
-const EXCHANGE_RATE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 interface BankAccountCardProps {
   account: BankAccount;
@@ -11,13 +8,6 @@ interface BankAccountCardProps {
   onDelete: (id: string) => void;
   onClose?: (account: BankAccount) => void;
   showCurrencyBadge?: boolean;
-}
-
-interface ExchangeRateMeta {
-  exchangeRateUpdatedAt?: string;
-  exchangeRateLastUpdatedAt?: string;
-  rateUpdatedAt?: string;
-  rateFetchedAt?: string;
 }
 
 const FIXED_DEPOSIT_STATUS_LABEL: Record<NonNullable<BankAccount['fixedDepositStatus']>, string> = {
@@ -35,8 +25,6 @@ const FIXED_DEPOSIT_STATUS_CLASS: Record<NonNullable<BankAccount['fixedDepositSt
 };
 
 export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurrencyBadge = true }: BankAccountCardProps) {
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
-
   const formatNumber = (value: number | null | undefined, decimals = 2) => {
     if (value == null) return '-';
     return value.toLocaleString('zh-TW', {
@@ -44,36 +32,6 @@ export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurren
       maximumFractionDigits: decimals,
     });
   };
-
-  const accountWithExchangeRateMeta = account as BankAccount & ExchangeRateMeta;
-
-  const exchangeRateUpdatedAt =
-    accountWithExchangeRateMeta.exchangeRateUpdatedAt ??
-    accountWithExchangeRateMeta.exchangeRateLastUpdatedAt ??
-    accountWithExchangeRateMeta.rateUpdatedAt ??
-    accountWithExchangeRateMeta.rateFetchedAt ??
-    account.updatedAt;
-
-  useEffect(() => {
-    setCurrentTime(Date.now());
-
-    if (account.currency === 'TWD') {
-      return;
-    }
-
-    const timerId = window.setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 60 * 1000);
-
-    return () => {
-      window.clearInterval(timerId);
-    };
-  }, [account.currency, exchangeRateUpdatedAt]);
-
-  const isForeignCurrency = account.currency !== 'TWD';
-  const rateUpdatedTime = new Date(exchangeRateUpdatedAt).getTime();
-  const isExchangeRateStale =
-    isForeignCurrency && Number.isFinite(rateUpdatedTime) && currentTime - rateUpdatedTime > EXCHANGE_RATE_STALE_THRESHOLD_MS;
 
   const isFixedDeposit = account.accountType === 'FixedDeposit';
   const fixedDepositStatus = account.fixedDepositStatus ?? 'Active';
@@ -123,13 +81,6 @@ export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurren
           <p className="text-sm text-[var(--text-muted)] line-clamp-1">{account.note}</p>
         )}
       </div>
-
-      {isExchangeRateStale && (
-        <div className="mb-4 inline-flex items-center gap-1 rounded-full border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-2 py-1 text-xs text-[var(--color-warning)]">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          <span>匯率可能已過時</span>
-        </div>
-      )}
 
       {isFixedDeposit && (
         <div className={`mb-4 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${statusClass}`}>
