@@ -225,20 +225,6 @@ export function BankAccountsPage() {
           </div>
         </div>
 
-        <div className="metric-card metric-card-butter">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-[var(--accent-butter)] rounded-lg text-[var(--bg-primary)]">
-              <Landmark className="w-5 h-5" />
-            </div>
-            <span className="text-sm font-medium text-[var(--accent-butter)] uppercase tracking-wider">
-              定存總額
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
-            {formatCurrency(fixedDepositPrincipal, 'TWD')}
-          </div>
-        </div>
-
         <div className="metric-card metric-card-peach">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-[var(--accent-peach)] rounded-lg text-[var(--bg-primary)]">
@@ -265,6 +251,20 @@ export function BankAccountsPage() {
                 {formatCurrency(totalMonthlyInterest, 'TWD')}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className="metric-card metric-card-butter">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-[var(--accent-butter)] rounded-lg text-[var(--bg-primary)]">
+              <Landmark className="w-5 h-5" />
+            </div>
+            <span className="text-sm font-medium text-[var(--accent-butter)] uppercase tracking-wider">
+              定存總額
+            </span>
+          </div>
+          <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
+            {formatCurrency(fixedDepositPrincipal, 'TWD')}
           </div>
         </div>
       </div>
