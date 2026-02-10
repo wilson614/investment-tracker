@@ -17,7 +17,7 @@ const FIXED_DEPOSIT_STATUS_LABEL: Record<NonNullable<BankAccount['fixedDepositSt
 };
 
 const FIXED_DEPOSIT_STATUS_CLASS: Record<NonNullable<BankAccount['fixedDepositStatus']>, string> = {
-  Active: 'border-[var(--accent-butter)]/40 bg-[var(--accent-butter)]/10 text-[var(--accent-butter)]',
+  Active: 'border-[var(--accent-caramel)]/40 bg-[var(--accent-caramel)]/10 text-[var(--accent-caramel)]',
   Matured: 'border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 text-[var(--color-warning)]',
   Closed: 'border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]',
   EarlyWithdrawal: 'border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]',
@@ -58,7 +58,7 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
 
       <div className="mb-4">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <h3 className="text-xl font-bold text-[var(--accent-cream)]">{account.bankName}</h3>
+          <h3 className={`text-xl font-bold ${isFixedDeposit ? 'text-[var(--accent-caramel)]' : 'text-[var(--accent-cream)]'}`}>{account.bankName}</h3>
           <div className="flex items-center gap-2">
             {showCurrencyBadge && (
               <span className="inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
@@ -68,7 +68,7 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
             <span
               className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
                 isFixedDeposit
-                  ? 'border-[var(--accent-butter)]/40 bg-[var(--accent-butter)]/10 text-[var(--accent-butter)]'
+                  ? 'border-[var(--accent-caramel)]/40 bg-[var(--accent-caramel)]/10 text-[var(--accent-caramel)]'
                   : 'border-[var(--accent-peach)]/40 bg-[var(--accent-peach)]/10 text-[var(--accent-peach)]'
               }`}
             >
@@ -104,10 +104,10 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
 
       {isFixedDeposit ? (
         <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="text-[var(--text-muted)] mb-1">定存利率</p>
-              <p className="font-medium text-[var(--accent-butter)] number-display">
+              <p className="font-medium text-[var(--accent-caramel)] number-display">
                 {formatNumber(account.interestRate)}%
               </p>
             </div>
@@ -115,19 +115,10 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
               <p className="text-[var(--text-muted)] mb-1">定存期數</p>
               <p className="font-medium text-[var(--text-primary)]">{account.termMonths ? `${account.termMonths} 個月` : '-'}</p>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-[var(--text-muted)] mb-1">預期利息</p>
-              <p className="font-medium text-[var(--accent-butter)] number-display">
+              <p className="font-medium text-[var(--accent-caramel)] number-display">
                 {account.expectedInterest != null ? formatCurrency(account.expectedInterest, account.currency) : '-'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[var(--text-muted)] mb-1">實際利息</p>
-              <p className="font-medium text-[var(--text-primary)] number-display">
-                {account.actualInterest != null ? formatCurrency(account.actualInterest, account.currency) : '-'}
               </p>
             </div>
           </div>
