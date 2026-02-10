@@ -21,6 +21,7 @@ export interface TotalAssetsSummary {
   cashBalance: number;
   disposableDeposit: number;
   nonDisposableDeposit: number;
+  installmentUnpaidBalance: number;
   investmentRatio: number;
   stockRatio: number;
   investmentPercentage: number;

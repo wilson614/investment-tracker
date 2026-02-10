@@ -100,20 +100,21 @@ public record AllocationBreakdownResponse(
     decimal Amount);
 
 public record TotalAssetsSummaryResponse(
-    decimal InvestmentTotal,      // 投資總額 (股票市值)
-    decimal BankTotal,            // 銀行總額
-    decimal GrandTotal,           // 總資產
-    decimal InvestmentPercentage, // 投資佔比 %
-    decimal BankPercentage,       // 銀行佔比 %
-    decimal TotalMonthlyInterest, // 銀行總月利息
-    decimal TotalYearlyInterest,  // 銀行總年利息
-    decimal PortfolioValue,       // 投資組合總值 (股票市值 + 帳本現金)
-    decimal CashBalance,          // 帳本現金餘額
-    decimal DisposableDeposit,    // 可動用存款
-    decimal NonDisposableDeposit, // 不可動用存款
-    decimal InvestmentRatio,      // 投資比率
-    decimal StockRatio,           // 股票部位比率
-    decimal TotalAllocated,       // 資產配置總額
-    decimal Unallocated,          // 未配置餘額
+    decimal InvestmentTotal,        // 投資總額 (股票市值)
+    decimal BankTotal,              // 銀行總額
+    decimal GrandTotal,             // 總資產
+    decimal InvestmentPercentage,   // 投資佔比 %
+    decimal BankPercentage,         // 銀行佔比 %
+    decimal TotalMonthlyInterest,   // 銀行總月利息
+    decimal TotalYearlyInterest,    // 銀行總年利息
+    decimal PortfolioValue,         // 投資組合總值 (股票市值 + 帳本現金)
+    decimal CashBalance,            // 帳本現金餘額
+    decimal DisposableDeposit,      // 可動用存款
+    decimal NonDisposableDeposit,   // 不可動用存款
+    decimal InstallmentUnpaidBalance, // 分期未付餘額
+    decimal InvestmentRatio,        // 投資比率
+    decimal StockRatio,             // 股票部位比率
+    decimal TotalAllocated,         // 資產配置總額
+    decimal Unallocated,            // 未配置餘額
     IReadOnlyList<AllocationBreakdownResponse>? AllocationBreakdown // 配置明細
 );

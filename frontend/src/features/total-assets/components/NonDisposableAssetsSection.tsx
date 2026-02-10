@@ -1,12 +1,14 @@
 import { formatCurrency } from '../../../utils/currency';
 import type { TotalAssetsSummary } from '../types';
 
-export interface NonDisposableAssetsSectionProps extends Pick<TotalAssetsSummary, 'nonDisposableDeposit'> {
+export interface NonDisposableAssetsSectionProps
+  extends Pick<TotalAssetsSummary, 'nonDisposableDeposit' | 'installmentUnpaidBalance'> {
   allocationCount: number;
 }
 
 export function NonDisposableAssetsSection({
   nonDisposableDeposit,
+  installmentUnpaidBalance,
   allocationCount,
 }: NonDisposableAssetsSectionProps) {
   const handleScrollToAllocations = () => {
@@ -29,6 +31,11 @@ export function NonDisposableAssetsSection({
           <p className="text-xl font-semibold font-mono text-[var(--text-primary)]">
             {formatCurrency(nonDisposableDeposit, 'TWD')}
           </p>
+          {installmentUnpaidBalance > 0 ? (
+            <p className="text-xs text-[var(--text-muted)]">
+              其中分期未繳: {formatCurrency(installmentUnpaidBalance, 'TWD')}
+            </p>
+          ) : null}
           <p className="text-sm text-[var(--text-muted)]">共 {allocationCount} 筆配置</p>
         </div>
       </div>

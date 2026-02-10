@@ -4,7 +4,6 @@ import { useBankAccounts } from '../hooks/useBankAccounts';
 import { useTotalAssets } from '../../total-assets/hooks/useTotalAssets';
 import { BankAccountCard } from '../components/BankAccountCard';
 import { BankAccountForm } from '../components/BankAccountForm';
-import { InterestEstimationCard } from '../components/InterestEstimationCard';
 import { LoadingSpinner, ErrorDisplay } from '../../../components/common';
 import { FileDropdown } from '../../../components/common/FileDropdown';
 import { ConfirmationModal } from '../../../components/modals/ConfirmationModal';
@@ -231,7 +230,7 @@ export function BankAccountsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="metric-card metric-card-peach">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-[var(--accent-peach)] rounded-lg text-[var(--bg-primary)]">
@@ -272,12 +271,22 @@ export function BankAccountsPage() {
           <div className="text-3xl font-bold text-[var(--text-primary)] mt-4 number-display">
             {formatCurrency(savingsTotal, 'TWD')}
           </div>
-        </div>
 
-        <InterestEstimationCard
-          yearlyInterest={totalYearlyInterest}
-          monthlyInterest={totalMonthlyInterest}
-        />
+          <div className="grid grid-cols-2 gap-4 border-t border-[rgba(0,0,0,0.1)] dark:border-[rgba(255,255,255,0.1)] mt-4 pt-4">
+            <div>
+              <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">預估年利息</p>
+              <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {formatCurrency(totalYearlyInterest, 'TWD')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">平均月利息</p>
+              <p className="text-xl font-bold text-[var(--text-primary)] number-display">
+                {formatCurrency(totalMonthlyInterest, 'TWD')}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Savings Accounts */}

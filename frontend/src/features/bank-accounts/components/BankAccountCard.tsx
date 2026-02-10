@@ -41,6 +41,16 @@ export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurren
   return (
     <div className="card-dark p-5 hover:border-[var(--border-hover)] transition-all group relative">
       <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        {isFixedDeposit && onClose && (fixedDepositStatus === 'Active' || fixedDepositStatus === 'Matured') && (
+          <button
+            type="button"
+            onClick={() => onClose(account)}
+            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-butter)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
+            title="結清定存"
+          >
+            <CheckCircle2 size={16} />
+          </button>
+        )}
         <button type="button"
           onClick={() => onEdit(account)}
           className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-peach)] hover:bg-[var(--bg-tertiary)] rounded transition-colors"
@@ -144,15 +154,6 @@ export function BankAccountCard({ account, onEdit, onDelete, onClose, showCurren
             </div>
           </div>
 
-          {onClose && (fixedDepositStatus === 'Active' || fixedDepositStatus === 'Matured') && (
-            <button
-              type="button"
-              onClick={() => onClose(account)}
-              className="w-full mt-4 py-2 btn-dark border border-[var(--accent-butter)]/40 hover:bg-[var(--accent-butter)]/10 text-sm"
-            >
-              結清定存
-            </button>
-          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 text-sm">

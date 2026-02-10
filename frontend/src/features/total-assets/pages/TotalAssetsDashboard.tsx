@@ -294,6 +294,7 @@ export function TotalAssetsDashboard() {
         <div className="lg:col-span-1 h-full">
           <NonDisposableAssetsSection
             nonDisposableDeposit={assetsData?.nonDisposableDeposit ?? 0}
+            installmentUnpaidBalance={assetsData?.installmentUnpaidBalance ?? 0}
             allocationCount={nonDisposableAllocationCount}
           />
         </div>

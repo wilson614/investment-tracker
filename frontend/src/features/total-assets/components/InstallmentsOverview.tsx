@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, CreditCard } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertCircle, ArrowRight, CreditCard } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Skeleton } from '../../../components/common/SkeletonLoader';
 import { formatCurrency } from '../../../utils/currency';
 import { getErrorMessage } from '../../../utils/errorMapping';
@@ -7,7 +8,6 @@ import { useInstallments } from '../../credit-cards/hooks/useInstallments';
 
 export function InstallmentsOverview() {
   const { installments, isLoading, error, refetch } = useInstallments({ status: 'Active' });
-  const [isExpanded, setIsExpanded] = useState(false);
 
   const totalUnpaidBalance = useMemo(
     () => installments.reduce((sum, installment) => sum + installment.unpaidBalance, 0),
@@ -80,45 +80,16 @@ export function InstallmentsOverview() {
         <p className="mt-2 text-3xl font-bold font-mono text-[var(--text-primary)]">
           {formatCurrency(totalUnpaidBalance, 'TWD')}
         </p>
+        <p className="mt-2 text-xs text-[var(--text-muted)]">共 {installments.length} 筆進行中分期</p>
       </article>
 
-      <article className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]/30">
-        <button
-          type="button"
-          onClick={() => setIsExpanded((prev) => !prev)}
-          aria-expanded={isExpanded}
-          className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-[var(--bg-tertiary)]/40 transition-colors"
-        >
-          <div>
-            <p className="text-sm font-medium text-[var(--text-primary)]">分期明細</p>
-            <p className="text-sm text-[var(--text-muted)]">共 {installments.length} 筆進行中分期</p>
-          </div>
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
-          )}
-        </button>
-
-        {isExpanded ? (
-          <div className="px-4 pb-4 space-y-2">
-            {installments.map((installment) => (
-              <div
-                key={installment.id}
-                className="rounded-lg border border-[var(--border-color)] p-3 bg-[var(--bg-secondary)]"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">{installment.description}</p>
-                  <p className="text-sm font-mono text-[var(--text-primary)]">
-                    {formatCurrency(installment.unpaidBalance, 'TWD')}
-                  </p>
-                </div>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">信用卡：{installment.creditCardName}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </article>
+      <Link
+        to="/credit-cards"
+        className="text-sm text-[var(--text-muted)] hover:text-[var(--accent-peach)] transition-colors flex items-center gap-1"
+      >
+        前往信用卡頁面
+        <ArrowRight size={14} />
+      </Link>
     </section>
   );
 }

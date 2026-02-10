@@ -324,6 +324,40 @@ export function CreditCardsPage() {
             <UpcomingPayments months={upcomingPayments} isLoading={isUpcomingLoading} />
           )}
         </div>
+      ) : creditCards.length > 0 ? (
+        <div className="space-y-6" aria-label="信用卡明細載入中">
+          <div className="card-dark p-5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton width="w-48" height="h-7" />
+                <Skeleton width="w-72" height="h-4" />
+              </div>
+              <Skeleton width="w-24" height="h-9" className="rounded-lg" />
+            </div>
+
+            <InstallmentListSkeleton />
+          </div>
+
+          <div className="card-dark p-5 space-y-4">
+            <div className="space-y-2">
+              <Skeleton width="w-40" height="h-6" />
+              <Skeleton width="w-56" height="h-4" />
+            </div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="p-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]/20">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-2">
+                      <Skeleton width="w-32" height="h-4" />
+                      <Skeleton width="w-24" height="h-3" />
+                    </div>
+                    <Skeleton width="w-20" height="h-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {showCardForm && (

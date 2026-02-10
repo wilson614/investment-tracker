@@ -25,6 +25,8 @@ public class GetTotalAssetsSummaryUseCase(
     IYahooHistoricalPriceService yahooHistoricalPriceService,
     IBankAccountRepository bankAccountRepository,
     IFundAllocationRepository fundAllocationRepository,
+    IInstallmentRepository installmentRepository,
+    ICreditCardRepository creditCardRepository,
     TotalAssetsService totalAssetsService,
     ICurrentUserService currentUserService)
 {
@@ -72,9 +74,26 @@ public class GetTotalAssetsSummaryUseCase(
             bankExchangeRates);
 
         var fundAllocations = await fundAllocationRepository.GetByUserIdAsync(userId, cancellationToken);
+        var installments = await installmentRepository.GetAllByUserIdAsync(userId, cancellationToken);
+        var creditCards = await creditCardRepository.GetAllByUserIdAsync(userId, cancellationToken);
+        var creditCardPaymentDueDayMap = creditCards.ToDictionary(x => x.Id, x => x.PaymentDueDay);
+
+        var totalInstallmentUnpaid = installments
+            .Where(x => x.Status == InstallmentStatus.Active)
+            .Sum(x =>
+            {
+                if (!creditCardPaymentDueDayMap.TryGetValue(x.CreditCardId, out var paymentDueDay))
+                    return 0m;
+
+                var remainingInstallments = x.GetRemainingInstallments(paymentDueDay);
+                return x.MonthlyPayment * remainingInstallments;
+            });
+
         var nonDisposableDeposit = fundAllocations
             .Where(x => !x.IsDisposable)
             .Sum(x => x.Amount);
+        nonDisposableDeposit += totalInstallmentUnpaid;
+
         var disposableDeposit = summary.BankTotal - nonDisposableDeposit;
         var totalAllocated = fundAllocations.Sum(x => x.Amount);
         var unallocated = summary.BankTotal - totalAllocated;
@@ -107,6 +126,7 @@ public class GetTotalAssetsSummaryUseCase(
             CashBalance: cashBalance,
             DisposableDeposit: disposableDeposit,
             NonDisposableDeposit: nonDisposableDeposit,
+            InstallmentUnpaidBalance: totalInstallmentUnpaid,
             InvestmentRatio: investmentRatio,
             StockRatio: stockRatio,
             TotalAllocated: totalAllocated,
