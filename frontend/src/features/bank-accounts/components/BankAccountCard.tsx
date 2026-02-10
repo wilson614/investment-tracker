@@ -81,7 +81,7 @@ export function BankAccountCard({ account, onEdit, onDelete, showCurrencyBadge =
         )}
       </div>
 
-      {isFixedDeposit && (
+      {isFixedDeposit && fixedDepositStatus !== 'Active' && (
         <div className={`mb-4 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${statusClass}`}>
           {fixedDepositStatus === 'Closed' ? (
             <CheckCircle2 className="w-3.5 h-3.5" />
