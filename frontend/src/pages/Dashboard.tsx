@@ -14,6 +14,7 @@ import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../compon
 import { AssetAllocationPieChart } from '../components/charts';
 import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
 import { Skeleton } from '../components/common/SkeletonLoader';
+import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
 import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
@@ -109,7 +110,7 @@ interface HistoricalMonthValue {
 }
 
 export function DashboardPage() {
-  const { currentPortfolioId } = usePortfolio();
+  const { currentPortfolioId, isAllPortfolios } = usePortfolio();
 
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
@@ -194,7 +195,7 @@ export function DashboardPage() {
       setIsLoading(true);
       setError(null);
 
-      if (!currentPortfolioId) {
+      if (isAllPortfolios || !currentPortfolioId) {
         setPortfolio(null);
         setSummary(null);
         setXirrResult(null);
@@ -456,7 +457,10 @@ export function DashboardPage() {
     return (
       <div className="min-h-screen py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">儀表板</h1>
+          <div className="flex items-center gap-4 mb-8">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
+            <PortfolioSelector onCreateNew={() => undefined} />
+          </div>
 
           {/* Market Context - CAPE & YTD (always show even without portfolio) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -465,7 +469,11 @@ export function DashboardPage() {
           </div>
 
           <div className="card-dark p-8 text-center">
-            <p className="text-[var(--text-muted)] text-lg">尚無投資組合，請先建立一個投資組合。</p>
+            <p className="text-[var(--text-muted)] text-lg">
+              {isAllPortfolios
+                ? '所有投資組合總覽功能建置中，請先選擇單一投資組合。'
+                : '尚無投資組合，請先建立一個投資組合。'}
+            </p>
           </div>
         </div>
       </div>
@@ -485,7 +493,10 @@ export function DashboardPage() {
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
+            <PortfolioSelector onCreateNew={() => undefined} />
+          </div>
           <button
             onClick={handleFetchAllPrices}
             disabled={isFetchingPrices || !summary}

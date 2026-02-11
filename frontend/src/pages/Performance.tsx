@@ -9,12 +9,14 @@
  * - `stockPriceApi` / `marketDataApi.getEuronextQuote`：在需要即時補價（例如當年度）時，抓取缺漏 ticker 的報價。
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
 import { DEFAULT_BENCHMARKS } from '../constants';
 import { stockPriceApi, marketDataApi, userBenchmarkApi, userPreferencesApi } from '../services/api';
 import { loadCachedYtdData, getYtdData, transformYtdData } from '../services/ytdApi';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { usePortfolio } from '../contexts/PortfolioContext';
+import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { YearSelector } from '../components/performance/YearSelector';
 import { CurrencyToggle, type PerformanceCurrencyMode } from '../components/performance/CurrencyToggle';
 import { MissingPriceModal } from '../components/modals/MissingPriceModal';
@@ -221,8 +223,19 @@ function saveCachedSystemBenchmarkReturns(year: number, returns: Record<string, 
 }
 
 export function PerformancePage() {
+  const navigate = useNavigate();
+
   // 使用共用的投資組合 context（與 Portfolio 頁面同步）
-  const { currentPortfolio: portfolio, isLoading: isLoadingPortfolio, performanceVersion } = usePortfolio();
+  const {
+    currentPortfolio: portfolio,
+    isAllPortfolios,
+    isLoading: isLoadingPortfolio,
+    performanceVersion,
+  } = usePortfolio();
+
+  const handleCreatePortfolio = useCallback(() => {
+    navigate('/portfolio');
+  }, [navigate]);
 
   if (isLoadingPortfolio) {
     return (
@@ -230,6 +243,10 @@ export function PerformancePage() {
         <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-peach)]" />
       </div>
     );
+  }
+
+  if (isAllPortfolios) {
+    return <PerformanceAggregatePlaceholder onCreatePortfolio={handleCreatePortfolio} />;
   }
 
   if (!portfolio) {
@@ -246,13 +263,43 @@ export function PerformancePage() {
     <PerformancePageContent
       key={`${portfolio.id}-${performanceVersion}`}
       portfolio={portfolio}
+      onCreatePortfolio={handleCreatePortfolio}
     />
+  );
+}
+
+function PerformanceAggregatePlaceholder({ onCreatePortfolio }: { onCreatePortfolio: () => void }) {
+  return (
+    <div className="min-h-screen py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-start mb-6 gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
+            <p className="text-[var(--text-secondary)] text-sm mt-1">
+              查看投資組合的年度績效表現
+            </p>
+          </div>
+
+          <PortfolioSelector onCreateNew={onCreatePortfolio} />
+        </div>
+
+        <div className="card-dark p-8 text-center">
+          <p className="text-[var(--text-muted)]">彙總績效功能開發中</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // 內部元件：僅在 portfolio 可用時掛載
 // 確保 useHistoricalPerformance 的 lazy init 能正確從快取載入
-function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnType<typeof usePortfolio>['currentPortfolio']> }) {
+function PerformancePageContent({
+  portfolio,
+  onCreatePortfolio,
+}: {
+  portfolio: NonNullable<ReturnType<typeof usePortfolio>['currentPortfolio']>;
+  onCreatePortfolio: () => void;
+}) {
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
@@ -1249,12 +1296,15 @@ function PerformancePageContent({ portfolio }: { portfolio: NonNullable<ReturnTy
     <div className="min-h-screen py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* 頁首 */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
-            <p className="text-[var(--text-secondary)] text-sm mt-1">
-              查看投資組合的年度績效表現
-            </p>
+        <div className="flex justify-between items-start mb-6 gap-4">
+          <div className="flex flex-col gap-2">
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
+              <p className="text-[var(--text-secondary)] text-sm mt-1">
+                查看投資組合的年度績效表現
+              </p>
+            </div>
+            <PortfolioSelector onCreateNew={onCreatePortfolio} />
           </div>
 
           <div className="flex items-center gap-4">

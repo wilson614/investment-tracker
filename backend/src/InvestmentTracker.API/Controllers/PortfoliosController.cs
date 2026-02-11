@@ -1,4 +1,5 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.UseCases.Performance;
 using InvestmentTracker.Application.UseCases.Portfolio;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,9 @@ public class PortfoliosController(
     GetPortfoliosUseCase getPortfoliosUseCase,
     GetPortfolioSummaryUseCase getPortfolioSummaryUseCase,
     CalculateXirrUseCase calculateXirrUseCase,
+    CalculateAggregateXirrUseCase calculateAggregateXirrUseCase,
+    GetAggregateAvailableYearsUseCase getAggregateAvailableYearsUseCase,
+    CalculateAggregateYearPerformanceUseCase calculateAggregateYearPerformanceUseCase,
     CreatePortfolioUseCase createPortfolioUseCase,
     UpdatePortfolioUseCase updatePortfolioUseCase,
     DeletePortfolioUseCase deletePortfolioUseCase) : ControllerBase
@@ -89,6 +93,48 @@ public class PortfoliosController(
         CancellationToken cancellationToken)
     {
         var result = await calculateXirrUseCase.ExecuteAsync(id, request, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 計算目前使用者所有投資組合合併後的 XIRR。
+    /// </summary>
+    [HttpPost("aggregate/xirr")]
+    [ProducesResponseType(typeof(XirrResultDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<XirrResultDto>> CalculateAggregateXirr(
+        [FromBody] CalculateXirrRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await calculateAggregateXirrUseCase.ExecuteAsync(request, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 取得目前使用者所有投資組合可用於績效計算的年度清單。
+    /// </summary>
+    [HttpGet("aggregate/performance/years")]
+    [ProducesResponseType(typeof(AvailableYearsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<AvailableYearsDto>> GetAggregateAvailableYears(
+        CancellationToken cancellationToken)
+    {
+        var result = await getAggregateAvailableYearsUseCase.ExecuteAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 計算目前使用者所有投資組合合併後的指定年度績效。
+    /// </summary>
+    [HttpPost("aggregate/performance/year")]
+    [ProducesResponseType(typeof(YearPerformanceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<YearPerformanceDto>> CalculateAggregateYearPerformance(
+        [FromBody] CalculateYearPerformanceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await calculateAggregateYearPerformanceUseCase.ExecuteAsync(request, cancellationToken);
         return Ok(result);
     }
 

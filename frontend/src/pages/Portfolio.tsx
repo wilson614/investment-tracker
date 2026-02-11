@@ -111,7 +111,14 @@ const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType 
 export function PortfolioPage() {
   // Use shared portfolio context for cross-page synchronization
   // Single portfolio mode (FR-080): refreshPortfolios removed as multi-portfolio UI is hidden
-  const { currentPortfolioId, selectPortfolio, refreshPortfolios, clearPerformanceState } = usePortfolio();
+  const {
+    currentPortfolioId,
+    isAllPortfolios,
+    portfolios: contextPortfolios,
+    selectPortfolio,
+    refreshPortfolios,
+    clearPerformanceState,
+  } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
   // Don't load cache on init - wait until we know the portfolio ID
@@ -208,7 +215,7 @@ export function PortfolioPage() {
         currentPortfolio = portfolios[0];
       }
 
-      if (!currentPortfolioId) {
+      if (!currentPortfolioId || isAllPortfolios) {
         selectPortfolio(currentPortfolio.id);
       }
 
@@ -241,17 +248,31 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPortfolioId, selectPortfolio]);
+  }, [currentPortfolioId, isAllPortfolios, selectPortfolio]);
 
   const hasFetchedOnLoad = useRef(false);
+  const firstPortfolioId = contextPortfolios[0]?.id;
 
   useEffect(() => {
+    if (isAllPortfolios && firstPortfolioId) {
+      selectPortfolio(firstPortfolioId);
+    }
+  }, [isAllPortfolios, firstPortfolioId, selectPortfolio]);
+
+  useEffect(() => {
+    if (isAllPortfolios) {
+      if (!firstPortfolioId) {
+        loadData();
+      }
+      return;
+    }
+
     if (currentPortfolioId) {
       loadDataForPortfolio(currentPortfolioId);
     } else {
       loadData();
     }
-  }, [currentPortfolioId, loadDataForPortfolio, loadData]);
+  }, [currentPortfolioId, isAllPortfolios, firstPortfolioId, loadDataForPortfolio, loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
   useEffect(() => {

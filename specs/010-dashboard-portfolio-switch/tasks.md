@@ -17,9 +17,9 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T001 Update PortfolioContext to support "all" sentinel value — add `isAllPortfolios` derived boolean, change default from first portfolio to `"all"` when no localStorage value exists, update `selectPortfolio` to accept `"all"`, set `currentPortfolio` to null when "all" selected, handle deleted portfolio fallback to `"all"` in `frontend/src/contexts/PortfolioContext.tsx`
-- [ ] T002 Update PortfolioSelector to add "All Portfolios" as first option in dropdown — render "All Portfolios" entry before portfolio list with a distinct icon, handle click via `selectPortfolio('all')`, highlight when `isAllPortfolios` is true in `frontend/src/components/portfolio/PortfolioSelector.tsx`
-- [ ] T003 [P] Add aggregate API functions to service layer — add `portfolioApi.calculateAggregateXirr(request)` for `POST /api/portfolios/aggregate/xirr`, add `performanceApi.getAggregateYears()` for `GET /api/portfolios/aggregate/performance/years`, add `performanceApi.calculateAggregateYearPerformance(request)` for `POST /api/portfolios/aggregate/performance/year`, plus corresponding TypeScript types in `frontend/src/services/api.ts`
+- [x] T001 Update PortfolioContext to support "all" sentinel value — add `isAllPortfolios` derived boolean, change default from first portfolio to `"all"` when no localStorage value exists, update `selectPortfolio` to accept `"all"`, set `currentPortfolio` to null when "all" selected, handle deleted portfolio fallback to `"all"` in `frontend/src/contexts/PortfolioContext.tsx`
+- [x] T002 Update PortfolioSelector to add "All Portfolios" as first option in dropdown — render "All Portfolios" entry before portfolio list with a distinct icon, handle click via `selectPortfolio('all')`, highlight when `isAllPortfolios` is true in `frontend/src/components/portfolio/PortfolioSelector.tsx`
+- [x] T003 [P] Add aggregate API functions to service layer — add `portfolioApi.calculateAggregateXirr(request)` for `POST /api/portfolios/aggregate/xirr`, add `performanceApi.getAggregateYears()` for `GET /api/portfolios/aggregate/performance/years`, add `performanceApi.calculateAggregateYearPerformance(request)` for `POST /api/portfolios/aggregate/performance/year`, plus corresponding TypeScript types in `frontend/src/services/api.ts`
 
 **Checkpoint**: Foundation ready — PortfolioContext supports "all", PortfolioSelector renders "All Portfolios" option, API functions ready for backend integration
 
