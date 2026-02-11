@@ -22,7 +22,7 @@ public class CurrencyTransactionRepository(AppDbContext context) : ICurrencyTran
         CancellationToken cancellationToken = default)
     {
         // Linked stock transactions should resolve to the auto-linked Spend/OtherIncome row.
-        // AutoDeposit may introduce an additional Deposit row with the same RelatedStockTransactionId.
+        // Additional top-up rows may share the same RelatedStockTransactionId.
         return await context.CurrencyTransactions
             .Where(ct => ct.RelatedStockTransactionId == stockTransactionId)
             .Where(ct => ct.TransactionType == CurrencyTransactionType.Spend || ct.TransactionType == CurrencyTransactionType.OtherIncome)

@@ -54,27 +54,57 @@ public class UpdateStockTransactionUseCase(
         var originalType = transaction.TransactionType;
         var originalTransactionDate = transaction.TransactionDate;
 
-        // 處理匯率：若未提供，自動抓取交易日匯率
-        var exchangeRate = request.ExchangeRate;
-        if (exchangeRate is not > 0)
+        // 計算交易金額（供匯率計算使用；台股小計採無條件捨去）
+        var subtotalForRate = request.Shares * request.PricePerShare;
+        if (resolvedMarket == StockMarket.TW)
+            subtotalForRate = Math.Floor(subtotalForRate);
+        var amountForRate = subtotalForRate + request.Fees;
+
+        // 匯率改為系統計算（不接受手動輸入）
+        decimal? exchangeRate;
+        if (resolvedCurrency == Currency.TWD)
         {
-            // 台股以數字開頭（如 0050、2330），匯率為 1.0
-            if (!string.IsNullOrEmpty(request.Ticker) && char.IsDigit(request.Ticker[0]))
+            exchangeRate = 1.0m;
+        }
+        else if (request.TransactionType == TransactionType.Buy)
+        {
+            var ledgerTransactionsForRate = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                boundLedger.Id, cancellationToken);
+
+            // 排除與本交易關聯的交易，避免計算到舊的連動扣款/入帳
+            var ledgerTransactionsWithoutCurrent = ledgerTransactionsForRate
+                .Where(t => t.RelatedStockTransactionId != transaction.Id)
+                .ToList();
+
+            var lifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
+                ledgerTransactionsWithoutCurrent,
+                request.TransactionDate,
+                amountForRate);
+
+            if (lifoRate > 0)
             {
-                exchangeRate = 1.0m;
+                exchangeRate = lifoRate;
             }
             else
             {
-                // 非台股，自動抓取交易日當天的歷史匯率
                 var fxResult = await txDateFxService.GetOrFetchAsync(
                     portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
 
                 if (fxResult == null)
-                    throw new BusinessRuleException(
-                        $"無法取得 {portfolio.BaseCurrency}/{portfolio.HomeCurrency} 於 {request.TransactionDate:yyyy-MM-dd} 的匯率，請手動輸入匯率");
+                    throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
                 exchangeRate = fxResult.Rate;
             }
+        }
+        else
+        {
+            var fxResult = await txDateFxService.GetOrFetchAsync(
+                portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+
+            if (fxResult == null)
+                throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
+
+            exchangeRate = fxResult.Rate;
         }
 
         // 更新交易屬性（包含 ticker 與交易類型）
@@ -152,16 +182,17 @@ public class UpdateStockTransactionUseCase(
             cancellationToken);
 
         // FR-009: 同步更新連動的 CurrencyTransaction
-        // - AutoDeposit 可能導致同一筆 StockTransaction 產生多筆 CurrencyTransaction（Deposit + Spend/OtherIncome）
-        // - GetByStockTransactionIdAsync 會只回傳 Spend/OtherIncome，以避免抓到 Deposit
+        // - 同一筆 StockTransaction 可能有多筆連動交易（TopUp + Spend/OtherIncome）
+        // - GetByStockTransactionIdAsync 只回傳 Spend/OtherIncome，避免抓到其他入帳交易
         var linkedCurrencyTransaction = await currencyTransactionRepository.GetByStockTransactionIdAsync(
             transaction.Id, cancellationToken);
 
         var linkedCurrencyTransactions = await currencyTransactionRepository.GetByStockTransactionIdAllAsync(
             transaction.Id, cancellationToken);
 
-        var linkedDeposit = linkedCurrencyTransactions
-            .FirstOrDefault(t => t.TransactionType == CurrencyTransactionType.Deposit);
+        var linkedTopUp = linkedCurrencyTransactions
+            .FirstOrDefault(t => t.TransactionType != CurrencyTransactionType.Spend
+                && t.TransactionType != CurrencyTransactionType.OtherIncome);
 
         // 取得連動帳本（以 Portfolio 綁定帳本為準）
         var linkedLedger = boundLedger;
@@ -290,73 +321,20 @@ public class UpdateStockTransactionUseCase(
             }
         }
 
-        // FR-012: AutoDeposit（僅 Buy 且餘額不足）
-        if (request.TransactionType == TransactionType.Buy && request.AutoDeposit)
+        // Update 流程不處理自動補足；若存在舊的 top-up 連動交易，直接刪除
+        if (linkedTopUp != null)
         {
-            var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                linkedLedger.Id, cancellationToken);
+            await currencyTransactionRepository.SoftDeleteAsync(linkedTopUp.Id, cancellationToken);
 
-            // 排除與本交易關聯的所有交易後再算餘額，得到「不含本交易」的可用餘額
-            var balanceWithoutLinked = currencyLedgerService.CalculateBalance(
-                ledgerTransactions.Where(t => t.RelatedStockTransactionId != transaction.Id));
-
-            var shortfall = newAmount - balanceWithoutLinked;
-
-            if (shortfall > 0)
+            if (linkedTopUp.TransactionType is CurrencyTransactionType.InitialBalance
+                or CurrencyTransactionType.Deposit
+                or CurrencyTransactionType.Withdraw)
             {
-                decimal? depositHomeAmount = null;
-                decimal? depositExchangeRate = null;
-                if (linkedLedger.CurrencyCode == linkedLedger.HomeCurrency)
-                {
-                    depositExchangeRate = 1.0m;
-                    depositHomeAmount = shortfall;
-                }
-
-                if (linkedDeposit == null)
-                {
-                    linkedDeposit = new CurrencyTransaction(
-                        linkedLedger.Id,
-                        request.TransactionDate,
-                        CurrencyTransactionType.Deposit,
-                        shortfall,
-                        homeAmount: depositHomeAmount,
-                        exchangeRate: depositExchangeRate,
-                        relatedStockTransactionId: transaction.Id,
-                        notes: $"自動入金補足買入 {request.Ticker} × {request.Shares}");
-
-                    await currencyTransactionRepository.AddAsync(linkedDeposit, cancellationToken);
-                }
-                else
-                {
-                    linkedDeposit.SetTransactionDate(request.TransactionDate);
-                    linkedDeposit.SetAmounts(CurrencyTransactionType.Deposit, shortfall, depositHomeAmount, depositExchangeRate);
-                    linkedDeposit.SetNotes($"自動入金補足買入 {request.Ticker} × {request.Shares}");
-                    await currencyTransactionRepository.UpdateAsync(linkedDeposit, cancellationToken);
-                }
-
-                await txSnapshotService.UpsertSnapshotAsync(
-                    transaction.PortfolioId,
-                    linkedDeposit.Id,
-                    linkedDeposit.TransactionDate,
-                    cancellationToken);
-            }
-            else if (linkedDeposit != null)
-            {
-                await currencyTransactionRepository.SoftDeleteAsync(linkedDeposit.Id, cancellationToken);
                 await txSnapshotService.DeleteSnapshotAsync(
                     transaction.PortfolioId,
-                    linkedDeposit.Id,
+                    linkedTopUp.Id,
                     cancellationToken);
             }
-        }
-        else if (linkedDeposit != null)
-        {
-            // 非 Buy 或未啟用 AutoDeposit：刪除既有 Deposit
-            await currencyTransactionRepository.SoftDeleteAsync(linkedDeposit.Id, cancellationToken);
-            await txSnapshotService.DeleteSnapshotAsync(
-                transaction.PortfolioId,
-                linkedDeposit.Id,
-                cancellationToken);
         }
 
         return new StockTransactionDto

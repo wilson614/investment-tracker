@@ -61,8 +61,8 @@
 
 ### Implementation for User Story 2
 
-- [ ] T010 [US2] Rewrite balance handling logic in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs` (replace AutoDeposit block, lines 153-191) — after calculating exchange rate and checking balance: (1) if balance sufficient, proceed normally; (2) if balance insufficient and `BalanceAction.None`, throw `BusinessRuleException("帳本餘額不足，請選擇處理方式")`; (3) if `BalanceAction.Margin`, use `CalculateExchangeRateWithMargin` for weighted blend rate, proceed (balance goes negative); (4) if `BalanceAction.TopUp`, validate `TopUpTransactionType` is an income type, create currency transaction of the specified type with market rate (or rate=1.0 for TWD), recalculate LIFO rate including new transaction, then proceed. Link top-up transaction to stock transaction via `relatedStockTransactionId`. Update portfolio snapshot for the top-up transaction.
-- [ ] T011 [US2] Replace AutoDeposit modal in `frontend/src/components/transactions/TransactionForm.tsx` — remove the existing `ConfirmationModal` for "帳本餘額不足" (lines 477-498) and `showAutoDepositModal` state. Create a new `InsufficientBalanceModal` (inline or component) with three options: (1) "融資" button — calls `executeSubmit` with `balanceAction: 1` (Margin); (2) "補足餘額" button — expands to show a transaction type dropdown (ExchangeBuy, Deposit, InitialBalance, Interest, OtherIncome) with the shortfall amount displayed, then on confirm calls `executeSubmit` with `balanceAction: 2, topUpTransactionType: selectedType`; (3) "取消" button — closes modal. Update `executeSubmit` function to include `balanceAction` and `topUpTransactionType` in the request payload instead of `autoDeposit`. Update the balance check logic (around lines 239-259) to show the new modal.
+- [x] T010 [US2] Rewrite balance handling logic in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs` (replace AutoDeposit block, lines 153-191) — after calculating exchange rate and checking balance: (1) if balance sufficient, proceed normally; (2) if balance insufficient and `BalanceAction.None`, throw `BusinessRuleException("帳本餘額不足，請選擇處理方式")`; (3) if `BalanceAction.Margin`, use `CalculateExchangeRateWithMargin` for weighted blend rate, proceed (balance goes negative); (4) if `BalanceAction.TopUp`, validate `TopUpTransactionType` is an income type, create currency transaction of the specified type with market rate (or rate=1.0 for TWD), recalculate LIFO rate including new transaction, then proceed. Link top-up transaction to stock transaction via `relatedStockTransactionId`. Update portfolio snapshot for the top-up transaction.
+- [x] T011 [US2] Replace AutoDeposit modal in `frontend/src/components/transactions/TransactionForm.tsx` — remove the existing `ConfirmationModal` for "帳本餘額不足" (lines 477-498) and `showAutoDepositModal` state. Create a new `InsufficientBalanceModal` (inline or component) with three options: (1) "融資" button — calls `executeSubmit` with `balanceAction: 1` (Margin); (2) "補足餘額" button — expands to show a transaction type dropdown (ExchangeBuy, Deposit, InitialBalance, Interest, OtherIncome) with the shortfall amount displayed, then on confirm calls `executeSubmit` with `balanceAction: 2, topUpTransactionType: selectedType`; (3) "取消" button — closes modal. Update `executeSubmit` function to include `balanceAction` and `topUpTransactionType` in the request payload instead of `autoDeposit`. Update the balance check logic (around lines 239-259) to show the new modal.
 
 **Checkpoint**: User Stories 1 AND 2 fully functional — LIFO rate + 3-option balance handling
 
@@ -76,7 +76,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T012 [US3] Modify ledger navigation in `frontend/src/components/layout/Navigation.tsx` — in the desktop nav section (line 269), read `localStorage.getItem('selected_ledger_id')` and change `NavLink to` from `"/ledger"` to `` `/ledger/${savedLedgerId}` `` when a saved ID exists, fallback to `"/ledger"` when null. Apply the same change to the mobile nav section (around line 375) for `MobileNavLink`. The localStorage key `'selected_ledger_id'` is defined in `LedgerContext.tsx` line 24. Use a simple inline read — no React context hook needed.
+- [x] T012 [US3] Modify ledger navigation in `frontend/src/components/layout/Navigation.tsx` — in the desktop nav section (line 269), read `localStorage.getItem('selected_ledger_id')` and change `NavLink to` from `"/ledger"` to `` `/ledger/${savedLedgerId}` `` when a saved ID exists, fallback to `"/ledger"` when null. Apply the same change to the mobile nav section (around line 375) for `MobileNavLink`. The localStorage key `'selected_ledger_id'` is defined in `LedgerContext.tsx` line 24. Use a simple inline read — no React context hook needed.
 
 **Checkpoint**: All user stories independently functional
 
@@ -86,8 +86,8 @@
 
 **Purpose**: Cleanup and verification
 
-- [ ] T013 Search for and remove any remaining references to old `AutoDeposit` field or `autoDeposit` property across backend and frontend codebase (grep for `AutoDeposit`, `autoDeposit`, `auto_deposit`). Clean up unused imports.
-- [ ] T014 Build verification — ensure both backend (`dotnet build`) and frontend (`npm run build` / `npm run type-check`) compile without errors
+- [x] T013 Search for and remove any remaining references to old `AutoDeposit` field or `autoDeposit` property across backend and frontend codebase (grep for `AutoDeposit`, `autoDeposit`, `auto_deposit`). Clean up unused imports.
+- [x] T014 Build verification — ensure both backend (`dotnet build`) and frontend (`npm run build` / `npm run type-check`) compile without errors
 
 ---
 

@@ -27,11 +27,6 @@ public class CreateStockTransactionRequestValidator : AbstractValidator<CreateSt
         RuleFor(x => x.PricePerShare)
             .GreaterThan(0).WithMessage("Price per share must be greater than zero");
 
-        RuleFor(x => x.ExchangeRate)
-            .GreaterThan(0)
-            .When(x => x.ExchangeRate.HasValue)
-            .WithMessage("Exchange rate must be greater than zero");
-
         RuleFor(x => x.Fees)
             .GreaterThanOrEqualTo(0).WithMessage("Fees cannot be negative");
 

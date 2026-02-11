@@ -132,7 +132,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Buy,
             Shares = 10,
             PricePerShare = 50m, // Total: 500 USD + fees
-            ExchangeRate = 31.5m,
             Fees = 5m,
             Currency = Currency.USD
         };
@@ -185,7 +184,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Buy,
             Shares = 100,
             PricePerShare = 50m, // Total: 5000 USD + fees
-            ExchangeRate = 31.5m,
             Fees = 5m,
             Currency = Currency.USD
         };
@@ -205,57 +203,6 @@ public class AtomicTransactionTests : IDisposable
         transactions.Should().HaveCount(2); // 1 initial + 1 spend
         transactions.Count(t => t.TransactionType == CurrencyTransactionType.Spend).Should().Be(1);
         transactions.Count(t => t.TransactionType == CurrencyTransactionType.Deposit).Should().Be(0);
-    }
-
-    [Fact]
-    public async Task BuyStock_WithInsufficientBalance_AutoDeposit_ShouldCreateDepositForShortfall()
-    {
-        // Arrange
-        var (portfolio, ledger) = await SetupTestDataAsync();
-
-        var useCase = new CreateStockTransactionUseCase(
-            _stockTransactionRepository,
-            _portfolioRepository,
-            _currencyLedgerRepository,
-            _currencyTransactionRepository,
-            _portfolioCalculator,
-            _currencyLedgerService,
-            _currentUserServiceMock.Object,
-            _txDateFxServiceMock.Object,
-            _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
-
-        var request = new CreateStockTransactionRequest
-        {
-            PortfolioId = portfolio.Id,
-            TransactionDate = DateTime.UtcNow,
-            Ticker = "VWRA",
-            TransactionType = TransactionType.Buy,
-            Shares = 100,
-            PricePerShare = 50m, // Total: 5000 USD + fees
-            ExchangeRate = 31.5m,
-            Fees = 5m,
-            Currency = Currency.USD,
-            AutoDeposit = true
-        };
-
-        // Act
-        _ = await useCase.ExecuteAsync(request);
-
-        // Assert
-        var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
-        var balance = _currencyLedgerService.CalculateBalance(transactions);
-
-        // AutoDeposit should top up the ledger to cover the spend
-        balance.Should().Be(0m);
-
-        transactions.Should().HaveCount(3); // 1 initial + 1 deposit + 1 spend
-
-        var depositTx = transactions.First(t => t.TransactionType == CurrencyTransactionType.Deposit);
-        depositTx.ForeignAmount.Should().Be(4005m);
-
-        var spendTx = transactions.First(t => t.TransactionType == CurrencyTransactionType.Spend);
-        spendTx.ForeignAmount.Should().Be(5005m);
     }
 
     [Fact]
@@ -322,7 +269,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Buy,
             Shares = 2,
             PricePerShare = 100m,
-            ExchangeRate = 31.5m,
             Fees = 0,
             Currency = Currency.USD
         };
@@ -336,7 +282,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Buy,
             Shares = 3,
             PricePerShare = 100m,
-            ExchangeRate = 31.5m,
             Fees = 0,
             Currency = Currency.USD
         };
@@ -381,7 +326,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Buy,
             Shares = 10,
             PricePerShare = 50m,
-            ExchangeRate = 31.5m,
             Fees = 0,
             Currency = Currency.USD
         };
@@ -396,7 +340,6 @@ public class AtomicTransactionTests : IDisposable
             TransactionType = TransactionType.Sell,
             Shares = 5,
             PricePerShare = 60m, // Sell at higher price
-            ExchangeRate = 31.5m,
             Fees = 5m,
             Currency = Currency.USD
         };

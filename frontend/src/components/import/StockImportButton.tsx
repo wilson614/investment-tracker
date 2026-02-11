@@ -276,7 +276,6 @@ export function StockImportButton({
           continue;
         }
         const normalizedTicker = ticker.toUpperCase().trim();
-        const isTaiwanStock = normalizedTicker !== '' && /^\d/.test(normalizedTicker);
 
         // Parse type
         const typeStr = getRowValue(row, csvData.headers, mapping, 'type');
@@ -338,24 +337,16 @@ export function StockImportButton({
           continue;
         }
 
-        // Parse exchange rate (optional)
-        // - Taiwan stocks always use exchange rate = 1
-        // - Non-TW stocks: if not provided, backend will auto-fetch from transaction date
+        // Parse exchange rate column for backward-compatible CSV validation only.
+        // Exchange rate is now system-calculated and will not be sent in request payload.
         const exchangeRateStr = getRowValue(row, csvData.headers, mapping, 'exchangeRate');
-        let exchangeRate: number | undefined;
-
         if (exchangeRateStr) {
           const parsed = parseNumber(exchangeRateStr);
           if (parsed === null || parsed <= 0) {
             errors.push({ row: rowNum, column: '匯率', message: `無效的匯率: ${exchangeRateStr}` });
             continue;
           }
-          exchangeRate = parsed;
-        } else if (isTaiwanStock) {
-          // Taiwan stocks are priced in TWD; always use exchange rate = 1
-          exchangeRate = 1;
         }
-        // For non-TW stocks without exchange rate, leave undefined - backend will auto-fetch
 
         // Parse optional fields
         const feesStr = getRowValue(row, csvData.headers, mapping, 'fees');
@@ -371,7 +362,6 @@ export function StockImportButton({
           transactionDate: formatDateISO(parsedDate),
           shares: Math.abs(shares),
           pricePerShare: Math.abs(price),
-          exchangeRate,
           fees,
           notes: notes || undefined,
           market,

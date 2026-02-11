@@ -153,7 +153,6 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             TransactionType = TransactionType.Buy,
             Shares = 10,
             PricePerShare = 150,
-            ExchangeRate = 31.5m,
             Fees = 0,
             Market = StockMarket.US,
             Currency = Currency.USD

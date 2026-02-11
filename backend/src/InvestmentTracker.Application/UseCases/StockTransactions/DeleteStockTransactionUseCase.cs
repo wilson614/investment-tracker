@@ -28,7 +28,7 @@ public class DeleteStockTransactionUseCase(
         if (portfolio.UserId != currentUserService.UserId)
             throw new AccessDeniedException();
 
-        // 找出並刪除連動的外幣交易（可能多筆：Spend/OtherIncome + AutoDeposit Deposit）
+        // 找出並刪除連動的外幣交易（可能多筆：Spend/OtherIncome + TopUp）
         var linkedCurrencyTransactions = await currencyTransactionRepository.GetByStockTransactionIdAllAsync(
             transactionId, cancellationToken);
 
