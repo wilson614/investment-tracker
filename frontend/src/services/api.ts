@@ -21,6 +21,7 @@ import type {
   StockMarket,
   StockQuoteResponse,
   ExchangeRateResponse,
+  ExchangeRatePreviewResponse,
   MarketInfo,
   CapeData,
   MarketYtdComparison,
@@ -426,6 +427,12 @@ export const currencyLedgerApi = {
   /** 刪除外幣帳戶 */
   delete: (id: string) =>
     fetchApi<void>(`/currencyledgers/${id}`, { method: 'DELETE' }),
+
+  /** 取得預覽匯率（LIFO/市場/混合） */
+  getExchangeRatePreview: (ledgerId: string, amount: number, date: string) =>
+    fetchApi<ExchangeRatePreviewResponse>(
+      `/currencyledgers/${ledgerId}/exchange-rate-preview?amount=${encodeURIComponent(String(amount))}&date=${encodeURIComponent(date)}`
+    ),
 };
 
 // ============================================================================

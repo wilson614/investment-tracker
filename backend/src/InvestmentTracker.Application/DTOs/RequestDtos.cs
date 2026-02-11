@@ -63,17 +63,14 @@ public record CreateStockTransactionRequest
     [Range(0, double.MaxValue)]
     public decimal PricePerShare { get; init; }
 
-    /// <summary>
-    /// 兌換成本位幣用的匯率。
-    /// 若未提供，交易成本僅會以原始幣別追蹤。
-    /// </summary>
-    [Range(0, double.MaxValue)]
-    public decimal? ExchangeRate { get; init; }
-
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
 
-    public bool AutoDeposit { get; init; }
+    /// <summary>How to handle insufficient ledger balance: None (reject), Margin (allow negative), TopUp (create currency tx)</summary>
+    public BalanceAction BalanceAction { get; init; } = BalanceAction.None;
+
+    /// <summary>Required when BalanceAction=TopUp. Must be an income type (ExchangeBuy, Deposit, InitialBalance, Interest, OtherIncome)</summary>
+    public CurrencyTransactionType? TopUpTransactionType { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }
@@ -112,17 +109,8 @@ public record UpdateStockTransactionRequest
     [Range(0, double.MaxValue)]
     public decimal PricePerShare { get; init; }
 
-    /// <summary>
-    /// 兌換成本位幣用的匯率。
-    /// 可選填；若未提供，交易成本僅會以原始幣別追蹤。
-    /// </summary>
-    [Range(0.000001, double.MaxValue)]
-    public decimal? ExchangeRate { get; init; }
-
     [Range(0, double.MaxValue)]
     public decimal Fees { get; init; }
-
-    public bool AutoDeposit { get; init; }
 
     [StringLength(500)]
     public string? Notes { get; init; }

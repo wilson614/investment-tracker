@@ -57,6 +57,12 @@ export const TransactionType = {
 } as const;
 export type TransactionType = (typeof TransactionType)[keyof typeof TransactionType];
 
+export const BalanceAction = {
+  None: 0,
+  Margin: 1,
+  TopUp: 2,
+} as const;
+export type BalanceAction = (typeof BalanceAction)[keyof typeof BalanceAction];
 
 export interface StockTransaction {
   id: string;
@@ -92,9 +98,9 @@ export interface CreateStockTransactionRequest {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate?: number; // Optional - auto-calculated from transaction date if not provided
   fees: number;
-  autoDeposit?: boolean;
+  balanceAction?: BalanceAction;
+  topUpTransactionType?: CurrencyTransactionType;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -106,9 +112,7 @@ export interface UpdateStockTransactionRequest {
   transactionType: TransactionType;
   shares: number;
   pricePerShare: number;
-  exchangeRate?: number; // Optional - if not provided, transaction cost tracked in source currency only
   fees: number;
-  autoDeposit?: boolean;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -292,6 +296,15 @@ export interface ExchangeRateResponse {
   rate: number;
   source: string;
   fetchedAt: string;
+}
+
+export interface ExchangeRatePreviewResponse {
+  rate: number;
+  source: 'lifo' | 'market' | 'blended';
+  lifoRate?: number;
+  marketRate?: number;
+  lifoPortion?: number;
+  marketPortion?: number;
 }
 
 export interface MarketInfo {

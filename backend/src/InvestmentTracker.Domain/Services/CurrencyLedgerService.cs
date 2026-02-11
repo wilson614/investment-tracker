@@ -342,6 +342,27 @@ public class CurrencyLedgerService
         return Math.Round(totalExchangeCost / totalExchangeAmount, 4);
     }
 
+    /// <summary>
+    /// 計算含融資（Margin）情境的買股匯率。
+    /// 公式：blendedRate = (coveredAmount * lifoRate + marginAmount * marketRate) / purchaseAmount。
+    /// 其中 coveredAmount 使用帳本可覆蓋金額的 LIFO 匯率，marginAmount 使用市場匯率。
+    /// </summary>
+    public decimal CalculateExchangeRateWithMargin(IEnumerable<CurrencyTransaction> transactions, DateTime purchaseDate, decimal purchaseAmount, decimal currentBalance, decimal marketRate)
+    {
+        var coveredAmount = Math.Max(0m, Math.Min(currentBalance, purchaseAmount));
+        if (currentBalance <= 0 || coveredAmount <= 0)
+            return marketRate;
+
+        var marginAmount = purchaseAmount - coveredAmount;
+
+        var lifoRate = CalculateExchangeRateForPurchase(transactions, purchaseDate, coveredAmount);
+        if (lifoRate <= 0)
+            lifoRate = marketRate;
+
+        var blendedRate = (coveredAmount * lifoRate + marginAmount * marketRate) / purchaseAmount;
+        return Math.Round(blendedRate, 4);
+    }
+
     private static decimal GetBalanceChange(CurrencyTransaction tx)
     {
         return tx.TransactionType switch

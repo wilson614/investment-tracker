@@ -118,3 +118,13 @@ public record TotalAssetsSummaryResponse(
     decimal Unallocated,            // 未配置餘額
     IReadOnlyList<AllocationBreakdownResponse>? AllocationBreakdown // 配置明細
 );
+
+public record ExchangeRatePreviewResponse
+{
+    public decimal Rate { get; init; }
+    public string Source { get; init; } = string.Empty;
+    public decimal? LifoRate { get; init; }
+    public decimal? MarketRate { get; init; }
+    public decimal? LifoPortion { get; init; }
+    public decimal? MarketPortion { get; init; }
+}
