@@ -329,6 +329,32 @@ public class CurrencyLedgerServiceTests
 
     #endregion
 
+    #region CalculateExchangeRateForPurchase Tests
+
+    [Fact]
+    public void CalculateExchangeRateForPurchase_WithMixedFreeIncomeAndExchangeLayers_ShouldUseFullAllocatedAmountAsDenominator()
+    {
+        // Arrange
+        // 100 USD exchange layer @ 32 => cost 3200
+        // 50 USD interest layer => zero cost
+        // Purchase 120 USD uses LIFO: 50 interest + 70 exchange
+        // Effective rate should be 2240 / 120 = 18.6667
+        var purchaseDate = DateTime.UtcNow;
+        var transactions = new[]
+        {
+            new CurrencyTransaction(_ledgerId, purchaseDate.AddDays(-2), CurrencyTransactionType.ExchangeBuy, 100m, 3200m, 32m),
+            new CurrencyTransaction(_ledgerId, purchaseDate.AddDays(-1), CurrencyTransactionType.Interest, 50m)
+        };
+
+        // Act
+        var rate = _service.CalculateExchangeRateForPurchase(transactions, purchaseDate, 120m);
+
+        // Assert
+        rate.Should().BeApproximately(18.6667m, 0.0001m);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private CurrencyTransaction CreateTransaction(

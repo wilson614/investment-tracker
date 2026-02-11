@@ -26,6 +26,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   // Business Logic - Transactions
   'Transaction not found': '找不到交易紀錄',
   'Insufficient balance': '餘額不足',
+  'Stock currency does not match bound ledger currency': '股票幣別與帳本綁定幣別不符',
 
   // Business Logic - Market Data
   'Symbol not found': '找不到此代碼',
@@ -83,6 +84,10 @@ export function getErrorMessage(originalMessage: string): string {
 
   if (lowerMsg.includes('currency ledger') && lowerMsg.includes('already exists')) {
     return '此幣別的帳本已存在';
+  }
+
+  if (lowerMsg.includes('stock currency') && lowerMsg.includes('bound ledger currency')) {
+    return ERROR_MESSAGES['Stock currency does not match bound ledger currency'];
   }
 
   // 特定字詞替換

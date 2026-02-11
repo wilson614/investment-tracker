@@ -80,8 +80,6 @@ export function Navigation() {
   const { user, logout, setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const savedLedgerId = localStorage.getItem('selected_ledger_id');
-  const ledgerPath = savedLedgerId ? `/ledger/${savedLedgerId}` : '/ledger';
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -141,6 +139,15 @@ export function Navigation() {
   const handlePortfolioClick = (e: React.MouseEvent) => {
     e.preventDefault();
     navigate('/portfolio');
+    closeMobileMenu();
+  };
+
+  /**
+   * 導覽列「帳本」點擊處理：固定導向 /ledger，避免 URL 顯示 ledger ID。
+   */
+  const handleLedgerClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    navigate('/ledger');
     closeMobileMenu();
   };
 
@@ -268,7 +275,18 @@ export function Navigation() {
                 <Briefcase className="w-5 h-5" />
                 投資組合
               </a>
-              <NavLink to={ledgerPath} icon={Wallet}>帳本</NavLink>
+              <a
+                href="#"
+                onClick={handleLedgerClick}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-base font-medium transition-all duration-200 ${
+                  location.pathname.startsWith('/ledger')
+                    ? 'bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Wallet className="w-5 h-5" />
+                帳本
+              </a>
               <NavLink to="/assets" icon={PieChart}>總資產</NavLink>
               <NavLink to="/bank-accounts" icon={Landmark}>銀行帳戶</NavLink>
               <NavLink to="/credit-cards" icon={CreditCard}>信用卡</NavLink>
@@ -373,9 +391,18 @@ export function Navigation() {
               <Briefcase className="w-6 h-6" />
               投資組合
             </a>
-            <MobileNavLink to={ledgerPath} icon={Wallet} onClick={closeMobileMenu}>
+            <a
+              href="#"
+              onClick={handleLedgerClick}
+              className={`flex items-center gap-3 px-5 py-4 text-lg font-medium border-l-4 transition-all duration-200 ${
+                location.pathname.startsWith('/ledger')
+                  ? 'border-[var(--accent-peach)] bg-[var(--accent-peach-soft)] text-[var(--accent-peach)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Wallet className="w-6 h-6" />
               帳本
-            </MobileNavLink>
+            </a>
             <MobileNavLink to="/assets" icon={PieChart} onClick={closeMobileMenu}>
               總資產
             </MobileNavLink>

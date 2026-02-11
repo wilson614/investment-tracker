@@ -185,7 +185,8 @@ public class AtomicTransactionTests : IDisposable
             Shares = 100,
             PricePerShare = 50m, // Total: 5000 USD + fees
             Fees = 5m,
-            Currency = Currency.USD
+            Currency = Currency.USD,
+            BalanceAction = BalanceAction.Margin
         };
 
         // Act
@@ -238,8 +239,10 @@ public class AtomicTransactionTests : IDisposable
 
         // Act & Assert
         var act = async () => await useCase.ExecuteAsync(request);
-        await act.Should().ThrowAsync<BusinessRuleException>()
-            .WithMessage("*does not match*");
+        var ex = await act.Should().ThrowAsync<BusinessRuleException>();
+        ex.Which.Message.Should().Contain("不符");
+        ex.Which.Message.Should().Contain("TWD");
+        ex.Which.Message.Should().Contain("USD");
     }
 
     [Fact]

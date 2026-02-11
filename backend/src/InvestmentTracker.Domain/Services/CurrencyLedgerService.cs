@@ -316,7 +316,7 @@ public class CurrencyLedgerService
         // 使用 LIFO（由新到舊）分配買入金額
         var remaining = purchaseAmount;
         var totalExchangeCost = 0m;
-        var totalExchangeAmount = 0m;
+        var totalAllocatedAmount = 0m;
 
         foreach (var (tx, available) in availableAmounts)
         {
@@ -325,21 +325,21 @@ public class CurrencyLedgerService
 
             var take = Math.Min(available, remaining);
             remaining -= take;
+            totalAllocatedAmount += take;
 
-            // 只有 ExchangeBuy/InitialBalance 會納入匯率計算
+            // 只有 ExchangeBuy/InitialBalance 會增加換匯成本
             if (tx.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.InitialBalance)
             {
                 var ratio = take / tx.ForeignAmount;
                 totalExchangeCost += (tx.HomeAmount ?? 0m) * ratio;
-                totalExchangeAmount += take;
             }
-            // Interest/OtherIncome：會扣掉 remaining，但不會增加換匯成本
+            // Interest/OtherIncome/Deposit：會扣掉 remaining 並納入分母，但不增加換匯成本
         }
 
-        if (totalExchangeAmount <= 0)
+        if (totalAllocatedAmount <= 0)
             return 0m;
 
-        return Math.Round(totalExchangeCost / totalExchangeAmount, 4);
+        return Math.Round(totalExchangeCost / totalAllocatedAmount, 4);
     }
 
     /// <summary>

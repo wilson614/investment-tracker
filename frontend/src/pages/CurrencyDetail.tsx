@@ -171,11 +171,17 @@ function calculateRunningBalances(transactions: CurrencyTransaction[]): Map<stri
   return balanceMap;
 }
 
-export default function CurrencyDetail() {
-  const { id } = useParams<{ id: string }>();
+interface CurrencyDetailProps {
+  ledgerId?: string;
+}
+
+export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
+  const { id: routeLedgerId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { selectLedger } = useLedger();
+  const [activeLedgerId, setActiveLedgerId] = useState<string | null>(ledgerId ?? routeLedgerId ?? null);
+  const previousRouteLedgerIdRef = useRef<string | undefined>(undefined);
   const [ledger, setLedger] = useState<CurrencyLedgerSummary | null>(null);
   const [transactions, setTransactions] = useState<CurrencyTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,11 +205,30 @@ export default function CurrencyDetail() {
   const isDataLoadedRef = useRef(false);
   if (ledger) isDataLoadedRef.current = true;
 
+  // Sync active ledger id from prop/route updates.
+  useEffect(() => {
+    if (ledgerId) {
+      setActiveLedgerId(ledgerId);
+      return;
+    }
+
+    if (routeLedgerId) {
+      if (routeLedgerId !== previousRouteLedgerIdRef.current) {
+        previousRouteLedgerIdRef.current = routeLedgerId;
+        setActiveLedgerId(routeLedgerId);
+      }
+      return;
+    }
+
+    previousRouteLedgerIdRef.current = undefined;
+    setActiveLedgerId(null);
+  }, [ledgerId, routeLedgerId]);
+
   /**
    * 載入帳本摘要與交易清單，並在初次載入時優先套用匯率快取做顯示。
    */
   const loadData = async () => {
-    if (!id) return;
+    if (!activeLedgerId) return;
 
     try {
       // 只有在已經有資料的情況下（例如刪除交易後重整），才需要記住 scroll 位置
@@ -215,8 +240,8 @@ export default function CurrencyDetail() {
       }
 
       const [ledgerData, txData] = await Promise.all([
-        currencyLedgerApi.getById(id),
-        currencyTransactionApi.getByLedger(id),
+        currencyLedgerApi.getById(activeLedgerId),
+        currencyTransactionApi.getByLedger(activeLedgerId),
       ]);
       setLedger(ledgerData);
       setTransactions(txData);
@@ -244,13 +269,13 @@ export default function CurrencyDetail() {
   useEffect(() => {
     hasFetchedRate.current = false;
     loadData();
-  }, [id]);
+  }, [activeLedgerId]);
 
   useEffect(() => {
-    if (id) {
-      selectLedger(id);
+    if (activeLedgerId) {
+      selectLedger(activeLedgerId);
     }
-  }, [id, selectLedger]);
+  }, [activeLedgerId, selectLedger]);
 
   /**
    * 取得最新匯率並寫入 state + localStorage 快取。
@@ -482,7 +507,8 @@ export default function CurrencyDetail() {
           <LedgerSelector
             className="w-fit"
             onLedgerChange={(ledgerId) => {
-              navigate(`/ledger/${ledgerId}`);
+              setActiveLedgerId(ledgerId);
+              selectLedger(ledgerId);
             }}
           />
         </div>

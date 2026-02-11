@@ -20,7 +20,7 @@ internal static class StockTransactionLinking
         if (stockCurrency.ToString() != boundLedger.CurrencyCode)
         {
             throw new BusinessRuleException(
-                $"Stock currency ({stockCurrency}) does not match bound ledger currency ({boundLedger.CurrencyCode}).");
+                $"股票幣別 ({stockCurrency}) 與帳本綁定幣別 ({boundLedger.CurrencyCode}) 不符");
         }
     }
 

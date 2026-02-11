@@ -8,7 +8,7 @@
  * - Buy/sell transactions auto-link to bound ledger
  * - Foreign-currency buy shows system-calculated exchange-rate preview
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
 import type {
@@ -83,8 +83,17 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
 
+  const isBaseCurrencyTwd = (portfolio?.baseCurrency ?? '').toUpperCase() === 'TWD';
+  const isBoundLedgerTwd = (boundLedger?.ledger.currencyCode ?? '').toUpperCase() === 'TWD';
+  const isTwdPortfolio = isBoundLedgerTwd || isBaseCurrencyTwd;
+
   const [formData, setFormData] = useState(() => {
     const initialMarket = initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '');
+    const normalizedMarket = isBaseCurrencyTwd ? StockMarketEnum.TW : initialMarket;
+    const normalizedCurrency = isBaseCurrencyTwd
+      ? CurrencyEnum.TWD
+      : (initialData?.currency ?? guessCurrencyFromMarket(initialMarket));
+
     return {
       ticker: initialData?.ticker ?? '',
       transactionType: (initialData?.transactionType ?? 1) as TransactionType,
@@ -93,8 +102,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
       pricePerShare: initialData?.pricePerShare?.toString() ?? '',
       fees: initialData?.fees?.toString() ?? '',
       notes: initialData?.notes ?? '',
-      market: initialMarket as StockMarket,
-      currency: (initialData?.currency ?? guessCurrencyFromMarket(initialMarket)) as Currency,
+      market: normalizedMarket as StockMarket,
+      currency: normalizedCurrency as Currency,
     };
   });
 
@@ -113,7 +122,44 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     loadBoundLedger();
   }, [portfolio?.boundCurrencyLedgerId]);
 
+  useEffect(() => {
+    if (!isTwdPortfolio) return;
+
+    setFormData((prev) => {
+      const needsNormalization = prev.market !== StockMarketEnum.TW || prev.currency !== CurrencyEnum.TWD;
+      if (!needsNormalization) return prev;
+
+      return {
+        ...prev,
+        market: StockMarketEnum.TW as StockMarket,
+        currency: CurrencyEnum.TWD as Currency,
+      };
+    });
+
+    setUserSelectedMarket(false);
+  }, [isTwdPortfolio]);
+
   const isTW = formData.market === StockMarketEnum.TW;
+  const tickerPattern = isTwdPortfolio ? '^\\d+[A-Za-z]*$' : undefined;
+  const tickerTitle = isTwdPortfolio ? '台股代號需為數字開頭（例如 2330）' : undefined;
+
+  const topUpTransactionOptions = useMemo(() => {
+    const options: Array<{ value: CurrencyTransactionType; label: string }> = [
+      { value: CurrencyTransactionTypeEnum.Deposit, label: '存入' },
+      { value: CurrencyTransactionTypeEnum.InitialBalance, label: '期初餘額' },
+      { value: CurrencyTransactionTypeEnum.Interest, label: '利息' },
+      { value: CurrencyTransactionTypeEnum.OtherIncome, label: '其他收入' },
+    ];
+
+    if (!isTwdPortfolio) {
+      return [
+        { value: CurrencyTransactionTypeEnum.ExchangeBuy, label: '換匯買入' },
+        ...options,
+      ];
+    }
+
+    return options;
+  }, [isTwdPortfolio]);
 
   /**
    * Auto-detect market from ticker
@@ -148,6 +194,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
       detectMarketTimerRef.current = null;
     }
 
+    if (isTwdPortfolio) return;
+
     const trimmed = ticker.trim();
     if (trimmed.length < 4) return;
     if (isTaiwanStock(trimmed)) return;
@@ -168,7 +216,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         setIsDetectingMarket(false);
       }
     }, 300);
-  }, [detectMarket, userSelectedMarket]);
+  }, [detectMarket, isTwdPortfolio, userSelectedMarket]);
 
   useEffect(() => {
     return () => {
@@ -186,7 +234,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     const pricePerShare = parseFloat(formData.pricePerShare);
     const hasValidAmountInputs = Number.isFinite(shares) && shares > 0 && Number.isFinite(pricePerShare) && pricePerShare > 0;
 
-    if (!isBuy || !isNonTwdCurrency || !hasBoundLedger || !hasValidAmountInputs) {
+    if (isTwdPortfolio || !isBuy || !isNonTwdCurrency || !hasBoundLedger || !hasValidAmountInputs) {
       setExchangeRatePreview(null);
       setRateError(null);
       setIsLoadingRate(false);
@@ -228,6 +276,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     formData.currency,
     formData.market,
     formData.fees,
+    isTwdPortfolio,
     portfolio?.boundCurrencyLedgerId,
   ]);
 
@@ -235,8 +284,20 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
+
+    if (isTwdPortfolio && (name === 'market' || name === 'currency')) {
+      return;
+    }
+
     setFormData((prev) => {
       const newData = { ...prev, [name]: value };
+
+      if (isTwdPortfolio) {
+        newData.market = StockMarketEnum.TW as StockMarket;
+        newData.currency = CurrencyEnum.TWD as Currency;
+        return newData;
+      }
+
       if (name === 'ticker' && !userSelectedMarket) {
         const newMarket = guessMarketFromTicker(value);
         newData.market = newMarket;
@@ -269,8 +330,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         fees: parseFloat(formData.fees) || 0,
         balanceAction: (balanceAction ?? BalanceAction.None) as BalanceActionType,
         notes: formData.notes || undefined,
-        market: formData.market,
-        currency: formData.currency,
+        market: isTwdPortfolio ? (StockMarketEnum.TW as StockMarket) : formData.market,
+        currency: isTwdPortfolio ? (CurrencyEnum.TWD as Currency) : formData.currency,
         ...(topUpTransactionType !== undefined
           ? { topUpTransactionType: topUpTransactionType as CurrencyTransactionType }
           : {}),
@@ -287,8 +348,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         pricePerShare: '',
         fees: '',
         notes: '',
-        market: StockMarketEnum.US as StockMarket,
-        currency: CurrencyEnum.USD as Currency,
+        market: (isTwdPortfolio ? StockMarketEnum.TW : StockMarketEnum.US) as StockMarket,
+        currency: (isTwdPortfolio ? CurrencyEnum.TWD : CurrencyEnum.USD) as Currency,
       });
       setExchangeRatePreview(null);
       setRateError(null);
@@ -355,6 +416,8 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
             value={formData.ticker}
             onChange={handleChange}
             required
+            pattern={tickerPattern}
+            title={tickerTitle}
             maxLength={20}
             className="input-dark w-full"
           />
@@ -375,40 +438,42 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           </select>
         </div>
 
-        <div>
-          <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
-            市場
-            {isDetectingMarket && (
-              <span className="ml-2 text-xs text-[var(--text-muted)] inline-flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                偵測中...
-              </span>
-            )}
-          </label>
-          <select
-            name="market"
-            value={formData.market}
-            onChange={(e) => {
-              const newMarket = Number(e.target.value) as StockMarket;
-              const newCurrency = guessCurrencyFromMarket(newMarket);
-              setFormData(prev => ({
-                ...prev,
-                market: newMarket,
-                currency: newCurrency,
-              }));
-              setUserSelectedMarket(true);
-            }}
-            className="input-dark w-full"
-            disabled={isDetectingMarket}
-          >
-            <option value={StockMarketEnum.TW}>台股</option>
-            <option value={StockMarketEnum.US}>美股</option>
-            <option value={StockMarketEnum.UK}>英股</option>
-            <option value={StockMarketEnum.EU}>歐股</option>
-          </select>
-        </div>
+        {!isTwdPortfolio && (
+          <div>
+            <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
+              市場
+              {isDetectingMarket && (
+                <span className="ml-2 text-xs text-[var(--text-muted)] inline-flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  偵測中...
+                </span>
+              )}
+            </label>
+            <select
+              name="market"
+              value={formData.market}
+              onChange={(e) => {
+                const newMarket = Number(e.target.value) as StockMarket;
+                const newCurrency = guessCurrencyFromMarket(newMarket);
+                setFormData(prev => ({
+                  ...prev,
+                  market: newMarket,
+                  currency: newCurrency,
+                }));
+                setUserSelectedMarket(true);
+              }}
+              className="input-dark w-full"
+              disabled={isDetectingMarket}
+            >
+              <option value={StockMarketEnum.TW}>台股</option>
+              <option value={StockMarketEnum.US}>美股</option>
+              <option value={StockMarketEnum.UK}>英股</option>
+              <option value={StockMarketEnum.EU}>歐股</option>
+            </select>
+          </div>
+        )}
 
-        {!isTW && (
+        {!isTwdPortfolio && !isTW && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               幣別
@@ -479,7 +544,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           />
         </div>
 
-        {!isTW && Number(formData.transactionType) === 1 && (
+        {!isTwdPortfolio && !isTW && Number(formData.transactionType) === 1 && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               匯率
@@ -604,11 +669,9 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
                       }}
                     >
                       <option value="">選擇交易類型</option>
-                      <option value={CurrencyTransactionTypeEnum.ExchangeBuy}>換匯買入</option>
-                      <option value={CurrencyTransactionTypeEnum.Deposit}>存入</option>
-                      <option value={CurrencyTransactionTypeEnum.InitialBalance}>期初餘額</option>
-                      <option value={CurrencyTransactionTypeEnum.Interest}>利息</option>
-                      <option value={CurrencyTransactionTypeEnum.OtherIncome}>其他收入</option>
+                      {topUpTransactionOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                     <button
                       type="button"

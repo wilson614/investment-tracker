@@ -155,7 +155,8 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             PricePerShare = 150,
             Fees = 0,
             Market = StockMarket.US,
-            Currency = Currency.USD
+            Currency = Currency.USD,
+            BalanceAction = BalanceAction.Margin
         };
 
         var createResponse = await Client.PostAsJsonAsync("/api/stocktransactions", transactionRequest);
@@ -187,11 +188,11 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
   "ticker": "TSLA",
   "transactionType": "Buy",
   "shares": 5,
-  "pricePerShare": 200,
-  "exchangeRate": 31.5,
   "fees": 0,
+  "pricePerShare": 200,
   "market": "US",
-  "currency": "USD"
+  "currency": "USD",
+  "balanceAction": "Margin"
 }
 """;
 
