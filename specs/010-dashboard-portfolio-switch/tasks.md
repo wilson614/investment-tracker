@@ -57,8 +57,8 @@
 - [x] T009 [US2] Implement Dashboard aggregate data loading — when `isAllPortfolios`, fetch all portfolio summaries in parallel via `Promise.all(portfolios.map(p => portfolioApi.getSummary(p.id)))`, merge positions by ticker (sum shares, sum costs, merge performance data), sum `totalCostHome` and `totalValueHome` across summaries, fetch all transactions via `Promise.all(portfolios.map(p => transactionApi.getByPortfolio(p.id)))` and merge+sort by date (take top 5 for recent), compute aggregate `topPerformers` and `assetAllocation` from merged positions in `frontend/src/pages/Dashboard.tsx`
 - [x] T010 [US2] Add per-portfolio contribution breakdown section to Dashboard — when `isAllPortfolios`, render a breakdown section below summary cards showing each portfolio's name and market value (e.g., mini cards or list items), derive from individual portfolio summaries already fetched in T009 in `frontend/src/pages/Dashboard.tsx`
 - [x] T011 [US2] Implement aggregate historical net worth chart — when `isAllPortfolios`, fetch monthly net worth per portfolio via `Promise.all(portfolios.map(p => portfolioApi.getMonthlyNetWorth(p.id)))`, align months across portfolios and sum values per month, pass combined data to HistoricalValueChart component in `frontend/src/pages/Dashboard.tsx`
-- [ ] T012 [US2] Implement aggregate "Fetch All Prices" — when `isAllPortfolios`, collect all unique tickers across all portfolio positions, fetch prices for each unique ticker (dedup by ticker+market), update all portfolio summaries with new prices, recompute aggregate summary in `frontend/src/pages/Dashboard.tsx`
-- [ ] T013 [US2] Wire up aggregate XIRR — when `isAllPortfolios` and prices are available, call `portfolioApi.calculateAggregateXirr({ currentPrices })` from new backend endpoint, display result in XIRR summary card in `frontend/src/pages/Dashboard.tsx`
+- [x] T012 [US2] Implement aggregate "Fetch All Prices" — when `isAllPortfolios`, collect all unique tickers across all portfolio positions, fetch prices for each unique ticker (dedup by ticker+market), update all portfolio summaries with new prices, recompute aggregate summary in `frontend/src/pages/Dashboard.tsx`
+- [x] T013 [US2] Wire up aggregate XIRR — when `isAllPortfolios` and prices are available, call `portfolioApi.calculateAggregateXirr({ currentPrices })` from new backend endpoint, display result in XIRR summary card in `frontend/src/pages/Dashboard.tsx`
 
 **Checkpoint**: "All Portfolios" on Dashboard shows complete aggregate view — summary cards with combined totals, per-portfolio breakdown, merged charts, cross-portfolio rankings.
 
@@ -78,8 +78,8 @@
 
 ### Frontend for US3
 
-- [ ] T017 [US3] Implement Performance aggregate data flow — when `isAllPortfolios`, call `performanceApi.getAggregateYears()` instead of per-portfolio years, call `performanceApi.calculateAggregateYearPerformance(request)` instead of per-portfolio year performance, display aggregate metrics (XIRR, Modified Dietz, TWR, year summary) using same UI components, wire benchmark comparison to use aggregate return value in `frontend/src/pages/Performance.tsx`
-- [ ] T018 [US3] Implement consolidated missing prices overlay for aggregate view — when `isAllPortfolios` and aggregate year performance returns `missingPrices`, show missing prices overlay combining gaps from all portfolios, ensure manual price entry works and triggers recalculation via aggregate endpoint in `frontend/src/pages/Performance.tsx`
+- [x] T017 [US3] Implement Performance aggregate data flow — when `isAllPortfolios`, call `performanceApi.getAggregateYears()` instead of per-portfolio years, call `performanceApi.calculateAggregateYearPerformance(request)` instead of per-portfolio year performance, display aggregate metrics (XIRR, Modified Dietz, TWR, year summary) using same UI components, wire benchmark comparison to use aggregate return value in `frontend/src/pages/Performance.tsx`
+- [x] T018 [US3] Implement consolidated missing prices overlay for aggregate view — when `isAllPortfolios` and aggregate year performance returns `missingPrices`, show missing prices overlay combining gaps from all portfolios, ensure manual price entry works and triggers recalculation via aggregate endpoint in `frontend/src/pages/Performance.tsx`
 
 **Checkpoint**: "All Portfolios" on Performance shows complete aggregate annual performance — combined return metrics, aggregate year summary, benchmark comparison, consolidated missing prices.
 
@@ -89,9 +89,9 @@
 
 **Purpose**: Verify regression, edge cases, and overall quality
 
-- [ ] T019 Verify single-portfolio regression — confirm all existing Dashboard and Performance functionality works identically when a specific portfolio is selected (no behavior change for individual portfolio views)
-- [ ] T020 Verify cross-page selection consistency — confirm selecting a portfolio on Dashboard reflects on Performance and vice versa, confirm "All" on Dashboard then navigating to Portfolio auto-selects first portfolio, confirm browser refresh preserves selection
-- [ ] T021 Handle edge cases — verify portfolio deletion while selected falls back to "all", verify empty state when no portfolios exist, verify loading states display correctly during aggregate data fetching, verify "Fetch All Prices" in aggregate mode works for all unique tickers
+- [x] T019 Verify single-portfolio regression — confirm all existing Dashboard and Performance functionality works identically when a specific portfolio is selected (no behavior change for individual portfolio views)
+- [x] T020 Verify cross-page selection consistency — confirm selecting a portfolio on Dashboard reflects on Performance and vice versa, confirm "All" on Dashboard then navigating to Portfolio auto-selects first portfolio, confirm browser refresh preserves selection
+- [x] T021 Handle edge cases — verify portfolio deletion while selected falls back to "all", verify empty state when no portfolios exist, verify loading states display correctly during aggregate data fetching, verify "Fetch All Prices" in aggregate mode works for all unique tickers
 
 ---
 
