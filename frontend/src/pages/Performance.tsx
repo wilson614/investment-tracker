@@ -245,8 +245,15 @@ export function PerformancePage() {
     );
   }
 
+  // 所有投資組合模式沿用同一套 UI，但改走 aggregate API
   if (isAllPortfolios) {
-    return <PerformanceAggregatePlaceholder onCreatePortfolio={handleCreatePortfolio} />;
+    return (
+      <PerformancePageContent
+        key={`aggregate-${performanceVersion}`}
+        onCreatePortfolio={handleCreatePortfolio}
+        isAggregate
+      />
+    );
   }
 
   if (!portfolio) {
@@ -264,41 +271,22 @@ export function PerformancePage() {
       key={`${portfolio.id}-${performanceVersion}`}
       portfolio={portfolio}
       onCreatePortfolio={handleCreatePortfolio}
+      isAggregate={false}
     />
   );
 }
 
-function PerformanceAggregatePlaceholder({ onCreatePortfolio }: { onCreatePortfolio: () => void }) {
-  return (
-    <div className="min-h-screen py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-start mb-6 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
-            <p className="text-[var(--text-secondary)] text-sm mt-1">
-              查看投資組合的年度績效表現
-            </p>
-          </div>
-
-          <PortfolioSelector onCreateNew={onCreatePortfolio} />
-        </div>
-
-        <div className="card-dark p-8 text-center">
-          <p className="text-[var(--text-muted)]">彙總績效功能開發中</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 內部元件：僅在 portfolio 可用時掛載
-// 確保 useHistoricalPerformance 的 lazy init 能正確從快取載入
+// 內部元件：
+// - 單一投資組合模式：使用 portfolio
+// - 彙總模式：isAggregate=true，不依賴單一 portfolio
 function PerformancePageContent({
   portfolio,
   onCreatePortfolio,
+  isAggregate = false,
 }: {
-  portfolio: NonNullable<ReturnType<typeof usePortfolio>['currentPortfolio']>;
+  portfolio?: NonNullable<ReturnType<typeof usePortfolio>['currentPortfolio']>;
   onCreatePortfolio: () => void;
+  isAggregate?: boolean;
 }) {
   const [showMissingPriceModal, setShowMissingPriceModal] = useState(false);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
@@ -306,6 +294,8 @@ function PerformancePageContent({
   const [dismissMissingPricesOverlay, setDismissMissingPricesOverlay] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
   const fetchRetryCountRef = useRef<number>(0); // 限制自動重試次數以防止無限迴圈
+
+  const displayHomeCurrency = portfolio?.homeCurrency ?? 'TWD';
 
   // 基準比較狀態 - 支援多選，與 Dashboard 同步
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>(loadSelectedBenchmarksFromLocalStorage);
@@ -470,7 +460,8 @@ function PerformancePageContent({
     setSelectedYear,
     calculatePerformance,
   } = useHistoricalPerformance({
-    portfolioId: portfolio.id, // Always defined in this component
+    portfolioId: portfolio?.id ?? 'aggregate',
+    isAggregate,
     autoFetch: true,
   });
 
@@ -531,6 +522,16 @@ function PerformancePageContent({
     };
     loadCustomBenchmarks();
   }, [savePreferences]);
+
+  // aggregate 模式下保守做一次 ticker 去重，避免跨投組重複項目。
+  // 單一投資組合模式保留原始資料（可能同 ticker 需 YearStart/YearEnd 兩種價格）。
+  const effectiveMissingPrices = performance
+    ? (isAggregate
+        ? performance.missingPrices.filter((mp, index, arr) =>
+            arr.findIndex(item => item.ticker === mp.ticker) === index
+          )
+        : performance.missingPrices)
+    : [];
 
   /**
    * 當年度或 benchmark 選擇變動時，更新 benchmark 報酬。
@@ -1117,8 +1118,8 @@ function PerformancePageContent({
    */
   useEffect(() => {
     const autoFetchPrices = async () => {
-      if (!performance || !portfolio || !selectedYear || !availableYears) return;
-      if (performance.missingPrices.length === 0) {
+      if (!performance || !selectedYear || !availableYears) return;
+      if (effectiveMissingPrices.length === 0) {
         fetchRetryCountRef.current = 0; // 無缺漏價格時重設重試計數
         return;
       }
@@ -1144,7 +1145,7 @@ function PerformancePageContent({
 
         if (isCurrentYear) {
           // YTD：優先使用快取價格，再抓取剩餘的
-          const tickers = performance.missingPrices.map(mp => mp.ticker);
+          const tickers = effectiveMissingPrices.map(mp => mp.ticker);
           const cachedPrices = loadCachedPrices(tickers);
 
           // 若有快取價格則立即計算（不顯示 spinner）
@@ -1155,7 +1156,7 @@ function PerformancePageContent({
             calculatePerformance(selectedYear, cachedPrices);
           }
 
-          const stillMissing = performance.missingPrices.filter(
+          const stillMissing = effectiveMissingPrices.filter(
             mp => !cachedPrices[mp.ticker]
           );
 
@@ -1163,7 +1164,7 @@ function PerformancePageContent({
           let fetchedPrices: Record<string, YearEndPriceInfo> = {};
           if (stillMissing.length > 0) {
             setIsFetchingPrices(true);
-            fetchedPrices = await fetchCurrentPrices(stillMissing, portfolio.homeCurrency);
+            fetchedPrices = await fetchCurrentPrices(stillMissing, displayHomeCurrency);
           }
 
           const allPrices = { ...cachedPrices, ...fetchedPrices };
@@ -1176,7 +1177,7 @@ function PerformancePageContent({
           }
 
           // 檢查是否所有價格都已抓取
-          allFetched = fetchedCount >= performance.missingPrices.length;
+          allFetched = fetchedCount >= effectiveMissingPrices.length;
           if (!allFetched) {
             setPriceFetchFailed(true);
           }
@@ -1184,9 +1185,9 @@ function PerformancePageContent({
           // 歷史年度：使用 Stooq 取得國際股價格
           setIsFetchingPrices(true);
           const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
-            performance.missingPrices,
+            effectiveMissingPrices,
             selectedYear,
-            portfolio.homeCurrency
+            displayHomeCurrency
           );
 
           const hasPrices = Object.keys(yearEndPrices).length > 0 || Object.keys(yearStartPrices).length > 0;
@@ -1196,7 +1197,7 @@ function PerformancePageContent({
 
           // 檢查是否所有價格都已抓取
           const totalFetched = Object.keys(yearEndPrices).length + Object.keys(yearStartPrices).length;
-          allFetched = totalFetched >= performance.missingPrices.length;
+          allFetched = totalFetched >= effectiveMissingPrices.length;
           if (!allFetched) {
             setPriceFetchFailed(true);
           }
@@ -1221,12 +1222,12 @@ function PerformancePageContent({
     };
 
     autoFetchPrices();
-  }, [performance, portfolio, selectedYear, availableYears, loadCachedPrices, fetchCurrentPrices, fetchHistoricalPrices, calculatePerformance]);
+  }, [performance, selectedYear, availableYears, loadCachedPrices, fetchCurrentPrices, fetchHistoricalPrices, calculatePerformance, displayHomeCurrency]);
 
   // 手動重新整理按鈕處理
   const handleRefreshPrices = async () => {
-    if (!performance || !portfolio || !selectedYear || !availableYears) return;
-    if (performance.missingPrices.length === 0) return;
+    if (!performance || !selectedYear || !availableYears) return;
+    if (effectiveMissingPrices.length === 0) return;
 
     setIsFetchingPrices(true);
     setDismissMissingPricesOverlay(false); // 手動重新整理時再次顯示 overlay
@@ -1239,8 +1240,8 @@ function PerformancePageContent({
       if (isCurrentYear) {
         // YTD：使用 Sina/Euronext 即時 API
         const fetchedPrices = await fetchCurrentPrices(
-          performance.missingPrices,
-          portfolio.homeCurrency
+          effectiveMissingPrices,
+          displayHomeCurrency
         );
         if (Object.keys(fetchedPrices).length > 0) {
           calculatePerformance(selectedYear, fetchedPrices);
@@ -1248,9 +1249,9 @@ function PerformancePageContent({
       } else {
         // 歷史年度：使用 Stooq 歷史 API
         const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
-          performance.missingPrices,
+          effectiveMissingPrices,
           selectedYear,
-          portfolio.homeCurrency
+          displayHomeCurrency
         );
         const hasPrices = Object.keys(yearEndPrices).length > 0 || Object.keys(yearStartPrices).length > 0;
         if (hasPrices) {
@@ -1341,7 +1342,7 @@ function PerformancePageContent({
             )}
 
             {/* 缺漏價格 Overlay - 抓取中或有缺漏價格時顯示全螢幕 modal */}
-            {performance.missingPrices.length > 0 && !dismissMissingPricesOverlay && priceFetchFailed && (
+            {effectiveMissingPrices.length > 0 && !dismissMissingPricesOverlay && priceFetchFailed && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="card-dark w-full max-w-md mx-4">
                   <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
@@ -1362,7 +1363,7 @@ function PerformancePageContent({
                   <div className="p-5">
                     {(() => {
                       // 去重 ticker 以供顯示
-                      const uniqueTickers = [...new Set(performance.missingPrices.map(mp => mp.ticker))];
+                      const uniqueTickers = effectiveMissingPrices.map(mp => mp.ticker);
                       return (
                         <>
                           <p className="text-[var(--text-secondary)] mb-4">
@@ -1434,7 +1435,7 @@ function PerformancePageContent({
                 value={currencyMode}
                 onChange={setCurrencyMode}
                 sourceCurrency={performance.sourceCurrency}
-                homeCurrency={portfolio.homeCurrency}
+                homeCurrency={displayHomeCurrency}
               />
             </div>
 
@@ -1444,7 +1445,7 @@ function PerformancePageContent({
                 <div className="flex items-center gap-2 mb-4">
                   <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                   <h3 className="text-[var(--text-muted)]">
-                    {selectedYear} 年度報酬 ({currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})
+                    {selectedYear} 年度報酬 ({currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})
                   </h3>
                   <div className="relative group">
                     <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
@@ -1553,7 +1554,7 @@ function PerformancePageContent({
             {/* Value Summary */}
             <div className={`card-dark p-6 mb-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                {selectedYear} 年度摘要 ({currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})
+                {selectedYear} 年度摘要 ({currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -1565,7 +1566,7 @@ function PerformancePageContent({
                           : `${formatCurrency(performance.startValueSource)} ${performance.sourceCurrency}`)
                       : (performance.startValueHome == null || performance.startValueHome === 0
                           ? '首年'
-                          : `${formatCurrency(performance.startValueHome)} ${portfolio.homeCurrency}`)}
+                          : `${formatCurrency(performance.startValueHome)} ${displayHomeCurrency}`)}
                   </p>
                 </div>
                 <div>
@@ -1575,7 +1576,7 @@ function PerformancePageContent({
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
                     {currencyMode === 'source'
                       ? `${formatCurrency(performance.endValueSource)} ${performance.sourceCurrency}`
-                      : `${formatCurrency(performance.endValueHome)} ${portfolio.homeCurrency}`}
+                      : `${formatCurrency(performance.endValueHome)} ${displayHomeCurrency}`}
                   </p>
                 </div>
                 <div>
@@ -1583,7 +1584,7 @@ function PerformancePageContent({
                   <p className="text-lg font-medium text-[var(--text-primary)] number-display">
                     {currencyMode === 'source'
                       ? `${formatCurrency(performance.netContributionsSource)} ${performance.sourceCurrency}`
-                      : `${formatCurrency(performance.netContributionsHome)} ${portfolio.homeCurrency}`}
+                      : `${formatCurrency(performance.netContributionsHome)} ${displayHomeCurrency}`}
                   </p>
                 </div>
                 <div>
@@ -1595,7 +1596,7 @@ function PerformancePageContent({
 
                     const currencyLabel = currencyMode === 'source'
                       ? performance.sourceCurrency
-                      : portfolio.homeCurrency;
+                      : displayHomeCurrency;
 
                     return (
                       <p className={`text-lg font-medium number-display ${profit >= 0 ? 'number-positive' : 'number-negative'}`}>
@@ -1803,7 +1804,7 @@ function PerformancePageContent({
                           ? performance.modifiedDietzPercentage
                           : performance.modifiedDietzPercentageSource) != null
                           ? [{
-                              label: `我的投資組合 (${currencyMode === 'home' ? portfolio.homeCurrency : performance.sourceCurrency})`,
+                              label: `我的投資組合 (${currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})`,
                               value: currencyMode === 'home'
                                 ? performance.modifiedDietzPercentage!
                                 : performance.modifiedDietzPercentageSource!,
@@ -1873,7 +1874,7 @@ function PerformancePageContent({
           <MissingPriceModal
             isOpen={showMissingPriceModal}
             onClose={() => setShowMissingPriceModal(false)}
-            missingPrices={performance.missingPrices}
+            missingPrices={effectiveMissingPrices}
             year={selectedYear ?? new Date().getFullYear()}
             onSubmit={handleMissingPricesSubmit}
           />

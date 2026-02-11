@@ -3,7 +3,8 @@ import { portfolioApi } from '../services/api';
 import type { AvailableYears, YearPerformance, YearEndPriceInfo } from '../types';
 
 interface UseHistoricalPerformanceOptions {
-  portfolioId: string; // 必填，父元件透過條件渲染確保有值
+  portfolioId: string;
+  isAggregate?: boolean;
   autoFetch?: boolean;
 }
 
@@ -20,20 +21,22 @@ interface UseHistoricalPerformanceResult {
 }
 
 /**
- * 從 localStorage 載入指定投資組合的快取資料
+ * 從 localStorage 載入指定命名空間的績效快取資料。
+ * - 單一投資組合：namespace = portfolioId
+ * - 彙總模式：namespace = aggregate
  */
-function loadCacheForPortfolio(portfolioId: string): {
+function loadCacheForPortfolio(cacheNamespace: string): {
   availableYears: AvailableYears | null;
   selectedYear: number | null;
   performance: YearPerformance | null;
 } {
   try {
-    const cachedYears = localStorage.getItem(`perf_years_${portfolioId}`);
+    const cachedYears = localStorage.getItem(`perf_years_${cacheNamespace}`);
     if (cachedYears) {
       const years = JSON.parse(cachedYears) as AvailableYears;
       const year = years.currentYear ?? years.years?.[0] ?? null;
       if (year) {
-        const cachedPerf = localStorage.getItem(`perf_data_${portfolioId}_${year}`);
+        const cachedPerf = localStorage.getItem(`perf_data_${cacheNamespace}_${year}`);
         return {
           availableYears: years,
           selectedYear: year,
@@ -48,10 +51,13 @@ function loadCacheForPortfolio(portfolioId: string): {
 
 export function useHistoricalPerformance({
   portfolioId,
+  isAggregate = false,
   autoFetch = true,
 }: UseHistoricalPerformanceOptions): UseHistoricalPerformanceResult {
+  const cacheNamespace = isAggregate ? 'aggregate' : portfolioId;
+
   // 元件掛載時一次性載入所有快取資料，確保同步執行以避免閃爍
-  const [initialCache] = useState(() => loadCacheForPortfolio(portfolioId));
+  const [initialCache] = useState(() => loadCacheForPortfolio(cacheNamespace));
 
   // 使用快取資料初始化狀態，實現即時顯示
   const [availableYears, setAvailableYears] = useState<AvailableYears | null>(initialCache.availableYears);
@@ -67,19 +73,23 @@ export function useHistoricalPerformance({
   );
 
   // 追蹤當年度是否已取得過資料（防止無限迴圈）
+  // aggregate 模式同樣套用此策略，避免重覆請求。
   const fetchedCurrentYearRef = useRef<boolean>(false);
 
   // 取得可用年份清單
   const fetchAvailableYears = useCallback(async () => {
-    if (!portfolioId) return;
+    if (!isAggregate && !portfolioId) return;
 
     setIsLoadingYears(true);
     setError(null);
 
     try {
-      const years = await portfolioApi.getAvailableYears(portfolioId);
+      const years = isAggregate
+        ? await portfolioApi.getAggregateYears()
+        : await portfolioApi.getAvailableYears(portfolioId!);
+
       setAvailableYears(years);
-      localStorage.setItem(`perf_years_${portfolioId}`, JSON.stringify(years));
+      localStorage.setItem(`perf_years_${cacheNamespace}`, JSON.stringify(years));
 
       // 若尚未選擇年份，自動選擇當年度
       if (!selectedYear && years.years.length > 0) {
@@ -90,7 +100,7 @@ export function useHistoricalPerformance({
     } finally {
       setIsLoadingYears(false);
     }
-  }, [portfolioId, selectedYear]);
+  }, [isAggregate, portfolioId, selectedYear, cacheNamespace]);
 
   // 計算指定年度的績效
   const calculatePerformance = useCallback(async (
@@ -98,9 +108,9 @@ export function useHistoricalPerformance({
     yearEndPrices?: Record<string, YearEndPriceInfo>,
     yearStartPrices?: Record<string, YearEndPriceInfo>
   ) => {
-    if (!portfolioId) return;
+    if (!isAggregate && !portfolioId) return;
 
-    const cacheKey = `perf_data_${portfolioId}_${year}`;
+    const cacheKey = `perf_data_${cacheNamespace}_${year}`;
     const hasCachedData = !!localStorage.getItem(cacheKey);
 
     // Stale-while-revalidate：有快取時不顯示 loading，避免閃爍
@@ -110,11 +120,16 @@ export function useHistoricalPerformance({
     setError(null);
 
     try {
-      const result = await portfolioApi.calculateYearPerformance(portfolioId, {
+      const request = {
         year,
         yearEndPrices,
         yearStartPrices,
-      });
+      };
+
+      const result = isAggregate
+        ? await portfolioApi.calculateAggregateYearPerformance(request)
+        : await portfolioApi.calculateYearPerformance(portfolioId!, request);
+
       setPerformance(result);
       localStorage.setItem(cacheKey, JSON.stringify(result));
     } catch (err) {
@@ -122,7 +137,7 @@ export function useHistoricalPerformance({
     } finally {
       setIsLoadingPerformance(false);
     }
-  }, [portfolioId]);
+  }, [isAggregate, portfolioId, cacheNamespace]);
 
   // 切換選擇的年份
   const handleSetSelectedYear = useCallback((year: number) => {
@@ -136,22 +151,20 @@ export function useHistoricalPerformance({
     setSelectedYear(year);
 
     // 立即從快取載入該年度資料以避免閃爍
-    if (portfolioId) {
-      try {
-        const cached = localStorage.getItem(`perf_data_${portfolioId}_${year}`);
-        if (cached) {
-          setPerformance(JSON.parse(cached));
-          cachedYearRef.current = year;
-        } else {
-          setPerformance(null);
-          cachedYearRef.current = null;
-        }
-      } catch {
+    try {
+      const cached = localStorage.getItem(`perf_data_${cacheNamespace}_${year}`);
+      if (cached) {
+        setPerformance(JSON.parse(cached));
+        cachedYearRef.current = year;
+      } else {
         setPerformance(null);
         cachedYearRef.current = null;
       }
+    } catch {
+      setPerformance(null);
+      cachedYearRef.current = null;
     }
-  }, [portfolioId]);
+  }, [cacheNamespace]);
 
   // 手動重新整理
   const refresh = useCallback(async () => {
@@ -163,10 +176,10 @@ export function useHistoricalPerformance({
 
   // 元件掛載時自動取得可用年份（背景更新）
   useEffect(() => {
-    if (autoFetch && portfolioId) {
+    if (autoFetch && (isAggregate || !!portfolioId)) {
       fetchAvailableYears();
     }
-  }, [autoFetch, portfolioId, fetchAvailableYears]);
+  }, [autoFetch, isAggregate, portfolioId, fetchAvailableYears]);
 
   /**
    * 年份變更時自動計算績效
@@ -178,7 +191,7 @@ export function useHistoricalPerformance({
    * - 歷史年度：僅使用快取（資料來自資料庫，不會變動）
    */
   useEffect(() => {
-    if (!selectedYear || !portfolioId || !autoFetch) return;
+    if (!selectedYear || !autoFetch || (!isAggregate && !portfolioId)) return;
 
     const currentYear = new Date().getFullYear();
     const isCurrentYear = selectedYear === currentYear;
@@ -204,7 +217,7 @@ export function useHistoricalPerformance({
 
     // 無快取或快取不完整時呼叫 API
     calculatePerformance(selectedYear);
-  }, [selectedYear, portfolioId, autoFetch, calculatePerformance, performance]);
+  }, [selectedYear, autoFetch, isAggregate, portfolioId, calculatePerformance, performance]);
 
   return {
     availableYears,

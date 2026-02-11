@@ -284,6 +284,147 @@ const mergeMonthlyNetWorth = (histories: MonthlyNetWorthHistory[]): HistoricalMo
     }));
 };
 
+const buildAggregateSummary = (
+  portfolios: Portfolio[],
+  summaries: PortfolioSummary[]
+): PortfolioSummary => {
+  const mergedPositions = mergePositionsByTicker(summaries);
+  const totalCostHome = summaries.reduce((sum, item) => sum + item.totalCostHome, 0);
+  const totalValueHome = summaries.reduce((sum, item) => sum + (item.totalValueHome ?? 0), 0);
+  const totalUnrealizedPnlHome = totalValueHome - totalCostHome;
+  const totalUnrealizedPnlPercentage =
+    totalCostHome > 0 ? (totalUnrealizedPnlHome / totalCostHome) * 100 : undefined;
+
+  return {
+    portfolio: createAggregatePortfolio(portfolios),
+    positions: mergedPositions,
+    totalCostHome,
+    totalValueHome,
+    totalUnrealizedPnlHome,
+    totalUnrealizedPnlPercentage,
+  };
+};
+
+interface PriceFetchTarget {
+  ticker: string;
+  market?: StockMarketType;
+}
+
+const dedupePriceFetchTargets = (targets: PriceFetchTarget[]): PriceFetchTarget[] => {
+  const uniqueMap = new Map<string, PriceFetchTarget>();
+
+  for (const target of targets) {
+    const market = target.market ?? guessMarket(target.ticker);
+    const key = `${target.ticker}_${market}`;
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, {
+        ticker: target.ticker,
+        market,
+      });
+    }
+  }
+
+  return Array.from(uniqueMap.values());
+};
+
+const fetchPriceForTarget = async (
+  target: PriceFetchTarget,
+  homeCurrency: string
+): Promise<{ ticker: string; price: number; exchangeRate: number } | null> => {
+  try {
+    const market = target.market ?? guessMarket(target.ticker);
+
+    // EU 市場使用 Euronext API
+    if (market === StockMarket.EU) {
+      const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(
+        target.ticker,
+        homeCurrency
+      );
+      if (euronextQuote?.exchangeRate) {
+        const syntheticQuote: StockQuoteResponse = {
+          symbol: target.ticker,
+          name: euronextQuote.name || target.ticker,
+          price: euronextQuote.price,
+          market: StockMarket.EU as StockMarketType,
+          source: 'Euronext',
+          fetchedAt: new Date().toISOString(),
+          exchangeRate: euronextQuote.exchangeRate,
+          exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
+          changePercent: euronextQuote.changePercent ?? undefined,
+          change: euronextQuote.change ?? undefined,
+        };
+        const cacheData: CachedQuote = {
+          quote: syntheticQuote,
+          updatedAt: new Date().toISOString(),
+          market: StockMarket.EU as StockMarketType,
+        };
+        localStorage.setItem(
+          getQuoteCacheKey(target.ticker, StockMarket.EU as StockMarketType),
+          JSON.stringify(cacheData)
+        );
+        return {
+          ticker: target.ticker,
+          price: euronextQuote.price,
+          exchangeRate: euronextQuote.exchangeRate,
+        };
+      }
+      return null;
+    }
+
+    let quote = await stockPriceApi.getQuoteWithRate(market, target.ticker, homeCurrency);
+    let finalMarket = market;
+
+    // 若預設市場是 US，但報價失敗，改用 UK 作為備援（例如 VWRA 等在 LSE 掛牌的 ETF）。
+    if (!quote && market === StockMarket.US) {
+      quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, target.ticker, homeCurrency);
+      if (quote) finalMarket = StockMarket.UK;
+    }
+
+    if (quote?.exchangeRate) {
+      // 快取完整 quote，讓下次進入 Dashboard 能先顯示上次結果。
+      const cacheData: CachedQuote = {
+        quote,
+        updatedAt: new Date().toISOString(),
+        market: finalMarket,
+      };
+      localStorage.setItem(getQuoteCacheKey(target.ticker, finalMarket), JSON.stringify(cacheData));
+      return {
+        ticker: target.ticker,
+        price: quote.price,
+        exchangeRate: quote.exchangeRate,
+      };
+    }
+
+    return null;
+  } catch {
+    // 如果一開始推測為 US，失敗後再嘗試 UK（與上方 !quote 分支互補）。
+    const market = target.market ?? guessMarket(target.ticker);
+    if (market === StockMarket.US) {
+      try {
+        const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, target.ticker, homeCurrency);
+        if (ukQuote?.exchangeRate) {
+          const cacheData: CachedQuote = {
+            quote: ukQuote,
+            updatedAt: new Date().toISOString(),
+            market: StockMarket.UK,
+          };
+          localStorage.setItem(getQuoteCacheKey(target.ticker, StockMarket.UK), JSON.stringify(cacheData));
+          return {
+            ticker: target.ticker,
+            price: ukQuote.price,
+            exchangeRate: ukQuote.exchangeRate,
+          };
+        }
+      } catch {
+        // UK 也失敗時就略過
+      }
+    }
+
+    console.error(`Failed to fetch price for ${target.ticker}`);
+    return null;
+  }
+};
+
 export function DashboardPage() {
   const { currentPortfolioId, isAllPortfolios, portfolios } = usePortfolio();
 
@@ -296,6 +437,8 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [isPriceDataPending, setIsPriceDataPending] = useState(false);
+  const [isCalculatingXirr, setIsCalculatingXirr] = useState(false);
+  const [xirrError, setXirrError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [portfolioBreakdown, setPortfolioBreakdown] = useState<PortfolioBreakdownItem[]>([]);
 
@@ -309,8 +452,10 @@ export function DashboardPage() {
     shouldAutoFetch.current = true;
     currentPricesRef.current = {};
     setIsPriceDataPending(false);
+    setIsCalculatingXirr(false);
+    setXirrError(null);
     setXirrResult(null);
-  }, [currentPortfolioId]);
+  }, [currentPortfolioId, isAllPortfolios]);
 
   useEffect(() => {
     loadDashboardData();
@@ -318,8 +463,6 @@ export function DashboardPage() {
 
   // Auto-fetch prices after initial data load
   useEffect(() => {
-    if (isAllPortfolios) return;
-
     if (!isLoading && portfolio && summary && shouldAutoFetch.current) {
       shouldAutoFetch.current = false;
 
@@ -332,7 +475,7 @@ export function DashboardPage() {
 
       handleFetchAllPrices();
     }
-  }, [isLoading, portfolio, summary, isAllPortfolios]);
+  }, [isLoading, portfolio, summary]);
 
   // Load historical performance data for the chart (single portfolio mode)
   useEffect(() => {
@@ -372,6 +515,8 @@ export function DashboardPage() {
     try {
       setIsLoading(true);
       setError(null);
+      setXirrError(null);
+      setIsCalculatingXirr(false);
 
       if (isAllPortfolios) {
         if (portfolios.length === 0) {
@@ -397,21 +542,16 @@ export function DashboardPage() {
         const mergedPositions = mergePositionsByTicker(summaries);
         const mergedPrices = loadCachedPrices(mergedPositions);
         currentPricesRef.current = mergedPrices;
-        const totalCostHome = summaries.reduce((sum, item) => sum + item.totalCostHome, 0);
-        const totalValueHome = summaries.reduce((sum, item) => sum + (item.totalValueHome ?? 0), 0);
-        const totalUnrealizedPnlHome = totalValueHome - totalCostHome;
-        const totalUnrealizedPnlPercentage =
-          totalCostHome > 0 ? (totalUnrealizedPnlHome / totalCostHome) * 100 : undefined;
+
+        let summariesForAggregate = summaries;
+        if (Object.keys(mergedPrices).length > 0) {
+          summariesForAggregate = await Promise.all(
+            portfolios.map((p) => portfolioApi.getSummary(p.id, mergedPrices))
+          );
+        }
 
         const aggregatePortfolio = createAggregatePortfolio(portfolios);
-        const aggregateSummary: PortfolioSummary = {
-          portfolio: aggregatePortfolio,
-          positions: mergedPositions,
-          totalCostHome,
-          totalValueHome,
-          totalUnrealizedPnlHome,
-          totalUnrealizedPnlPercentage,
-        };
+        const aggregateSummary = buildAggregateSummary(portfolios, summariesForAggregate);
 
         const mergedTransactions = transactionsByPortfolio
           .flat()
@@ -428,21 +568,27 @@ export function DashboardPage() {
         setSummary(aggregateSummary);
 
         if (Object.keys(mergedPrices).length > 0) {
+          setIsCalculatingXirr(true);
           try {
             const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: mergedPrices });
             setXirrResult(aggregateXirr);
-          } catch {
+            setXirrError(null);
+          } catch (xirrErr) {
             setXirrResult(null);
+            setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
+          } finally {
+            setIsCalculatingXirr(false);
           }
         } else {
           setXirrResult(null);
+          setXirrError(null);
         }
         setRecentTransactions(mergedTransactions);
         setHistoricalData(combinedHistorical);
         setPortfolioBreakdown(
           portfolios.map((portfolioItem, index) => ({
             portfolio: portfolioItem,
-            summary: summaries[index],
+            summary: summariesForAggregate[index],
           }))
         );
         setIsLoadingHistorical(false);
@@ -505,9 +651,10 @@ export function DashboardPage() {
    * 同時會刷新市場資料（CAPE、YTD），但即使報價失敗也會盡量保留快取結果。
    */
   const handleFetchAllPrices = async () => {
-    if (isAllPortfolios || !portfolio || !summary) return;
+    if (!portfolio || !summary) return;
 
     setIsFetchingPrices(true);
+    setXirrError(null);
 
     try {
       // Refresh market data (CAPE, YTD) in parallel with stock prices
@@ -519,88 +666,24 @@ export function DashboardPage() {
       // If there are no positions, still refresh market data and exit
       if (summary.positions.length === 0) {
         await marketDataPromise;
+        if (isAllPortfolios) {
+          setXirrResult(null);
+          setXirrError(null);
+        }
         return;
       }
 
       const homeCurrency = portfolio.homeCurrency;
-      const fetchPromises = summary.positions.map(async (position) => {
-        try {
-          const market = position.market ?? guessMarket(position.ticker);
+      const fetchTargets = dedupePriceFetchTargets(
+        summary.positions.map((position) => ({
+          ticker: position.ticker,
+          market: position.market,
+        }))
+      );
 
-          // EU 市場使用 Euronext API
-          if (market === StockMarket.EU) {
-            const euronextQuote = await marketDataApi.getEuronextQuoteByTicker(
-              position.ticker,
-              homeCurrency
-            );
-            if (euronextQuote?.exchangeRate) {
-              const syntheticQuote: StockQuoteResponse = {
-                symbol: position.ticker,
-                name: euronextQuote.name || position.ticker,
-                price: euronextQuote.price,
-                market: StockMarket.EU as StockMarketType,
-                source: 'Euronext',
-                fetchedAt: new Date().toISOString(),
-                exchangeRate: euronextQuote.exchangeRate,
-                exchangeRatePair: `${euronextQuote.currency}/${homeCurrency}`,
-                changePercent: euronextQuote.changePercent ?? undefined,
-                change: euronextQuote.change ?? undefined,
-              };
-              const cacheData: CachedQuote = {
-                quote: syntheticQuote,
-                updatedAt: new Date().toISOString(),
-                market: StockMarket.EU as StockMarketType,
-              };
-              localStorage.setItem(getQuoteCacheKey(position.ticker, StockMarket.EU as StockMarketType), JSON.stringify(cacheData));
-              return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
-            }
-            return null;
-          }
-
-          let quote = await stockPriceApi.getQuoteWithRate(market, position.ticker, homeCurrency);
-          let finalMarket = market;
-
-          // 若預設市場是 US，但報價失敗，改用 UK 作為備援（例如 VWRA 等在 LSE 掛牌的 ETF）。
-          if (!quote && market === StockMarket.US) {
-            quote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-            if (quote) finalMarket = StockMarket.UK;
-          }
-
-          if (quote?.exchangeRate) {
-            // 快取完整 quote，讓下次進入 Dashboard 能先顯示上次結果。
-            const cacheData: CachedQuote = {
-              quote,
-              updatedAt: new Date().toISOString(),
-              market: finalMarket,
-            };
-            localStorage.setItem(getQuoteCacheKey(position.ticker, finalMarket), JSON.stringify(cacheData));
-            return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
-          }
-          return null;
-        } catch {
-          // 如果一開始推測為 US，失敗後再嘗試 UK（與上方 !quote 分支互補）。
-          const market = position.market ?? guessMarket(position.ticker);
-          if (market === StockMarket.US) {
-            try {
-              const ukQuote = await stockPriceApi.getQuoteWithRate(StockMarket.UK, position.ticker, homeCurrency);
-              if (ukQuote?.exchangeRate) {
-                const cacheData: CachedQuote = {
-                  quote: ukQuote,
-                  updatedAt: new Date().toISOString(),
-                  market: StockMarket.UK,
-                };
-                localStorage.setItem(getQuoteCacheKey(position.ticker, StockMarket.UK), JSON.stringify(cacheData));
-                return { ticker: position.ticker, price: ukQuote.price, exchangeRate: ukQuote.exchangeRate };
-              }
-            } catch {
-              // UK 也失敗時就略過
-            }
-          }
-          console.error(`Failed to fetch price for ${position.ticker}`);
-          return null;
-        }
-      });
-
+      const fetchPromises = fetchTargets.map((target) =>
+        fetchPriceForTarget(target, homeCurrency)
+      );
       const results = await Promise.all(fetchPromises);
       const newPrices: Record<string, CurrentPriceInfo> = {};
 
@@ -616,14 +699,49 @@ export function DashboardPage() {
       // Wait for market data refresh to complete (fire and forget, but wait)
       await marketDataPromise;
 
-      if (Object.keys(newPrices).length > 0) {
-        const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(portfolio.id, allPrices),
-          portfolioApi.calculateXirr(portfolio.id, { currentPrices: allPrices }),
-        ]);
-        setSummary(summaryWithPrices);
-        setXirrResult(xirr);
+      if (Object.keys(allPrices).length === 0) {
+        setXirrResult(null);
+        if (isAllPortfolios) {
+          setXirrError('目前沒有可用報價，無法計算彙總 XIRR');
+        }
+        return;
       }
+
+      if (isAllPortfolios) {
+        const summariesWithPrices = await Promise.all(
+          portfolios.map((p) => portfolioApi.getSummary(p.id, allPrices))
+        );
+
+        setSummary(buildAggregateSummary(portfolios, summariesWithPrices));
+        setPortfolioBreakdown(
+          portfolios.map((portfolioItem, index) => ({
+            portfolio: portfolioItem,
+            summary: summariesWithPrices[index],
+          }))
+        );
+
+        setIsCalculatingXirr(true);
+        try {
+          const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: allPrices });
+          setXirrResult(aggregateXirr);
+          setXirrError(null);
+        } catch (xirrErr) {
+          setXirrResult(null);
+          setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
+        } finally {
+          setIsCalculatingXirr(false);
+        }
+
+        return;
+      }
+
+      const [summaryWithPrices, xirr] = await Promise.all([
+        portfolioApi.getSummary(portfolio.id, allPrices),
+        portfolioApi.calculateXirr(portfolio.id, { currentPrices: allPrices }),
+      ]);
+      setSummary(summaryWithPrices);
+      setXirrResult(xirr);
+      setXirrError(null);
     } finally {
       setIsPriceDataPending(false);
       setIsFetchingPrices(false);
@@ -747,6 +865,7 @@ export function DashboardPage() {
     (sum, item) => sum + (item.summary.totalValueHome ?? 0),
     0
   );
+  const isXirrCardLoading = isSummaryReady && (isCalculatingXirr || isFetchingPrices);
 
   return (
     <div className="min-h-screen py-8">
@@ -758,7 +877,7 @@ export function DashboardPage() {
           </div>
           <button
             onClick={handleFetchAllPrices}
-            disabled={isFetchingPrices || !summary || isAllPortfolios}
+            disabled={isFetchingPrices || !summary}
             className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
           >
             {isFetchingPrices ? (
@@ -766,7 +885,7 @@ export function DashboardPage() {
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
-            {isAllPortfolios ? '彙總模式不可更新報價' : '更新全部'}
+            更新全部
           </button>
         </div>
 
@@ -829,7 +948,9 @@ export function DashboardPage() {
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
-              {isSummaryReady && xirrResult?.xirrPercentage != null ? (
+              {isXirrCardLoading ? (
+                <Skeleton width="w-16" height="h-7" className="mt-1" />
+              ) : isSummaryReady && xirrResult?.xirrPercentage != null ? (
                 <div className="flex items-center gap-1">
                   <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
                     {formatPercent(xirrResult.xirrPercentage)}
@@ -846,6 +967,9 @@ export function DashboardPage() {
                 <p className="text-sm text-[var(--text-muted)]">
                   {xirrResult.cashFlowCount - 1} 筆交易
                 </p>
+              )}
+              {isSummaryReady && xirrError && (
+                <p className="text-sm text-[var(--color-danger)]">{xirrError}</p>
               )}
             </div>
             <div className="metric-card">
