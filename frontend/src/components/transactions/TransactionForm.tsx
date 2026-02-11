@@ -11,9 +11,24 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
-import { ConfirmationModal } from '../modals/ConfirmationModal';
-import type { CreateStockTransactionRequest, StockTransaction, TransactionType, CurrencyLedgerSummary, StockMarket, Currency, Portfolio, ExchangeRatePreviewResponse } from '../../types';
-import { StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
+import type {
+  CreateStockTransactionRequest,
+  StockTransaction,
+  TransactionType,
+  CurrencyLedgerSummary,
+  StockMarket,
+  Currency,
+  Portfolio,
+  ExchangeRatePreviewResponse,
+  CurrencyTransactionType,
+  BalanceAction as BalanceActionType,
+} from '../../types';
+import {
+  StockMarket as StockMarketEnum,
+  Currency as CurrencyEnum,
+  BalanceAction,
+  CurrencyTransactionType as CurrencyTransactionTypeEnum,
+} from '../../types';
 
 /**
  * Check if ticker is Taiwan stock (starts with digit)
@@ -59,7 +74,9 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const detectMarketTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Modal state
-  const [showAutoDepositModal, setShowAutoDepositModal] = useState(false);
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [selectedTopUpType, setSelectedTopUpType] = useState<CurrencyTransactionType | null>(null);
+  const [showTopUpOptions, setShowTopUpOptions] = useState(false);
   const [insufficientAmount, setInsufficientAmount] = useState<number>(0);
 
   const [exchangeRatePreview, setExchangeRatePreview] = useState<ExchangeRatePreviewResponse | null>(null);
@@ -237,12 +254,12 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     }
   };
 
-  const executeSubmit = async (autoDeposit: boolean) => {
+  const executeSubmit = async (balanceAction?: number, topUpTransactionType?: number) => {
     setError(null);
     setIsSubmitting(true);
 
     try {
-      const request: CreateStockTransactionRequest & { autoDeposit?: boolean } = {
+      const request: CreateStockTransactionRequest = {
         portfolioId,
         ticker: formData.ticker.toUpperCase(),
         transactionType: Number(formData.transactionType) as TransactionType,
@@ -250,10 +267,13 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         shares: parseFloat(formData.shares),
         pricePerShare: parseFloat(formData.pricePerShare),
         fees: parseFloat(formData.fees) || 0,
-        autoDeposit: autoDeposit ? true : undefined,
+        balanceAction: (balanceAction ?? BalanceAction.None) as BalanceActionType,
         notes: formData.notes || undefined,
         market: formData.market,
         currency: formData.currency,
+        ...(topUpTransactionType !== undefined
+          ? { topUpTransactionType: topUpTransactionType as CurrencyTransactionType }
+          : {}),
       };
 
       await onSubmit(request);
@@ -300,11 +320,19 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
     if (hasInsufficientBalance) {
       setInsufficientAmount(requiredAmount - effectiveBalance);
-      setShowAutoDepositModal(true);
+      setSelectedTopUpType(null);
+      setShowTopUpOptions(false);
+      setShowBalanceModal(true);
       return;
     }
 
-    await executeSubmit(false);
+    await executeSubmit();
+  };
+
+  const closeBalanceModal = () => {
+    setShowBalanceModal(false);
+    setShowTopUpOptions(false);
+    setSelectedTopUpType(null);
   };
 
   return (
@@ -529,28 +557,86 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         )}
       </div>
 
-      {/* Auto Deposit Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showAutoDepositModal}
-        onClose={() => setShowAutoDepositModal(false)}
-        onConfirm={() => executeSubmit(true)}
-        onCancel={() => executeSubmit(false)}
-        title="帳本餘額不足"
-        message={
-          <>
-            <p className="mb-2">
-              帳本餘額不足（差額 {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedger?.ledger.currencyCode}）。
+      {showBalanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={closeBalanceModal} />
+          <div className="relative bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">帳本餘額不足</h3>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              差額: {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedger?.ledger.currencyCode}
             </p>
-            <p>
-              按「自動補足」＝ 自動建立入金補足差額並繼續。
-              <br />
-              按「直接繼續」＝ 允許餘額為負並繼續。
-            </p>
-          </>
-        }
-        confirmText="自動補足"
-        cancelText="直接繼續"
-      />
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                className="w-full px-4 py-3 bg-amber-600/20 border border-amber-500/30 rounded-lg text-amber-400 hover:bg-amber-600/30 transition-colors text-left"
+                onClick={() => {
+                  closeBalanceModal();
+                  void executeSubmit(BalanceAction.Margin);
+                }}
+              >
+                <div className="font-medium">融資</div>
+                <div className="text-xs text-amber-400/70 mt-1">允許帳本餘額為負值，後續再補足</div>
+              </button>
+
+              <div className="border border-[var(--border-primary)] rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full px-4 py-3 bg-emerald-600/20 border-b border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition-colors text-left"
+                  onClick={() => setShowTopUpOptions(!showTopUpOptions)}
+                >
+                  <div className="font-medium">補足餘額</div>
+                  <div className="text-xs text-emerald-400/70 mt-1">新增一筆帳本交易以補足差額</div>
+                </button>
+
+                {showTopUpOptions && (
+                  <div className="p-4 space-y-3 bg-[var(--bg-card)]">
+                    <select
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]"
+                      value={selectedTopUpType ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSelectedTopUpType(
+                          value === ''
+                            ? null
+                            : (Number(value) as CurrencyTransactionType)
+                        );
+                      }}
+                    >
+                      <option value="">選擇交易類型</option>
+                      <option value={CurrencyTransactionTypeEnum.ExchangeBuy}>換匯買入</option>
+                      <option value={CurrencyTransactionTypeEnum.Deposit}>存入</option>
+                      <option value={CurrencyTransactionTypeEnum.InitialBalance}>期初餘額</option>
+                      <option value={CurrencyTransactionTypeEnum.Interest}>利息</option>
+                      <option value={CurrencyTransactionTypeEnum.OtherIncome}>其他收入</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!selectedTopUpType}
+                      onClick={() => {
+                        if (!selectedTopUpType) return;
+                        closeBalanceModal();
+                        void executeSubmit(BalanceAction.TopUp, selectedTopUpType);
+                      }}
+                    >
+                      確認
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="w-full px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                onClick={closeBalanceModal}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

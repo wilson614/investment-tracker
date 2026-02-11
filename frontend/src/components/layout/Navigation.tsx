@@ -80,6 +80,8 @@ export function Navigation() {
   const { user, logout, setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const savedLedgerId = localStorage.getItem('selected_ledger_id');
+  const ledgerPath = savedLedgerId ? `/ledger/${savedLedgerId}` : '/ledger';
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -266,7 +268,7 @@ export function Navigation() {
                 <Briefcase className="w-5 h-5" />
                 投資組合
               </a>
-              <NavLink to="/ledger" icon={Wallet}>帳本</NavLink>
+              <NavLink to={ledgerPath} icon={Wallet}>帳本</NavLink>
               <NavLink to="/assets" icon={PieChart}>總資產</NavLink>
               <NavLink to="/bank-accounts" icon={Landmark}>銀行帳戶</NavLink>
               <NavLink to="/credit-cards" icon={CreditCard}>信用卡</NavLink>
@@ -371,7 +373,7 @@ export function Navigation() {
               <Briefcase className="w-6 h-6" />
               投資組合
             </a>
-            <MobileNavLink to="/ledger" icon={Wallet} onClick={closeMobileMenu}>
+            <MobileNavLink to={ledgerPath} icon={Wallet} onClick={closeMobileMenu}>
               帳本
             </MobileNavLink>
             <MobileNavLink to="/assets" icon={PieChart} onClick={closeMobileMenu}>
