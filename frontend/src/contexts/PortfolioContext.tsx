@@ -7,6 +7,7 @@ interface PortfolioContextValue {
   // Current selected portfolio
   currentPortfolio: Portfolio | null;
   currentPortfolioId: string | null;
+  isAllPortfolios: boolean;
 
   // All portfolios
   portfolios: Portfolio[];
@@ -32,9 +33,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [currentPortfolioId, setCurrentPortfolioId] = useState<string | null>(() => {
     // Load from localStorage on init
     try {
-      return localStorage.getItem(SELECTED_PORTFOLIO_KEY);
+      return localStorage.getItem(SELECTED_PORTFOLIO_KEY) ?? 'all';
     } catch {
-      return null;
+      return 'all';
     }
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +47,10 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     currentPortfolioIdRef.current = currentPortfolioId;
   }, [currentPortfolioId]);
 
-  const currentPortfolio = portfolios.find(p => p.id === currentPortfolioId) ?? null;
+  const isAllPortfolios = currentPortfolioId === 'all';
+  const currentPortfolio = isAllPortfolios
+    ? null
+    : portfolios.find(p => p.id === currentPortfolioId) ?? null;
 
   const refreshPortfolios = useCallback(async () => {
     try {
@@ -54,18 +58,19 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       const data = await portfolioApi.getAll();
       setPortfolios(data);
 
-      // If no portfolio selected or selected portfolio no longer exists, select first one
+      // Keep existing selection if valid or "all", otherwise fallback to "all"
       const currentId = currentPortfolioIdRef.current;
       if (data.length > 0) {
-        const selectedExists = currentId && data.some(p => p.id === currentId);
-        if (!selectedExists) {
-          const newId = data[0].id;
-          setCurrentPortfolioId(newId);
-          localStorage.setItem(SELECTED_PORTFOLIO_KEY, newId);
+        const isAllSelection = currentId === 'all';
+        const selectedExists = !!currentId && data.some(p => p.id === currentId);
+
+        if (!isAllSelection && !selectedExists) {
+          setCurrentPortfolioId('all');
+          localStorage.setItem(SELECTED_PORTFOLIO_KEY, 'all');
         }
       } else {
-        setCurrentPortfolioId(null);
-        localStorage.removeItem(SELECTED_PORTFOLIO_KEY);
+        setCurrentPortfolioId('all');
+        localStorage.setItem(SELECTED_PORTFOLIO_KEY, 'all');
       }
     } catch (error) {
       console.error('Failed to load portfolios:', error);
@@ -100,7 +105,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     } else {
       // Clear state when user logs out
       setPortfolios([]);
-      setCurrentPortfolioId(null);
+      setCurrentPortfolioId('all');
       setIsLoading(false);
     }
   }, [user, refreshPortfolios]);
@@ -110,6 +115,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       value={{
         currentPortfolio,
         currentPortfolioId,
+        isAllPortfolios,
         portfolios,
         isLoading,
         selectPortfolio,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Plus, DollarSign } from 'lucide-react';
+import { ChevronDown, Plus, DollarSign, Layers } from 'lucide-react';
 import type { Portfolio } from '../../types';
 import { usePortfolio } from '../../contexts/PortfolioContext';
 import { COMMON_CURRENCIES, CURRENCY_LABELS } from '../../constants';
@@ -13,10 +13,9 @@ export function PortfolioSelector({
   onCreateNew,
   className = '',
 }: PortfolioSelectorProps) {
-  const { portfolios, currentPortfolioId, selectPortfolio, isLoading } = usePortfolio();
+  const { portfolios, currentPortfolioId, currentPortfolio, isAllPortfolios, selectPortfolio, isLoading } = usePortfolio();
   const [isOpen, setIsOpen] = useState(false);
 
-  const currentPortfolio = portfolios.find((p) => p.id === currentPortfolioId);
 
   const portfolioCurrencies = new Set(portfolios.map((p) => p.baseCurrency));
   const allCurrenciesHavePortfolios = COMMON_CURRENCIES.every((currency) =>
@@ -42,7 +41,11 @@ export function PortfolioSelector({
       >
         <DollarSign className="w-4 h-4 text-[var(--accent-butter)]" />
         <span className="text-[var(--text-primary)] text-sm font-medium">
-          {currentPortfolio ? getPortfolioLabel(currentPortfolio) : '選擇投資組合'}
+          {isAllPortfolios
+            ? '所有投資組合'
+            : currentPortfolio
+              ? getPortfolioLabel(currentPortfolio)
+              : '選擇投資組合'}
         </span>
         <ChevronDown
           className={`w-4 h-4 text-[var(--text-secondary)] transition-transform ${
@@ -59,6 +62,25 @@ export function PortfolioSelector({
           />
           <div className="absolute top-full left-0 mt-1 w-72 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 overflow-hidden">
             <div className="max-h-64 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  selectPortfolio('all');
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors ${
+                  isAllPortfolios
+                    ? 'bg-[var(--bg-tertiary)]'
+                    : ''
+                }`}
+              >
+                <Layers className="w-4 h-4 text-[var(--accent-peach)]" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    所有投資組合
+                  </div>
+                </div>
+              </button>
               {portfolios.map((portfolio) => (
                 <button
                   type="button"

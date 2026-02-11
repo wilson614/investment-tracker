@@ -252,6 +252,13 @@ export const portfolioApi = {
       body: JSON.stringify(request),
     }),
 
+  /** 計算跨投資組合彙總 XIRR */
+  calculateAggregateXirr: (request: CalculateXirrRequest) =>
+    fetchApi<XirrResult>('/portfolios/aggregate/xirr', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
   /** 計算單一持股的 XIRR */
   calculatePositionXirr: (
     portfolioId: string,
@@ -286,9 +293,20 @@ export const portfolioApi = {
   getAvailableYears: (portfolioId: string) =>
     fetchApi<AvailableYears>(`/portfolios/${portfolioId}/performance/years`),
 
+  /** 取得跨投資組合彙總可用的歷史績效年份 */
+  getAggregateYears: () =>
+    fetchApi<AvailableYears>('/portfolios/aggregate/performance/years'),
+
   /** 計算年度績效 */
   calculateYearPerformance: (portfolioId: string, request: CalculateYearPerformanceRequest) =>
     fetchApi<YearPerformance>(`/portfolios/${portfolioId}/performance/year`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  /** 計算跨投資組合彙總年度績效 */
+  calculateAggregateYearPerformance: (request: CalculateYearPerformanceRequest) =>
+    fetchApi<YearPerformance>('/portfolios/aggregate/performance/year', {
       method: 'POST',
       body: JSON.stringify(request),
     }),
@@ -304,6 +322,7 @@ export const portfolioApi = {
     );
   },
 };
+
 
 // ============================================================================
 // 股票交易 API
