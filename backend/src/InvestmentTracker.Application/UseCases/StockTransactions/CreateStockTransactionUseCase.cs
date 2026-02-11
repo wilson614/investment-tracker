@@ -62,26 +62,37 @@ public class CreateStockTransactionUseCase(
                 throw new BusinessRuleException("交易金額必須大於 0");
         }
 
-        // 取得匯率
-        var exchangeRate = request.ExchangeRate;
-        if (exchangeRate is not > 0)
+        // 取得匯率（供後續餘額處理重用）
+        IReadOnlyList<CurrencyTransaction>? ledgerTransactions = null;
+        decimal? exchangeRate;
+        decimal? marketRate = null;
+
+        if (resolvedCurrency == Currency.TWD)
         {
-            // 台股（數字開頭），匯率為 1.0
-            if (resolvedCurrency == Currency.TWD)
+            exchangeRate = 1.0m;
+        }
+        else
+        {
+            ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                boundLedger.Id, cancellationToken);
+
+            var lifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
+                ledgerTransactions, request.TransactionDate, buyAmount);
+
+            if (lifoRate > 0)
             {
-                exchangeRate = 1.0m;
+                exchangeRate = lifoRate;
             }
             else
             {
-                // 非台股，自動抓取交易日當天的歷史匯率
                 var fxResult = await txDateFxService.GetOrFetchAsync(
                     portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
 
                 if (fxResult == null)
-                    throw new BusinessRuleException(
-                        $"無法取得 {portfolio.BaseCurrency}/{portfolio.HomeCurrency} 於 {request.TransactionDate:yyyy-MM-dd} 的匯率，請手動輸入匯率");
+                    throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
-                exchangeRate = fxResult.Rate;
+                marketRate = fxResult.Rate;
+                exchangeRate = marketRate;
             }
         }
 
@@ -150,10 +161,10 @@ public class CreateStockTransactionUseCase(
 
         if (linkedSpec != null)
         {
-            // FR-012: 若 Buy 且餘額不足，AutoDeposit=true 時自動建立 Deposit 補足差額
-            if (request.TransactionType == TransactionType.Buy && request.AutoDeposit)
+            // FR-012: 暫時橋接既有補款邏輯（完整 BalanceAction 流程於 T010 重寫）
+            if (request.TransactionType == TransactionType.Buy && request.BalanceAction == BalanceAction.TopUp)
             {
-                var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                ledgerTransactions ??= await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                     boundLedger.Id, cancellationToken);
 
                 var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);

@@ -1,5 +1,8 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.CurrencyLedger;
+using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Domain.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,7 +24,12 @@ public class CurrencyLedgersController(
     GetCurrencyLedgerSummaryUseCase getSummaryUseCase,
     CreateCurrencyLedgerUseCase createUseCase,
     UpdateCurrencyLedgerUseCase updateUseCase,
-    DeleteCurrencyLedgerUseCase deleteUseCase) : ControllerBase
+    DeleteCurrencyLedgerUseCase deleteUseCase,
+    ICurrencyLedgerRepository currencyLedgerRepository,
+    ICurrencyTransactionRepository currencyTransactionRepository,
+    CurrencyLedgerService currencyLedgerService,
+    ITransactionDateExchangeRateService txDateFxService,
+    ICurrentUserService currentUserService) : ControllerBase
 {
     /// <summary>
     /// 取得目前使用者的所有外幣帳本。
@@ -46,6 +54,108 @@ public class CurrencyLedgersController(
     {
         var summary = await getSummaryUseCase.ExecuteAsync(id, cancellationToken);
         return Ok(summary);
+    }
+
+    /// <summary>
+    /// 預覽指定金額與日期的買股匯率（LIFO/市場/混合）。
+    /// </summary>
+    [HttpGet("{id:guid}/exchange-rate-preview")]
+    [ProducesResponseType(typeof(ExchangeRatePreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ExchangeRatePreviewResponse>> GetExchangeRatePreview(
+        Guid id,
+        [FromQuery] decimal amount,
+        [FromQuery] DateTime date,
+        CancellationToken cancellationToken)
+    {
+        if (amount <= 0)
+            return BadRequest("amount must be greater than 0");
+
+        var currentUserId = currentUserService.UserId;
+        if (!currentUserId.HasValue)
+            return NotFound();
+
+        var ledger = await currencyLedgerRepository.GetByIdAsync(id, cancellationToken);
+        if (ledger == null || ledger.UserId != currentUserId.Value)
+            return NotFound();
+
+        var ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(id, cancellationToken);
+        var balance = currencyLedgerService.CalculateBalance(ledgerTransactions);
+        var lifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(ledgerTransactions, date, amount);
+
+        decimal? marketRate = null;
+        if (ledger.CurrencyCode != ledger.HomeCurrency)
+        {
+            var fxResult = await txDateFxService.GetOrFetchAsync(
+                ledger.CurrencyCode,
+                ledger.HomeCurrency,
+                date,
+                cancellationToken);
+            marketRate = fxResult?.Rate;
+        }
+
+        string source;
+        decimal rate;
+        decimal? lifoPortion = null;
+        decimal? marketPortion = null;
+
+        if (lifoRate > 0 && balance >= amount)
+        {
+            source = "lifo";
+            rate = lifoRate;
+            lifoPortion = amount;
+            marketPortion = 0m;
+        }
+        else if (lifoRate > 0 && balance > 0 && balance < amount)
+        {
+            if (!marketRate.HasValue)
+            {
+                return UnprocessableEntity(new
+                {
+                    error = "ExchangeRateUnavailable",
+                    message = "無法計算匯率。請先在帳本中建立換匯紀錄。"
+                });
+            }
+
+            source = "blended";
+            rate = currencyLedgerService.CalculateExchangeRateWithMargin(
+                ledgerTransactions,
+                date,
+                amount,
+                balance,
+                marketRate.Value);
+            lifoPortion = balance;
+            marketPortion = amount - balance;
+        }
+        else if ((lifoRate <= 0 || balance <= 0) && marketRate.HasValue)
+        {
+            source = "market";
+            rate = marketRate.Value;
+            lifoPortion = 0m;
+            marketPortion = amount;
+        }
+        else
+        {
+            return UnprocessableEntity(new
+            {
+                error = "ExchangeRateUnavailable",
+                message = "無法計算匯率。請先在帳本中建立換匯紀錄。"
+            });
+        }
+
+        var response = new ExchangeRatePreviewResponse
+        {
+            Rate = rate,
+            Source = source,
+            LifoRate = lifoRate > 0 ? lifoRate : null,
+            MarketRate = marketRate,
+            LifoPortion = lifoPortion,
+            MarketPortion = marketPortion
+        };
+
+        return Ok(response);
     }
 
     /// <summary>

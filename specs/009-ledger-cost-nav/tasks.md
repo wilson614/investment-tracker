@@ -17,9 +17,9 @@
 
 **Purpose**: Create new additive files that don't break existing code
 
-- [ ] T001 Create `BalanceAction` enum (None=0, Margin=1, TopUp=2) with XML doc comments in `backend/src/InvestmentTracker.Domain/Enums/BalanceAction.cs`
-- [ ] T002 [P] Add `ExchangeRatePreviewResponse` record DTO (Rate, Source, LifoRate, MarketRate, LifoPortion, MarketPortion) in `backend/src/InvestmentTracker.Application/DTOs/` (new file or append to existing ResponseDtos)
-- [ ] T003 [P] Add `CalculateExchangeRateWithMargin` method to `backend/src/InvestmentTracker.Domain/Services/CurrencyLedgerService.cs` — accepts ledger transactions, purchase date, purchase amount, current balance, and market rate; returns weighted blend of LIFO rate (for covered portion) and market rate (for margin portion) using formula: `(coveredAmount × lifoRate + marginAmount × marketRate) / totalAmount`. Delegates to existing `CalculateExchangeRateForPurchase` for the LIFO portion.
+- [x] T001 Create `BalanceAction` enum (None=0, Margin=1, TopUp=2) with XML doc comments in `backend/src/InvestmentTracker.Domain/Enums/BalanceAction.cs`
+- [x] T002 [P] Add `ExchangeRatePreviewResponse` record DTO (Rate, Source, LifoRate, MarketRate, LifoPortion, MarketPortion) in `backend/src/InvestmentTracker.Application/DTOs/` (new file or append to existing ResponseDtos)
+- [x] T003 [P] Add `CalculateExchangeRateWithMargin` method to `backend/src/InvestmentTracker.Domain/Services/CurrencyLedgerService.cs` — accepts ledger transactions, purchase date, purchase amount, current balance, and market rate; returns weighted blend of LIFO rate (for covered portion) and market rate (for margin portion) using formula: `(coveredAmount × lifoRate + marginAmount × marketRate) / totalAmount`. Delegates to existing `CalculateExchangeRateForPurchase` for the LIFO portion.
 
 ---
 
@@ -29,9 +29,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Modify `CreateStockTransactionRequest` in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` — remove `ExchangeRate` (decimal?) and `AutoDeposit` (bool) fields; add `BalanceAction` (BalanceAction enum, default None) and `TopUpTransactionType` (CurrencyTransactionType?, nullable). Update any validation attributes.
-- [ ] T005 [P] Add `BalanceAction` TypeScript enum type (None=0, Margin=1, TopUp=2) and `ExchangeRatePreviewResponse` interface to `frontend/src/types/index.ts`
-- [ ] T006 [P] Add `getExchangeRatePreview(ledgerId: string, amount: number, date: string)` API function in `frontend/src/api/` (e.g., in currencyApi or transactionApi) — calls `GET /api/currency-ledgers/{id}/exchange-rate-preview?amount={amount}&date={date}`, returns `ExchangeRatePreviewResponse`
+- [x] T004 Modify `CreateStockTransactionRequest` in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` — remove `ExchangeRate` (decimal?) and `AutoDeposit` (bool) fields; add `BalanceAction` (BalanceAction enum, default None) and `TopUpTransactionType` (CurrencyTransactionType?, nullable). Update any validation attributes.
+- [x] T005 [P] Add `BalanceAction` TypeScript enum type (None=0, Margin=1, TopUp=2) and `ExchangeRatePreviewResponse` interface to `frontend/src/types/index.ts`
+- [x] T006 [P] Add `getExchangeRatePreview(ledgerId: string, amount: number, date: string)` API function in `frontend/src/api/` (e.g., in currencyApi or transactionApi) — calls `GET /api/currency-ledgers/{id}/exchange-rate-preview?amount={amount}&date={date}`, returns `ExchangeRatePreviewResponse`
 
 **Checkpoint**: Foundation ready — all new types and APIs available for user story implementation
 

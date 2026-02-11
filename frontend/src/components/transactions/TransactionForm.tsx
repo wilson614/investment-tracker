@@ -5,15 +5,14 @@
  * Automatically uses portfolio's bound ledger for linked transactions.
  *
  * Key behaviors:
- * - Taiwan stocks auto-set exchange rate to 1
- * - All buy/sell transactions auto-link to bound ledger
- * - Exchange rate is optional - backend will fetch from transaction date if not provided
+ * - Buy/sell transactions auto-link to bound ledger
+ * - Foreign-currency buy shows system-calculated exchange-rate preview
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { currencyLedgerApi, stockPriceApi } from '../../services/api';
 import { ConfirmationModal } from '../modals/ConfirmationModal';
-import type { CreateStockTransactionRequest, StockTransaction, TransactionType, CurrencyLedgerSummary, StockMarket, Currency, Portfolio } from '../../types';
+import type { CreateStockTransactionRequest, StockTransaction, TransactionType, CurrencyLedgerSummary, StockMarket, Currency, Portfolio, ExchangeRatePreviewResponse } from '../../types';
 import { StockMarket as StockMarketEnum, Currency as CurrencyEnum } from '../../types';
 
 /**
@@ -63,6 +62,10 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const [showAutoDepositModal, setShowAutoDepositModal] = useState(false);
   const [insufficientAmount, setInsufficientAmount] = useState<number>(0);
 
+  const [exchangeRatePreview, setExchangeRatePreview] = useState<ExchangeRatePreviewResponse | null>(null);
+  const [isLoadingRate, setIsLoadingRate] = useState(false);
+  const [rateError, setRateError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState(() => {
     const initialMarket = initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '');
     return {
@@ -71,7 +74,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
       transactionDate: initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0],
       shares: initialData?.shares?.toString() ?? '',
       pricePerShare: initialData?.pricePerShare?.toString() ?? '',
-      exchangeRate: initialData?.exchangeRate?.toString() ?? '',
       fees: initialData?.fees?.toString() ?? '',
       notes: initialData?.notes ?? '',
       market: initialMarket as StockMarket,
@@ -159,6 +161,59 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     };
   }, []);
 
+  useEffect(() => {
+    const isBuy = Number(formData.transactionType) === 1;
+    const isNonTwdCurrency = Number(formData.currency) !== CurrencyEnum.TWD;
+    const hasBoundLedger = Boolean(portfolio?.boundCurrencyLedgerId);
+    const shares = parseFloat(formData.shares);
+    const pricePerShare = parseFloat(formData.pricePerShare);
+    const hasValidAmountInputs = Number.isFinite(shares) && shares > 0 && Number.isFinite(pricePerShare) && pricePerShare > 0;
+
+    if (!isBuy || !isNonTwdCurrency || !hasBoundLedger || !hasValidAmountInputs) {
+      setExchangeRatePreview(null);
+      setRateError(null);
+      setIsLoadingRate(false);
+      return;
+    }
+
+    const fees = parseFloat(formData.fees) || 0;
+    const amount = shares * pricePerShare + fees;
+    const ledgerId = portfolio!.boundCurrencyLedgerId;
+
+    let isCancelled = false;
+    const timer = setTimeout(() => {
+      setIsLoadingRate(true);
+      setRateError(null);
+
+      void currencyLedgerApi.getExchangeRatePreview(ledgerId, amount, formData.transactionDate)
+        .then((result) => {
+          if (isCancelled) return;
+          setExchangeRatePreview(result);
+          setIsLoadingRate(false);
+        })
+        .catch(() => {
+          if (isCancelled) return;
+          setRateError('無法取得匯率，請先在帳本中建立換匯紀錄');
+          setExchangeRatePreview(null);
+          setIsLoadingRate(false);
+        });
+    }, 300);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    formData.shares,
+    formData.pricePerShare,
+    formData.transactionDate,
+    formData.transactionType,
+    formData.currency,
+    formData.market,
+    formData.fees,
+    portfolio?.boundCurrencyLedgerId,
+  ]);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -169,7 +224,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         const newMarket = guessMarketFromTicker(value);
         newData.market = newMarket;
         newData.currency = guessCurrencyFromMarket(newMarket);
-        newData.exchangeRate = newMarket === StockMarketEnum.TW ? '1' : '';
       }
       if (name === 'market') {
         newData.currency = guessCurrencyFromMarket(Number(value) as StockMarket);
@@ -188,22 +242,13 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     setIsSubmitting(true);
 
     try {
-      let exchangeRateValue: number | undefined;
-      if (isTW) {
-        exchangeRateValue = 1;
-      } else {
-        const parsed = parseFloat(formData.exchangeRate);
-        exchangeRateValue = !formData.exchangeRate || isNaN(parsed) ? undefined : parsed;
-      }
-
-      const request: CreateStockTransactionRequest = {
+      const request: CreateStockTransactionRequest & { autoDeposit?: boolean } = {
         portfolioId,
         ticker: formData.ticker.toUpperCase(),
         transactionType: Number(formData.transactionType) as TransactionType,
         transactionDate: formData.transactionDate,
         shares: parseFloat(formData.shares),
         pricePerShare: parseFloat(formData.pricePerShare),
-        exchangeRate: exchangeRateValue,
         fees: parseFloat(formData.fees) || 0,
         autoDeposit: autoDeposit ? true : undefined,
         notes: formData.notes || undefined,
@@ -220,12 +265,13 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         transactionDate: new Date().toISOString().split('T')[0],
         shares: '',
         pricePerShare: '',
-        exchangeRate: '',
         fees: '',
         notes: '',
         market: StockMarketEnum.US as StockMarket,
         currency: CurrencyEnum.USD as Currency,
       });
+      setExchangeRatePreview(null);
+      setRateError(null);
     } catch (err) {
       setError(getErrorMessage(err instanceof Error ? err.message : 'Failed to create transaction'));
     } finally {
@@ -321,7 +367,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
                 ...prev,
                 market: newMarket,
                 currency: newCurrency,
-                exchangeRate: newMarket === StockMarketEnum.TW ? '1' : '',
               }));
               setUserSelectedMarket(true);
             }}
@@ -348,7 +393,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
                 setFormData(prev => ({
                   ...prev,
                   currency: newCurrency,
-                  exchangeRate: newCurrency === CurrencyEnum.TWD ? '1' : '',
                 }));
               }}
               className="input-dark w-full"
@@ -407,21 +451,32 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           />
         </div>
 
-        {!isTW && (
+        {!isTW && Number(formData.transactionType) === 1 && (
           <div>
             <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">
               匯率
             </label>
-            <input
-              type="number"
-              name="exchangeRate"
-              value={formData.exchangeRate}
-              onChange={handleChange}
-              min="0.000001"
-              step="0.000001"
-              className="input-dark w-full"
-              placeholder="留空自動抓取"
-            />
+            {isLoadingRate ? (
+              <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>計算中...</span>
+              </div>
+            ) : rateError ? (
+              <p className="text-[var(--color-danger)] text-sm">{rateError}</p>
+            ) : exchangeRatePreview ? (
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold text-[var(--text-primary)]">
+                  {exchangeRatePreview.rate.toFixed(4)}
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {exchangeRatePreview.source === 'lifo'
+                    ? '帳本成本'
+                    : exchangeRatePreview.source === 'market'
+                      ? '市場匯率'
+                      : '混合匯率'}
+                </span>
+              </div>
+            ) : null}
           </div>
         )}
 
