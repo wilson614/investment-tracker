@@ -17,7 +17,17 @@ import { Skeleton } from '../components/common/SkeletonLoader';
 import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
-import type { Portfolio, PortfolioSummary, XirrResult, CurrentPriceInfo, StockMarket as StockMarketType, StockQuoteResponse, StockTransaction } from '../types';
+import type {
+  Portfolio,
+  PortfolioSummary,
+  XirrResult,
+  CurrentPriceInfo,
+  StockMarket as StockMarketType,
+  StockQuoteResponse,
+  StockTransaction,
+  StockPosition,
+  MonthlyNetWorthHistory,
+} from '../types';
 import { refreshCapeData } from '../services/capeApi';
 import { refreshYtdData } from '../services/ytdApi';
 import { formatShortDate } from '../utils/dateUtils';
@@ -109,8 +119,173 @@ interface HistoricalMonthValue {
   contributions: number | null;
 }
 
+interface PortfolioBreakdownItem {
+  portfolio: Portfolio;
+  summary: PortfolioSummary;
+}
+
+interface MergedPositionAccumulator {
+  ticker: string;
+  totalShares: number;
+  totalCostSource: number;
+  totalCostHome: number;
+  hasTotalCostHome: boolean;
+  currentPrice?: number;
+  currentExchangeRate?: number;
+  market?: StockMarketType;
+  currency?: string;
+}
+
+const createAggregatePortfolio = (portfolios: Portfolio[]): Portfolio => {
+  const now = new Date().toISOString();
+  const firstPortfolio = portfolios[0];
+
+  return {
+    id: 'all',
+    description: '所有投資組合彙總',
+    baseCurrency: firstPortfolio?.baseCurrency ?? firstPortfolio?.homeCurrency ?? 'TWD',
+    homeCurrency: firstPortfolio?.homeCurrency ?? 'TWD',
+    isActive: true,
+    displayName: '所有投資組合',
+    boundCurrencyLedgerId: '',
+    createdAt: firstPortfolio?.createdAt ?? now,
+    updatedAt: now,
+  };
+};
+
+const mergePositionsByTicker = (summaries: PortfolioSummary[]): StockPosition[] => {
+  const mergedMap = new Map<string, MergedPositionAccumulator>();
+
+  for (const summary of summaries) {
+    for (const position of summary.positions) {
+      const existing = mergedMap.get(position.ticker);
+      if (!existing) {
+        mergedMap.set(position.ticker, {
+          ticker: position.ticker,
+          totalShares: position.totalShares,
+          totalCostSource: position.totalCostSource,
+          totalCostHome: position.totalCostHome ?? 0,
+          hasTotalCostHome: position.totalCostHome != null,
+          currentPrice: position.currentPrice,
+          currentExchangeRate: position.currentExchangeRate,
+          market: position.market,
+          currency: position.currency,
+        });
+        continue;
+      }
+
+      existing.totalShares += position.totalShares;
+      existing.totalCostSource += position.totalCostSource;
+
+      if (position.totalCostHome != null) {
+        existing.totalCostHome += position.totalCostHome;
+        existing.hasTotalCostHome = true;
+      }
+
+      if (position.currentPrice != null) {
+        existing.currentPrice = position.currentPrice;
+      }
+      if (position.currentExchangeRate != null) {
+        existing.currentExchangeRate = position.currentExchangeRate;
+      }
+      if (existing.market == null && position.market != null) {
+        existing.market = position.market;
+      }
+      if (existing.currency == null && position.currency != null) {
+        existing.currency = position.currency;
+      }
+    }
+  }
+
+  return Array.from(mergedMap.values()).map((position) => {
+    const currentValueSource =
+      position.currentPrice != null ? position.totalShares * position.currentPrice : undefined;
+    const currentValueHome =
+      currentValueSource != null && position.currentExchangeRate != null
+        ? currentValueSource * position.currentExchangeRate
+        : undefined;
+
+    const totalCostHome = position.hasTotalCostHome ? position.totalCostHome : undefined;
+    const unrealizedPnlHome =
+      currentValueHome != null && totalCostHome != null
+        ? currentValueHome - totalCostHome
+        : undefined;
+    const unrealizedPnlPercentage =
+      unrealizedPnlHome != null && totalCostHome != null && totalCostHome !== 0
+        ? (unrealizedPnlHome / totalCostHome) * 100
+        : undefined;
+
+    const unrealizedPnlSource =
+      currentValueSource != null ? currentValueSource - position.totalCostSource : undefined;
+    const unrealizedPnlSourcePercentage =
+      unrealizedPnlSource != null && position.totalCostSource !== 0
+        ? (unrealizedPnlSource / position.totalCostSource) * 100
+        : undefined;
+
+    return {
+      ticker: position.ticker,
+      totalShares: position.totalShares,
+      totalCostHome,
+      totalCostSource: position.totalCostSource,
+      averageCostPerShareHome:
+        totalCostHome != null && position.totalShares > 0
+          ? totalCostHome / position.totalShares
+          : undefined,
+      averageCostPerShareSource:
+        position.totalShares > 0 ? position.totalCostSource / position.totalShares : 0,
+      currentPrice: position.currentPrice,
+      currentExchangeRate: position.currentExchangeRate,
+      currentValueHome,
+      currentValueSource,
+      unrealizedPnlHome,
+      unrealizedPnlPercentage,
+      unrealizedPnlSource,
+      unrealizedPnlSourcePercentage,
+      market: position.market,
+      currency: position.currency,
+    };
+  });
+};
+
+const mergeMonthlyNetWorth = (histories: MonthlyNetWorthHistory[]): HistoricalMonthValue[] => {
+  const monthMap = new Map<
+    string,
+    { value: number; contributions: number; hasValue: boolean; hasContributions: boolean }
+  >();
+
+  for (const history of histories) {
+    for (const monthData of history.data) {
+      const existing = monthMap.get(monthData.month) ?? {
+        value: 0,
+        contributions: 0,
+        hasValue: false,
+        hasContributions: false,
+      };
+
+      if (monthData.value != null) {
+        existing.value += monthData.value;
+        existing.hasValue = true;
+      }
+      if (monthData.contributions != null) {
+        existing.contributions += monthData.contributions;
+        existing.hasContributions = true;
+      }
+
+      monthMap.set(monthData.month, existing);
+    }
+  }
+
+  return Array.from(monthMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, data]) => ({
+      month,
+      value: data.hasValue ? data.value : null,
+      contributions: data.hasContributions ? data.contributions : null,
+    }));
+};
+
 export function DashboardPage() {
-  const { currentPortfolioId, isAllPortfolios } = usePortfolio();
+  const { currentPortfolioId, isAllPortfolios, portfolios } = usePortfolio();
 
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
@@ -122,6 +297,7 @@ export function DashboardPage() {
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [isPriceDataPending, setIsPriceDataPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [portfolioBreakdown, setPortfolioBreakdown] = useState<PortfolioBreakdownItem[]>([]);
 
   const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
 
@@ -138,10 +314,12 @@ export function DashboardPage() {
 
   useEffect(() => {
     loadDashboardData();
-  }, [currentPortfolioId]);
+  }, [currentPortfolioId, isAllPortfolios, portfolios]);
 
   // Auto-fetch prices after initial data load
   useEffect(() => {
+    if (isAllPortfolios) return;
+
     if (!isLoading && portfolio && summary && shouldAutoFetch.current) {
       shouldAutoFetch.current = false;
 
@@ -154,11 +332,11 @@ export function DashboardPage() {
 
       handleFetchAllPrices();
     }
-  }, [isLoading, portfolio, summary]);
+  }, [isLoading, portfolio, summary, isAllPortfolios]);
 
-  // Load historical performance data for the chart
+  // Load historical performance data for the chart (single portfolio mode)
   useEffect(() => {
-    if (!portfolio) return;
+    if (!portfolio || isAllPortfolios) return;
 
     const loadHistoricalData = async () => {
       setIsLoadingHistorical(true);
@@ -180,7 +358,7 @@ export function DashboardPage() {
     };
 
     loadHistoricalData();
-  }, [portfolio?.id]);
+  }, [portfolio?.id, isAllPortfolios]);
 
   /**
    * 取得 Dashboard 需要的初始資料。
@@ -195,12 +373,89 @@ export function DashboardPage() {
       setIsLoading(true);
       setError(null);
 
-      if (isAllPortfolios || !currentPortfolioId) {
+      if (isAllPortfolios) {
+        if (portfolios.length === 0) {
+          setPortfolio(null);
+          setSummary(null);
+          setXirrResult(null);
+          setRecentTransactions([]);
+          setHistoricalData([]);
+          setPortfolioBreakdown([]);
+          setIsLoadingHistorical(false);
+          setIsLoading(false);
+          return;
+        }
+
+        setIsLoadingHistorical(true);
+
+        const [summaries, transactionsByPortfolio, historicalByPortfolio] = await Promise.all([
+          Promise.all(portfolios.map((p) => portfolioApi.getSummary(p.id))),
+          Promise.all(portfolios.map((p) => transactionApi.getByPortfolio(p.id))),
+          Promise.all(portfolios.map((p) => portfolioApi.getMonthlyNetWorth(p.id))),
+        ]);
+
+        const mergedPositions = mergePositionsByTicker(summaries);
+        const mergedPrices = loadCachedPrices(mergedPositions);
+        currentPricesRef.current = mergedPrices;
+        const totalCostHome = summaries.reduce((sum, item) => sum + item.totalCostHome, 0);
+        const totalValueHome = summaries.reduce((sum, item) => sum + (item.totalValueHome ?? 0), 0);
+        const totalUnrealizedPnlHome = totalValueHome - totalCostHome;
+        const totalUnrealizedPnlPercentage =
+          totalCostHome > 0 ? (totalUnrealizedPnlHome / totalCostHome) * 100 : undefined;
+
+        const aggregatePortfolio = createAggregatePortfolio(portfolios);
+        const aggregateSummary: PortfolioSummary = {
+          portfolio: aggregatePortfolio,
+          positions: mergedPositions,
+          totalCostHome,
+          totalValueHome,
+          totalUnrealizedPnlHome,
+          totalUnrealizedPnlPercentage,
+        };
+
+        const mergedTransactions = transactionsByPortfolio
+          .flat()
+          .sort(
+            (a, b) =>
+              new Date(b.transactionDate).getTime() -
+              new Date(a.transactionDate).getTime()
+          )
+          .slice(0, 5);
+
+        const combinedHistorical = mergeMonthlyNetWorth(historicalByPortfolio);
+
+        setPortfolio(aggregatePortfolio);
+        setSummary(aggregateSummary);
+
+        if (Object.keys(mergedPrices).length > 0) {
+          try {
+            const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: mergedPrices });
+            setXirrResult(aggregateXirr);
+          } catch {
+            setXirrResult(null);
+          }
+        } else {
+          setXirrResult(null);
+        }
+        setRecentTransactions(mergedTransactions);
+        setHistoricalData(combinedHistorical);
+        setPortfolioBreakdown(
+          portfolios.map((portfolioItem, index) => ({
+            portfolio: portfolioItem,
+            summary: summaries[index],
+          }))
+        );
+        setIsLoadingHistorical(false);
+        return;
+      }
+
+      if (!currentPortfolioId) {
         setPortfolio(null);
         setSummary(null);
         setXirrResult(null);
         setRecentTransactions([]);
         setHistoricalData([]);
+        setPortfolioBreakdown([]);
         setIsLoadingHistorical(false);
         setIsLoading(false);
         return;
@@ -208,6 +463,7 @@ export function DashboardPage() {
 
       const p = await portfolioApi.getById(currentPortfolioId);
       setPortfolio(p);
+      setPortfolioBreakdown([]);
 
       // Load summary and transactions in parallel
       const [basicSummary, txData] = await Promise.all([
@@ -249,7 +505,7 @@ export function DashboardPage() {
    * 同時會刷新市場資料（CAPE、YTD），但即使報價失敗也會盡量保留快取結果。
    */
   const handleFetchAllPrices = async () => {
-    if (!portfolio || !summary) return;
+    if (isAllPortfolios || !portfolio || !summary) return;
 
     setIsFetchingPrices(true);
 
@@ -470,9 +726,7 @@ export function DashboardPage() {
 
           <div className="card-dark p-8 text-center">
             <p className="text-[var(--text-muted)] text-lg">
-              {isAllPortfolios
-                ? '所有投資組合總覽功能建置中，請先選擇單一投資組合。'
-                : '尚無投資組合，請先建立一個投資組合。'}
+              尚無投資組合，請先建立一個投資組合。
             </p>
           </div>
         </div>
@@ -489,6 +743,11 @@ export function DashboardPage() {
   const topPerformers = getTopPerformers();
   const assetAllocation = getAssetAllocation();
 
+  const totalBreakdownValue = portfolioBreakdown.reduce(
+    (sum, item) => sum + (item.summary.totalValueHome ?? 0),
+    0
+  );
+
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -499,7 +758,7 @@ export function DashboardPage() {
           </div>
           <button
             onClick={handleFetchAllPrices}
-            disabled={isFetchingPrices || !summary}
+            disabled={isFetchingPrices || !summary || isAllPortfolios}
             className="btn-dark flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
           >
             {isFetchingPrices ? (
@@ -507,7 +766,7 @@ export function DashboardPage() {
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
-            更新全部
+            {isAllPortfolios ? '彙總模式不可更新報價' : '更新全部'}
           </button>
         </div>
 
@@ -597,6 +856,34 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {isAllPortfolios && portfolioBreakdown.length > 0 && (
+          <div className="card-dark p-6 mb-6">
+            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">各投資組合市值貢獻</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {portfolioBreakdown.map(({ portfolio: portfolioItem, summary: portfolioSummary }) => {
+                const value = portfolioSummary.totalValueHome ?? 0;
+                const percentage = totalBreakdownValue > 0 ? (value / totalBreakdownValue) * 100 : 0;
+                const label = portfolioItem.displayName || portfolioItem.baseCurrency;
+
+                return (
+                  <div
+                    key={portfolioItem.id}
+                    className="metric-card p-4 border border-[var(--border-color)]"
+                  >
+                    <p className="text-sm text-[var(--text-muted)] mb-1">{label}</p>
+                    <p className="text-lg font-bold text-[var(--text-primary)] number-display">
+                      {formatTWD(value)}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {percentage.toFixed(1)}%
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Historical Portfolio Value Chart */}
         <div className="card-dark p-6 mb-6" style={{ minHeight: 356 }}>

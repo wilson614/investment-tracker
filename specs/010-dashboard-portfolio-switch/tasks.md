@@ -33,9 +33,9 @@
 
 ### Implementation for US1 + US4
 
-- [ ] T004 [US1] Add PortfolioSelector to Dashboard page header — render selector component in the page header area, wire up `isAllPortfolios` branch in `loadDashboardData()` to show placeholder/loading state when "all" is selected (aggregate view implemented in US2), ensure individual portfolio switching continues to work in `frontend/src/pages/Dashboard.tsx`
-- [ ] T005 [P] [US1] Add PortfolioSelector to Performance page header — render selector component, add `isAllPortfolios` guard before showing "找不到投資組合" error (when "all" selected, `currentPortfolio` is null but that's valid), show placeholder state for aggregate (implemented in US3), ensure individual portfolio switching continues to work in `frontend/src/pages/Performance.tsx`
-- [ ] T006 [US4] Update Portfolio management page to auto-select first portfolio when `isAllPortfolios` is true — on mount/navigation, check if `currentPortfolioId === 'all'` and call `selectPortfolio(portfolios[0].id)` to ensure Portfolio page always has a specific portfolio context in `frontend/src/pages/Portfolio.tsx`
+- [x] T004 [US1] Add PortfolioSelector to Dashboard page header — render selector component in the page header area, wire up `isAllPortfolios` branch in `loadDashboardData()` to show placeholder/loading state when "all" is selected (aggregate view implemented in US2), ensure individual portfolio switching continues to work in `frontend/src/pages/Dashboard.tsx`
+- [x] T005 [P] [US1] Add PortfolioSelector to Performance page header — render selector component, add `isAllPortfolios` guard before showing "找不到投資組合" error (when "all" selected, `currentPortfolio` is null but that's valid), show placeholder state for aggregate (implemented in US3), ensure individual portfolio switching continues to work in `frontend/src/pages/Performance.tsx`
+- [x] T006 [US4] Update Portfolio management page to auto-select first portfolio when `isAllPortfolios` is true — on mount/navigation, check if `currentPortfolioId === 'all'` and call `selectPortfolio(portfolios[0].id)` to ensure Portfolio page always has a specific portfolio context in `frontend/src/pages/Portfolio.tsx`
 
 **Checkpoint**: Portfolio selector visible and functional on Dashboard and Performance. Switching between individual portfolios works. "All Portfolios" selected by default. Selection shared across pages. Portfolio page auto-selects on "all".
 
@@ -49,8 +49,8 @@
 
 ### Backend for US2
 
-- [ ] T007 [US2] Create CalculateAggregateXirrUseCase — follow `GetTotalAssetsSummaryUseCase` pattern: get all user portfolios, collect all transactions across portfolios, build combined cash flow series (Buy = negative, Sell = positive), use provided current prices to calculate current total value as final cash flow, invoke `PortfolioCalculator.CalculateXirr()` on combined flows, return `XirrResultDto` in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateAggregateXirrUseCase.cs`
-- [ ] T008 [US2] Add aggregate XIRR controller action — add `[HttpPost("aggregate/xirr")]` action to PortfoliosController that accepts `CalculatePerformanceRequest` (same as existing XIRR endpoint) and delegates to `CalculateAggregateXirrUseCase` in `backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs`
+- [x] T007 [US2] Create CalculateAggregateXirrUseCase — follow `GetTotalAssetsSummaryUseCase` pattern: get all user portfolios, collect all transactions across portfolios, build combined cash flow series (Buy = negative, Sell = positive), use provided current prices to calculate current total value as final cash flow, invoke `PortfolioCalculator.CalculateXirr()` on combined flows, return `XirrResultDto` in `backend/src/InvestmentTracker.Application/UseCases/Portfolio/CalculateAggregateXirrUseCase.cs`
+- [x] T008 [US2] Add aggregate XIRR controller action — add `[HttpPost("aggregate/xirr")]` action to PortfoliosController that accepts `CalculatePerformanceRequest` (same as existing XIRR endpoint) and delegates to `CalculateAggregateXirrUseCase` in `backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs`
 
 ### Frontend for US2
 
@@ -72,9 +72,9 @@
 
 ### Backend for US3
 
-- [ ] T014 [P] [US3] Create GetAggregateAvailableYearsUseCase — get all user portfolios, find earliest transaction year across all, return union of years from earliest to current year (descending), reuse `AvailableYearsDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/GetAggregateAvailableYearsUseCase.cs`
-- [ ] T015 [P] [US3] Create CalculateAggregateYearPerformanceUseCase — get all user portfolios, collect all transactions for specified year across portfolios, calculate aggregate start/end values (sum of individual portfolio values), compute XIRR + Modified Dietz + TWR using combined transaction data and aggregate values, consolidate missing prices from all portfolios, reuse `YearPerformanceDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`
-- [ ] T016 [US3] Add aggregate performance controller actions — add `[HttpGet("aggregate/performance/years")]` and `[HttpPost("aggregate/performance/year")]` actions that delegate to new use cases, consider placing under a new `AggregatePerformanceController` or adding to existing `PerformanceController` with adjusted route prefix in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
+- [x] T014 [P] [US3] Create GetAggregateAvailableYearsUseCase — get all user portfolios, find earliest transaction year across all, return union of years from earliest to current year (descending), reuse `AvailableYearsDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/GetAggregateAvailableYearsUseCase.cs`
+- [x] T015 [P] [US3] Create CalculateAggregateYearPerformanceUseCase — get all user portfolios, collect all transactions for specified year across portfolios, calculate aggregate start/end values (sum of individual portfolio values), compute XIRR + Modified Dietz + TWR using combined transaction data and aggregate values, consolidate missing prices from all portfolios, reuse `YearPerformanceDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`
+- [x] T016 [US3] Add aggregate performance controller actions — add `[HttpGet("aggregate/performance/years")]` and `[HttpPost("aggregate/performance/year")]` actions that delegate to new use cases, consider placing under a new `AggregatePerformanceController` or adding to existing `PerformanceController` with adjusted route prefix in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
 
 ### Frontend for US3
 
