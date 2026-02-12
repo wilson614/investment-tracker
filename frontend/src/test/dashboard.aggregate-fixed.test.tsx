@@ -214,7 +214,9 @@ function setupDashboardMocks(params: {
   mockedPortfolioApi.calculateXirr.mockResolvedValue(aggregateXirr);
 
   mockedTransactionApi.getByPortfolio.mockResolvedValue([]);
-  mockedStockPriceApi.getQuoteWithRate.mockResolvedValue(null);
+  mockedStockPriceApi.getQuoteWithRate.mockResolvedValue(
+    null as unknown as Awaited<ReturnType<(typeof stockPriceApi)['getQuoteWithRate']>>
+  );
 
   mockedRefreshCapeData.mockResolvedValue(mockCapeData);
   mockedRefreshYtdData.mockResolvedValue(mockYtdData);
