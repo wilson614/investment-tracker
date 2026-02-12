@@ -114,7 +114,6 @@ public class PortfoliosController(
     /// </summary>
     [HttpGet("aggregate/performance/years")]
     [ProducesResponseType(typeof(AvailableYearsDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<AvailableYearsDto>> GetAggregateAvailableYears(
         CancellationToken cancellationToken)

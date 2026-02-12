@@ -20,12 +20,53 @@ interface UseHistoricalPerformanceResult {
   refresh: () => Promise<void>;
 }
 
+const GLOBAL_SELECTED_YEAR_STORAGE_KEY = 'perf_selected_year';
+
+function loadGlobalSelectedYear(): number | null {
+  try {
+    const raw = localStorage.getItem(GLOBAL_SELECTED_YEAR_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistGlobalSelectedYear(year: number): void {
+  try {
+    localStorage.setItem(GLOBAL_SELECTED_YEAR_STORAGE_KEY, String(year));
+  } catch {
+    // 忽略快取寫入錯誤
+  }
+}
+
+function resolveSelectedYear(
+  years: AvailableYears,
+  preferredYear: number | null
+): number | null {
+  if (!Array.isArray(years.years) || years.years.length === 0) {
+    return null;
+  }
+
+  if (preferredYear != null && years.years.includes(preferredYear)) {
+    return preferredYear;
+  }
+
+  if (years.currentYear != null && years.years.includes(years.currentYear)) {
+    return years.currentYear;
+  }
+
+  return years.years[0] ?? null;
+}
+
 /**
  * 從 localStorage 載入指定命名空間的績效快取資料。
  * - 單一投資組合：namespace = portfolioId
  * - 彙總模式：namespace = aggregate
  */
-function loadCacheForPortfolio(cacheNamespace: string): {
+function loadCacheForPortfolio(cacheNamespace: string, preferredYear: number | null = null): {
   availableYears: AvailableYears | null;
   selectedYear: number | null;
   performance: YearPerformance | null;
@@ -34,8 +75,14 @@ function loadCacheForPortfolio(cacheNamespace: string): {
     const cachedYears = localStorage.getItem(`perf_years_${cacheNamespace}`);
     if (cachedYears) {
       const years = JSON.parse(cachedYears) as AvailableYears;
-      const year = years.currentYear ?? years.years?.[0] ?? null;
-      if (year) {
+      const hasAvailableYears = Array.isArray(years.years) && years.years.length > 0;
+
+      if (!hasAvailableYears) {
+        return { availableYears: years, selectedYear: null, performance: null };
+      }
+
+      const year = resolveSelectedYear(years, preferredYear);
+      if (year != null) {
         const cachedPerf = localStorage.getItem(`perf_data_${cacheNamespace}_${year}`);
         return {
           availableYears: years,
@@ -43,10 +90,46 @@ function loadCacheForPortfolio(cacheNamespace: string): {
           performance: cachedPerf ? JSON.parse(cachedPerf) : null,
         };
       }
-      return { availableYears: years, selectedYear: year, performance: null };
+      return { availableYears: years, selectedYear: null, performance: null };
     }
   } catch { /* 忽略快取讀取錯誤 */ }
   return { availableYears: null, selectedYear: null, performance: null };
+}
+
+interface ApiErrorLike {
+  status?: number;
+  message?: string;
+}
+
+const LEGACY_AGGREGATE_EMPTY_STATE_MESSAGES = new Set([
+  'not found',
+  'portfolio not found',
+  'portfolio',
+]);
+
+function isLegacyAggregateEmptyStateError(error: unknown, isAggregate: boolean): boolean {
+  if (!isAggregate || !error || typeof error !== 'object') {
+    return false;
+  }
+
+  const apiError = error as ApiErrorLike;
+  if (apiError.status !== 404) {
+    return false;
+  }
+
+  const normalizedMessage = typeof apiError.message === 'string'
+    ? apiError.message.trim().toLowerCase()
+    : '';
+
+  return LEGACY_AGGREGATE_EMPTY_STATE_MESSAGES.has(normalizedMessage);
+}
+
+function createEmptyAvailableYears(): AvailableYears {
+  return {
+    years: [],
+    earliestYear: null,
+    currentYear: new Date().getFullYear(),
+  };
 }
 
 export function useHistoricalPerformance({
@@ -56,11 +139,16 @@ export function useHistoricalPerformance({
 }: UseHistoricalPerformanceOptions): UseHistoricalPerformanceResult {
   const cacheNamespace = isAggregate ? 'aggregate' : portfolioId;
 
+  // 讀取跨投組共用的年份偏好，避免切換投組時被重設到最新年
+  const [globalPreferredYear] = useState<number | null>(() => loadGlobalSelectedYear());
+
   // 元件掛載時一次性載入所有快取資料，確保同步執行以避免閃爍
-  const [initialCache] = useState(() => loadCacheForPortfolio(cacheNamespace));
+  const [initialCache] = useState(() => loadCacheForPortfolio(cacheNamespace, globalPreferredYear));
 
   // 使用快取資料初始化狀態，實現即時顯示
-  const [availableYears, setAvailableYears] = useState<AvailableYears | null>(initialCache.availableYears);
+  const [availableYears, setAvailableYears] = useState<AvailableYears | null>(
+    initialCache.availableYears ?? (isAggregate ? createEmptyAvailableYears() : null)
+  );
   const [selectedYear, setSelectedYear] = useState<number | null>(initialCache.selectedYear);
   const [performance, setPerformance] = useState<YearPerformance | null>(initialCache.performance);
   const [isLoadingYears, setIsLoadingYears] = useState(false);
@@ -72,9 +160,22 @@ export function useHistoricalPerformance({
     initialCache.performance ? initialCache.selectedYear : null
   );
 
+  // 追蹤目前已選擇的年份，供 callback 讀取最新值
+  const selectedYearRef = useRef<number | null>(initialCache.selectedYear);
+
   // 追蹤當年度是否已取得過資料（防止無限迴圈）
   // aggregate 模式同樣套用此策略，避免重覆請求。
   const fetchedCurrentYearRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    selectedYearRef.current = selectedYear;
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (selectedYear != null) {
+      persistGlobalSelectedYear(selectedYear);
+    }
+  }, [selectedYear]);
 
   // 取得可用年份清單
   const fetchAvailableYears = useCallback(async () => {
@@ -91,16 +192,62 @@ export function useHistoricalPerformance({
       setAvailableYears(years);
       localStorage.setItem(`perf_years_${cacheNamespace}`, JSON.stringify(years));
 
-      // 若尚未選擇年份，自動選擇當年度
-      if (!selectedYear && years.years.length > 0) {
-        setSelectedYear(years.currentYear);
+      if (years.years.length === 0) {
+        selectedYearRef.current = null;
+        setSelectedYear(null);
+        setPerformance(null);
+        cachedYearRef.current = null;
+        fetchedCurrentYearRef.current = false;
+        return;
       }
+
+      // 保留使用者原本選擇；僅在不存在時 fallback 到合理預設（currentYear / years[0]）
+      const preferredYear = selectedYearRef.current ?? globalPreferredYear;
+      setSelectedYear((previousYear) => {
+        const resolvedYear = resolveSelectedYear(years, preferredYear);
+
+        if (resolvedYear == null) {
+          selectedYearRef.current = null;
+          setPerformance(null);
+          cachedYearRef.current = null;
+          return null;
+        }
+
+        if (resolvedYear === previousYear) {
+          return previousYear;
+        }
+
+        try {
+          const cached = localStorage.getItem(`perf_data_${cacheNamespace}_${resolvedYear}`);
+          if (cached) {
+            setPerformance(JSON.parse(cached));
+            cachedYearRef.current = resolvedYear;
+          } else {
+            setPerformance(null);
+            cachedYearRef.current = null;
+          }
+        } catch {
+          setPerformance(null);
+          cachedYearRef.current = null;
+        }
+
+        selectedYearRef.current = resolvedYear;
+        return resolvedYear;
+      });
     } catch (err) {
+      if (isLegacyAggregateEmptyStateError(err, isAggregate)) {
+        setAvailableYears(createEmptyAvailableYears());
+        selectedYearRef.current = null;
+        setSelectedYear(null);
+        setPerformance(null);
+        return;
+      }
+
       setError(err instanceof Error ? err.message : '無法載入可用年份');
     } finally {
       setIsLoadingYears(false);
     }
-  }, [isAggregate, portfolioId, selectedYear, cacheNamespace]);
+  }, [isAggregate, portfolioId, cacheNamespace, globalPreferredYear]);
 
   // 計算指定年度的績效
   const calculatePerformance = useCallback(async (
@@ -133,6 +280,11 @@ export function useHistoricalPerformance({
       setPerformance(result);
       localStorage.setItem(cacheKey, JSON.stringify(result));
     } catch (err) {
+      if (isLegacyAggregateEmptyStateError(err, isAggregate)) {
+        setPerformance(null);
+        return;
+      }
+
       setError(err instanceof Error ? err.message : '無法計算年度績效');
     } finally {
       setIsLoadingPerformance(false);
@@ -148,7 +300,9 @@ export function useHistoricalPerformance({
       fetchedCurrentYearRef.current = false;
     }
 
+    selectedYearRef.current = year;
     setSelectedYear(year);
+    persistGlobalSelectedYear(year);
 
     // 立即從快取載入該年度資料以避免閃爍
     try {

@@ -38,14 +38,27 @@ public class CalculateAggregateYearPerformanceUseCase(
             portfolioResults.Add(result);
         }
 
-        var earliestTransactionDateInYear = portfolioResults
+        var relevantPortfolioResults = portfolioResults
+            .Where(HasPortfolioActivity)
+            .ToList();
+
+        if (relevantPortfolioResults.Count == 0)
+            relevantPortfolioResults = portfolioResults;
+
+        if (relevantPortfolioResults.Count == 1)
+            return relevantPortfolioResults[0] with { Year = request.Year };
+
+        var earliestTransactionDateInYear = relevantPortfolioResults
             .Where(r => r.EarliestTransactionDateInYear.HasValue)
             .Select(r => r.EarliestTransactionDateInYear)
             .Min();
 
-        var missingPrices = portfolioResults
+        var missingPrices = relevantPortfolioResults
             .SelectMany(r => r.MissingPrices)
-            .DistinctBy(p => p.Ticker, StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(p => (
+                Ticker: (p.Ticker ?? string.Empty).ToUpperInvariant(),
+                PriceType: (p.PriceType ?? string.Empty).ToUpperInvariant(),
+                Date: p.Date.Date))
             .ToList();
 
         if (missingPrices.Count > 0)
@@ -263,9 +276,31 @@ public class CalculateAggregateYearPerformanceUseCase(
 
     private static string? ResolveSourceCurrency(IReadOnlyList<YearPerformanceDto> portfolioResults)
     {
+        var activeSourceCurrency = portfolioResults
+            .Where(HasPortfolioActivity)
+            .Select(r => r.SourceCurrency)
+            .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
+
+        if (!string.IsNullOrWhiteSpace(activeSourceCurrency))
+            return activeSourceCurrency;
+
         return portfolioResults
             .Select(r => r.SourceCurrency)
             .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
+    }
+
+    private static bool HasPortfolioActivity(YearPerformanceDto result)
+    {
+        return result.TransactionCount > 0
+               || result.CashFlowCount > 0
+               || result.EarliestTransactionDateInYear.HasValue
+               || result.MissingPrices.Count > 0
+               || (result.StartValueHome ?? 0m) > 0m
+               || (result.EndValueHome ?? 0m) > 0m
+               || result.NetContributionsHome != 0m
+               || (result.StartValueSource ?? 0m) > 0m
+               || (result.EndValueSource ?? 0m) > 0m
+               || (result.NetContributionsSource ?? 0m) != 0m;
     }
 
     private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)

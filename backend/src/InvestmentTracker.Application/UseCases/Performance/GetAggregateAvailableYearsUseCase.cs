@@ -19,9 +19,18 @@ public class GetAggregateAvailableYearsUseCase(
         var userId = currentUserService.UserId
             ?? throw new AccessDeniedException("User not authenticated");
 
+        var currentYear = DateTime.UtcNow.Year;
+
         var portfolios = await portfolioRepository.GetByUserIdAsync(userId, cancellationToken);
         if (portfolios.Count == 0)
-            throw new EntityNotFoundException("Portfolio");
+        {
+            return new AvailableYearsDto
+            {
+                Years = [],
+                EarliestYear = null,
+                CurrentYear = currentYear
+            };
+        }
 
         var allTransactions = new List<StockTransaction>();
         foreach (var portfolio in portfolios)
@@ -34,7 +43,6 @@ public class GetAggregateAvailableYearsUseCase(
             .Where(t => !t.IsDeleted)
             .ToList();
 
-        var currentYear = DateTime.UtcNow.Year;
         if (validTransactions.Count == 0)
         {
             return new AvailableYearsDto
