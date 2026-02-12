@@ -290,6 +290,7 @@ export function useHistoricalPerformance({
 
       setPerformance(result);
       localStorage.setItem(cacheKey, JSON.stringify(result));
+      cachedYearRef.current = year;
     } catch (err) {
       if (requestId !== performanceRequestIdRef.current || selectedYearRef.current !== year) {
         return;

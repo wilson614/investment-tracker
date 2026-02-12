@@ -679,6 +679,44 @@ describe('useHistoricalPerformance', () => {
     });
   });
 
+  it('does not repeatedly refetch historical year after first successful load', async () => {
+    localStorage.setItem('perf_selected_year', String(previousYear));
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce({
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    });
+
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValueOnce(createPerformance(previousYear));
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-history-year',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledTimes(1);
+  });
+
   it('treats recognizable aggregate calculate 404 as empty state without error', async () => {
     const notFoundError = new Error('Portfolio not found') as Error & { status: number };
     notFoundError.status = 404;
