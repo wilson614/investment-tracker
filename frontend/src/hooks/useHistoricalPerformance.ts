@@ -163,6 +163,9 @@ export function useHistoricalPerformance({
   // 追蹤目前已選擇的年份，供 callback 讀取最新值
   const selectedYearRef = useRef<number | null>(initialCache.selectedYear);
 
+  // 追蹤最新的績效請求，避免舊回應覆寫最新年度資料
+  const performanceRequestIdRef = useRef<number>(0);
+
   // 追蹤當年度是否已取得過資料（防止無限迴圈）
   // aggregate 模式同樣套用此策略，避免重覆請求。
   const fetchedCurrentYearRef = useRef<boolean>(false);
@@ -257,6 +260,10 @@ export function useHistoricalPerformance({
   ) => {
     if (!isAggregate && !portfolioId) return;
 
+    const isRequestForCurrentSelection = selectedYearRef.current === year;
+    const requestId = isRequestForCurrentSelection
+      ? ++performanceRequestIdRef.current
+      : performanceRequestIdRef.current;
     const cacheKey = `perf_data_${cacheNamespace}_${year}`;
     const hasCachedData = !!localStorage.getItem(cacheKey);
 
@@ -277,9 +284,17 @@ export function useHistoricalPerformance({
         ? await portfolioApi.calculateAggregateYearPerformance(request)
         : await portfolioApi.calculateYearPerformance(portfolioId!, request);
 
+      if (requestId !== performanceRequestIdRef.current || selectedYearRef.current !== year) {
+        return;
+      }
+
       setPerformance(result);
       localStorage.setItem(cacheKey, JSON.stringify(result));
     } catch (err) {
+      if (requestId !== performanceRequestIdRef.current || selectedYearRef.current !== year) {
+        return;
+      }
+
       if (isLegacyAggregateEmptyStateError(err, isAggregate)) {
         setPerformance(null);
         return;
@@ -287,7 +302,9 @@ export function useHistoricalPerformance({
 
       setError(err instanceof Error ? err.message : '無法計算年度績效');
     } finally {
-      setIsLoadingPerformance(false);
+      if (requestId === performanceRequestIdRef.current) {
+        setIsLoadingPerformance(false);
+      }
     }
   }, [isAggregate, portfolioId, cacheNamespace]);
 

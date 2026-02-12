@@ -63,6 +63,23 @@ const aggregatePerformanceMock: YearPerformance = {
   isComplete: true,
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function createPerformance(year: number): YearPerformance {
+  return {
+    ...aggregatePerformanceMock,
+    year,
+  };
+}
+
 describe('useHistoricalPerformance', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -448,6 +465,217 @@ describe('useHistoricalPerformance', () => {
 
     await waitFor(() => {
       expect(aggregateResult.current.selectedYear).toBe(currentYear);
+    });
+  });
+
+  it('ignores stale single-portfolio response when switching years quickly', async () => {
+    const years: AvailableYears = {
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce(years);
+
+    const currentYearDeferred = createDeferred<YearPerformance>();
+    const previousYearDeferred = createDeferred<YearPerformance>();
+
+    mockedPortfolioApi.calculateYearPerformance.mockImplementation((_portfolioId, request) => {
+      if (request.year === currentYear) {
+        return currentYearDeferred.promise;
+      }
+      if (request.year === previousYear) {
+        return previousYearDeferred.promise;
+      }
+      return Promise.resolve(createPerformance(request.year));
+    });
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-race',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-race');
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        'portfolio-race',
+        expect.objectContaining({ year: currentYear })
+      );
+    });
+
+    act(() => {
+      result.current.setSelectedYear(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        'portfolio-race',
+        expect.objectContaining({ year: previousYear })
+      );
+    });
+
+    await act(async () => {
+      previousYearDeferred.resolve(createPerformance(previousYear));
+      await previousYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+
+    await act(async () => {
+      currentYearDeferred.resolve(createPerformance(currentYear));
+      await currentYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+  });
+
+  it('ignores stale aggregate response when switching years quickly', async () => {
+    const years: AvailableYears = {
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    mockedPortfolioApi.getAggregateYears.mockResolvedValueOnce(years);
+
+    const currentYearDeferred = createDeferred<YearPerformance>();
+    const previousYearDeferred = createDeferred<YearPerformance>();
+
+    mockedPortfolioApi.calculateAggregateYearPerformance.mockImplementation((request) => {
+      if (request.year === currentYear) {
+        return currentYearDeferred.promise;
+      }
+      if (request.year === previousYear) {
+        return previousYearDeferred.promise;
+      }
+      return Promise.resolve(createPerformance(request.year));
+    });
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'aggregate',
+        isAggregate: true,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAggregateYears).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateAggregateYearPerformance).toHaveBeenCalledWith(
+        expect.objectContaining({ year: currentYear })
+      );
+    });
+
+    act(() => {
+      result.current.setSelectedYear(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateAggregateYearPerformance).toHaveBeenCalledWith(
+        expect.objectContaining({ year: previousYear })
+      );
+    });
+
+    await act(async () => {
+      previousYearDeferred.resolve(createPerformance(previousYear));
+      await previousYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+
+    await act(async () => {
+      currentYearDeferred.resolve(createPerformance(currentYear));
+      await currentYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+  });
+
+  it('keeps current-year response when stale-year request starts later', async () => {
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce({
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    });
+
+    const currentYearDeferred = createDeferred<YearPerformance>();
+    const previousYearDeferred = createDeferred<YearPerformance>();
+
+    mockedPortfolioApi.calculateYearPerformance.mockImplementation((_portfolioId, request) => {
+      if (request.year === currentYear) {
+        return currentYearDeferred.promise;
+      }
+      if (request.year === previousYear) {
+        return previousYearDeferred.promise;
+      }
+      return Promise.resolve(createPerformance(request.year));
+    });
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-late-stale',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        'portfolio-late-stale',
+        expect.objectContaining({ year: currentYear })
+      );
+    });
+
+    act(() => {
+      void result.current.calculatePerformance(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        'portfolio-late-stale',
+        expect.objectContaining({ year: previousYear })
+      );
+    });
+
+    await act(async () => {
+      currentYearDeferred.resolve(createPerformance(currentYear));
+      await currentYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(currentYear);
+      expect(result.current.performance?.year).toBe(currentYear);
+    });
+
+    await act(async () => {
+      previousYearDeferred.resolve(createPerformance(previousYear));
+      await previousYearDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(currentYear);
+      expect(result.current.performance?.year).toBe(currentYear);
     });
   });
 
