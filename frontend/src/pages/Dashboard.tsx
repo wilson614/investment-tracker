@@ -14,7 +14,6 @@ import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../compon
 import { AssetAllocationPieChart } from '../components/charts';
 import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
 import { Skeleton } from '../components/common/SkeletonLoader';
-import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
 import type {
@@ -426,7 +425,7 @@ const fetchPriceForTarget = async (
 };
 
 export function DashboardPage() {
-  const { currentPortfolioId, isAllPortfolios, portfolios } = usePortfolio();
+  const { portfolios } = usePortfolio();
 
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
@@ -447,7 +446,7 @@ export function DashboardPage() {
   // Track if we need to auto-fetch prices after initial load
   const shouldAutoFetch = useRef(true);
 
-  // When switching portfolio, allow auto-fetch again
+  // 當可用投組清單變化時，允許自動重新抓價
   useEffect(() => {
     shouldAutoFetch.current = true;
     currentPricesRef.current = {};
@@ -455,11 +454,11 @@ export function DashboardPage() {
     setIsCalculatingXirr(false);
     setXirrError(null);
     setXirrResult(null);
-  }, [currentPortfolioId, isAllPortfolios]);
+  }, [portfolios]);
 
   useEffect(() => {
     loadDashboardData();
-  }, [currentPortfolioId, isAllPortfolios, portfolios]);
+  }, [portfolios]);
 
   // Auto-fetch prices after initial data load
   useEffect(() => {
@@ -477,39 +476,8 @@ export function DashboardPage() {
     }
   }, [isLoading, portfolio, summary]);
 
-  // Load historical performance data for the chart (single portfolio mode)
-  useEffect(() => {
-    if (!portfolio || isAllPortfolios) return;
-
-    const loadHistoricalData = async () => {
-      setIsLoadingHistorical(true);
-      try {
-        const result = await portfolioApi.getMonthlyNetWorth(portfolio.id);
-        setHistoricalData(
-          result.data.map((d) => ({
-            month: d.month,
-            value: d.value,
-            contributions: d.contributions,
-          }))
-        );
-      } catch {
-        // Silently fail - chart will show "no data" message
-        setHistoricalData([]);
-      } finally {
-        setIsLoadingHistorical(false);
-      }
-    };
-
-    loadHistoricalData();
-  }, [portfolio?.id, isAllPortfolios]);
-
   /**
-   * 取得 Dashboard 需要的初始資料。
-   *
-   * 流程：
-   * 1) 取得目前選定的投資組合（由 PortfolioContext 提供 currentPortfolioId）
-   * 2) 並行載入 summary 與交易清單
-   * 3) 讀取快取報價並先用快取重新計算 summary / XIRR（若快取存在）
+   * 取得 Dashboard 需要的初始資料（固定 aggregate 流程）。
    */
   const loadDashboardData = async () => {
     try {
@@ -518,84 +486,7 @@ export function DashboardPage() {
       setXirrError(null);
       setIsCalculatingXirr(false);
 
-      if (isAllPortfolios) {
-        if (portfolios.length === 0) {
-          setPortfolio(null);
-          setSummary(null);
-          setXirrResult(null);
-          setRecentTransactions([]);
-          setHistoricalData([]);
-          setPortfolioBreakdown([]);
-          setIsLoadingHistorical(false);
-          setIsLoading(false);
-          return;
-        }
-
-        setIsLoadingHistorical(true);
-
-        const [summaries, transactionsByPortfolio, historicalByPortfolio] = await Promise.all([
-          Promise.all(portfolios.map((p) => portfolioApi.getSummary(p.id))),
-          Promise.all(portfolios.map((p) => transactionApi.getByPortfolio(p.id))),
-          Promise.all(portfolios.map((p) => portfolioApi.getMonthlyNetWorth(p.id))),
-        ]);
-
-        const mergedPositions = mergePositionsByTicker(summaries);
-        const mergedPrices = loadCachedPrices(mergedPositions);
-        currentPricesRef.current = mergedPrices;
-
-        let summariesForAggregate = summaries;
-        if (Object.keys(mergedPrices).length > 0) {
-          summariesForAggregate = await Promise.all(
-            portfolios.map((p) => portfolioApi.getSummary(p.id, mergedPrices))
-          );
-        }
-
-        const aggregatePortfolio = createAggregatePortfolio(portfolios);
-        const aggregateSummary = buildAggregateSummary(portfolios, summariesForAggregate);
-
-        const mergedTransactions = transactionsByPortfolio
-          .flat()
-          .sort(
-            (a, b) =>
-              new Date(b.transactionDate).getTime() -
-              new Date(a.transactionDate).getTime()
-          )
-          .slice(0, 5);
-
-        const combinedHistorical = mergeMonthlyNetWorth(historicalByPortfolio);
-
-        setPortfolio(aggregatePortfolio);
-        setSummary(aggregateSummary);
-
-        if (Object.keys(mergedPrices).length > 0) {
-          setIsCalculatingXirr(true);
-          try {
-            const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: mergedPrices });
-            setXirrResult(aggregateXirr);
-            setXirrError(null);
-          } catch (xirrErr) {
-            setXirrResult(null);
-            setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
-          } finally {
-            setIsCalculatingXirr(false);
-          }
-        } else {
-          setXirrResult(null);
-          setXirrError(null);
-        }
-        setRecentTransactions(mergedTransactions);
-        setHistoricalData(combinedHistorical);
-        setPortfolioBreakdown(
-          portfolios.map((portfolioItem, index) => ({
-            portfolio: portfolioItem,
-            summary: summariesForAggregate[index],
-          }))
-        );
-        setIsLoadingHistorical(false);
-        return;
-      }
-
-      if (!currentPortfolioId) {
+      if (portfolios.length === 0) {
         setPortfolio(null);
         setSummary(null);
         setXirrResult(null);
@@ -607,37 +498,68 @@ export function DashboardPage() {
         return;
       }
 
-      const p = await portfolioApi.getById(currentPortfolioId);
-      setPortfolio(p);
-      setPortfolioBreakdown([]);
+      setIsLoadingHistorical(true);
 
-      // Load summary and transactions in parallel
-      const [basicSummary, txData] = await Promise.all([
-        portfolioApi.getSummary(p.id),
-        transactionApi.getByPortfolio(p.id),
+      const [summaries, transactionsByPortfolio, historicalByPortfolio] = await Promise.all([
+        Promise.all(portfolios.map((p) => portfolioApi.getSummary(p.id))),
+        Promise.all(portfolios.map((p) => transactionApi.getByPortfolio(p.id))),
+        Promise.all(portfolios.map((p) => portfolioApi.getMonthlyNetWorth(p.id))),
       ]);
 
-      const cachedPrices = loadCachedPrices(basicSummary.positions);
-      currentPricesRef.current = cachedPrices;
+      const mergedPositions = mergePositionsByTicker(summaries);
+      const mergedPrices = loadCachedPrices(mergedPositions);
+      currentPricesRef.current = mergedPrices;
 
-      // Get most recent 5 transactions
-      const sortedTx = [...txData].sort((a, b) =>
-        new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-      );
-      setRecentTransactions(sortedTx.slice(0, 5));
-
-      // If we have cached prices, recalculate with them
-      if (Object.keys(cachedPrices).length > 0) {
-        const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(p.id, cachedPrices),
-          portfolioApi.calculateXirr(p.id, { currentPrices: cachedPrices }),
-        ]);
-        setSummary(summaryWithPrices);
-        setXirrResult(xirr);
-      } else {
-        setSummary(basicSummary);
-        setXirrResult(null);
+      let summariesForAggregate = summaries;
+      if (Object.keys(mergedPrices).length > 0) {
+        summariesForAggregate = await Promise.all(
+          portfolios.map((p) => portfolioApi.getSummary(p.id, mergedPrices))
+        );
       }
+
+      const aggregatePortfolio = createAggregatePortfolio(portfolios);
+      const aggregateSummary = buildAggregateSummary(portfolios, summariesForAggregate);
+
+      const mergedTransactions = transactionsByPortfolio
+        .flat()
+        .sort(
+          (a, b) =>
+            new Date(b.transactionDate).getTime() -
+            new Date(a.transactionDate).getTime()
+        )
+        .slice(0, 5);
+
+      const combinedHistorical = mergeMonthlyNetWorth(historicalByPortfolio);
+
+      setPortfolio(aggregatePortfolio);
+      setSummary(aggregateSummary);
+
+      if (Object.keys(mergedPrices).length > 0) {
+        setIsCalculatingXirr(true);
+        try {
+          const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: mergedPrices });
+          setXirrResult(aggregateXirr);
+          setXirrError(null);
+        } catch (xirrErr) {
+          setXirrResult(null);
+          setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
+        } finally {
+          setIsCalculatingXirr(false);
+        }
+      } else {
+        setXirrResult(null);
+        setXirrError(null);
+      }
+
+      setRecentTransactions(mergedTransactions);
+      setHistoricalData(combinedHistorical);
+      setPortfolioBreakdown(
+        portfolios.map((portfolioItem, index) => ({
+          portfolio: portfolioItem,
+          summary: summariesForAggregate[index],
+        }))
+      );
+      setIsLoadingHistorical(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
@@ -646,7 +568,7 @@ export function DashboardPage() {
   };
 
   /**
-   * 取得所有持倉的最新報價（含匯率），並更新 summary / XIRR。
+   * 取得所有持倉的最新報價（含匯率），並更新 aggregate summary / XIRR。
    *
    * 同時會刷新市場資料（CAPE、YTD），但即使報價失敗也會盡量保留快取結果。
    */
@@ -666,10 +588,8 @@ export function DashboardPage() {
       // If there are no positions, still refresh market data and exit
       if (summary.positions.length === 0) {
         await marketDataPromise;
-        if (isAllPortfolios) {
-          setXirrResult(null);
-          setXirrError(null);
-        }
+        setXirrResult(null);
+        setXirrError(null);
         return;
       }
 
@@ -701,47 +621,33 @@ export function DashboardPage() {
 
       if (Object.keys(allPrices).length === 0) {
         setXirrResult(null);
-        if (isAllPortfolios) {
-          setXirrError('目前沒有可用報價，無法計算彙總 XIRR');
-        }
+        setXirrError('目前沒有可用報價，無法計算彙總 XIRR');
         return;
       }
 
-      if (isAllPortfolios) {
-        const summariesWithPrices = await Promise.all(
-          portfolios.map((p) => portfolioApi.getSummary(p.id, allPrices))
-        );
+      const summariesWithPrices = await Promise.all(
+        portfolios.map((p) => portfolioApi.getSummary(p.id, allPrices))
+      );
 
-        setSummary(buildAggregateSummary(portfolios, summariesWithPrices));
-        setPortfolioBreakdown(
-          portfolios.map((portfolioItem, index) => ({
-            portfolio: portfolioItem,
-            summary: summariesWithPrices[index],
-          }))
-        );
+      setSummary(buildAggregateSummary(portfolios, summariesWithPrices));
+      setPortfolioBreakdown(
+        portfolios.map((portfolioItem, index) => ({
+          portfolio: portfolioItem,
+          summary: summariesWithPrices[index],
+        }))
+      );
 
-        setIsCalculatingXirr(true);
-        try {
-          const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: allPrices });
-          setXirrResult(aggregateXirr);
-          setXirrError(null);
-        } catch (xirrErr) {
-          setXirrResult(null);
-          setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
-        } finally {
-          setIsCalculatingXirr(false);
-        }
-
-        return;
+      setIsCalculatingXirr(true);
+      try {
+        const aggregateXirr = await portfolioApi.calculateAggregateXirr({ currentPrices: allPrices });
+        setXirrResult(aggregateXirr);
+        setXirrError(null);
+      } catch (xirrErr) {
+        setXirrResult(null);
+        setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
+      } finally {
+        setIsCalculatingXirr(false);
       }
-
-      const [summaryWithPrices, xirr] = await Promise.all([
-        portfolioApi.getSummary(portfolio.id, allPrices),
-        portfolioApi.calculateXirr(portfolio.id, { currentPrices: allPrices }),
-      ]);
-      setSummary(summaryWithPrices);
-      setXirrResult(xirr);
-      setXirrError(null);
     } finally {
       setIsPriceDataPending(false);
       setIsFetchingPrices(false);
@@ -833,7 +739,6 @@ export function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4 mb-8">
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
-            <PortfolioSelector onCreateNew={() => undefined} />
           </div>
 
           {/* Market Context - CAPE & YTD (always show even without portfolio) */}
@@ -873,7 +778,6 @@ export function DashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">儀表板</h1>
-            <PortfolioSelector onCreateNew={() => undefined} />
           </div>
           <button
             onClick={handleFetchAllPrices}
@@ -981,7 +885,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {isAllPortfolios && portfolioBreakdown.length > 0 && (
+        {portfolioBreakdown.length > 0 && (
           <div className="card-dark p-6 mb-6">
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">各投資組合市值貢獻</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

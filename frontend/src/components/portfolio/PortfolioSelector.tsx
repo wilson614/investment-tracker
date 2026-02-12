@@ -7,16 +7,18 @@ import { COMMON_CURRENCIES, CURRENCY_LABELS } from '../../constants';
 interface PortfolioSelectorProps {
   onCreateNew: () => void;
   className?: string;
+  includeAllOption?: boolean;
 }
 
 export function PortfolioSelector({
   onCreateNew,
   className = '',
+  includeAllOption = true,
 }: PortfolioSelectorProps) {
   const { portfolios, currentPortfolioId, currentPortfolio, isAllPortfolios, selectPortfolio, isLoading } = usePortfolio();
   const [isOpen, setIsOpen] = useState(false);
 
-
+  const shouldShowAllAsSelected = includeAllOption && isAllPortfolios;
   const portfolioCurrencies = new Set(portfolios.map((p) => p.baseCurrency));
   const allCurrenciesHavePortfolios = COMMON_CURRENCIES.every((currency) =>
     portfolioCurrencies.has(currency)
@@ -41,7 +43,7 @@ export function PortfolioSelector({
       >
         <DollarSign className="w-4 h-4 text-[var(--accent-butter)]" />
         <span className="text-[var(--text-primary)] text-sm font-medium">
-          {isAllPortfolios
+          {shouldShowAllAsSelected
             ? '所有投資組合'
             : currentPortfolio
               ? getPortfolioLabel(currentPortfolio)
@@ -62,25 +64,27 @@ export function PortfolioSelector({
           />
           <div className="absolute top-full left-0 mt-1 w-72 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 overflow-hidden">
             <div className="max-h-64 overflow-y-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  selectPortfolio('all');
-                  setIsOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors ${
-                  isAllPortfolios
-                    ? 'bg-[var(--bg-tertiary)]'
-                    : ''
-                }`}
-              >
-                <Layers className="w-4 h-4 text-[var(--accent-peach)]" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-                    所有投資組合
+              {includeAllOption && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectPortfolio('all');
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-tertiary)] transition-colors ${
+                    isAllPortfolios
+                      ? 'bg-[var(--bg-tertiary)]'
+                      : ''
+                  }`}
+                >
+                  <Layers className="w-4 h-4 text-[var(--accent-peach)]" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                      所有投資組合
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              )}
               {portfolios.map((portfolio) => (
                 <button
                   type="button"

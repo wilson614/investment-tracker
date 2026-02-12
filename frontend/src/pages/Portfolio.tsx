@@ -602,6 +602,7 @@ export function PortfolioPage() {
             </div>
             <PortfolioSelector
               onCreateNew={() => setShowCreatePortfolio(true)}
+              includeAllOption={false}
             />
           </div>
           <div className="flex items-center gap-2">
