@@ -25,27 +25,27 @@
 
 ---
 
-## Phase 2: User Story 1 + User Story 4 — Portfolio Selector & Default Behavior (Priority: P1) MVP
+## Phase 2: User Story 1 + User Story 4 — Performance Selector & Default Behavior (Priority: P1) MVP
 
-**Goal**: Users can switch portfolios on Dashboard and Performance pages via a dropdown selector. "All Portfolios" is the default selection. Selection is shared across pages and persists.
+**Goal**: Users can switch portfolios on Performance page via a dropdown selector while Dashboard stays aggregate-only. "All Portfolios" is the default for Performance. Selection is shared where applicable and persists.
 
-**Independent Test**: Navigate to Dashboard — verify selector appears with "All Portfolios" selected by default. Switch to a specific portfolio — verify data updates. Navigate to Performance — verify same portfolio is selected. Refresh browser — verify selection persists. Navigate to Portfolio page while "All" is selected — verify first portfolio is auto-selected.
+**Independent Test**: Open Performance — verify selector appears with "All Portfolios" selected by default. Switch to a specific portfolio — verify data updates. Open Dashboard — verify no selector is shown and aggregate data remains displayed. Refresh browser — verify selection persists. Navigate to Portfolio page while "All" is selected — verify first portfolio is auto-selected and "All" is not shown.
 
 ### Implementation for US1 + US4
 
-- [x] T004 [US1] Add PortfolioSelector to Dashboard page header — render selector component in the page header area, wire up `isAllPortfolios` branch in `loadDashboardData()` to show placeholder/loading state when "all" is selected (aggregate view implemented in US2), ensure individual portfolio switching continues to work in `frontend/src/pages/Dashboard.tsx`
-- [x] T005 [P] [US1] Add PortfolioSelector to Performance page header — render selector component, add `isAllPortfolios` guard before showing "找不到投資組合" error (when "all" selected, `currentPortfolio` is null but that's valid), show placeholder state for aggregate (implemented in US3), ensure individual portfolio switching continues to work in `frontend/src/pages/Performance.tsx`
+- [x] T004 [US1] Add PortfolioSelector to Performance page header — render selector component, add `isAllPortfolios` guard before showing "找不到投資組合" error (when "all" selected, `currentPortfolio` is null but that's valid), and ensure individual portfolio switching continues to work in `frontend/src/pages/Performance.tsx`
+- [x] T005 [US1] Keep Dashboard aggregate-only in selector integration phase — ensure no selector is rendered on Dashboard and aggregate path remains valid in `frontend/src/pages/Dashboard.tsx`
 - [x] T006 [US4] Update Portfolio management page to auto-select first portfolio when `isAllPortfolios` is true — on mount/navigation, check if `currentPortfolioId === 'all'` and call `selectPortfolio(portfolios[0].id)` to ensure Portfolio page always has a specific portfolio context in `frontend/src/pages/Portfolio.tsx`
 
-**Checkpoint**: Portfolio selector visible and functional on Dashboard and Performance. Switching between individual portfolios works. "All Portfolios" selected by default. Selection shared across pages. Portfolio page auto-selects on "all".
+**Checkpoint**: Portfolio selector is visible and functional on Performance. Dashboard remains aggregate-only with no selector. "All Portfolios" is selected by default on Performance. Portfolio page auto-selects on "all" and keeps specific-portfolio context.
 
 ---
 
 ## Phase 3: User Story 2 — Aggregate Dashboard View (Priority: P2)
 
-**Goal**: When "All Portfolios" is selected on Dashboard, users see combined metrics (total cost, market value, unrealized PnL, XIRR), per-portfolio breakdown, merged asset allocation, aggregated net worth chart, cross-portfolio top performers, and merged recent transactions.
+**Goal**: Dashboard is fixed in aggregate mode and shows combined metrics (total cost, market value, unrealized PnL, XIRR), per-portfolio breakdown, merged asset allocation, aggregated net worth chart, cross-portfolio top performers, and merged recent transactions.
 
-**Independent Test**: Select "All Portfolios" on Dashboard — verify summary cards show combined totals, per-portfolio breakdown shows each portfolio's market value, pie chart shows merged positions, historical chart shows summed monthly net worth, top performers rank across all portfolios, recent transactions merge from all portfolios.
+**Independent Test**: Open Dashboard (no selector interaction needed) — verify summary cards show combined totals, per-portfolio breakdown shows each portfolio's market value, pie chart shows merged positions, historical chart shows summed monthly net worth, top performers rank across all portfolios, and recent transactions merge from all portfolios.
 
 ### Backend for US2
 
@@ -90,11 +90,15 @@
 **Purpose**: Verify regression, edge cases, and overall quality
 
 - [x] T019 Verify single-portfolio regression — confirm all existing Dashboard and Performance functionality works identically when a specific portfolio is selected (no behavior change for individual portfolio views)
-- [x] T020 Verify cross-page selection consistency — confirm selecting a portfolio on Dashboard reflects on Performance and vice versa, confirm "All" on Dashboard then navigating to Portfolio auto-selects first portfolio, confirm browser refresh preserves selection
+- [x] T020 Verify cross-page selection consistency — confirm Performance selection is reflected when navigating to Portfolio (and vice versa for specific portfolios), confirm aggregate state transitioning to Portfolio auto-selects first portfolio, confirm browser refresh preserves selection
 - [x] T021 Handle edge cases — verify portfolio deletion while selected falls back to "all", verify empty state when no portfolios exist, verify loading states display correctly during aggregate data fetching, verify "Fetch All Prices" in aggregate mode works for all unique tickers
 - [x] T022 [US3] Align aggregate available years empty-state contract — ensure `GET /api/portfolios/aggregate/performance/years` returns empty `AvailableYearsDto` for no-portfolio and no-transaction scenarios; add/update backend unit + integration regression tests in `backend/src/InvestmentTracker.Application/UseCases/Performance/GetAggregateAvailableYearsUseCase.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/GetAggregateAvailableYearsUseCaseTests.cs`, and `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
 - [x] T023 [US3] Add aggregate performance regression for single-active-portfolio parity and mixed-currency contribution reconciliation — cover "single active + other empty" parity and "TWD + USD both active" aggregation reconciliation in `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
 - [x] T024 [US3] Preserve selected performance year across scope switching with conditional fallback — keep selected year when present after switching portfolio scope, fallback only if missing, and add hook regression coverage in `frontend/src/hooks/useHistoricalPerformance.ts` and `frontend/src/test/useHistoricalPerformance.test.ts`
+- [x] T025 [US2] Lock Dashboard to aggregate mode — remove portfolio switching entry points from Dashboard UI, keep aggregate loading as the only data path, and verify no selector is rendered on Dashboard in `frontend/src/pages/Dashboard.tsx`
+- [x] T026 [US4] Hide "All Portfolios" option on Portfolio page selector path — ensure Portfolio management only exposes concrete portfolio options and still auto-resolves to a specific portfolio when current state is `"all"` in `frontend/src/pages/Portfolio.tsx` and `frontend/src/components/portfolio/PortfolioSelector.tsx`
+- [x] T027 [US3] Fix Performance scope/year race behavior — prevent stale async responses from overwriting latest user-selected scope/year and add deterministic regression coverage in `frontend/src/hooks/useHistoricalPerformance.ts` and `frontend/src/test/useHistoricalPerformance.test.ts`
+- [x] T028 [US3] Add MD vs TWR regression validation case — include at least one aggregate performance test where Modified Dietz and TWR are both present, differ numerically, and match expected values in `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
 
 ---
 
@@ -110,14 +114,15 @@
 
 ### User Story Dependencies
 
-- **US1+US4 (P1)**: Foundational context + selector changes → page integration → auto-select behavior
-- **US2 (P2)**: Backend XIRR endpoint (independent) + Frontend aggregate Dashboard (depends on US1 selector being in place)
-- **US3 (P3)**: Backend performance endpoints (independent) + Frontend aggregate Performance (depends on US1 selector being in place)
+- **US1+US4 (P1)**: Foundational context + Performance selector changes → Portfolio auto-select behavior
+- **US2 (P2)**: Backend XIRR endpoint (independent) + Frontend aggregate Dashboard
+- **US3 (P3)**: Backend performance endpoints (independent) + Frontend aggregate Performance
 
 ### Within Each User Story
 
 - Backend tasks can run in parallel with frontend foundational tasks
-- Frontend aggregate implementation depends on selector being rendered (from US1)
+- Frontend aggregate Dashboard implementation is selector-independent (Dashboard is fixed aggregate)
+- Frontend aggregate Performance implementation depends on Performance selector/state flow
 - API wiring depends on backend endpoints being deployed
 
 ### Parallel Opportunities
@@ -133,8 +138,8 @@ T016 (Performance Controller)     ─┘
 
 **Frontend parallelism** (after Phase 1):
 ```
-T004 (Dashboard selector)  ─┐ Can run in parallel
-T005 (Performance selector) ─┘ (different files)
+T004 (Performance selector)        ─┐ Can run in parallel
+T005 (Dashboard aggregate-only lock) ─┘ (different files)
 ```
 
 **Cross-story parallelism** (after foundational):
@@ -176,27 +181,34 @@ T016 after T014 + T015
 
 1. Complete Phase 1: Foundational (T001-T003)
 2. Complete Phase 2: US1+US4 (T004-T006)
-3. **STOP and VALIDATE**: Portfolio selector works on Dashboard and Performance, switching between individual portfolios works, "All" shows placeholder
-4. Deploy/demo if ready — users get portfolio switching value immediately
+3. **STOP and VALIDATE**: Performance selector works for individual/aggregate scope switching, Dashboard remains aggregate-only without selector
+4. Deploy/demo if ready — users get immediate value from fixed aggregate Dashboard plus Performance scope switching
 
 ### Incremental Delivery
 
-1. Foundational → selector infrastructure ready
-2. US1+US4 → Portfolio switching works, "All" is default → Deploy (MVP)
-3. US2 → Aggregate Dashboard view with XIRR → Deploy
-4. US3 → Aggregate Performance view → Deploy
-5. Polish → Edge cases verified → Final Deploy
+1. Foundational → selector/state infrastructure ready
+2. US1+US4 → Performance switching works, Dashboard stays aggregate-only, "All" default on Performance → Deploy (MVP)
+3. US2 → Aggregate Dashboard view with XIRR (fixed aggregate surface) → Deploy
+4. US3 → Aggregate Performance view + race-safe year/scope switching → Deploy
+5. Polish → Edge cases and MD/TWR regression verified → Final Deploy
 
 ### Suggested Batch Grouping (for team-exec)
 
 **Batch 1**: T001 + T002 + T003 (Foundational)
-**Batch 2**: T004 + T005 + T006 (US1+US4 — MVP selector)
+**Batch 2**: T004 + T005 + T006 (US1+US4 — Performance selector + Portfolio fallback)
 **Batch 3**: T007 + T008 (US2 backend)
 **Batch 4**: T009 + T010 + T011 (US2 frontend — aggregate summary + breakdown + chart)
 **Batch 5**: T012 + T013 (US2 frontend — aggregate prices + XIRR)
 **Batch 6**: T014 + T015 + T016 (US3 backend)
 **Batch 7**: T017 + T018 (US3 frontend — aggregate performance)
-**Batch 8**: T019 + T020 + T021 + T022 + T023 + T024 (Polish + regressions)
+**Batch 8**: T019 + T020 + T021 + T022 + T023 + T024 (Polish + existing regressions)
+**Batch 9**: T025 + T026 + T027 + T028 (scope-lock + race fix + MD/TWR regression)
+
+### Scope Change Note (2026-02-12)
+
+- Dashboard selector capability from earlier phases is superseded by fixed aggregate behavior.
+- Portfolio page "All Portfolios" visibility is superseded by specific-portfolio-only behavior.
+- Tasks T025-T028 capture this scope correction and are marked complete.
 
 ---
 

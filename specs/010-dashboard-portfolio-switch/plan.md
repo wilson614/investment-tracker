@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add a portfolio selector dropdown (with "All Portfolios" option) to Dashboard and Performance pages. When "All Portfolios" is selected, show aggregated investment metrics across all portfolios. Uses a hybrid aggregation strategy: frontend merges simple data (summaries, transactions, monthly net worth), while 3 new backend endpoints handle mathematically complex calculations (aggregate XIRR, aggregate annual performance with TWR/Modified Dietz, aggregate available years). Post-fix contract alignment requires: aggregate years returns an empty DTO (not not-found) when no portfolio/transaction data exists, aggregate year performance matches single-portfolio output when only one portfolio is active, year selection is preserved across scope switches with fallback only when the selected year is unavailable, and regression coverage explicitly includes mixed TWD+USD contribution reconciliation.
+Keep Dashboard fixed in aggregate mode (no portfolio selector), while Performance retains portfolio switching with an "All Portfolios" option. Portfolio page remains specific-portfolio only and must not show "All Portfolios". Aggregation continues to use a hybrid strategy: frontend merges simple data (summaries, transactions, monthly net worth), while backend endpoints handle mathematically complex calculations (aggregate XIRR, aggregate annual performance with TWR/Modified Dietz, aggregate available years). Post-fix contract alignment requires: aggregate years returns an empty DTO (not not-found) when no portfolio/transaction data exists, aggregate year performance matches single-portfolio output when only one portfolio is active, Performance year/scope switching preserves latest user intent by ignoring stale async responses, and regression coverage explicitly includes mixed TWD+USD contribution reconciliation plus a case where Modified Dietz and TWR are both present, numerically different, and correct.
 
 ## Technical Context
 
@@ -78,16 +78,16 @@ backend/
 frontend/
 ├── src/
 │   ├── contexts/
-│   │   └── PortfolioContext.tsx                            # MODIFY (support "all" sentinel)
+│   │   └── PortfolioContext.tsx                            # MODIFY (support "all" sentinel + page-specific constraints)
 │   ├── components/
 │   │   └── portfolio/
-│   │       └── PortfolioSelector.tsx                       # MODIFY (add "All Portfolios" option)
+│   │       └── PortfolioSelector.tsx                       # MODIFY (conditional "All Portfolios" rendering)
 │   ├── pages/
-│   │   ├── Dashboard.tsx                                   # MODIFY (aggregate data flow)
-│   │   ├── Performance.tsx                                 # MODIFY (aggregate data flow)
-│   │   └── Portfolio.tsx                                   # MODIFY (auto-select on "all")
+│   │   ├── Dashboard.tsx                                   # MODIFY (fixed aggregate data flow)
+│   │   ├── Performance.tsx                                 # MODIFY (scope/year race-safe aggregate flow)
+│   │   └── Portfolio.tsx                                   # MODIFY (force specific-portfolio context)
 │   └── services/
-│       └── api.ts                                          # MODIFY (add aggregate API functions)
+│       └── api.ts                                          # MODIFY (aggregate API functions)
 └── tests/ (if applicable)
 ```
 
