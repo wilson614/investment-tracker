@@ -19,7 +19,7 @@
 
 - [x] T001 Update PortfolioContext to support "all" sentinel value — add `isAllPortfolios` derived boolean, change default from first portfolio to `"all"` when no localStorage value exists, update `selectPortfolio` to accept `"all"`, set `currentPortfolio` to null when "all" selected, handle deleted portfolio fallback to `"all"` in `frontend/src/contexts/PortfolioContext.tsx`
 - [x] T002 Update PortfolioSelector to add "All Portfolios" as first option in dropdown — render "All Portfolios" entry before portfolio list with a distinct icon, handle click via `selectPortfolio('all')`, highlight when `isAllPortfolios` is true in `frontend/src/components/portfolio/PortfolioSelector.tsx`
-- [x] T003 [P] Add aggregate API functions to service layer — add `portfolioApi.calculateAggregateXirr(request)` for `POST /api/portfolios/aggregate/xirr`, add `performanceApi.getAggregateYears()` for `GET /api/portfolios/aggregate/performance/years`, add `performanceApi.calculateAggregateYearPerformance(request)` for `POST /api/portfolios/aggregate/performance/year`, plus corresponding TypeScript types in `frontend/src/services/api.ts`
+- [x] T003 [P] Add aggregate API functions to service layer — add `portfolioApi.calculateAggregateXirr(request)` for `POST /api/portfolios/aggregate/xirr`, add `portfolioApi.getAggregateYears()` for `GET /api/portfolios/aggregate/performance/years`, add `portfolioApi.calculateAggregateYearPerformance(request)` for `POST /api/portfolios/aggregate/performance/year`, plus corresponding TypeScript types in `frontend/src/services/api.ts`
 
 **Checkpoint**: Foundation ready — PortfolioContext supports "all", PortfolioSelector renders "All Portfolios" option, API functions ready for backend integration
 
@@ -74,11 +74,11 @@
 
 - [x] T014 [P] [US3] Create GetAggregateAvailableYearsUseCase — get all user portfolios, find earliest transaction year across all, return union of years from earliest to current year (descending), reuse `AvailableYearsDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/GetAggregateAvailableYearsUseCase.cs`
 - [x] T015 [P] [US3] Create CalculateAggregateYearPerformanceUseCase — get all user portfolios, collect all transactions for specified year across portfolios, calculate aggregate start/end values (sum of individual portfolio values), compute XIRR + Modified Dietz + TWR using combined transaction data and aggregate values, consolidate missing prices from all portfolios, reuse `YearPerformanceDto` shape in `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`
-- [x] T016 [US3] Add aggregate performance controller actions — add `[HttpGet("aggregate/performance/years")]` and `[HttpPost("aggregate/performance/year")]` actions that delegate to new use cases, consider placing under a new `AggregatePerformanceController` or adding to existing `PerformanceController` with adjusted route prefix in `backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs`
+- [x] T016 [US3] Add aggregate performance controller actions — add `[HttpGet("aggregate/performance/years")]` and `[HttpPost("aggregate/performance/year")]` actions that delegate to new use cases, consider placing under a new `AggregatePerformanceController` or adding to existing `PortfoliosController` with adjusted route prefix in `backend/src/InvestmentTracker.API/Controllers/PortfoliosController.cs`
 
 ### Frontend for US3
 
-- [x] T017 [US3] Implement Performance aggregate data flow — when `isAllPortfolios`, call `performanceApi.getAggregateYears()` instead of per-portfolio years, call `performanceApi.calculateAggregateYearPerformance(request)` instead of per-portfolio year performance, display aggregate metrics (XIRR, Modified Dietz, TWR, year summary) using same UI components, wire benchmark comparison to use aggregate return value in `frontend/src/pages/Performance.tsx`
+- [x] T017 [US3] Implement Performance aggregate data flow — when `isAllPortfolios`, call `portfolioApi.getAggregateYears()` instead of per-portfolio years, call `portfolioApi.calculateAggregateYearPerformance(request)` instead of per-portfolio year performance, display aggregate metrics (XIRR, Modified Dietz, TWR, year summary) using same UI components, wire benchmark comparison to use aggregate return value in `frontend/src/pages/Performance.tsx`
 - [x] T018 [US3] Implement consolidated missing prices overlay for aggregate view — when `isAllPortfolios` and aggregate year performance returns `missingPrices`, show missing prices overlay combining gaps from all portfolios, ensure manual price entry works and triggers recalculation via aggregate endpoint in `frontend/src/pages/Performance.tsx`
 
 **Checkpoint**: "All Portfolios" on Performance shows complete aggregate annual performance — combined return metrics, aggregate year summary, benchmark comparison, consolidated missing prices.
@@ -92,6 +92,9 @@
 - [x] T019 Verify single-portfolio regression — confirm all existing Dashboard and Performance functionality works identically when a specific portfolio is selected (no behavior change for individual portfolio views)
 - [x] T020 Verify cross-page selection consistency — confirm selecting a portfolio on Dashboard reflects on Performance and vice versa, confirm "All" on Dashboard then navigating to Portfolio auto-selects first portfolio, confirm browser refresh preserves selection
 - [x] T021 Handle edge cases — verify portfolio deletion while selected falls back to "all", verify empty state when no portfolios exist, verify loading states display correctly during aggregate data fetching, verify "Fetch All Prices" in aggregate mode works for all unique tickers
+- [x] T022 [US3] Align aggregate available years empty-state contract — ensure `GET /api/portfolios/aggregate/performance/years` returns empty `AvailableYearsDto` for no-portfolio and no-transaction scenarios; add/update backend unit + integration regression tests in `backend/src/InvestmentTracker.Application/UseCases/Performance/GetAggregateAvailableYearsUseCase.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/GetAggregateAvailableYearsUseCaseTests.cs`, and `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
+- [x] T023 [US3] Add aggregate performance regression for single-active-portfolio parity and mixed-currency contribution reconciliation — cover "single active + other empty" parity and "TWD + USD both active" aggregation reconciliation in `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
+- [x] T024 [US3] Preserve selected performance year across scope switching with conditional fallback — keep selected year when present after switching portfolio scope, fallback only if missing, and add hook regression coverage in `frontend/src/hooks/useHistoricalPerformance.ts` and `frontend/src/test/useHistoricalPerformance.test.ts`
 
 ---
 
@@ -193,7 +196,7 @@ T016 after T014 + T015
 **Batch 5**: T012 + T013 (US2 frontend — aggregate prices + XIRR)
 **Batch 6**: T014 + T015 + T016 (US3 backend)
 **Batch 7**: T017 + T018 (US3 frontend — aggregate performance)
-**Batch 8**: T019 + T020 + T021 (Polish)
+**Batch 8**: T019 + T020 + T021 + T022 + T023 + T024 (Polish + regressions)
 
 ---
 

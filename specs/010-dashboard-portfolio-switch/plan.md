@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add a portfolio selector dropdown (with "All Portfolios" option) to Dashboard and Performance pages. When "All Portfolios" is selected, show aggregated investment metrics across all portfolios. Uses a hybrid aggregation strategy: frontend merges simple data (summaries, transactions, monthly net worth), while 3 new backend endpoints handle mathematically complex calculations (aggregate XIRR, aggregate annual performance with TWR/Modified Dietz, aggregate available years).
+Add a portfolio selector dropdown (with "All Portfolios" option) to Dashboard and Performance pages. When "All Portfolios" is selected, show aggregated investment metrics across all portfolios. Uses a hybrid aggregation strategy: frontend merges simple data (summaries, transactions, monthly net worth), while 3 new backend endpoints handle mathematically complex calculations (aggregate XIRR, aggregate annual performance with TWR/Modified Dietz, aggregate available years). Post-fix contract alignment requires: aggregate years returns an empty DTO (not not-found) when no portfolio/transaction data exists, aggregate year performance matches single-portfolio output when only one portfolio is active, year selection is preserved across scope switches with fallback only when the selected year is unavailable, and regression coverage explicitly includes mixed TWD+USD contribution reconciliation.
 
 ## Technical Context
 
@@ -68,10 +68,9 @@ backend/
 │   │       └── PerformanceDtos.cs                          # MODIFY (add aggregate DTOs if needed)
 │   └── InvestmentTracker.API/
 │       └── Controllers/
-│           ├── PortfoliosController.cs                     # MODIFY (add aggregate/xirr action)
-│           └── PerformanceController.cs                    # MODIFY (add aggregate routes)
+│           └── PortfoliosController.cs                     # MODIFY (add aggregate/xirr + aggregate/performance routes)
 └── tests/
-    └── InvestmentTracker.Tests/
+    └── InvestmentTracker.Application.Tests/
         └── UseCases/
             ├── CalculateAggregateXirrUseCaseTests.cs       # NEW
             └── CalculateAggregateYearPerformanceUseCaseTests.cs  # NEW

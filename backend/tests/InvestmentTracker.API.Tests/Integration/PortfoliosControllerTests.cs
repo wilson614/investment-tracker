@@ -311,6 +311,11 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             }
         };
 
+        return await CalculateAggregateYearPerformanceAsync(request);
+    }
+
+    private async Task<YearPerformanceDto> CalculateAggregateYearPerformanceAsync(CalculateYearPerformanceRequest request)
+    {
         var response = await Client.PostAsJsonAsync("/api/portfolios/aggregate/performance/year", request);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -334,6 +339,13 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             }
         };
 
+        return await CalculatePortfolioYearPerformanceAsync(portfolioId, request);
+    }
+
+    private async Task<YearPerformanceDto> CalculatePortfolioYearPerformanceAsync(
+        Guid portfolioId,
+        CalculateYearPerformanceRequest request)
+    {
         var response = await Client.PostAsJsonAsync($"/api/portfolios/{portfolioId}/performance/year", request);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -342,7 +354,12 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         return dto!;
     }
 
-    private async Task AddInitialUsdDepositAsync(Guid portfolioId, DateTime date, decimal amount)
+    private async Task AddInitialDepositAsync(
+        Guid portfolioId,
+        DateTime date,
+        decimal amount,
+        decimal homeAmount,
+        decimal exchangeRate)
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -360,12 +377,22 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
                 TransactionDate = date,
                 TransactionType = CurrencyTransactionType.InitialBalance,
                 ForeignAmount = amount,
-                HomeAmount = amount * 30m,
-                ExchangeRate = 30m,
+                HomeAmount = homeAmount,
+                ExchangeRate = exchangeRate,
                 Notes = "integration-test initial deposit"
             });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    private Task AddInitialUsdDepositAsync(Guid portfolioId, DateTime date, decimal amount)
+    {
+        return AddInitialDepositAsync(
+            portfolioId,
+            date,
+            amount,
+            homeAmount: amount * 30m,
+            exchangeRate: 30m);
     }
 
     [Fact]
@@ -422,6 +449,139 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.CashFlowCount.Should().Be(single.CashFlowCount);
         aggregate.EarliestTransactionDateInYear.Should().Be(single.EarliestTransactionDateInYear);
         aggregate.MissingPrices.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AggregatePerformance_WithUsdAndTwdActivePortfolios_ReconcilesHomeMetricsWithSingles()
+    {
+        // Arrange
+        const int targetYear = 2024;
+        const int previousYear = targetYear - 1;
+
+        var usdPortfolio = await CreateTestPortfolioWithCurrencyAsync("USD Active", "USD");
+        var twdPortfolio = await CreateTestPortfolioWithCurrencyAsync("TWD Active", "TWD");
+
+        await AddInitialUsdDepositAsync(usdPortfolio.Id, new DateTime(previousYear, 12, 20), 3000m);
+        await AddInitialDepositAsync(
+            twdPortfolio.Id,
+            new DateTime(previousYear, 12, 20),
+            amount: 120000m,
+            homeAmount: 120000m,
+            exchangeRate: 1m);
+
+        var transactions = new[]
+        {
+            new CreateStockTransactionRequest
+            {
+                PortfolioId = usdPortfolio.Id,
+                TransactionDate = new DateTime(previousYear, 11, 15),
+                Ticker = "AAPL",
+                TransactionType = TransactionType.Buy,
+                Shares = 2m,
+                PricePerShare = 90m,
+                Fees = 0m,
+                Market = StockMarket.US,
+                Currency = Currency.USD,
+                BalanceAction = BalanceAction.None
+            },
+            new CreateStockTransactionRequest
+            {
+                PortfolioId = usdPortfolio.Id,
+                TransactionDate = new DateTime(targetYear, 3, 10),
+                Ticker = "AAPL",
+                TransactionType = TransactionType.Buy,
+                Shares = 1m,
+                PricePerShare = 100m,
+                Fees = 0m,
+                Market = StockMarket.US,
+                Currency = Currency.USD,
+                BalanceAction = BalanceAction.None
+            },
+            new CreateStockTransactionRequest
+            {
+                PortfolioId = twdPortfolio.Id,
+                TransactionDate = new DateTime(previousYear, 11, 10),
+                Ticker = "2330",
+                TransactionType = TransactionType.Buy,
+                Shares = 10m,
+                PricePerShare = 500m,
+                Fees = 0m,
+                Market = StockMarket.TW,
+                Currency = Currency.TWD,
+                BalanceAction = BalanceAction.None
+            },
+            new CreateStockTransactionRequest
+            {
+                PortfolioId = twdPortfolio.Id,
+                TransactionDate = new DateTime(targetYear, 6, 18),
+                Ticker = "2330",
+                TransactionType = TransactionType.Buy,
+                Shares = 5m,
+                PricePerShare = 600m,
+                Fees = 0m,
+                Market = StockMarket.TW,
+                Currency = Currency.TWD,
+                BalanceAction = BalanceAction.None
+            }
+        };
+
+        foreach (var tx in transactions)
+        {
+            var txResponse = await Client.PostAsJsonAsync("/api/stocktransactions", tx);
+            txResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = targetYear,
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 110m, ExchangeRate = 32m },
+                ["2330"] = new() { Price = 650m, ExchangeRate = 1m }
+            },
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 95m, ExchangeRate = 30m },
+                ["2330"] = new() { Price = 520m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var aggregate = await CalculateAggregateYearPerformanceAsync(request);
+        var usdSingle = await CalculatePortfolioYearPerformanceAsync(usdPortfolio.Id, request);
+        var twdSingle = await CalculatePortfolioYearPerformanceAsync(twdPortfolio.Id, request);
+
+        var expectedStartValueHome = (usdSingle.StartValueHome ?? 0m) + (twdSingle.StartValueHome ?? 0m);
+        var expectedEndValueHome = (usdSingle.EndValueHome ?? 0m) + (twdSingle.EndValueHome ?? 0m);
+        var expectedNetContributionsHome = usdSingle.NetContributionsHome + twdSingle.NetContributionsHome;
+        var expectedEarliestTransaction = new[]
+        {
+            usdSingle.EarliestTransactionDateInYear,
+            twdSingle.EarliestTransactionDateInYear
+        }
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .Min();
+
+        // Assert
+        usdSingle.NetContributionsHome.Should().BeGreaterThan(0m);
+        twdSingle.NetContributionsHome.Should().BeGreaterThan(0m);
+
+        aggregate.MissingPrices.Should().BeEmpty();
+        aggregate.Year.Should().Be(targetYear);
+
+        aggregate.StartValueHome.Should().Be(expectedStartValueHome);
+        aggregate.EndValueHome.Should().Be(expectedEndValueHome);
+        aggregate.NetContributionsHome.Should().Be(expectedNetContributionsHome);
+
+        aggregate.TransactionCount.Should().Be(usdSingle.TransactionCount + twdSingle.TransactionCount);
+        aggregate.CashFlowCount.Should().Be(usdSingle.CashFlowCount + twdSingle.CashFlowCount);
+        aggregate.EarliestTransactionDateInYear.Should().Be(expectedEarliestTransaction);
+
+        aggregate.EndValueHome.Should().BeGreaterThan(usdSingle.EndValueHome ?? 0m);
+        aggregate.EndValueHome.Should().BeGreaterThan(twdSingle.EndValueHome ?? 0m);
+        aggregate.NetContributionsHome.Should().BeGreaterThan(usdSingle.NetContributionsHome);
+        aggregate.NetContributionsHome.Should().BeGreaterThan(twdSingle.NetContributionsHome);
     }
 
     [Fact]

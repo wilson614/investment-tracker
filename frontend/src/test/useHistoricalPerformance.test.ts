@@ -234,6 +234,119 @@ describe('useHistoricalPerformance', () => {
     });
   });
 
+  it('keeps selected year after remount when switching from portfolio A to B and year exists', async () => {
+    const selectedHistoryYear = previousYear;
+
+    mockedPortfolioApi.getAvailableYears
+      .mockResolvedValueOnce({
+        years: [currentYear, selectedHistoryYear],
+        earliestYear: selectedHistoryYear,
+        currentYear,
+      })
+      .mockResolvedValueOnce({
+        years: [currentYear, selectedHistoryYear, twoYearsAgo],
+        earliestYear: twoYearsAgo,
+        currentYear,
+      });
+
+    const { result, unmount } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-a',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-a');
+    });
+
+    act(() => {
+      result.current.setSelectedYear(selectedHistoryYear);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(selectedHistoryYear);
+    });
+
+    expect(localStorage.getItem('perf_selected_year')).toBe(String(selectedHistoryYear));
+
+    unmount();
+
+    const { result: switchedResult } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-b',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-b');
+    });
+
+    await waitFor(() => {
+      expect(switchedResult.current.selectedYear).toBe(selectedHistoryYear);
+    });
+  });
+
+  it('falls back to latest available year after remount when selected year is missing in switched portfolio', async () => {
+    const selectedHistoryYear = twoYearsAgo;
+    const portfolioBYears: AvailableYears = {
+      years: [previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    mockedPortfolioApi.getAvailableYears
+      .mockResolvedValueOnce({
+        years: [currentYear, selectedHistoryYear],
+        earliestYear: selectedHistoryYear,
+        currentYear,
+      })
+      .mockResolvedValueOnce(portfolioBYears);
+
+    const { result, unmount } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-a',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-a');
+    });
+
+    act(() => {
+      result.current.setSelectedYear(selectedHistoryYear);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(selectedHistoryYear);
+    });
+
+    unmount();
+
+    const { result: switchedResult } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-b',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-b');
+    });
+
+    await waitFor(() => {
+      expect(switchedResult.current.selectedYear).toBe(previousYear);
+    });
+
+    expect(switchedResult.current.selectedYear).not.toBe(selectedHistoryYear);
+  });
+
   it('keeps selected year when switching aggregate to specific portfolio if year exists', async () => {
     const selectedHistoryYear = previousYear;
 

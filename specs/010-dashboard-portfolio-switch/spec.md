@@ -54,7 +54,7 @@ When "All Portfolios" is selected on the Performance page, the user sees combine
 
 **Why this priority**: Aggregate performance analysis completes the "whole portfolio" picture. Users can see their overall investment performance without manually averaging across portfolios.
 
-**Independent Test**: Can be tested by selecting "All Portfolios" on the Performance page, choosing a year, and verifying that performance metrics and benchmark comparisons reflect combined portfolio data.
+**Independent Test**: Can be tested by selecting "All Portfolios" on the Performance page, choosing a year, and verifying that performance metrics and benchmark comparisons reflect combined portfolio data, including parity with a single active portfolio and mixed TWD+USD contribution reconciliation.
 
 **Acceptance Scenarios**:
 
@@ -62,6 +62,8 @@ When "All Portfolios" is selected on the Performance page, the user sees combine
 2. **Given** "All Portfolios" is selected, **When** viewing the year summary, **Then** starting value is the sum of all portfolio starting values, ending value is the sum of all portfolio ending values, and net contributions is the sum across all portfolios.
 3. **Given** "All Portfolios" is selected, **When** viewing benchmark comparison, **Then** the user's combined return is compared against the same benchmarks available for individual portfolios.
 4. **Given** "All Portfolios" is selected and a year has missing prices for some holdings, **When** the missing prices overlay appears, **Then** it shows all missing prices across all portfolios combined.
+5. **Given** aggregate available years is requested and the user has no portfolios (or portfolios without non-deleted transactions), **When** the endpoint responds, **Then** it returns an empty `AvailableYearsDto` (`years: []`, `earliestYear: null`, `currentYear: current UTC year`) instead of a not-found error.
+6. **Given** one portfolio has in-year activity and other portfolios are empty, **When** aggregate year performance is calculated, **Then** aggregate source currency, start/end values, net contributions, and return metrics match the active portfolio result.
 
 ---
 
@@ -108,8 +110,11 @@ The Dashboard defaults to "All Portfolios" view when the user first visits (no p
 - **FR-011**: When "All Portfolios" is selected on Performance, the year summary MUST show aggregated starting value, ending value, and net contributions across all portfolios.
 - **FR-012**: When "All Portfolios" is selected on Performance, benchmark comparison MUST compare combined portfolio return against the same benchmarks available for individual portfolios.
 - **FR-013**: When "All Portfolios" is selected on Performance and there are missing prices, the system MUST show a consolidated missing prices overlay combining gaps from all portfolios.
-- **FR-014**: The Portfolio management page MUST continue to require a specific portfolio selection (not "All Portfolios"). If "All Portfolios" is the current selection when navigating to Portfolio page, the first portfolio should be auto-selected.
-- **FR-015**: When the currently selected portfolio is deleted, the system MUST fall back to "All Portfolios" selection.
+- **FR-014**: Aggregate available years endpoint MUST return an empty `AvailableYearsDto` (`years: []`, `earliestYear: null`, `currentYear`) when the user has no portfolios or no non-deleted transactions across portfolios, and MUST NOT return a not-found error for this empty state.
+- **FR-015**: Aggregate year performance in a "single active portfolio + other empty portfolios" setup MUST match the active portfolio for source currency, start/end values, net contributions, and return metrics.
+- **FR-016**: Performance year selection MUST preserve the user-selected year when switching portfolio scope (specific ↔ all or specific ↔ specific) if that year exists in the new scope; fallback to `currentYear` or first available year is allowed only when the selected year is not available.
+- **FR-017**: The Portfolio management page MUST continue to require a specific portfolio selection (not "All Portfolios"). If "All Portfolios" is the current selection when navigating to Portfolio page, the first portfolio should be auto-selected.
+- **FR-018**: When the currently selected portfolio is deleted, the system MUST fall back to "All Portfolios" selection.
 
 ### Key Entities
 
