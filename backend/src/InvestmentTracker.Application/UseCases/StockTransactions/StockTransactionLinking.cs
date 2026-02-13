@@ -16,15 +16,13 @@ internal static class StockTransactionLinking
         ResolveStockLinkedInternalCategory(
             CurrencyTransactionType.Spend,
             "StockBuy",
-            "StockBuyLinked",
-            "Spend");
+            "StockBuyLinked");
 
     private static readonly CurrencyTransactionType StockSellInternalCategory =
         ResolveStockLinkedInternalCategory(
             CurrencyTransactionType.OtherIncome,
             "StockSell",
-            "StockSellLinked",
-            "OtherIncome");
+            "StockSellLinked");
 
     /// <summary>
     /// FR-005: 驗證股票交易幣別與綁定帳本幣別一致。
@@ -96,7 +94,7 @@ internal static class StockTransactionLinking
         }
 
         throw new InvalidOperationException(
-            $"Unable to resolve stock-linked internal currency transaction category. Fallback '{numericFallback}' is not defined.");
+            $"Unable to resolve stock-linked internal currency transaction category. Candidates: {string.Join(", ", candidateNames)}");
     }
 }
 

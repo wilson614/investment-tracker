@@ -117,6 +117,19 @@ public class HistoricalPerformanceService(
         var sourceCurrency = portfolio.BaseCurrency.ToUpperInvariant();
         var homeCurrency = portfolio.HomeCurrency.ToUpperInvariant();
 
+        var boundLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId,
+            cancellationToken);
+
+        IReadOnlyList<CurrencyLedger> ledgers = [];
+        IReadOnlyList<CurrencyTransaction> currencyTransactions = [];
+
+        if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
+        {
+            ledgers = [boundLedger];
+            currencyTransactions = boundLedger.Transactions.ToList();
+        }
+
         // Calculate positions at year end (NO split adjustment - use historical share counts)
         // Historical prices from APIs are already in their original (pre-split) values,
         // so we need to use the actual share counts at that time, not split-adjusted counts.
@@ -553,18 +566,6 @@ public class HistoricalPerformanceService(
         }
 
         // ===== US1: Cash Flow Strategy (StockTransaction vs CurrencyLedger) =====
-        IReadOnlyList<CurrencyLedger> ledgers = [];
-        IReadOnlyList<CurrencyTransaction> currencyTransactions = [];
-
-        var boundLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
-            portfolio.BoundCurrencyLedgerId, cancellationToken);
-
-        if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
-        {
-            ledgers = [boundLedger];
-            currencyTransactions = boundLedger.Transactions.ToList();
-        }
-
         var cashFlowStrategy = cashFlowStrategyProvider.GetStrategy(
             portfolio,
             validTransactions,
@@ -693,8 +694,43 @@ public class HistoricalPerformanceService(
             dietzCashFlowsHome.Add(new ReturnCashFlow(e.TransactionDate, amountHome));
         }
 
-        // ===== US1: Modified Dietz + TWR (Source Currency) =====
-        var sourceSnapshots = cashFlowEventSnapshots
+        var ledgerStartValueSource = 0m;
+        var ledgerEndValueSource = 0m;
+        var ledgerStartValueHome = 0m;
+        var ledgerEndValueHome = 0m;
+
+        if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
+        {
+            decimal GetLedgerBalance(DateTime date)
+            {
+                return boundLedger.Transactions
+                    .Where(t => !t.IsDeleted && t.TransactionDate.Date <= date.Date)
+                    .OrderBy(t => t.TransactionDate)
+                    .ThenBy(t => t.CreatedAt)
+                    .Sum(t => t.TransactionType switch
+                    {
+                        CurrencyTransactionType.ExchangeSell => -t.ForeignAmount,
+                        CurrencyTransactionType.Spend => -t.ForeignAmount,
+                        CurrencyTransactionType.OtherExpense => -t.ForeignAmount,
+                        CurrencyTransactionType.Withdraw => -t.ForeignAmount,
+                        _ => t.ForeignAmount
+                    });
+            }
+
+            var ledgerStartDate = yearStart.AddDays(-1);
+            var ledgerBalanceStart = GetLedgerBalance(ledgerStartDate);
+            var ledgerBalanceEnd = GetLedgerBalance(yearEnd);
+
+            ledgerStartValueSource = await ConvertAmountAsync(boundLedger.CurrencyCode, portfolio.BaseCurrency, ledgerStartDate, ledgerBalanceStart);
+            ledgerEndValueSource = await ConvertAmountAsync(boundLedger.CurrencyCode, portfolio.BaseCurrency, yearEnd, ledgerBalanceEnd);
+            ledgerStartValueHome = await ConvertAmountAsync(boundLedger.CurrencyCode, portfolio.HomeCurrency, ledgerStartDate, ledgerBalanceStart);
+            ledgerEndValueHome = await ConvertAmountAsync(boundLedger.CurrencyCode, portfolio.HomeCurrency, yearEnd, ledgerBalanceEnd);
+        }
+
+        var closedLoopStartValueSource = startValueSource + ledgerStartValueSource;
+        var closedLoopEndValueSource = endValueSource + ledgerEndValueSource;
+
+        var closedLoopSourceSnapshots = cashFlowEventSnapshots
             .Select(s => new ReturnValuationSnapshot(
                 Date: s.SnapshotDate,
                 ValueBefore: s.PortfolioValueBeforeSource,
@@ -702,16 +738,16 @@ public class HistoricalPerformanceService(
             .ToList();
 
         var modifiedDietzSource = returnCalculator.CalculateModifiedDietz(
-            startValue: startValueSource,
-            endValue: endValueSource,
+            startValue: closedLoopStartValueSource,
+            endValue: closedLoopEndValueSource,
             periodStart: yearStart,
             periodEnd: yearEnd,
             cashFlows: dietzCashFlowsSource);
 
         var twrSource = returnCalculator.CalculateTimeWeightedReturn(
-            startValue: startValueSource,
-            endValue: endValueSource,
-            cashFlowSnapshots: sourceSnapshots);
+            startValue: closedLoopStartValueSource,
+            endValue: closedLoopEndValueSource,
+            cashFlowSnapshots: closedLoopSourceSnapshots);
 
         // ===== Calculate Home Currency Performance =====
         var cashFlowsHome = new List<CashFlow>();
@@ -795,8 +831,11 @@ public class HistoricalPerformanceService(
             totalReturnHome = (double)((endValueHome - netContributionsHome) / netContributionsHome) * 100;
         }
 
+        var closedLoopStartValueHome = startValueHome + ledgerStartValueHome;
+        var closedLoopEndValueHome = endValueHome + ledgerEndValueHome;
+
         // ===== US1: Modified Dietz + TWR (Home Currency) =====
-        var homeSnapshots = cashFlowEventSnapshots
+        var closedLoopHomeSnapshots = cashFlowEventSnapshots
             .Select(s => new ReturnValuationSnapshot(
                 Date: s.SnapshotDate,
                 ValueBefore: s.PortfolioValueBeforeHome,
@@ -804,16 +843,16 @@ public class HistoricalPerformanceService(
             .ToList();
 
         var modifiedDietzHome = returnCalculator.CalculateModifiedDietz(
-            startValue: startValueHome,
-            endValue: endValueHome,
+            startValue: closedLoopStartValueHome,
+            endValue: closedLoopEndValueHome,
             periodStart: yearStart,
             periodEnd: yearEnd,
             cashFlows: dietzCashFlowsHome);
 
         var twrHome = returnCalculator.CalculateTimeWeightedReturn(
-            startValue: startValueHome,
-            endValue: endValueHome,
-            cashFlowSnapshots: homeSnapshots);
+            startValue: closedLoopStartValueHome,
+            endValue: closedLoopEndValueHome,
+            cashFlowSnapshots: closedLoopHomeSnapshots);
 
         logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
             year, xirrSource * 100, xirrHome * 100);
@@ -832,8 +871,8 @@ public class HistoricalPerformanceService(
             TotalReturnPercentage = totalReturnHome,
             ModifiedDietzPercentage = modifiedDietzHome.HasValue ? (double)(modifiedDietzHome.Value * 100m) : null,
             TimeWeightedReturnPercentage = twrHome.HasValue ? (double)(twrHome.Value * 100m) : null,
-            StartValueHome = startValueHome > 0 ? startValueHome : null,
-            EndValueHome = endValueHome > 0 ? endValueHome : null,
+            StartValueHome = closedLoopStartValueHome > 0 ? closedLoopStartValueHome : null,
+            EndValueHome = closedLoopEndValueHome > 0 ? closedLoopEndValueHome : null,
             NetContributionsHome = netContributionsHome,
             // Source currency (portfolio.BaseCurrency)
             SourceCurrency = sourceCurrency,
@@ -842,8 +881,8 @@ public class HistoricalPerformanceService(
             TotalReturnPercentageSource = totalReturnSource,
             ModifiedDietzPercentageSource = modifiedDietzSource.HasValue ? (double)(modifiedDietzSource.Value * 100m) : null,
             TimeWeightedReturnPercentageSource = twrSource.HasValue ? (double)(twrSource.Value * 100m) : null,
-            StartValueSource = startValueSource > 0 ? startValueSource : null,
-            EndValueSource = endValueSource > 0 ? endValueSource : null,
+            StartValueSource = closedLoopStartValueSource > 0 ? closedLoopStartValueSource : null,
+            EndValueSource = closedLoopEndValueSource > 0 ? closedLoopEndValueSource : null,
             NetContributionsSource = netContributionsSource,
             // Common
             CashFlowCount = cashFlowsSource.Count,
@@ -903,4 +942,5 @@ public class HistoricalPerformanceService(
             _ => "USD" // 預設 USD
         };
     }
+
 }

@@ -98,11 +98,13 @@ public class StockTransactionCashFlowStrategy : IReturnCashFlowStrategy
 }
 
 /// <summary>
-/// Ledger 策略：當投資組合存在「有效的外部入出金」時，改以 CurrencyTransaction 的外部入出金作為 CF，
-/// 並套用混合規則：若 StockTransaction 未由綁定 Ledger 支援，則仍視為外部現金流。
+/// Ledger 策略：僅納入「明確外部現金流」事件，並明確排除 internal events。
 /// </summary>
 public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
 {
+    private const string TwdCurrencyCode = "TWD";
+    private const string StockTopUpNotePrefix = "補足買入";
+
     public string Name => "CurrencyLedger";
 
     public bool IsApplicable(
@@ -125,52 +127,100 @@ public class CurrencyLedgerCashFlowStrategy : IReturnCashFlowStrategy
         var boundLedgerCurrency = ledgers.FirstOrDefault(l => l.Id == boundLedgerId)?.CurrencyCode
                                   ?? portfolio.BaseCurrency;
 
-        var explicitLedgerEvents = currencyTransactions
+        return currencyTransactions
             .Where(t => t.CurrencyLedgerId == boundLedgerId
                         && !t.IsDeleted
                         && t.TransactionDate.Date >= fromDate.Date
                         && t.TransactionDate.Date <= toDate.Date
-                        && t.TransactionType is CurrencyTransactionType.InitialBalance
-                            or CurrencyTransactionType.Deposit
-                            or CurrencyTransactionType.Withdraw)
+                        && IsExplicitExternalCashFlow(t, boundLedgerCurrency))
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.CreatedAt)
             .Select(t => new ReturnCashFlowEvent(
                 PortfolioId: portfolio.Id,
                 TransactionId: t.Id,
                 TransactionDate: t.TransactionDate,
-                Amount: t.TransactionType == CurrencyTransactionType.Withdraw ? -t.ForeignAmount : t.ForeignAmount,
+                Amount: GetSignedAmount(t),
                 CurrencyCode: boundLedgerCurrency,
-                Source: ReturnCashFlowEventSource.CurrencyLedger));
-
-        var implicitStockEvents = stockTransactions
-            .Where(t => t.PortfolioId == portfolio.Id
-                        && !t.IsDeleted
-                        && t.TransactionDate.Date >= fromDate.Date
-                        && t.TransactionDate.Date <= toDate.Date
-                        && t.TransactionType is TransactionType.Buy or TransactionType.Sell
-                        && t.CurrencyLedgerId != boundLedgerId)
-            .OrderBy(t => t.TransactionDate)
-            .ThenBy(t => t.CreatedAt)
-            .Select(t =>
-            {
-                var amount = t.TransactionType == TransactionType.Buy
-                    ? t.TotalCostSource
-                    : -(t.Shares * t.PricePerShare - t.Fees);
-
-                return new ReturnCashFlowEvent(
-                    PortfolioId: t.PortfolioId,
-                    TransactionId: t.Id,
-                    TransactionDate: t.TransactionDate,
-                    Amount: amount,
-                    CurrencyCode: t.Currency.ToString(),
-                    Source: ReturnCashFlowEventSource.StockTransaction);
-            });
-
-        return explicitLedgerEvents
-            .Concat(implicitStockEvents)
-            .OrderBy(e => e.TransactionDate)
+                Source: ReturnCashFlowEventSource.CurrencyLedger))
             .ToList();
+    }
+
+    private static bool IsExplicitExternalCashFlow(
+        CurrencyTransaction transaction,
+        string ledgerCurrencyCode)
+    {
+        if (IsStockLinkedInternalEvent(transaction))
+            return false;
+
+        if (IsInternalFxTransferEffect(transaction))
+            return false;
+
+        return transaction.TransactionType switch
+        {
+            CurrencyTransactionType.InitialBalance => true,
+            CurrencyTransactionType.Deposit => true,
+            CurrencyTransactionType.Withdraw => true,
+            CurrencyTransactionType.OtherIncome => true,
+            CurrencyTransactionType.OtherExpense => true,
+            CurrencyTransactionType.ExchangeBuy => !IsTwdLedger(ledgerCurrencyCode),
+            CurrencyTransactionType.ExchangeSell => !IsTwdLedger(ledgerCurrencyCode),
+            _ => false
+        };
+    }
+
+    private static bool IsStockLinkedInternalEvent(CurrencyTransaction transaction)
+    {
+        if (!transaction.RelatedStockTransactionId.HasValue)
+            return false;
+
+        var categoryName = transaction.TransactionType.ToString();
+
+        // 新版 enum：明確 stock-linked internal categories
+        if (categoryName is "StockBuy" or "StockBuyLinked" or "StockSell" or "StockSellLinked")
+            return true;
+
+        // 舊版暫存語意：buy-linked 仍可能使用 Spend
+        if (transaction.TransactionType == CurrencyTransactionType.Spend)
+            return true;
+
+        // 在 enum 尚未完成重命名前，sell-linked 可能暫時回退為 OtherIncome。
+        // 只有「補足買入」top-up 才視為外部入金；其餘 related-stock 的 OtherIncome 視為 internal。
+        if (transaction.TransactionType == CurrencyTransactionType.OtherIncome)
+            return !IsStockTopUpEvent(transaction);
+
+        return false;
+    }
+
+    private static bool IsInternalFxTransferEffect(CurrencyTransaction transaction)
+    {
+        if (!transaction.RelatedStockTransactionId.HasValue)
+            return false;
+
+        // Related-stock 的 ExchangeBuy/ExchangeSell 不一定是 internal：
+        // 「補足買入」top-up（notes 前綴）屬於 external cash flow，必須保留。
+        if (IsStockTopUpEvent(transaction))
+            return false;
+
+        return transaction.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.ExchangeSell;
+    }
+
+    private static bool IsStockTopUpEvent(CurrencyTransaction transaction)
+        => transaction.Notes?.StartsWith(StockTopUpNotePrefix, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsTwdLedger(string ledgerCurrencyCode)
+        => string.Equals(ledgerCurrencyCode, TwdCurrencyCode, StringComparison.OrdinalIgnoreCase);
+
+    private static decimal GetSignedAmount(CurrencyTransaction transaction)
+    {
+        var sign = transaction.TransactionType switch
+        {
+            CurrencyTransactionType.Withdraw => -1m,
+            CurrencyTransactionType.OtherExpense => -1m,
+            CurrencyTransactionType.ExchangeSell => -1m,
+            _ => 1m
+        };
+
+        return sign * transaction.ForeignAmount;
     }
 }
 
@@ -187,16 +237,7 @@ public class ReturnCashFlowStrategyProvider(
         IReadOnlyList<CurrencyLedger> ledgers,
         IReadOnlyList<CurrencyTransaction> currencyTransactions)
     {
-        var boundLedgerId = portfolio.BoundCurrencyLedgerId;
-
-        var hasExternalInOut = currencyTransactions.Any(t =>
-            t.CurrencyLedgerId == boundLedgerId
-            && !t.IsDeleted
-            && t.TransactionType is CurrencyTransactionType.InitialBalance
-                or CurrencyTransactionType.Deposit
-                or CurrencyTransactionType.Withdraw);
-
-        if (hasExternalInOut && ledgerStrategy.IsApplicable(portfolio, stockTransactions, ledgers))
+        if (ledgerStrategy.IsApplicable(portfolio, stockTransactions, ledgers))
         {
             return ledgerStrategy;
         }

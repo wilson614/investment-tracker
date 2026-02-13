@@ -107,7 +107,7 @@ public class TransactionPortfolioSnapshotService(
 
         var dayIds = dayTransactions.Select(t => t.Id).ToList();
 
-        // 若快照都已存在且已經符合「同日多筆交易串接」規則，則不重寫（避免重複對外取價）。
+        // 若快照皆存在，仍需驗算 dayStart/dayEnd 是否已過期；僅在值未變且已串接時跳過重寫。
         var existingSnapshots = await dbContext.TransactionPortfolioSnapshots
             .IgnoreQueryFilters()
             .Where(s => s.PortfolioId == portfolio.Id && dayIds.Contains(s.TransactionId))
@@ -134,17 +134,81 @@ public class TransactionPortfolioSnapshotService(
                           && s.PortfolioValueBeforeSource == existingDayEndSource
                           && s.PortfolioValueAfterSource == existingDayEndSource);
 
-            if (alreadyChained)
+            if (!alreadyChained)
+            {
+                await ReplaceStockSnapshotsForDateAsync(
+                    portfolioId: portfolio.Id,
+                    snapshotDate: snapshotDate,
+                    dayTransactions: dayTransactions,
+                    dayStartHome: firstSnapshot.PortfolioValueBeforeHome,
+                    dayEndHome: existingDayEndHome,
+                    dayStartSource: firstSnapshot.PortfolioValueBeforeSource,
+                    dayEndSource: existingDayEndSource,
+                    cancellationToken: cancellationToken);
+
+                return;
+            }
+
+            // 即使 alreadyChained，也不能直接 return：
+            // 交易更新（日期內移動、金額/費用變更）後，dayStart/dayEnd 可能已改變，
+            // 若沿用舊值會留下過期快照。
+            var recalculatedBeforeDate = date.AddDays(-1);
+
+            var recalculatedDayStartHome = await CalculatePortfolioValueHomeAsync(
+                portfolio.Id,
+                recalculatedBeforeDate,
+                portfolio.HomeCurrency,
+                cancellationToken);
+
+            var recalculatedDayEndHome = await CalculatePortfolioValueHomeAsync(
+                portfolio.Id,
+                date,
+                portfolio.HomeCurrency,
+                cancellationToken);
+
+            var recalculatedDayStartSource = await CalculatePortfolioValueSourceAsync(
+                portfolio.Id,
+                recalculatedBeforeDate,
+                portfolio.BaseCurrency,
+                portfolio.HomeCurrency,
+                cancellationToken);
+
+            var recalculatedDayEndSource = await CalculatePortfolioValueSourceAsync(
+                portfolio.Id,
+                date,
+                portfolio.BaseCurrency,
+                portfolio.HomeCurrency,
+                cancellationToken);
+
+            var recalculatedLedger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+                portfolio.BoundCurrencyLedgerId,
+                cancellationToken);
+
+            if (recalculatedLedger is { IsActive: true } && recalculatedLedger.UserId == portfolio.UserId)
+            {
+                recalculatedDayStartHome += await CalculateLedgerValueHomeAsync(recalculatedLedger, portfolio.HomeCurrency, recalculatedBeforeDate, cancellationToken);
+                recalculatedDayEndHome += await CalculateLedgerValueHomeAsync(recalculatedLedger, portfolio.HomeCurrency, date, cancellationToken);
+
+                recalculatedDayStartSource += await CalculateLedgerValueSourceAsync(recalculatedLedger, portfolio.BaseCurrency, portfolio.HomeCurrency, recalculatedBeforeDate, cancellationToken);
+                recalculatedDayEndSource += await CalculateLedgerValueSourceAsync(recalculatedLedger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
+            }
+
+            var valuesUnchanged = firstSnapshot.PortfolioValueBeforeHome == recalculatedDayStartHome
+                                  && existingDayEndHome == recalculatedDayEndHome
+                                  && firstSnapshot.PortfolioValueBeforeSource == recalculatedDayStartSource
+                                  && existingDayEndSource == recalculatedDayEndSource;
+
+            if (valuesUnchanged)
                 return;
 
             await ReplaceStockSnapshotsForDateAsync(
                 portfolioId: portfolio.Id,
                 snapshotDate: snapshotDate,
                 dayTransactions: dayTransactions,
-                dayStartHome: firstSnapshot.PortfolioValueBeforeHome,
-                dayEndHome: existingDayEndHome,
-                dayStartSource: firstSnapshot.PortfolioValueBeforeSource,
-                dayEndSource: existingDayEndSource,
+                dayStartHome: recalculatedDayStartHome,
+                dayEndHome: recalculatedDayEndHome,
+                dayStartSource: recalculatedDayStartSource,
+                dayEndSource: recalculatedDayEndSource,
                 cancellationToken: cancellationToken);
 
             return;
@@ -360,18 +424,227 @@ public class TransactionPortfolioSnapshotService(
             .ThenBy(t => t.CreatedAt)
             .ToList();
 
-        foreach (var tx in validTx)
+        var ledger = await currencyLedgerRepository.GetByIdWithTransactionsAsync(
+            portfolio.BoundCurrencyLedgerId,
+            cancellationToken);
+
+        var boundLedger = ledger is { IsActive: true } && ledger.UserId == portfolio.UserId
+            ? ledger
+            : null;
+
+        var externalLedgerTx = boundLedger != null
+            ? boundLedger.Transactions
+                .Where(t => t is { IsDeleted: false }
+                            && t.TransactionDate.Date >= from
+                            && t.TransactionDate.Date <= to
+                            && IsExternalCashFlowForSnapshotBackfill(t, boundLedger.CurrencyCode))
+                .OrderBy(t => t.TransactionDate)
+                .ThenBy(t => t.CreatedAt)
+                .ToList()
+            : [];
+
+        var allEventIds = validTx.Select(t => t.Id)
+            .Concat(externalLedgerTx.Select(t => t.Id))
+            .Distinct()
+            .ToList();
+
+        foreach (var stockTx in validTx)
         {
-            var exists = await dbContext.TransactionPortfolioSnapshots
-                .AsNoTracking()
-                .AnyAsync(s => s.PortfolioId == portfolioId && s.TransactionId == tx.Id, cancellationToken);
+            await UpsertSnapshotAsync(portfolioId, stockTx.Id, stockTx.TransactionDate, cancellationToken);
+        }
 
-            if (exists)
-                continue;
+        if (boundLedger != null && externalLedgerTx.Count > 0)
+        {
+            var externalByDate = externalLedgerTx
+                .GroupBy(t => DateOnly.FromDateTime(t.TransactionDate))
+                .OrderBy(g => g.Key);
 
-            await UpsertSnapshotAsync(portfolioId, tx.Id, tx.TransactionDate, cancellationToken);
+            foreach (var dayGroup in externalByDate)
+            {
+                await UpsertExternalLedgerSnapshotsForDateAsync(
+                    portfolio,
+                    boundLedger,
+                    dayGroup.Key,
+                    dayGroup.ToList(),
+                    cancellationToken);
+            }
+        }
+
+        // 清理範圍內已不屬於 CF 事件集合的過期快照，避免 historical 計算讀到舊資料。
+        if (allEventIds.Count == 0)
+        {
+            var staleInRange = await dbContext.TransactionPortfolioSnapshots
+                .IgnoreQueryFilters()
+                .Where(s => s.PortfolioId == portfolioId
+                            && s.SnapshotDate >= from
+                            && s.SnapshotDate <= to)
+                .ToListAsync(cancellationToken);
+
+            if (staleInRange.Count > 0)
+            {
+                dbContext.TransactionPortfolioSnapshots.RemoveRange(staleInRange);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            return;
+        }
+
+        var staleSnapshots = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .Where(s => s.PortfolioId == portfolioId
+                        && s.SnapshotDate >= from
+                        && s.SnapshotDate <= to
+                        && !allEventIds.Contains(s.TransactionId))
+            .ToListAsync(cancellationToken);
+
+        if (staleSnapshots.Count > 0)
+        {
+            dbContext.TransactionPortfolioSnapshots.RemoveRange(staleSnapshots);
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
+
+    private async Task UpsertExternalLedgerSnapshotsForDateAsync(
+        Portfolio portfolio,
+        CurrencyLedger ledger,
+        DateOnly date,
+        IReadOnlyList<CurrencyTransaction> dayTransactions,
+        CancellationToken cancellationToken)
+    {
+        if (dayTransactions.Count == 0)
+            return;
+
+        var snapshotDate = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var beforeDate = date.AddDays(-1);
+
+        var dayStartHome = await CalculatePortfolioValueHomeAsync(
+            portfolio.Id,
+            beforeDate,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayEndHome = await CalculatePortfolioValueHomeAsync(
+            portfolio.Id,
+            date,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayStartSource = await CalculatePortfolioValueSourceAsync(
+            portfolio.Id,
+            beforeDate,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        var dayEndSource = await CalculatePortfolioValueSourceAsync(
+            portfolio.Id,
+            date,
+            portfolio.BaseCurrency,
+            portfolio.HomeCurrency,
+            cancellationToken);
+
+        dayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+        dayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
+
+        dayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+        dayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
+
+        await ReplaceExternalLedgerSnapshotsForDateAsync(
+            portfolio.Id,
+            snapshotDate,
+            dayTransactions,
+            dayStartHome,
+            dayEndHome,
+            dayStartSource,
+            dayEndSource,
+            cancellationToken);
+    }
+
+    private async Task ReplaceExternalLedgerSnapshotsForDateAsync(
+        Guid portfolioId,
+        DateTime snapshotDate,
+        IReadOnlyList<CurrencyTransaction> dayTransactions,
+        decimal dayStartHome,
+        decimal dayEndHome,
+        decimal dayStartSource,
+        decimal dayEndSource,
+        CancellationToken cancellationToken)
+    {
+        var ordered = dayTransactions
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.CreatedAt)
+            .ThenBy(t => t.Id)
+            .ToList();
+
+        if (ordered.Count == 0)
+            return;
+
+        var firstId = ordered[0].Id;
+
+        var newSnapshots = ordered
+            .Select(tx => new TransactionPortfolioSnapshot(
+                portfolioId: portfolioId,
+                transactionId: tx.Id,
+                snapshotDate: snapshotDate,
+                portfolioValueBeforeHome: tx.Id == firstId ? dayStartHome : dayEndHome,
+                portfolioValueAfterHome: dayEndHome,
+                portfolioValueBeforeSource: tx.Id == firstId ? dayStartSource : dayEndSource,
+                portfolioValueAfterSource: dayEndSource))
+            .ToList();
+
+        var dayIds = ordered.Select(t => t.Id).ToList();
+
+        var existing = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .Where(s => s.PortfolioId == portfolioId && dayIds.Contains(s.TransactionId))
+            .ToListAsync(cancellationToken);
+
+        if (existing.Count > 0)
+        {
+            dbContext.TransactionPortfolioSnapshots.RemoveRange(existing);
+        }
+
+        dbContext.TransactionPortfolioSnapshots.AddRange(newSnapshots);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsExternalCashFlowForSnapshotBackfill(
+        CurrencyTransaction transaction,
+        string ledgerCurrencyCode)
+    {
+        if (transaction.TransactionType is CurrencyTransactionType.InitialBalance
+            or CurrencyTransactionType.Deposit
+            or CurrencyTransactionType.Withdraw
+            or CurrencyTransactionType.OtherIncome
+            or CurrencyTransactionType.OtherExpense)
+        {
+            if (transaction.RelatedStockTransactionId.HasValue
+                && transaction.TransactionType == CurrencyTransactionType.OtherIncome
+                && !IsStockTopUpEvent(transaction))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        if (transaction.TransactionType is CurrencyTransactionType.ExchangeBuy or CurrencyTransactionType.ExchangeSell)
+        {
+            if (string.Equals(ledgerCurrencyCode, "TWD", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (!transaction.RelatedStockTransactionId.HasValue)
+                return true;
+
+            // related-stock 的 top-up 是 external；其餘視為 internal FX transfer effect
+            return IsStockTopUpEvent(transaction);
+        }
+
+        return false;
+    }
+
+    private static bool IsStockTopUpEvent(CurrencyTransaction transaction)
+        => transaction.Notes?.StartsWith("補足買入", StringComparison.OrdinalIgnoreCase) == true;
 
     private async Task<decimal> CalculatePortfolioValueHomeAsync(
         Guid portfolioId,
@@ -543,9 +816,6 @@ public class TransactionPortfolioSnapshotService(
         var balance = currencyLedgerService.CalculateBalance(
             ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
 
-        if (balance <= 0)
-            return 0m;
-
         if (string.Equals(ledger.CurrencyCode, homeCurrency, StringComparison.OrdinalIgnoreCase))
             return Math.Round(balance, 4);
 
@@ -565,9 +835,6 @@ public class TransactionPortfolioSnapshotService(
     {
         var balance = currencyLedgerService.CalculateBalance(
             ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
-
-        if (balance <= 0)
-            return 0m;
 
         if (string.Equals(ledger.CurrencyCode, sourceCurrency, StringComparison.OrdinalIgnoreCase))
             return Math.Round(balance, 4);
