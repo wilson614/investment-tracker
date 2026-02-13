@@ -146,6 +146,99 @@ public class TransactionPortfolioSnapshotServiceTests
         twse.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task UpsertSnapshotAsync_WithNegativeLedgerBalance_DoesNotFloorSnapshotValues()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var ledgerId = Guid.NewGuid();
+        var portfolio = new Portfolio(userId, ledgerId, baseCurrency: "USD", homeCurrency: "USD", displayName: "Negative Ledger Test");
+
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(x => x.UserId).Returns(userId);
+
+        var dbContext = CreateInMemoryDbContext(currentUserService.Object);
+        dbContext.Portfolios.Add(portfolio);
+        await dbContext.SaveChangesAsync();
+
+        var eventDate = new DateTime(2025, 1, 10, 0, 0, 0, DateTimeKind.Utc);
+        var txId = Guid.NewGuid();
+
+        var portfolioRepository = new Mock<IPortfolioRepository>(MockBehavior.Strict);
+        portfolioRepository
+            .Setup(x => x.GetByIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var transactionRepository = new Mock<IStockTransactionRepository>(MockBehavior.Strict);
+        transactionRepository
+            .Setup(x => x.GetByIdAsync(txId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTransaction?)null);
+
+        transactionRepository
+            .Setup(x => x.GetByPortfolioIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var ledger = new CurrencyLedger(userId, "USD", "USD Ledger", "USD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(ledger, [ledgerId]);
+
+        var initialBalance = new CurrencyTransaction(
+            currencyLedgerId: ledgerId,
+            transactionDate: new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            transactionType: CurrencyTransactionType.InitialBalance,
+            foreignAmount: 100m,
+            homeAmount: 100m,
+            exchangeRate: 1m);
+
+        var spend = new CurrencyTransaction(
+            currencyLedgerId: ledgerId,
+            transactionDate: eventDate,
+            transactionType: CurrencyTransactionType.Spend,
+            foreignAmount: 150m,
+            homeAmount: 150m,
+            exchangeRate: 1m);
+
+        ledger.AddTransaction(initialBalance);
+        ledger.AddTransaction(spend);
+
+        var currencyLedgerRepository = new Mock<ICurrencyLedgerRepository>(MockBehavior.Strict);
+        currencyLedgerRepository
+            .Setup(x => x.GetByIdWithTransactionsAsync(ledgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ledger);
+
+        var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
+        var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
+
+        var sut = new TransactionPortfolioSnapshotService(
+            dbContext,
+            portfolioRepository.Object,
+            transactionRepository.Object,
+            currencyLedgerRepository.Object,
+            new CurrencyLedgerService(),
+            new PortfolioCalculator(),
+            currentUserService.Object,
+            yahoo.Object,
+            stooq.Object,
+            twse.Object);
+
+        // Act
+        await sut.UpsertSnapshotAsync(portfolio.Id, txId, eventDate, CancellationToken.None);
+
+        // Assert
+        var snapshot = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .SingleAsync(s => s.PortfolioId == portfolio.Id && s.TransactionId == txId);
+
+        snapshot.PortfolioValueBeforeSource.Should().Be(100m);
+        snapshot.PortfolioValueAfterSource.Should().Be(-50m);
+        snapshot.PortfolioValueBeforeHome.Should().Be(100m);
+        snapshot.PortfolioValueAfterHome.Should().Be(-50m);
+    }
+
     private static AppDbContext CreateInMemoryDbContext(ICurrentUserService currentUserService)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

@@ -419,6 +419,37 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             exchangeRate: 30m);
     }
 
+    private async Task AddDepositAsync(
+        Guid portfolioId,
+        DateTime date,
+        decimal amount,
+        decimal homeAmount,
+        decimal exchangeRate)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var portfolio = await db.Portfolios
+            .IgnoreQueryFilters()
+            .OfType<Portfolio>()
+            .SingleAsync(p => p.Id == portfolioId);
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/currencytransactions",
+            new CreateCurrencyTransactionRequest
+            {
+                CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+                TransactionDate = date,
+                TransactionType = CurrencyTransactionType.Deposit,
+                ForeignAmount = amount,
+                HomeAmount = homeAmount,
+                ExchangeRate = exchangeRate,
+                Notes = "integration-test deposit"
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
     [Fact]
     public async Task AggregatePerformance_WithOnlyOneActivePortfolio_MatchesSinglePortfolioCurrencyAndValues()
     {
@@ -606,6 +637,92 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.EndValueHome.Should().BeGreaterThan(twdSingle.EndValueHome ?? 0m);
         aggregate.NetContributionsHome.Should().BeGreaterThan(usdSingle.NetContributionsHome);
         aggregate.NetContributionsHome.Should().BeGreaterThan(twdSingle.NetContributionsHome);
+    }
+
+    [Fact]
+    public async Task AggregatePerformance_WithMidYearContribution_BaselineParityMaintainsMdTwrDifferentialLikeSinglePortfolio()
+    {
+        // Arrange
+        const int targetYear = 2024;
+        var activePortfolio = await CreateTestPortfolioWithCurrencyAsync("USD Baseline Parity", "USD");
+        await CreateTestPortfolioWithCurrencyAsync("TWD Empty", "TWD");
+
+        // Ensure aggregate path executes with one active + one inactive portfolio
+        // and source/home remain numerically identical (USD home/base).
+        await AddInitialDepositAsync(
+            activePortfolio.Id,
+            new DateTime(targetYear - 1, 12, 20),
+            amount: 1500m,
+            homeAmount: 1500m,
+            exchangeRate: 1m);
+
+        // Build year-start stock position (value = 1000) with remaining cash in ledger (500).
+        var buyBeforeYear = new CreateStockTransactionRequest
+        {
+            PortfolioId = activePortfolio.Id,
+            TransactionDate = new DateTime(targetYear - 1, 12, 25),
+            Ticker = "AAPL",
+            TransactionType = TransactionType.Buy,
+            Shares = 10m,
+            PricePerShare = 100m,
+            Fees = 0m,
+            Market = StockMarket.US,
+            Currency = Currency.USD,
+            BalanceAction = BalanceAction.None
+        };
+
+        var buyResponse = await Client.PostAsJsonAsync("/api/stocktransactions", buyBeforeYear);
+        buyResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Add explicit external contribution in-year to force MD/TWR differential.
+        await AddDepositAsync(
+            activePortfolio.Id,
+            new DateTime(targetYear, 6, 30),
+            amount: 100m,
+            homeAmount: 100m,
+            exchangeRate: 1m);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = targetYear,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 110m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var aggregate = await CalculateAggregateYearPerformanceAsync(request);
+        var single = await CalculatePortfolioYearPerformanceAsync(activePortfolio.Id, request);
+
+        // Assert
+        aggregate.MissingPrices.Should().BeEmpty();
+        single.MissingPrices.Should().BeEmpty();
+
+        // Baseline parity: aggregate home/source valuation fields equal single-portfolio values.
+        aggregate.StartValueSource.Should().Be(single.StartValueSource);
+        aggregate.EndValueSource.Should().Be(single.EndValueSource);
+        aggregate.NetContributionsSource.Should().Be(single.NetContributionsSource);
+        aggregate.StartValueHome.Should().Be(single.StartValueHome);
+        aggregate.EndValueHome.Should().Be(single.EndValueHome);
+        aggregate.NetContributionsHome.Should().Be(single.NetContributionsHome);
+
+        // Parity guard for closed-loop annual return outputs.
+        aggregate.ModifiedDietzPercentageSource.Should().Be(single.ModifiedDietzPercentageSource);
+        aggregate.ModifiedDietzPercentage.Should().Be(single.ModifiedDietzPercentage);
+        aggregate.TimeWeightedReturnPercentageSource.Should().Be(single.TimeWeightedReturnPercentageSource);
+        aggregate.TimeWeightedReturnPercentage.Should().Be(single.TimeWeightedReturnPercentage);
+
+        // Regression guard: with mid-year contribution, MD and TWR should not collapse to same value.
+        aggregate.ModifiedDietzPercentageSource.Should().NotBeNull();
+        aggregate.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+
+        aggregate.ModifiedDietzPercentageSource!.Value
+            .Should().BeLessThan(aggregate.TimeWeightedReturnPercentageSource!.Value);
     }
 
     [Fact]
