@@ -80,11 +80,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T024 [P] [US2] Add/adjust ReturnCashFlowStrategy regression tests for explicit external-only inclusion policy in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs
-- [ ] T045 [P] [US2] Add internal FX effects exclusion tests to verify internal FX transfer events are excluded from MD/TWR external CF inputs in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs
-- [ ] T025 [P] [US2] Add annual performance service regression tests for unified closed-loop baseline in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs
-- [ ] T026 [P] [US2] Add snapshot service regression tests confirming negative ledger is not floored in valuation in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Infrastructure.Tests/Services/TransactionPortfolioSnapshotServiceTests.cs
-- [ ] T027 [P] [US2] Add aggregate performance integration regression tests for MD/TWR baseline parity in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs
+- [x] T024 [P] [US2] Add/adjust ReturnCashFlowStrategy regression tests for explicit external-only inclusion policy in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs
+- [x] T045 [P] [US2] Add internal FX effects exclusion tests to verify internal FX transfer events are excluded from MD/TWR external CF inputs in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs
+- [x] T025 [P] [US2] Add annual performance service regression tests for unified closed-loop baseline in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs
+- [x] T026 [P] [US2] Add snapshot service regression tests confirming negative ledger is not floored in valuation in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Infrastructure.Tests/Services/TransactionPortfolioSnapshotServiceTests.cs
+- [x] T027 [P] [US2] Add aggregate performance integration regression tests for MD/TWR baseline parity in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs
 
 ### Implementation for User Story 2
 
