@@ -59,7 +59,7 @@ const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.Withdraw]: '提領',
   [CurrencyTransactionType.Interest]: '利息收入',
   [CurrencyTransactionType.Spend]: '消費支出',
-  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
+  [CurrencyTransactionType.InitialBalance]: '轉入本金',
   [CurrencyTransactionType.OtherIncome]: '其他收入',
   [CurrencyTransactionType.OtherExpense]: '其他支出',
 };
@@ -76,7 +76,7 @@ const transactionTypeBadgeClass: Record<number, string> = {
   [CurrencyTransactionType.OtherExpense]: 'badge-warning',
 };
 
-const transactionTypeNameToValue: Record<string, CurrencyTransactionType> = {
+const redesignedTransactionTypeNameToValue: Record<string, CurrencyTransactionType> = {
   ExchangeBuy: CurrencyTransactionType.ExchangeBuy,
   ExchangeSell: CurrencyTransactionType.ExchangeSell,
   Deposit: CurrencyTransactionType.Deposit,
@@ -84,6 +84,7 @@ const transactionTypeNameToValue: Record<string, CurrencyTransactionType> = {
   Interest: CurrencyTransactionType.Interest,
   Spend: CurrencyTransactionType.Spend,
   InitialBalance: CurrencyTransactionType.InitialBalance,
+  TransferInBalance: CurrencyTransactionType.InitialBalance,
   OtherIncome: CurrencyTransactionType.OtherIncome,
   OtherExpense: CurrencyTransactionType.OtherExpense,
 };
@@ -95,12 +96,13 @@ const resolveTransactionType = (
     return type;
   }
 
-  const typeByName = transactionTypeNameToValue[type];
+  const normalized = type.trim();
+  const typeByName = redesignedTransactionTypeNameToValue[normalized];
   if (typeByName !== undefined) {
     return typeByName;
   }
 
-  const parsed = Number(type);
+  const parsed = Number(normalized);
   if (!Number.isNaN(parsed) && parsed in transactionTypeLabels) {
     return parsed as CurrencyTransactionType;
   }
@@ -413,14 +415,19 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
   };
 
   /**
-   * 編輯交易：因目前沒有 update API，採「刪除舊交易 + 建立新交易」的方式達成。
+   * 編輯交易：改走 update API，避免「先刪後建」在建立失敗時造成資料遺失。
    */
   const handleEditTransaction = async (data: CreateCurrencyTransactionRequest) => {
     if (!editingTransaction) return;
     try {
-      // Delete old transaction and create new one (since we don't have an update API)
-      await currencyTransactionApi.delete(editingTransaction.id);
-      await currencyTransactionApi.create(data);
+      await currencyTransactionApi.update(editingTransaction.id, {
+        transactionDate: data.transactionDate,
+        transactionType: data.transactionType,
+        foreignAmount: data.foreignAmount,
+        homeAmount: data.homeAmount,
+        exchangeRate: data.exchangeRate,
+        notes: data.notes,
+      });
       setEditingTransaction(null);
       await loadData();
       queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });

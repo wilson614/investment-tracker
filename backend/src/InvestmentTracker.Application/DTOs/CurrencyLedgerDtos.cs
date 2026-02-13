@@ -115,3 +115,52 @@ public record UpdateCurrencyTransactionRequest
     public decimal? ExchangeRate { get; init; }
     public string? Notes { get; init; }
 }
+
+/// <summary>
+/// 外幣交易 CSV 匯入請求（Application 層）。
+/// </summary>
+public record ImportCurrencyTransactionsRequest
+{
+    public required Guid LedgerId { get; init; }
+    public required Stream CsvStream { get; init; }
+    public string? FileName { get; init; }
+}
+
+/// <summary>
+/// 外幣交易 CSV 匯入結果。
+/// </summary>
+public record CurrencyTransactionCsvImportResultDto
+{
+    /// <summary>
+    /// committed | rejected
+    /// </summary>
+    public string Status { get; init; } = string.Empty;
+
+    public CurrencyTransactionCsvImportSummaryDto Summary { get; init; } = null!;
+
+    public IReadOnlyList<CurrencyTransactionCsvImportErrorDto> Errors { get; init; } = [];
+}
+
+/// <summary>
+/// 外幣交易 CSV 匯入摘要。
+/// </summary>
+public record CurrencyTransactionCsvImportSummaryDto
+{
+    public int TotalRows { get; init; }
+    public int InsertedRows { get; init; }
+    public int RejectedRows { get; init; }
+    public int? ErrorCount { get; init; }
+}
+
+/// <summary>
+/// 外幣交易 CSV 匯入逐列診斷資訊。
+/// </summary>
+public record CurrencyTransactionCsvImportErrorDto
+{
+    public int RowNumber { get; init; }
+    public string FieldName { get; init; } = string.Empty;
+    public string? InvalidValue { get; init; }
+    public string ErrorCode { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string CorrectionGuidance { get; init; } = string.Empty;
+}

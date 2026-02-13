@@ -1,27 +1,18 @@
 /**
  * CurrencyImportButton
  *
- * 外幣交易 CSV 匯入按鈕：使用通用 `CSVImportModal` 解析 CSV，逐列驗證後呼叫 `currencyTransactionApi.create`。
- *
- * 重要行為：
- * - 換匯/期初餘額等類型需要 `homeAmount` （台幣金額）才能推導成本。
- * - 換匯類型會由 `homeAmount / foreignAmount` 自動計算 exchangeRate。
+ * 外幣交易 CSV 匯入按鈕：使用通用 `CSVImportModal` 解析 CSV，
+ * 再轉成 backend atomic import contract 所需的 multipart/form-data 一次提交。
  */
 import { useState } from 'react';
 import { Upload } from 'lucide-react';
 import { CSVImportModal, type FieldDefinition } from './CSVImportModal';
-import { currencyTransactionApi } from '../../services/api';
 import {
   getRowValue,
-  parseDate,
-  parseNumber,
-  formatDateISO,
   type ParsedCSV,
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
-import { CurrencyTransactionType } from '../../types';
-import type { CreateCurrencyTransactionRequest } from '../../types';
 
 interface CurrencyImportButtonProps {
   /** 目標 ledger ID */
@@ -31,6 +22,30 @@ interface CurrencyImportButtonProps {
   /** 若提供，改用自訂 trigger （常用於搭配 FileDropdown） */
   renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
+
+interface AtomicImportDiagnostic {
+  rowNumber: number;
+  fieldName?: string;
+  invalidValue?: string;
+  errorCode?: string;
+  message: string;
+  correctionGuidance?: string;
+}
+
+interface AtomicImportResponse {
+  status: 'committed' | 'rejected';
+  summary: {
+    totalRows: number;
+    insertedRows: number;
+    rejectedRows: number;
+    errorCount?: number;
+  };
+  errors?: AtomicImportDiagnostic[];
+  diagnostics?: AtomicImportDiagnostic[];
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const IMPORT_FILE_NAME = 'currency-transactions-import.csv';
 
 // Field definitions for currency transaction CSV
 const currencyFields: FieldDefinition[] = [
@@ -59,6 +74,12 @@ const currencyFields: FieldDefinition[] = [
     required: false,
   },
   {
+    name: 'exchangeRate',
+    label: '匯率',
+    aliases: ['exchange_rate', 'ExchangeRate', 'rate', 'Rate', 'exchange rate', '匯率', '兌換匯率'],
+    required: false,
+  },
+  {
     name: 'notes',
     label: '備註',
     aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
@@ -66,53 +87,117 @@ const currencyFields: FieldDefinition[] = [
   },
 ];
 
-/**
- * 將 CSV 內的交易類型文字轉成 `CurrencyTransactionType`。
- *
- * 支援：
- * - 中文：買/賣/存入/提領/利息/消費/期初/其他收入/其他支出
- * - 英文：buy/sell/deposit/withdraw/interest/spend/initial/balance/bonus/dividend/fee/transfer
- * - 數字：1-9
- */
-function parseTransactionType(typeStr: string): CurrencyTransactionType | null {
-  const normalized = typeStr.toLowerCase().trim();
+const exportColumns: Array<{ field: keyof ColumnMapping | string; header: string }> = [
+  { field: 'date', header: 'transactionDate' },
+  { field: 'type', header: 'transactionType' },
+  { field: 'foreignAmount', header: 'foreignAmount' },
+  { field: 'homeAmount', header: 'homeAmount' },
+  { field: 'exchangeRate', header: 'exchangeRate' },
+  { field: 'notes', header: 'notes' },
+];
 
-  // Chinese mappings
-  if (normalized.includes('買') || normalized.includes('buy')) {
-    return CurrencyTransactionType.ExchangeBuy;
+function escapeCsvValue(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
   }
-  if (normalized.includes('賣') || normalized.includes('sell')) {
-    return CurrencyTransactionType.ExchangeSell;
-  }
-  if (normalized.includes('存入') || normalized.includes('入金') || normalized.includes('deposit')) {
-    return CurrencyTransactionType.Deposit;
-  }
-  if (normalized.includes('提領') || normalized.includes('出金') || normalized.includes('withdraw')) {
-    return CurrencyTransactionType.Withdraw;
-  }
-  if (normalized.includes('利息') || normalized.includes('interest')) {
-    return CurrencyTransactionType.Interest;
-  }
-  if (normalized.includes('消費') || (normalized.includes('支出') && !normalized.includes('其他')) || normalized.includes('spend')) {
-    return CurrencyTransactionType.Spend;
-  }
-  if (normalized.includes('初始') || normalized.includes('期初') || normalized.includes('轉入') || normalized.includes('餘額') || normalized.includes('initial') || normalized.includes('balance')) {
-    return CurrencyTransactionType.InitialBalance;
-  }
-  if (normalized.includes('其他收入') || normalized.includes('其他入') || normalized.includes('獎勵') || normalized.includes('股利') || normalized.includes('bonus') || normalized.includes('dividend') || normalized.includes('other income')) {
-    return CurrencyTransactionType.OtherIncome;
-  }
-  if (normalized.includes('其他支出') || normalized.includes('轉出') || normalized.includes('費用') || normalized.includes('transfer') || normalized.includes('fee') || normalized.includes('other expense')) {
-    return CurrencyTransactionType.OtherExpense;
+  return value;
+}
+
+function buildAtomicImportCsv(csvData: ParsedCSV, mapping: ColumnMapping): string {
+  const headerRow = exportColumns.map((column) => column.header).join(',');
+
+  const dataRows = csvData.rows.map((row) => {
+    return exportColumns
+      .map((column) => {
+        const value = getRowValue(row, csvData.headers, mapping, column.field as string) ?? '';
+        return escapeCsvValue(value.trim());
+      })
+      .join(',');
+  });
+
+  return [headerRow, ...dataRows].join('\n');
+}
+
+function extractAtomicImportDiagnostics(result: Partial<AtomicImportResponse> | null): AtomicImportDiagnostic[] {
+  if (!result || typeof result !== 'object') {
+    return [];
   }
 
-  // Numeric mappings
-  const num = parseInt(normalized);
-  if (num >= 1 && num <= 9) {
-    return num as CurrencyTransactionType;
+  if (Array.isArray(result.errors)) {
+    return result.errors;
   }
 
-  return null;
+  if (Array.isArray(result.diagnostics)) {
+    return result.diagnostics;
+  }
+
+  return [];
+}
+
+function mapAtomicImportDiagnostics(diagnostics: AtomicImportDiagnostic[]): ParseError[] {
+  return diagnostics.map((diagnostic) => {
+    const parts: string[] = [diagnostic.message];
+
+    if (diagnostic.invalidValue && diagnostic.invalidValue.trim().length > 0) {
+      parts.push(`錯誤值：${diagnostic.invalidValue}`);
+    }
+
+    if (diagnostic.correctionGuidance) {
+      parts.push(`修正建議：${diagnostic.correctionGuidance}`);
+    }
+
+    return {
+      // Backend contract rowNumber 已含 header row offset（首筆資料列為 2）
+      row: Math.max(2, diagnostic.rowNumber),
+      column: diagnostic.fieldName,
+      message: parts.join('；'),
+    };
+  });
+}
+
+function ensureAtomicFailureErrors(parsedErrors: ParseError[], totalRows: number): ParseError[] {
+  const existingRows = new Set(parsedErrors.map((error) => error.row));
+  if (existingRows.size >= totalRows) {
+    return parsedErrors;
+  }
+
+  const rollbackErrors: ParseError[] = [];
+
+  for (let row = 2; row <= totalRows + 1; row++) {
+    if (existingRows.has(row)) {
+      continue;
+    }
+
+    rollbackErrors.push({
+      row,
+      message: '此列因原子匯入規則未提交，請先修正其他列錯誤後再重新匯入',
+    });
+  }
+
+  return [...parsedErrors, ...rollbackErrors];
+}
+
+function parseApiErrorMessage(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.trim();
+  }
+
+  if (!raw || typeof raw !== 'object') {
+    return '匯入失敗';
+  }
+
+  const maybe = raw as Record<string, unknown>;
+  if (typeof maybe.error === 'string' && maybe.error.trim()) {
+    return maybe.error;
+  }
+  if (typeof maybe.message === 'string' && maybe.message.trim()) {
+    return maybe.message;
+  }
+  if (typeof maybe.title === 'string' && maybe.title.trim()) {
+    return maybe.title;
+  }
+
+  return '匯入失敗';
 }
 
 export function CurrencyImportButton({
@@ -128,129 +213,110 @@ export function CurrencyImportButton({
   const handleOpenImport = () => setIsModalOpen(true);
 
   /**
-   * 實際匯入：逐列解析/驗證後呼叫 API 建立外幣交易。
-   *
-   * 規則摘要：
-   * - 換匯/期初餘額需要 `homeAmount` 作為成本基礎。
-   * - `homeAmount` 必須為整數（台幣）。
+   * 實際匯入：前端僅做欄位映射，並交由 backend atomic import 一次驗證與提交。
    */
   const handleImport = async (
     csvData: ParsedCSV,
     mapping: ColumnMapping
   ): Promise<{ success: boolean; errors: ParseError[] }> => {
-    const errors: ParseError[] = [];
-    let successCount = 0;
+    try {
+      const csvContent = buildAtomicImportCsv(csvData, mapping);
 
-    for (let i = 0; i < csvData.rows.length; i++) {
-      const row = csvData.rows[i];
-      const rowNum = i + 2; // 1-based, skip header row
+      const formData = new FormData();
+      formData.append('ledgerId', ledgerId);
+      formData.append(
+        'file',
+        new Blob([csvContent], { type: 'text/csv;charset=utf-8' }),
+        IMPORT_FILE_NAME
+      );
 
-      try {
-        // Parse date
-        const dateStr = getRowValue(row, csvData.headers, mapping, 'date');
-        if (!dateStr) {
-          errors.push({ row: rowNum, column: '日期', message: '日期為必填欄位' });
-          continue;
-        }
-        const parsedDate = parseDate(dateStr);
-        if (!parsedDate) {
-          errors.push({ row: rowNum, column: '日期', message: `無法解析日期: ${dateStr}` });
-          continue;
-        }
-
-        // Parse type
-        const typeStr = getRowValue(row, csvData.headers, mapping, 'type');
-        if (!typeStr) {
-          errors.push({ row: rowNum, column: '類型', message: '交易類型為必填欄位' });
-          continue;
-        }
-        const transactionType = parseTransactionType(typeStr);
-        if (transactionType === null) {
-          errors.push({ row: rowNum, column: '類型', message: `無法辨識交易類型: ${typeStr}` });
-          continue;
-        }
-
-        // Parse foreign amount
-        const foreignAmountStr = getRowValue(row, csvData.headers, mapping, 'foreignAmount');
-        if (!foreignAmountStr) {
-          errors.push({ row: rowNum, column: '外幣金額', message: '外幣金額為必填欄位' });
-          continue;
-        }
-        const foreignAmount = parseNumber(foreignAmountStr);
-        if (foreignAmount === null || foreignAmount === 0) {
-          errors.push({ row: rowNum, column: '外幣金額', message: `無效的金額: ${foreignAmountStr}` });
-          continue;
-        }
-
-        // Parse optional fields
-        const homeAmountStr = getRowValue(row, csvData.headers, mapping, 'homeAmount');
-        const notes = getRowValue(row, csvData.headers, mapping, 'notes');
-
-        const homeAmount = homeAmountStr ? parseNumber(homeAmountStr) : undefined;
-
-        // Exchange types need home amount, and we auto-calculate exchange rate
-        const isExchangeType =
-          transactionType === CurrencyTransactionType.ExchangeBuy ||
-          transactionType === CurrencyTransactionType.ExchangeSell;
-
-        // Initial balance needs home amount (cost basis) but not exchange rate
-        const needsHomeCost =
-          isExchangeType || transactionType === CurrencyTransactionType.InitialBalance;
-
-        if (needsHomeCost && !homeAmount) {
-          errors.push({
-            row: rowNum,
-            message: isExchangeType ? '換匯交易需要提供台幣金額' : '轉入餘額需要提供台幣成本',
-          });
-          continue;
-        }
-
-        // Validate TWD amount is an integer
-        if (homeAmount !== undefined && !Number.isInteger(homeAmount)) {
-          errors.push({
-            row: rowNum,
-            column: '台幣金額',
-            message: '台幣金額必須為整數',
-          });
-          continue;
-        }
-
-        // Auto-calculate exchange rate for exchange types
-        let exchangeRate: number | undefined;
-        if (isExchangeType && homeAmount && foreignAmount) {
-          exchangeRate = homeAmount / Math.abs(foreignAmount);
-        }
-
-        // Build request
-        const request: CreateCurrencyTransactionRequest = {
-          currencyLedgerId: ledgerId,
-          transactionDate: formatDateISO(parsedDate),
-          transactionType,
-          foreignAmount: Math.abs(foreignAmount),
-          homeAmount: homeAmount ? Math.abs(homeAmount) : undefined,
-          exchangeRate: isExchangeType && exchangeRate != null ? exchangeRate : undefined,
-          notes: notes || undefined,
-        };
-
-        // Create transaction
-        await currencyTransactionApi.create(request);
-        successCount++;
-      } catch (err) {
-        errors.push({
-          row: rowNum,
-          message: err instanceof Error ? err.message : '建立交易失敗',
-        });
+      const token = localStorage.getItem('token');
+      const headers = new Headers();
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
       }
-    }
 
-    if (successCount > 0) {
-      onImportComplete();
-    }
+      const response = await fetch(`${API_BASE_URL}/currencytransactions/import`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
 
-    return {
-      success: errors.length === 0,
-      errors,
-    };
+      const responseText = await response.text();
+      const trimmedResponseText = responseText.trim();
+      let payload: AtomicImportResponse | Record<string, unknown> | string | null = null;
+
+      if (trimmedResponseText.length > 0) {
+        try {
+          payload = JSON.parse(trimmedResponseText) as AtomicImportResponse | Record<string, unknown>;
+        } catch {
+          payload = trimmedResponseText;
+        }
+      }
+
+      if (response.ok) {
+        const result = payload as AtomicImportResponse | null;
+
+        if (result?.status === 'committed') {
+          if (result.summary.insertedRows > 0) {
+            onImportComplete();
+          }
+
+          return {
+            success: true,
+            errors: [],
+          };
+        }
+
+        if (result?.status === 'rejected') {
+          const parsedErrors = mapAtomicImportDiagnostics(extractAtomicImportDiagnostics(result));
+          return {
+            success: false,
+            errors: ensureAtomicFailureErrors(parsedErrors, csvData.rowCount),
+          };
+        }
+
+        return {
+          success: false,
+          errors: [
+            {
+              row: 2,
+              message: '匯入失敗：後端回傳了未知的匯入狀態',
+            },
+          ],
+        };
+      }
+
+      if (response.status === 422 && payload && typeof payload === 'object') {
+        const rejected = payload as Partial<AtomicImportResponse>;
+        const parsedErrors = mapAtomicImportDiagnostics(extractAtomicImportDiagnostics(rejected));
+
+        return {
+          success: false,
+          errors: ensureAtomicFailureErrors(parsedErrors, csvData.rowCount),
+        };
+      }
+
+      return {
+        success: false,
+        errors: [
+          {
+            row: 2,
+            message: parseApiErrorMessage(payload),
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        success: false,
+        errors: [
+          {
+            row: 2,
+            message: err instanceof Error ? err.message : '匯入失敗',
+          },
+        ],
+      };
+    }
   };
 
   return (

@@ -1,10 +1,24 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace InvestmentTracker.API.Controllers;
+
+/// <summary>
+/// 外幣交易 CSV 匯入 multipart/form-data 請求 DTO。
+/// </summary>
+public record ImportCurrencyTransactionsFormRequest
+{
+    [FromForm(Name = "ledgerId")]
+    public required Guid LedgerId { get; init; }
+
+    [FromForm(Name = "file")]
+    public required IFormFile File { get; init; }
+}
 
 /// <summary>
 /// 提供外幣交易（Currency Transaction）查詢與維護 API。
@@ -22,17 +36,30 @@ public class CurrencyTransactionsController(
     CreateCurrencyTransactionUseCase createUseCase,
     UpdateCurrencyTransactionUseCase updateUseCase,
     DeleteCurrencyTransactionUseCase deleteUseCase,
-    ICurrencyTransactionRepository transactionRepository) : ControllerBase
+    ICurrencyTransactionRepository transactionRepository,
+    ICurrencyLedgerRepository ledgerRepository,
+    ICurrentUserService currentUserService) : ControllerBase
 {
+    private const long MaxImportCsvFileSizeBytes = 5 * 1024 * 1024;
+
     /// <summary>
     /// 取得指定外幣帳本的所有交易。
     /// </summary>
     [HttpGet("ledger/{ledgerId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<CurrencyTransactionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IEnumerable<CurrencyTransactionDto>>> GetByLedger(
         Guid ledgerId,
         CancellationToken cancellationToken)
     {
+        var currentUserId = currentUserService.UserId;
+        if (!currentUserId.HasValue)
+            return NotFound();
+
+        var ledger = await ledgerRepository.GetByIdAsync(ledgerId, cancellationToken);
+        if (ledger is null || ledger.UserId != currentUserId.Value)
+            return NotFound();
+
         var transactions = await transactionRepository.GetByLedgerIdOrderedAsync(ledgerId, cancellationToken);
 
         return Ok(transactions.Select(t => new CurrencyTransactionDto
@@ -68,6 +95,51 @@ public class CurrencyTransactionsController(
             nameof(GetByLedger),
             new { ledgerId = transaction.CurrencyLedgerId },
             transaction);
+    }
+
+    /// <summary>
+    /// 以 all-or-nothing 語義匯入外幣交易 CSV。
+    /// </summary>
+    [HttpPost("import")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(CurrencyTransactionCsvImportResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CurrencyTransactionCsvImportResultDto), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CurrencyTransactionCsvImportResultDto>> Import(
+        [FromForm] ImportCurrencyTransactionsFormRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.File is null || request.File.Length <= 0)
+        {
+            return BadRequest("CSV file is required.");
+        }
+
+        if (request.File.Length > MaxImportCsvFileSizeBytes)
+        {
+            return StatusCode(
+                StatusCodes.Status413PayloadTooLarge,
+                $"CSV file is too large. Maximum allowed size is {MaxImportCsvFileSizeBytes / (1024 * 1024)} MB.");
+        }
+
+        var importUseCase = ActivatorUtilities.CreateInstance<ImportCurrencyTransactionsUseCase>(
+            HttpContext.RequestServices);
+
+        await using var csvStream = request.File.OpenReadStream();
+        var importRequest = new ImportCurrencyTransactionsRequest
+        {
+            LedgerId = request.LedgerId,
+            CsvStream = csvStream,
+            FileName = request.File.FileName
+        };
+
+        var result = await importUseCase.ExecuteAsync(importRequest, cancellationToken);
+
+        return string.Equals(result.Status, "rejected", StringComparison.OrdinalIgnoreCase)
+            ? UnprocessableEntity(result)
+            : Ok(result);
     }
 
     /// <summary>

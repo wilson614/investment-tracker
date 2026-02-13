@@ -1,9 +1,15 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
-using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.StockTransactions;
+using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
@@ -13,6 +19,9 @@ using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Repositories;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 using Moq;
 
 namespace InvestmentTracker.API.Tests.Integration;
@@ -37,6 +46,7 @@ public class AtomicTransactionTests : IDisposable
     private readonly Mock<ITransactionPortfolioSnapshotService> _txSnapshotServiceMock;
     private readonly IAppDbTransactionManager _transactionManager;
     private readonly Guid _testUserId = Guid.NewGuid();
+    private readonly string _testJwtToken;
 
     public AtomicTransactionTests()
     {
@@ -49,6 +59,8 @@ public class AtomicTransactionTests : IDisposable
 
         _currentUserServiceMock = new Mock<ICurrentUserService>();
         _currentUserServiceMock.Setup(x => x.UserId).Returns(_testUserId);
+
+        _testJwtToken = GenerateTestToken(_testUserId);
 
         _txDateFxServiceMock = new Mock<ITransactionDateExchangeRateService>();
         _txDateFxServiceMock
@@ -84,6 +96,81 @@ public class AtomicTransactionTests : IDisposable
     {
         _dbContext.Dispose();
         _connection.Dispose();
+    }
+
+    private static string GenerateTestToken(Guid userId)
+    {
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(CustomWebApplicationFactory.TestJwtSecret));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Email, $"test-{userId:N}@example.com"),
+            new Claim(ClaimTypes.Name, "Atomic Transaction Test User")
+        };
+
+        var handler = new JsonWebTokenHandler();
+        var tokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Expires = DateTime.UtcNow.AddHours(1),
+            Issuer = "InvestmentTracker",
+            Audience = "InvestmentTracker",
+            SigningCredentials = credentials
+        };
+
+        return handler.CreateToken(tokenDescriptor);
+    }
+
+    private async Task EnsureApiUserExistsAsync(Guid userId)
+    {
+        var existing = await _dbContext.Users.FindAsync(userId);
+        if (existing is not null)
+            return;
+
+        var user = new User($"api-{userId:N}@example.com", "password", "API Test User");
+        typeof(User).GetProperty("Id")!.SetValue(user, userId);
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private static readonly JsonSerializerOptions _apiJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter(allowIntegerValues: true)
+        }
+    };
+
+    private static async Task<PortfolioDto> CreateTestPortfolioViaApiAsync(HttpClient client, string currencyCode, string displayName)
+    {
+        var response = await client.PostAsJsonAsync("/api/portfolios", new
+        {
+            CurrencyCode = currencyCode,
+            DisplayName = displayName
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var payload = await response.Content.ReadAsStringAsync();
+        var dto = JsonSerializer.Deserialize<PortfolioDto>(payload, _apiJsonOptions);
+        dto.Should().NotBeNull();
+        return dto;
+    }
+
+    private HttpClient CreateAuthorizedApiClient(CustomWebApplicationFactory factory)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _testJwtToken);
+        return client;
+    }
+
+    private static async Task<T?> ReadApiJsonAsync<T>(HttpContent content)
+    {
+        var payload = await content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<T>(payload, _apiJsonOptions);
     }
 
     private async Task<(Portfolio portfolio, CurrencyLedger ledger)> SetupTestDataAsync()
@@ -393,7 +480,7 @@ public class AtomicTransactionTests : IDisposable
         // Verify OtherIncome transaction was created for sell
         var incomeTx = transactions.FirstOrDefault(t => t.TransactionType == CurrencyTransactionType.OtherIncome);
         incomeTx.Should().NotBeNull();
-        incomeTx!.ForeignAmount.Should().Be(295m); // 5*60 - 5 fees
+        incomeTx.ForeignAmount.Should().Be(295m); // 5*60 - 5 fees
     }
 
     [Fact]
@@ -488,7 +575,7 @@ public class AtomicTransactionTests : IDisposable
 
         var reloaded = await _currencyTransactionRepository.GetByIdAsync(transaction.Id);
         reloaded.Should().NotBeNull();
-        reloaded!.TransactionDate.Should().Be(originalDate);
+        reloaded.TransactionDate.Should().Be(originalDate);
         reloaded.TransactionType.Should().Be(originalType);
         reloaded.ForeignAmount.Should().Be(originalAmount);
         reloaded.Notes.Should().Be(originalNotes);
@@ -523,6 +610,429 @@ public class AtomicTransactionTests : IDisposable
         result.Errors.Should().Contain(e =>
             e.PropertyName == nameof(CreateCurrencyTransactionRequest.ExchangeRate) &&
             e.ErrorMessage == "Exchange rate is required for exchange transactions");
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_CreateApi_OnTwdLedger_WithExchangeBuy_ShouldReturnBadRequest()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "TWD", "TWD Create Validation");
+
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.ExchangeBuy,
+            ForeignAmount = 100m,
+            HomeAmount = 3100m,
+            ExchangeRate = 31m,
+            Notes = "invalid for twd"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/currencytransactions", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(body))
+        {
+            var error = json.RootElement.GetProperty("error").GetString();
+            error.Should().Contain("交易類型不符合此帳本規則");
+            error.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+        }
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_CreateApi_OnTwdLedger_WithDeposit_ShouldReturnCreatedAndForceRateOne()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "TWD", "TWD Create Valid");
+
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 888m,
+            HomeAmount = 9999m,
+            ExchangeRate = 99m,
+            Notes = "valid create"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/currencytransactions", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var created = await ReadApiJsonAsync<CurrencyTransactionDto>(response.Content);
+        created.Should().NotBeNull();
+        created.TransactionType.Should().Be(CurrencyTransactionType.Deposit);
+        created.ForeignAmount.Should().Be(888m);
+        created.HomeAmount.Should().Be(888m);
+        created.ExchangeRate.Should().Be(1.0m);
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().ContainSingle(t => t.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_UpdateApi_OnTwdLedger_InvalidThenValid_ShouldMatchValidationMatrix()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "TWD", "TWD Update Validation");
+
+        var createRequest = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-2),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 300m,
+            Notes = "seed"
+        };
+
+        var createResponse = await client.PostAsJsonAsync("/api/currencytransactions", createRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await ReadApiJsonAsync<CurrencyTransactionDto>(createResponse.Content);
+        created.Should().NotBeNull();
+
+        var invalidUpdate = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.ExchangeSell,
+            ForeignAmount = 10m,
+            HomeAmount = 310m,
+            ExchangeRate = 31m,
+            Notes = "invalid update"
+        };
+
+        var invalidResponse = await client.PutAsJsonAsync($"/api/currencytransactions/{created.Id}", invalidUpdate);
+
+        invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var invalidBody = await invalidResponse.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(invalidBody))
+        {
+            var error = json.RootElement.GetProperty("error").GetString();
+            error.Should().Contain("交易類型不符合此帳本規則");
+            error.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+        }
+
+        var validUpdate = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 777m,
+            HomeAmount = 1m,
+            ExchangeRate = 99m,
+            Notes = "valid update"
+        };
+
+        var validResponse = await client.PutAsJsonAsync($"/api/currencytransactions/{created.Id}", validUpdate);
+
+        validResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await ReadApiJsonAsync<CurrencyTransactionDto>(validResponse.Content);
+        updated.Should().NotBeNull();
+        updated.ForeignAmount.Should().Be(777m);
+        updated.HomeAmount.Should().Be(777m);
+        updated.ExchangeRate.Should().Be(1.0m);
+    }
+
+    [Theory]
+    [InlineData("TransferInBalance")]
+    [InlineData("Dividend")]
+    [InlineData("StockBuy")]
+    [InlineData("StockSell")]
+    public async Task CurrencyTransactions_CreateApi_WithDeprecatedEnumName_ShouldReturnBadRequest(string legacyEnumName)
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "Legacy Enum Create");
+
+        var payload = $$"""
+{
+  "currencyLedgerId": "{{portfolio.BoundCurrencyLedgerId}}",
+  "transactionDate": "{{DateTime.UtcNow.AddDays(-1):yyyy-MM-dd}}",
+  "transactionType": "{{legacyEnumName}}",
+  "foreignAmount": 100,
+  "homeAmount": 3100,
+  "exchangeRate": 31,
+  "notes": "legacy enum create"
+}
+""";
+
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("/api/currencytransactions", content);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().ContainAny(
+            "could not be converted",
+            "The JSON value could not be converted",
+            "One or more validation errors occurred");
+        body.Should().Contain("transactionType");
+    }
+
+    [Theory]
+    [InlineData("TransferInBalance")]
+    [InlineData("Dividend")]
+    [InlineData("StockBuy")]
+    [InlineData("StockSell")]
+    public async Task CurrencyTransactions_UpdateApi_WithDeprecatedEnumName_ShouldReturnBadRequest(string legacyEnumName)
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "Legacy Enum Update");
+
+        var createRequest = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-2),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 100m,
+            Notes = "seed for legacy update"
+        };
+
+        var createResponse = await client.PostAsJsonAsync("/api/currencytransactions", createRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await ReadApiJsonAsync<CurrencyTransactionDto>(createResponse.Content);
+        created.Should().NotBeNull();
+
+        var payload = $$"""
+{
+  "transactionDate": "{{DateTime.UtcNow.AddDays(-1):yyyy-MM-dd}}",
+  "transactionType": "{{legacyEnumName}}",
+  "foreignAmount": 120,
+  "homeAmount": 3720,
+  "exchangeRate": 31,
+  "notes": "legacy enum update"
+}
+""";
+
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        var response = await client.PutAsync($"/api/currencytransactions/{created.Id}", content);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().ContainAny(
+            "could not be converted",
+            "The JSON value could not be converted",
+            "One or more validation errors occurred");
+        body.Should().Contain("transactionType");
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_ImportCsv_WhenAnyInvalidRows_ShouldReturn422WithFullErrorSetAndNoCommit()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "TWD", "CSV Invalid Import");
+
+        const string csv = """
+transactionDate,transactionType,foreignAmount,homeAmount,exchangeRate,notes
+2026-01-01,ExchangeBuy,100,3100,31,invalid type for twd
+2026-01-02,,0,,abc,
+""";
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(portfolio.BoundCurrencyLedgerId.ToString()), "ledgerId");
+        form.Add(new StringContent(csv, Encoding.UTF8), "file", "invalid.csv");
+
+        var response = await client.PostAsync("/api/currencytransactions/import", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var result = await ReadApiJsonAsync<CurrencyTransactionCsvImportResultDto>(response.Content);
+        result.Should().NotBeNull();
+        result.Status.Should().Be("rejected");
+        result.Summary.TotalRows.Should().Be(2);
+        result.Summary.InsertedRows.Should().Be(0);
+        result.Summary.RejectedRows.Should().Be(2);
+        result.Summary.ErrorCount.Should().NotBeNull();
+        result.Errors.Should().HaveCountGreaterThanOrEqualTo(4);
+
+        result.Errors.Should().Contain(e =>
+            e.RowNumber == 2 &&
+            e.FieldName == "transactionType" &&
+            e.ErrorCode == "INVALID_TRANSACTION_TYPE_FOR_LEDGER");
+
+        result.Errors.Should().Contain(e =>
+            e.RowNumber == 3 &&
+            e.FieldName == "transactionType" &&
+            e.ErrorCode == "REQUIRED_FIELD_MISSING");
+
+        result.Errors.Should().Contain(e =>
+            e.RowNumber == 3 &&
+            e.FieldName == "foreignAmount" &&
+            e.ErrorCode == "VALUE_OUT_OF_RANGE");
+
+        result.Errors.Should().Contain(e =>
+            e.RowNumber == 3 &&
+            e.FieldName == "exchangeRate" &&
+            e.ErrorCode == "INVALID_NUMBER_FORMAT");
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_ImportCsv_ValidRows_ShouldCommitAllRows()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "CSV Valid Import");
+
+        const string csv = """
+transactionDate,transactionType,foreignAmount,homeAmount,exchangeRate,notes
+2026-01-01,ExchangeBuy,100,3100,31,fx in
+2026-01-02,Deposit,50,,,cash in
+""";
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(portfolio.BoundCurrencyLedgerId.ToString()), "ledgerId");
+        form.Add(new StringContent(csv, Encoding.UTF8), "file", "valid.csv");
+
+        var response = await client.PostAsync("/api/currencytransactions/import", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await ReadApiJsonAsync<CurrencyTransactionCsvImportResultDto>(response.Content);
+        result.Should().NotBeNull();
+        result.Status.Should().Be("committed");
+        result.Summary.TotalRows.Should().Be(2);
+        result.Summary.InsertedRows.Should().Be(2);
+        result.Summary.RejectedRows.Should().Be(0);
+        result.Errors.Should().BeEmpty();
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().HaveCount(2);
+        transactions.Should().Contain(t => t.TransactionType == CurrencyTransactionType.ExchangeBuy && t.ForeignAmount == 100m);
+        transactions.Should().Contain(t => t.TransactionType == CurrencyTransactionType.Deposit && t.ForeignAmount == 50m);
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_ImportCsv_RejectedDiagnostics_ShouldContainFixedSchemaFields()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "CSV Diagnostics Schema");
+
+        const string csv = """
+transactionDate,transactionType,foreignAmount,homeAmount,exchangeRate,notes
+bad-date,UnknownType,abc,,,
+""";
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(portfolio.BoundCurrencyLedgerId.ToString()), "ledgerId");
+        form.Add(new StringContent(csv, Encoding.UTF8), "file", "schema.csv");
+
+        var response = await client.PostAsync("/api/currencytransactions/import", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var payload = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+
+        var errors = json.RootElement.GetProperty("errors");
+        errors.ValueKind.Should().Be(JsonValueKind.Array);
+        errors.GetArrayLength().Should().BeGreaterThan(0);
+
+        foreach (var error in errors.EnumerateArray())
+        {
+            error.TryGetProperty("rowNumber", out var row).Should().BeTrue();
+            row.ValueKind.Should().Be(JsonValueKind.Number);
+
+            error.TryGetProperty("fieldName", out var field).Should().BeTrue();
+            field.ValueKind.Should().Be(JsonValueKind.String);
+            field.GetString().Should().NotBeNullOrWhiteSpace();
+
+            error.TryGetProperty("invalidValue", out var value).Should().BeTrue();
+            (value.ValueKind == JsonValueKind.String || value.ValueKind == JsonValueKind.Null).Should().BeTrue();
+
+            error.TryGetProperty("correctionGuidance", out var guidance).Should().BeTrue();
+            guidance.ValueKind.Should().Be(JsonValueKind.String);
+            guidance.GetString().Should().NotBeNullOrWhiteSpace();
+        }
     }
 
 }

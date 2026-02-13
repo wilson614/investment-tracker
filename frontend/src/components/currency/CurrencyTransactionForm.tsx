@@ -10,6 +10,47 @@ interface CurrencyTransactionFormProps {
   onCancel: () => void;
 }
 
+const redesignedTransactionTypeNameToValue: Record<string, CurrencyTransactionType> = {
+  ExchangeBuy: CurrencyTxType.ExchangeBuy,
+  ExchangeSell: CurrencyTxType.ExchangeSell,
+  Deposit: CurrencyTxType.Deposit,
+  Withdraw: CurrencyTxType.Withdraw,
+  Interest: CurrencyTxType.Interest,
+  Spend: CurrencyTxType.Spend,
+  InitialBalance: CurrencyTxType.InitialBalance,
+  TransferInBalance: CurrencyTxType.InitialBalance,
+  OtherIncome: CurrencyTxType.OtherIncome,
+  OtherExpense: CurrencyTxType.OtherExpense,
+};
+
+const validTransactionTypes = new Set<number>(Object.values(CurrencyTxType));
+
+function normalizeTransactionType(
+  type: CurrencyTransaction['transactionType'] | string | undefined,
+  fallback: CurrencyTransactionType
+): CurrencyTransactionType {
+  if (typeof type === 'number' && validTransactionTypes.has(type)) {
+    return type as CurrencyTransactionType;
+  }
+
+  if (typeof type === 'string') {
+    const normalized = type.trim();
+    if (normalized.length > 0) {
+      const byName = redesignedTransactionTypeNameToValue[normalized];
+      if (byName !== undefined) {
+        return byName;
+      }
+
+      const byNumber = Number(normalized);
+      if (!Number.isNaN(byNumber) && validTransactionTypes.has(byNumber)) {
+        return byNumber as CurrencyTransactionType;
+      }
+    }
+  }
+
+  return fallback;
+}
+
 export function CurrencyTransactionForm({
   ledgerId,
   currencyCode,
@@ -17,11 +58,17 @@ export function CurrencyTransactionForm({
   onSubmit,
   onCancel,
 }: CurrencyTransactionFormProps) {
+  const isTwd = currencyCode === 'TWD';
+  const defaultTransactionType = isTwd ? CurrencyTxType.Deposit : CurrencyTxType.ExchangeBuy;
+
   const [transactionDate, setTransactionDate] = useState(
     initialData?.transactionDate?.split('T')[0] ?? new Date().toISOString().split('T')[0]
   );
   const [transactionType, setTransactionType] = useState<CurrencyTransactionType>(
-    initialData?.transactionType ?? CurrencyTxType.ExchangeBuy
+    normalizeTransactionType(
+      initialData?.transactionType as CurrencyTransaction['transactionType'] | string | undefined,
+      defaultTransactionType
+    )
   );
   const [foreignAmount, setForeignAmount] = useState(
     initialData?.foreignAmount?.toString() ?? ''
@@ -36,8 +83,6 @@ export function CurrencyTransactionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isTwd = currencyCode === 'TWD';
-
   // Exchange types need both home amount and exchange rate
   // For TWD ledger, exchange types usually don't make sense or are 1:1, so we treat them differently
   const isExchangeType =
@@ -50,6 +95,12 @@ export function CurrencyTransactionForm({
   const needsHomeCost =
     !isTwd &&
     (isExchangeType || transactionType === CurrencyTxType.InitialBalance);
+
+  useEffect(() => {
+    if (!needsHomeCost) {
+      setHomeAmount('');
+    }
+  }, [needsHomeCost]);
 
   // Auto-calculate exchange rate when foreign and home amounts change (only for exchange types)
   useEffect(() => {
@@ -93,7 +144,7 @@ export function CurrencyTransactionForm({
         transactionDate,
         transactionType,
         foreignAmount: parseFloat(foreignAmount),
-        homeAmount: isTwd ? parseFloat(foreignAmount) : (homeAmount ? parseFloat(homeAmount) : undefined),
+        homeAmount: needsHomeCost && homeAmount ? parseFloat(homeAmount) : undefined,
         exchangeRate: isTwd ? 1 : (exchangeRate ? parseFloat(exchangeRate) : undefined),
         notes: notes || undefined,
       });
@@ -139,7 +190,7 @@ export function CurrencyTransactionForm({
                <option value={CurrencyTxType.Withdraw}>提領</option>
                <option value={CurrencyTxType.Interest}>利息收入</option>
                <option value={CurrencyTxType.Spend}>消費支出</option>
-               <option value={CurrencyTxType.InitialBalance}>初始餘額</option>
+               <option value={CurrencyTxType.InitialBalance}>轉入本金</option>
                <option value={CurrencyTxType.OtherIncome}>其他收入</option>
                <option value={CurrencyTxType.OtherExpense}>其他支出</option>
              </>
@@ -152,7 +203,7 @@ export function CurrencyTransactionForm({
               <option value={CurrencyTxType.Withdraw}>提領</option>
               <option value={CurrencyTxType.Interest}>利息收入</option>
               <option value={CurrencyTxType.Spend}>消費支出</option>
-              <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
+              <option value={CurrencyTxType.InitialBalance}>轉入本金</option>
               <option value={CurrencyTxType.OtherIncome}>其他收入</option>
               <option value={CurrencyTxType.OtherExpense}>其他支出</option>
             </>
