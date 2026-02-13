@@ -105,16 +105,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T032 [P] [US3] Update frontend metric-binding tests for revised MD/TWR wording expectations in /workspaces/InvestmentTracker/frontend/src/test/performance.metrics-binding.test.tsx
-- [ ] T033 [P] [US3] Add/update frontend tests for transaction type display naming consistency in /workspaces/InvestmentTracker/frontend/src/test/currency.transaction-type-display.test.tsx
+- [x] T032 [P] [US3] Update frontend metric-binding tests for revised MD/TWR wording expectations in /workspaces/InvestmentTracker/frontend/src/test/performance.metrics-binding.test.tsx
+- [x] T033 [P] [US3] Add/update frontend tests for transaction type display naming consistency in /workspaces/InvestmentTracker/frontend/src/test/currency.transaction-type-display.test.tsx
 
 ### Implementation for User Story 3
 
-- [ ] T034 [US3] Update MD/TWR helper copy to required final wording in /workspaces/InvestmentTracker/frontend/src/pages/Performance.tsx
-- [ ] T035 [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/components/currency/CurrencyTransactionForm.tsx
-- [ ] T036 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/components/transactions/TransactionForm.tsx
-- [ ] T037 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/pages/CurrencyDetail.tsx
-- [ ] T038 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/services/csvExport.ts
+- [x] T034 [US3] Update MD/TWR helper copy to required final wording in /workspaces/InvestmentTracker/frontend/src/pages/Performance.tsx
+- [x] T035 [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/components/currency/CurrencyTransactionForm.tsx
+- [x] T036 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/components/transactions/TransactionForm.tsx
+- [x] T037 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/pages/CurrencyDetail.tsx
+- [x] T038 [P] [US3] Remove deprecated transaction/help wording variants across form/detail/export surfaces in /workspaces/InvestmentTracker/frontend/src/services/csvExport.ts
 
 **Checkpoint**: All user stories should now be independently functional.
 
