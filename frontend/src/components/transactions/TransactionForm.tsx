@@ -146,7 +146,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const topUpTransactionOptions = useMemo(() => {
     const options: Array<{ value: CurrencyTransactionType; label: string }> = [
       { value: CurrencyTransactionTypeEnum.Deposit, label: '存入' },
-      { value: CurrencyTransactionTypeEnum.InitialBalance, label: '轉入本金' },
+      { value: CurrencyTransactionTypeEnum.InitialBalance, label: '轉入餘額' },
       { value: CurrencyTransactionTypeEnum.Interest, label: '利息收入' },
       { value: CurrencyTransactionTypeEnum.OtherIncome, label: '其他收入' },
     ];

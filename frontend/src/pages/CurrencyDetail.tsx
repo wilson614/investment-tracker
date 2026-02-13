@@ -59,7 +59,7 @@ const transactionTypeLabels: Record<number, string> = {
   [CurrencyTransactionType.Withdraw]: '提領',
   [CurrencyTransactionType.Interest]: '利息收入',
   [CurrencyTransactionType.Spend]: '消費支出',
-  [CurrencyTransactionType.InitialBalance]: '轉入本金',
+  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
   [CurrencyTransactionType.OtherIncome]: '其他收入',
   [CurrencyTransactionType.OtherExpense]: '其他支出',
 };

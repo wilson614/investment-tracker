@@ -702,7 +702,7 @@ function PerformancePageContent({
         const collectedReturns: Record<string, number | null> = { ...cachedReturns };
 
         await Promise.all(
-          customBenchmarks.map(async (benchmark) => {
+          selectedCustomBenchmarks.map(async (benchmark) => {
             // 歷史年度若不在快取中則抓取，當年度則總是刷新即時資料
             // 我們已顯示快取資料，所以這次更新只是「刷新」
 
@@ -751,10 +751,8 @@ function PerformancePageContent({
                       } else {
                         const quote = await stockPriceApi.getQuote(benchmark.market, benchmark.ticker);
                         endPrice = quote?.price;
-                        if (quote?.price) {
-                          // Use 1 as default exchange rate for non-Euronext
-                          saveQuoteToCache(benchmark.ticker, quote.price, 1);
-                        }
+                        // 注意：此處 quote 不含真實匯率，避免寫入共享 quote cache 汙染後續匯率換算
+                        // 仍使用即時價格計算自訂 benchmark 報酬，不改變既有 UI 行為
                       }
                     } catch {
                       // 備援：若標準市場失敗則嘗試 Euronext
@@ -1468,7 +1466,7 @@ function PerformancePageContent({
                         <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                         <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                           <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量投資人操作 (Modified Dietz)
+                            衡量比例的重壓 (Modified Dietz)
                           </div>
                         </div>
                       </div>
@@ -1512,7 +1510,7 @@ function PerformancePageContent({
                         <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
                         <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
                           <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量資產本身表現 (TWR)
+                            衡量本金的重壓 (TWR)
                           </div>
                         </div>
                       </div>

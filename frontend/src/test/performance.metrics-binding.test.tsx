@@ -220,6 +220,18 @@ describe('PerformancePage metrics binding regression', () => {
     mockedStockPriceApi.getExchangeRateValue.mockResolvedValue(1);
   });
 
+  it('shows revised MD/TWR helper wording and removes deprecated copy', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(createPerformanceMock());
+
+    render(<PerformancePage />);
+
+    expect(await screen.findByText('衡量比例的重壓 (Modified Dietz)')).toBeInTheDocument();
+    expect(screen.getByText('衡量本金的重壓 (TWR)')).toBeInTheDocument();
+    expect(screen.queryByText('衡量投資人操作 (Modified Dietz)')).not.toBeInTheDocument();
+    expect(screen.queryByText('衡量資產本身表現 (TWR)')).not.toBeInTheDocument();
+  });
+
   it('uses home-currency fields for Modified Dietz and TWR cards', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(createPerformanceMock());

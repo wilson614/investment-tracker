@@ -54,10 +54,11 @@ const CURRENCY_TX_TYPE_LABELS: Record<number, string> = {
 function escapeCSVField(value: string | number | null | undefined): string {
   if (value == null) return '';
   const str = String(value);
-  if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const neutralized = /^[=+\-@]/.test(str) ? `'${str}` : str;
+  if (neutralized.includes(',') || neutralized.includes('\n') || neutralized.includes('"')) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
   }
-  return str;
+  return neutralized;
 }
 
 /**

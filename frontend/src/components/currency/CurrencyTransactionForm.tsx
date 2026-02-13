@@ -190,7 +190,7 @@ export function CurrencyTransactionForm({
                <option value={CurrencyTxType.Withdraw}>提領</option>
                <option value={CurrencyTxType.Interest}>利息收入</option>
                <option value={CurrencyTxType.Spend}>消費支出</option>
-               <option value={CurrencyTxType.InitialBalance}>轉入本金</option>
+               <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
                <option value={CurrencyTxType.OtherIncome}>其他收入</option>
                <option value={CurrencyTxType.OtherExpense}>其他支出</option>
              </>
@@ -203,7 +203,7 @@ export function CurrencyTransactionForm({
               <option value={CurrencyTxType.Withdraw}>提領</option>
               <option value={CurrencyTxType.Interest}>利息收入</option>
               <option value={CurrencyTxType.Spend}>消費支出</option>
-              <option value={CurrencyTxType.InitialBalance}>轉入本金</option>
+              <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
               <option value={CurrencyTxType.OtherIncome}>其他收入</option>
               <option value={CurrencyTxType.OtherExpense}>其他支出</option>
             </>
