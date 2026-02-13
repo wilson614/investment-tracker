@@ -46,12 +46,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Add/adjust backend validation matrix tests for TWD vs non-TWD category rules in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/UseCases/CurrencyLedger/TwdLedgerTransactionTypesTests.cs
-- [ ] T009 [P] [US1] Add create/update request validation regression tests for category+ledger combinations in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/UseCases/CurrencyLedger/TwdLedgerTransactionTypesTests.cs
-- [ ] T010 [P] [US1] Add API integration tests for invalid/valid currency transaction create/update requests in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
-- [ ] T011 [P] [US1] Add CSV import rejection integration tests asserting full error-set reporting for all invalid rows/fields in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
-- [ ] T043 [P] [US1] Add legacy enum payload rejection tests to ensure deprecated enum names are rejected by create/update APIs in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
-- [ ] T044 [P] [US1] Add CSV diagnostics schema fixed-field assertion tests for row/field/value/guidance keys in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
+- [x] T008 [P] [US1] Add/adjust backend validation matrix tests for TWD vs non-TWD category rules in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/UseCases/CurrencyLedger/TwdLedgerTransactionTypesTests.cs
+- [x] T009 [P] [US1] Add create/update request validation regression tests for category+ledger combinations in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/UseCases/CurrencyLedger/TwdLedgerTransactionTypesTests.cs
+- [x] T010 [P] [US1] Add API integration tests for invalid/valid currency transaction create/update requests in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
+- [x] T011 [P] [US1] Add CSV import rejection integration tests asserting full error-set reporting for all invalid rows/fields in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
+- [x] T043 [P] [US1] Add legacy enum payload rejection tests to ensure deprecated enum names are rejected by create/update APIs in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
+- [x] T044 [P] [US1] Add CSV diagnostics schema fixed-field assertion tests for row/field/value/guidance keys in /workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/Integration/AtomicTransactionTests.cs
 
 ### Implementation for User Story 1
 
@@ -59,12 +59,12 @@
 - [x] T013 [US1] Enforce strict ledger-currency/type policy in update flow in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/UpdateCurrencyTransactionUseCase.cs
 - [x] T014 [US1] Update create request validator for redesigned category semantics and required fields in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/CreateCurrencyTransactionRequestValidator.cs
 - [x] T015 [US1] Update update request validator to match create-rule strictness in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/UpdateCurrencyTransactionRequestValidator.cs
-- [ ] T016 [US1] Add atomic currency CSV import endpoint with all-or-nothing behavior in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/Controllers/CurrencyTransactionsController.cs
-- [ ] T017 [US1] Implement currency CSV parsing/validation/diagnostics application service for full error set responses in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/ImportCurrencyTransactionsUseCase.cs
-- [ ] T018 [US1] Align frontend CSV import flow to new backend atomic import contract in /workspaces/InvestmentTracker/frontend/src/components/import/CurrencyImportButton.tsx
-- [ ] T019 [US1] Update frontend category labels and parser mappings to accept redesigned enum names only (no deprecated enum mappings) in /workspaces/InvestmentTracker/frontend/src/components/currency/CurrencyTransactionForm.tsx
-- [ ] T020 [P] [US1] Update frontend category labels and options in stock transaction supplement flow in /workspaces/InvestmentTracker/frontend/src/components/transactions/TransactionForm.tsx
-- [ ] T021 [P] [US1] Update transaction type labels in currency detail display in /workspaces/InvestmentTracker/frontend/src/pages/CurrencyDetail.tsx
+- [x] T016 [US1] Add atomic currency CSV import endpoint with all-or-nothing behavior in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/Controllers/CurrencyTransactionsController.cs
+- [x] T017 [US1] Implement currency CSV parsing/validation/diagnostics application service for full error set responses in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/ImportCurrencyTransactionsUseCase.cs
+- [x] T018 [US1] Align frontend CSV import flow to new backend atomic import contract in /workspaces/InvestmentTracker/frontend/src/components/import/CurrencyImportButton.tsx
+- [x] T019 [US1] Update frontend category labels and parser mappings to accept redesigned enum names only (no deprecated enum mappings) in /workspaces/InvestmentTracker/frontend/src/components/currency/CurrencyTransactionForm.tsx
+- [x] T020 [P] [US1] Update frontend category labels and options in stock transaction supplement flow in /workspaces/InvestmentTracker/frontend/src/components/transactions/TransactionForm.tsx
+- [x] T021 [P] [US1] Update transaction type labels in currency detail display in /workspaces/InvestmentTracker/frontend/src/pages/CurrencyDetail.tsx
 - [ ] T022 [P] [US1] Update transaction type export labels for CSV consistency in /workspaces/InvestmentTracker/frontend/src/services/csvExport.ts
 - [ ] T023 [US1] Update shared transaction type constants for redesigned enum names in /workspaces/InvestmentTracker/frontend/src/types/index.ts
 
