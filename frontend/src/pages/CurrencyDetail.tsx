@@ -9,15 +9,14 @@
  */
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, RefreshCw, Info } from 'lucide-react';
-import { ASSETS_KEYS } from '../features/total-assets/hooks/useTotalAssets';
 import { currencyLedgerApi, currencyTransactionApi, stockPriceApi } from '../services/api';
 import { exportCurrencyTransactionsToCsv } from '../services/csvExport';
 import { CurrencyTransactionForm } from '../components/currency/CurrencyTransactionForm';
 import { LedgerSelector } from '../components/ledger/LedgerSelector';
 import { CurrencyImportButton } from '../components/import';
 import { useLedger } from '../contexts/LedgerContext';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { FileDropdown } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
 import type { CurrencyLedgerSummary, CurrencyTransaction, CreateCurrencyTransactionRequest } from '../types';
@@ -180,8 +179,8 @@ interface CurrencyDetailProps {
 export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
   const { id: routeLedgerId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { selectLedger } = useLedger();
+  const { invalidateSharedCaches } = usePortfolio();
   const [activeLedgerId, setActiveLedgerId] = useState<string | null>(ledgerId ?? routeLedgerId ?? null);
   const previousRouteLedgerIdRef = useRef<string | undefined>(undefined);
   const [ledger, setLedger] = useState<CurrencyLedgerSummary | null>(null);
@@ -326,8 +325,8 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
   const handleAddTransaction = async (data: CreateCurrencyTransactionRequest) => {
     await currencyTransactionApi.create(data);
     setShowAddForm(false);
+    invalidateSharedCaches();
     await loadData();
-    queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
   };
 
   const handleSelectAll = () => {
@@ -386,8 +385,8 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
         await currencyTransactionApi.delete(txId);
       }
       setShowDeleteConfirm(false);
+      invalidateSharedCaches();
       await loadData();
-      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
@@ -404,8 +403,8 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
     if (!deletingTransactionId) return;
     try {
       await currencyTransactionApi.delete(deletingTransactionId);
+      invalidateSharedCaches();
       await loadData();
-      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
@@ -429,8 +428,8 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
         notes: data.notes,
       });
       setEditingTransaction(null);
+      invalidateSharedCaches();
       await loadData();
-      queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     }
@@ -449,8 +448,8 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
   };
 
   const handleImportComplete = async () => {
+    invalidateSharedCaches();
     await loadData();
-    queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
   };
 
   const formatNumber = (value: number | null | undefined, decimals = 2) => {

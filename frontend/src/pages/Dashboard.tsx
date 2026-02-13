@@ -620,7 +620,6 @@ export function DashboardPage() {
       await marketDataPromise;
 
       if (Object.keys(allPrices).length === 0) {
-        setXirrResult(null);
         setXirrError('目前沒有可用報價，無法計算彙總 XIRR');
         return;
       }
@@ -643,7 +642,6 @@ export function DashboardPage() {
         setXirrResult(aggregateXirr);
         setXirrError(null);
       } catch (xirrErr) {
-        setXirrResult(null);
         setXirrError(xirrErr instanceof Error ? xirrErr.message : '無法計算彙總 XIRR');
       } finally {
         setIsCalculatingXirr(false);
@@ -770,7 +768,8 @@ export function DashboardPage() {
     (sum, item) => sum + (item.summary.totalValueHome ?? 0),
     0
   );
-  const isXirrCardLoading = isSummaryReady && (isCalculatingXirr || isFetchingPrices);
+  const hasXirrValue = xirrResult?.xirrPercentage != null;
+  const isXirrCardLoading = isSummaryReady && !hasXirrValue && (isCalculatingXirr || isFetchingPrices);
 
   return (
     <div className="min-h-screen py-8">

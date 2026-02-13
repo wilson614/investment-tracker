@@ -118,6 +118,7 @@ export function PortfolioPage() {
     selectPortfolio,
     refreshPortfolios,
     clearPerformanceState,
+    invalidateSharedCaches,
   } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
@@ -149,7 +150,12 @@ export function PortfolioPage() {
    *
    * 這個方法會先清空舊資料，避免 UI 短暫顯示上一個 portfolio 的內容（FR-100）。
    */
-  const loadDataForPortfolio = useCallback(async (portfolioId: string) => {
+  const loadDataForPortfolio = useCallback(async (
+    portfolioId: string,
+    options?: { clearSharedPerformanceState?: boolean },
+  ) => {
+    const shouldClearSharedPerformanceState = options?.clearSharedPerformanceState ?? true;
+
     try {
       setIsLoading(true);
       setError(null);
@@ -158,7 +164,9 @@ export function PortfolioPage() {
       setXirrResult(null);
       setTransactions([]);
       // Also clear performance state in context (for Performance page)
-      clearPerformanceState();
+      if (shouldClearSharedPerformanceState) {
+        clearPerformanceState();
+      }
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);
@@ -252,6 +260,7 @@ export function PortfolioPage() {
 
   const hasFetchedOnLoad = useRef(false);
   const firstPortfolioId = contextPortfolios[0]?.id;
+  const previousPortfolioIdRef = useRef<string | null>(currentPortfolioId);
 
   useEffect(() => {
     if (isAllPortfolios && firstPortfolioId) {
@@ -264,14 +273,22 @@ export function PortfolioPage() {
       if (!firstPortfolioId) {
         loadData();
       }
+      previousPortfolioIdRef.current = currentPortfolioId;
       return;
     }
 
     if (currentPortfolioId) {
-      loadDataForPortfolio(currentPortfolioId);
+      const isPortfolioSwitchTriggeredBySelect =
+        previousPortfolioIdRef.current !== currentPortfolioId;
+
+      loadDataForPortfolio(currentPortfolioId, {
+        clearSharedPerformanceState: !isPortfolioSwitchTriggeredBySelect,
+      });
     } else {
       loadData();
     }
+
+    previousPortfolioIdRef.current = currentPortfolioId;
   }, [currentPortfolioId, isAllPortfolios, firstPortfolioId, loadDataForPortfolio, loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
@@ -367,9 +384,12 @@ export function PortfolioPage() {
     } else {
       await transactionApi.create(data);
     }
+
+    invalidateSharedCaches();
+
     // Reload current portfolio data (not reset to first portfolio)
     if (currentPortfolioId) {
-      await loadDataForPortfolio(currentPortfolioId);
+      await loadDataForPortfolio(currentPortfolioId, { clearSharedPerformanceState: false });
     } else {
       await loadData();
     }
@@ -407,9 +427,12 @@ export function PortfolioPage() {
     if (!deletingTransactionId) return;
 
     await transactionApi.delete(deletingTransactionId);
+
+    invalidateSharedCaches();
+
     // Reload current portfolio data (not reset to first portfolio)
     if (currentPortfolioId) {
-      await loadDataForPortfolio(currentPortfolioId);
+      await loadDataForPortfolio(currentPortfolioId, { clearSharedPerformanceState: false });
     } else {
       await loadData();
     }
@@ -694,6 +717,7 @@ export function PortfolioPage() {
               <StockImportButton
                 portfolioId={portfolio?.id ?? ''}
                 onImportComplete={loadData}
+                onImportSuccess={invalidateSharedCaches}
                 renderTrigger={(onClick) => {
                   importTriggerRef.current = onClick;
                   return null;

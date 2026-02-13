@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { portfolioApi } from '../services/api';
 import type { AvailableYears, YearPerformance, YearEndPriceInfo } from '../types';
+import {
+  buildPerformanceDataCacheKey,
+  buildPerformanceYearsCacheKey,
+  getPerformanceCacheVersion,
+} from '../utils/cacheInvalidation';
 
 interface UseHistoricalPerformanceOptions {
   portfolioId: string;
@@ -66,13 +71,19 @@ function resolveSelectedYear(
  * - 單一投資組合：namespace = portfolioId
  * - 彙總模式：namespace = aggregate
  */
-function loadCacheForPortfolio(cacheNamespace: string, preferredYear: number | null = null): {
+function loadCacheForPortfolio(
+  cacheNamespace: string,
+  preferredYear: number | null = null,
+  cacheVersion = 0,
+): {
   availableYears: AvailableYears | null;
   selectedYear: number | null;
   performance: YearPerformance | null;
 } {
   try {
-    const cachedYears = localStorage.getItem(`perf_years_${cacheNamespace}`);
+    const yearsCacheKey = buildPerformanceYearsCacheKey(cacheNamespace, cacheVersion);
+    const cachedYears = localStorage.getItem(yearsCacheKey);
+
     if (cachedYears) {
       const years = JSON.parse(cachedYears) as AvailableYears;
       const hasAvailableYears = Array.isArray(years.years) && years.years.length > 0;
@@ -83,16 +94,22 @@ function loadCacheForPortfolio(cacheNamespace: string, preferredYear: number | n
 
       const year = resolveSelectedYear(years, preferredYear);
       if (year != null) {
-        const cachedPerf = localStorage.getItem(`perf_data_${cacheNamespace}_${year}`);
+        const performanceCacheKey = buildPerformanceDataCacheKey(cacheNamespace, year, cacheVersion);
+        const cachedPerf = localStorage.getItem(performanceCacheKey);
+
         return {
           availableYears: years,
           selectedYear: year,
           performance: cachedPerf ? JSON.parse(cachedPerf) : null,
         };
       }
+
       return { availableYears: years, selectedYear: null, performance: null };
     }
-  } catch { /* 忽略快取讀取錯誤 */ }
+  } catch {
+    /* 忽略快取讀取錯誤 */
+  }
+
   return { availableYears: null, selectedYear: null, performance: null };
 }
 
@@ -138,12 +155,15 @@ export function useHistoricalPerformance({
   autoFetch = true,
 }: UseHistoricalPerformanceOptions): UseHistoricalPerformanceResult {
   const cacheNamespace = isAggregate ? 'aggregate' : portfolioId;
+  const performanceCacheVersion = getPerformanceCacheVersion();
 
   // 讀取跨投組共用的年份偏好，避免切換投組時被重設到最新年
   const [globalPreferredYear] = useState<number | null>(() => loadGlobalSelectedYear());
 
   // 元件掛載時一次性載入所有快取資料，確保同步執行以避免閃爍
-  const [initialCache] = useState(() => loadCacheForPortfolio(cacheNamespace, globalPreferredYear));
+  const [initialCache] = useState(() =>
+    loadCacheForPortfolio(cacheNamespace, globalPreferredYear, performanceCacheVersion)
+  );
 
   // 使用快取資料初始化狀態，實現即時顯示
   const [availableYears, setAvailableYears] = useState<AvailableYears | null>(
@@ -193,7 +213,9 @@ export function useHistoricalPerformance({
         : await portfolioApi.getAvailableYears(portfolioId!);
 
       setAvailableYears(years);
-      localStorage.setItem(`perf_years_${cacheNamespace}`, JSON.stringify(years));
+
+      const yearsCacheKey = buildPerformanceYearsCacheKey(cacheNamespace, performanceCacheVersion);
+      localStorage.setItem(yearsCacheKey, JSON.stringify(years));
 
       if (years.years.length === 0) {
         selectedYearRef.current = null;
@@ -221,7 +243,13 @@ export function useHistoricalPerformance({
         }
 
         try {
-          const cached = localStorage.getItem(`perf_data_${cacheNamespace}_${resolvedYear}`);
+          const resolvedYearCacheKey = buildPerformanceDataCacheKey(
+            cacheNamespace,
+            resolvedYear,
+            performanceCacheVersion,
+          );
+          const cached = localStorage.getItem(resolvedYearCacheKey);
+
           if (cached) {
             setPerformance(JSON.parse(cached));
             cachedYearRef.current = resolvedYear;
@@ -250,7 +278,13 @@ export function useHistoricalPerformance({
     } finally {
       setIsLoadingYears(false);
     }
-  }, [isAggregate, portfolioId, cacheNamespace, globalPreferredYear]);
+  }, [
+    isAggregate,
+    portfolioId,
+    cacheNamespace,
+    globalPreferredYear,
+    performanceCacheVersion,
+  ]);
 
   // 計算指定年度的績效
   const calculatePerformance = useCallback(async (
@@ -264,7 +298,7 @@ export function useHistoricalPerformance({
     const requestId = isRequestForCurrentSelection
       ? ++performanceRequestIdRef.current
       : performanceRequestIdRef.current;
-    const cacheKey = `perf_data_${cacheNamespace}_${year}`;
+    const cacheKey = buildPerformanceDataCacheKey(cacheNamespace, year, performanceCacheVersion);
     const hasCachedData = !!localStorage.getItem(cacheKey);
 
     // Stale-while-revalidate：有快取時不顯示 loading，避免閃爍
@@ -307,7 +341,7 @@ export function useHistoricalPerformance({
         setIsLoadingPerformance(false);
       }
     }
-  }, [isAggregate, portfolioId, cacheNamespace]);
+  }, [isAggregate, portfolioId, cacheNamespace, performanceCacheVersion]);
 
   // 切換選擇的年份
   const handleSetSelectedYear = useCallback((year: number) => {
@@ -324,7 +358,9 @@ export function useHistoricalPerformance({
 
     // 立即從快取載入該年度資料以避免閃爍
     try {
-      const cached = localStorage.getItem(`perf_data_${cacheNamespace}_${year}`);
+      const selectedYearCacheKey = buildPerformanceDataCacheKey(cacheNamespace, year, performanceCacheVersion);
+      const cached = localStorage.getItem(selectedYearCacheKey);
+
       if (cached) {
         setPerformance(JSON.parse(cached));
         cachedYearRef.current = year;
@@ -336,7 +372,7 @@ export function useHistoricalPerformance({
       setPerformance(null);
       cachedYearRef.current = null;
     }
-  }, [cacheNamespace]);
+  }, [cacheNamespace, performanceCacheVersion]);
 
   // 手動重新整理
   const refresh = useCallback(async () => {

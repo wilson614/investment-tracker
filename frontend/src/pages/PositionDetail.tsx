@@ -52,7 +52,9 @@ const MARKET_LABELS: Record<StockMarketType, string> = {
  * - quote cache：與 PositionCard/Portfolio/Dashboard 共用
  * - xirr cache：以 portfolioId + ticker 區隔，避免跨投資組合汙染
  */
-const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+const getQuoteCacheKey = (ticker: string, market?: StockMarketType) =>
+  `quote_cache_${ticker}_${market ?? 'default'}`;
+const getLegacyQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
 const getXirrCacheKey = (portfolioId: string, ticker: string) => `xirr_cache_${portfolioId}_${ticker}`;
 
 interface CachedQuote {
@@ -71,11 +73,26 @@ interface CachedXirr {
  *
  * 回傳 `market` 會以快取為優先；若無快取則用 `guessMarket` 推測。
  */
-const loadCachedQuote = (ticker: string): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
+const loadCachedQuote = (
+  ticker: string,
+  market?: StockMarketType,
+): { quote: StockQuoteResponse | null; updatedAt: Date | null; market: StockMarketType } => {
+  const resolvedMarket = market ?? guessMarket(ticker);
+
   try {
-    const cached = localStorage.getItem(getQuoteCacheKey(ticker));
-    if (cached) {
-      const data: CachedQuote = JSON.parse(cached);
+    const marketAwareCached = localStorage.getItem(getQuoteCacheKey(ticker, resolvedMarket));
+    if (marketAwareCached) {
+      const data: CachedQuote = JSON.parse(marketAwareCached);
+      return {
+        quote: data.quote,
+        updatedAt: new Date(data.updatedAt),
+        market: data.market,
+      };
+    }
+
+    const legacyCached = localStorage.getItem(getLegacyQuoteCacheKey(ticker));
+    if (legacyCached) {
+      const data: CachedQuote = JSON.parse(legacyCached);
       return {
         quote: data.quote,
         updatedAt: new Date(data.updatedAt),
@@ -85,7 +102,8 @@ const loadCachedQuote = (ticker: string): { quote: StockQuoteResponse | null; up
   } catch {
     // Ignore cache errors
   }
-  return { quote: null, updatedAt: null, market: guessMarket(ticker) };
+
+  return { quote: null, updatedAt: null, market: resolvedMarket };
 };
 
 /**
@@ -107,7 +125,7 @@ const loadCachedXirr = (portfolioId: string, ticker: string): XirrResult | null 
 };
 
 export function PositionDetailPage() {
-  const { currentPortfolioId } = usePortfolio();
+  const { currentPortfolioId, invalidateSharedCaches } = usePortfolio();
 
   const { ticker, market: marketParam } = useParams<{ ticker: string; market?: string }>();
   // Parse market from URL param (if provided)
@@ -125,7 +143,9 @@ export function PositionDetailPage() {
   const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
 
   // Load cached quote on init (use useRef to avoid re-creating on every render)
-  const cachedDataRef = useRef(ticker ? loadCachedQuote(ticker) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType });
+  const cachedDataRef = useRef(
+    ticker ? loadCachedQuote(ticker, urlMarket) : { quote: null, updatedAt: null, market: StockMarket.US as StockMarketType },
+  );
   const cachedData = cachedDataRef.current;
   // XIRR cache will be loaded after we have portfolioId
   const cachedXirrRef = useRef<XirrResult | null>(null);
@@ -318,7 +338,7 @@ export function PositionDetailPage() {
 
         // Save to localStorage cache (same format as PositionCard)
         try {
-          localStorage.setItem(getQuoteCacheKey(ticker!), JSON.stringify({
+          localStorage.setItem(getQuoteCacheKey(ticker!, selectedMarket), JSON.stringify({
             quote,
             updatedAt: now.toISOString(),
             market: quote.market,
@@ -398,6 +418,7 @@ export function PositionDetailPage() {
     if (!deletingTransactionId) return;
 
     await transactionApi.delete(deletingTransactionId);
+    invalidateSharedCaches();
     await loadData();
     setDeletingTransactionId(null);
   };

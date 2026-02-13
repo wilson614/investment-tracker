@@ -13,7 +13,7 @@ import { usePortfolio } from '../contexts/PortfolioContext';
 import type { StockTransaction } from '../types';
 
 export function TransactionsPage() {
-  const { currentPortfolioId } = usePortfolio();
+  const { currentPortfolioId, invalidateSharedCaches } = usePortfolio();
 
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,6 +66,7 @@ export function TransactionsPage() {
     if (!deletingTransactionId) return;
 
     await transactionApi.delete(deletingTransactionId);
+    invalidateSharedCaches();
     setTransactions((prev) => prev.filter((t) => t.id !== deletingTransactionId));
     setDeletingTransactionId(null);
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { StockMarket } from '../types';
 import type {
   CapeData,
@@ -197,6 +197,7 @@ function setupDashboardMocks(params: {
     selectPortfolio: vi.fn(),
     refreshPortfolios: vi.fn().mockResolvedValue(undefined),
     clearPerformanceState: vi.fn(),
+    invalidateSharedCaches: vi.fn(),
     performanceVersion: 0,
   });
 
@@ -220,6 +221,17 @@ function setupDashboardMocks(params: {
 
   mockedRefreshCapeData.mockResolvedValue(mockCapeData);
   mockedRefreshYtdData.mockResolvedValue(mockYtdData);
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
 }
 
 describe('DashboardPage aggregate fixed behavior', () => {
@@ -268,5 +280,68 @@ describe('DashboardPage aggregate fixed behavior', () => {
     expect(mockedPortfolioApi.calculateXirr).not.toHaveBeenCalled();
     expect(screen.queryByTestId('portfolio-selector')).not.toBeInTheDocument();
     expect(screen.getByText('各投資組合市值貢獻')).toBeInTheDocument();
+  });
+
+  it('keeps showing previous XIRR value during manual refetch until new value is ready', async () => {
+    setupDashboardMocks({ currentPortfolioId: 'all', isAllPortfolios: true });
+
+    const deferredXirr = createDeferred<XirrResult>();
+    let aggregateXirrCallCount = 0;
+
+    mockedPortfolioApi.calculateAggregateXirr.mockImplementation(() => {
+      aggregateXirrCallCount += 1;
+      if (aggregateXirrCallCount === 2) {
+        return deferredXirr.promise;
+      }
+      return Promise.resolve(aggregateXirr);
+    });
+
+    mockedStockPriceApi.getQuoteWithRate.mockResolvedValue({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      price: 125,
+      market: StockMarket.US,
+      source: 'test',
+      fetchedAt: nowIso,
+      exchangeRate: 31,
+      exchangeRatePair: 'USD/TWD',
+    });
+
+    render(<DashboardPage />);
+
+    await screen.findByRole('heading', { name: '儀表板' });
+
+    await waitFor(() => {
+      expect(screen.getByText('+12.00%')).toBeInTheDocument();
+    });
+
+    const xirrCard = screen.getByText('年化報酬 (XIRR)').closest('.metric-card') as HTMLElement | null;
+    expect(xirrCard).not.toBeNull();
+
+    const refreshButton = screen.getByRole('button', { name: '更新全部' });
+    refreshButton.click();
+
+    await waitFor(() => {
+      expect(aggregateXirrCallCount).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(screen.getByText('+12.00%')).toBeInTheDocument();
+
+    if (xirrCard) {
+      expect(within(xirrCard).queryByTestId('skeleton')).not.toBeInTheDocument();
+    }
+
+    await act(async () => {
+      deferredXirr.resolve({
+        ...aggregateXirr,
+        xirr: 0.135,
+        xirrPercentage: 13.5,
+      });
+      await deferredXirr.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('+13.50%')).toBeInTheDocument();
+    });
   });
 });

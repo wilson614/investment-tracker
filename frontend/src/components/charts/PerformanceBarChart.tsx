@@ -56,7 +56,7 @@ export function PerformanceBarChart({
 
   if (data.length === 0) {
     return (
-      <div className={`flex items-center justify-center h-[${height}px] text-[var(--text-muted)] ${className}`}>
+      <div className={`flex items-center justify-center text-[var(--text-muted)] ${className}`} style={{ minHeight: height }}>
         無資料
       </div>
     );
@@ -69,13 +69,13 @@ export function PerformanceBarChart({
       )}
       
       <div className="space-y-2" style={{ minHeight: height }}>
-        {normalizedData.map((item) => {
+        {normalizedData.map((item, index) => {
           const isPositive = item.value >= 0;
           const barWidth = Math.abs(item.percentage);
-          
+
           return (
             <div
-              key={item.label}
+              key={`${item.label}-${index}`}
               className="group relative"
               title={item.tooltip || `${item.label}: ${formatValue(item.value)}`}
             >
@@ -98,13 +98,14 @@ export function PerformanceBarChart({
 
                 {/* 長條 */}
                 <div
-                  className={`absolute top-0 bottom-0 transition-all duration-300 ${
+                  className={`absolute top-0 bottom-0 ${
                     isPositive
                       ? 'left-1/2 bg-[var(--color-success)]'
                       : 'right-1/2 bg-[var(--color-danger)]'
                   }`}
                   style={{
                     width: `${barWidth / 2}%`,
+                    transitionProperty: 'none',
                   }}
                 />
                 

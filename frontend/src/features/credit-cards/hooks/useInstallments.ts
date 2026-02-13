@@ -2,7 +2,9 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
+import { invalidatePerformanceAndAssetsCaches } from '../../../utils/cacheInvalidation';
 import { installmentsApi } from '../api/installmentsApi';
+import { CREDIT_CARDS_QUERY_KEY } from './useCreditCards';
 import type { CreateInstallmentRequest, InstallmentResponse } from '../types';
 
 export const INSTALLMENTS_QUERY_KEY = ['installments'];
@@ -43,8 +45,8 @@ export function useInstallments(options?: {
   const invalidateInstallmentQueries = () => {
     queryClient.invalidateQueries({ queryKey: INSTALLMENTS_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: INSTALLMENTS_UPCOMING_QUERY_KEY });
-    queryClient.invalidateQueries({ queryKey: ['creditCards'] });
-    queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
+    queryClient.invalidateQueries({ queryKey: CREDIT_CARDS_QUERY_KEY });
+    invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
   };
 
   const createMutation = useMutation({

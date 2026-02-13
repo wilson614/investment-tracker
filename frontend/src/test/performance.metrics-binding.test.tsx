@@ -9,6 +9,7 @@ import {
   type EuronextQuoteResponse,
 } from '../types';
 import type { UserPreferences } from '../services/api';
+import { DEFAULT_BENCHMARKS } from '../constants';
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -39,7 +40,9 @@ vi.mock('../components/modals/MissingPriceModal', () => ({
 }));
 
 vi.mock('../components/charts', () => ({
-  PerformanceBarChart: () => <div data-testid="performance-bar-chart" />,
+  PerformanceBarChart: ({ height }: { height?: number }) => (
+    <div data-testid="performance-bar-chart" data-height={height ?? ''} />
+  ),
 }));
 
 vi.mock('../services/ytdApi', () => ({
@@ -154,6 +157,7 @@ function setupPageMocks(performance: YearPerformance): void {
     selectPortfolio: vi.fn(),
     refreshPortfolios: vi.fn(async () => undefined),
     clearPerformanceState: vi.fn(),
+    invalidateSharedCaches: vi.fn(),
     performanceVersion: 1,
   });
 
@@ -278,5 +282,31 @@ describe('PerformancePage metrics binding regression', () => {
 
     expect(within(modifiedDietzCard as HTMLElement).queryByText('+3.21%')).not.toBeInTheDocument();
     expect(within(twrCard as HTMLElement).queryByText('+21.43%')).not.toBeInTheDocument();
+  });
+
+  it('renders portfolio selector and currency toggle in the same control row', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(createPerformanceMock());
+
+    render(<PerformancePage />);
+
+    const controlRow = await screen.findByTestId('performance-control-row');
+    const portfolioSelector = screen.getByTestId('portfolio-selector');
+    const currencyToggle = screen.getByTestId('currency-toggle');
+
+    expect(controlRow).toContainElement(portfolioSelector);
+    expect(controlRow).toContainElement(currencyToggle);
+  });
+
+  it('keeps benchmark chart height stable by selected benchmark count', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(createPerformanceMock());
+
+    render(<PerformancePage />);
+
+    const chart = await screen.findByTestId('performance-bar-chart');
+    const expectedHeight = 80 + (DEFAULT_BENCHMARKS.length + 1) * 40;
+
+    expect(chart).toHaveAttribute('data-height', expectedHeight.toString());
   });
 });

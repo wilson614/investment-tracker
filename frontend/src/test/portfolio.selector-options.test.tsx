@@ -58,6 +58,7 @@ function mockPortfolioContext(options?: {
     isLoading: false,
     refreshPortfolios: vi.fn(),
     clearPerformanceState: vi.fn(),
+    invalidateSharedCaches: vi.fn(),
     performanceVersion: 0,
   });
 

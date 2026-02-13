@@ -8,7 +8,7 @@
  * - `marketDataApi`：取得 YTD benchmark 比較與歷史 benchmark 報酬。
  * - `stockPriceApi` / `marketDataApi.getEuronextQuote`：在需要即時補價（例如當年度）時，抓取缺漏 ticker 的報價。
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, TrendingUp, TrendingDown, Calendar, RefreshCw, Info, Settings, X, Check } from 'lucide-react';
 import { DEFAULT_BENCHMARKS } from '../constants';
@@ -1289,31 +1289,130 @@ function PerformancePageContent({
     return Math.round(value).toLocaleString('zh-TW');
   };
 
+  const selectedCustomBenchmarkIds = useMemo(
+    () => customBenchmarks
+      .filter(b => selectedBenchmarks.includes(`custom_${b.id}`))
+      .map(b => b.id),
+    [customBenchmarks, selectedBenchmarks]
+  );
+
+  const allDataReady = useMemo(() => {
+    const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
+    const allSystemBenchmarksReady = systemBenchmarks.length === 0 ||
+      systemBenchmarks.every(k => benchmarkReturns[k] !== undefined);
+
+    const allCustomBenchmarksReady = selectedCustomBenchmarkIds.length === 0 ||
+      selectedCustomBenchmarkIds.every(id => customBenchmarkReturns[id] !== undefined);
+
+    return allSystemBenchmarksReady && allCustomBenchmarksReady;
+  }, [selectedBenchmarks, benchmarkReturns, selectedCustomBenchmarkIds, customBenchmarkReturns]);
+
+  const benchmarkChartData = useMemo(() => {
+    if (!performance) return [];
+
+    const portfolioReturn = currencyMode === 'home'
+      ? performance.modifiedDietzPercentage
+      : performance.modifiedDietzPercentageSource;
+
+    return [
+      // Only include portfolio return if value exists
+      ...(portfolioReturn != null
+        ? [{
+            label: `我的投資組合 (${currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})`,
+            value: portfolioReturn,
+            tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
+          }]
+        : []),
+      /* FR-134: 過濾掉資料為 null 的基準，不顯示為 0 */
+      ...selectedBenchmarks
+        .filter(benchmarkKey => !benchmarkKey.startsWith('custom_') && benchmarkReturns[benchmarkKey] != null)
+        .map(benchmarkKey => {
+          const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
+          const returnValue = benchmarkReturns[benchmarkKey]!;
+          const source = benchmarkReturnSources[benchmarkKey];
+
+          return {
+            label: benchmarkInfo?.label ?? benchmarkKey,
+            value: returnValue,
+            tooltip: `${selectedYear} 年度報酬率${source ? `（來源：${source}）` : ''}`,
+          };
+        }),
+      /* 自訂使用者基準 - 僅顯示已選擇的 */
+      ...customBenchmarks
+        .filter(b => {
+          const customKey = `custom_${b.id}`;
+          return selectedBenchmarks.includes(customKey) && customBenchmarkReturns[b.id] != null;
+        })
+        .map(b => ({
+          label: b.displayName || b.ticker,
+          value: customBenchmarkReturns[b.id]!,
+          tooltip: `${selectedYear} 年度報酬率（自訂）`,
+        })),
+    ];
+  }, [
+    performance,
+    currencyMode,
+    displayHomeCurrency,
+    selectedYear,
+    selectedBenchmarks,
+    benchmarkReturns,
+    benchmarkReturnSources,
+    customBenchmarks,
+    customBenchmarkReturns,
+  ]);
+
+  // 固定以「選擇中的 benchmark 數量」保留圖表高度，避免資料分批完成時高度跳動
+  const benchmarkChartHeight = useMemo(() => {
+    const systemBenchmarkCount = selectedBenchmarks.filter(k => !k.startsWith('custom_')).length;
+    return 80 + (systemBenchmarkCount + selectedCustomBenchmarkIds.length + 1) * 40;
+  }, [selectedBenchmarks, selectedCustomBenchmarkIds.length]);
+
+  const hiddenBenchmarkLabels = useMemo(() => {
+    const hiddenSystemBenchmarks = selectedBenchmarks
+      .filter(k => !k.startsWith('custom_') && benchmarkReturns[k] == null)
+      .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k);
+
+    const hiddenCustomBenchmarks = customBenchmarks
+      .filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)
+      .map(b => b.displayName || b.ticker);
+
+    return [...hiddenSystemBenchmarks, ...hiddenCustomBenchmarks];
+  }, [selectedBenchmarks, benchmarkReturns, customBenchmarks, customBenchmarkReturns]);
+
   // 注意：isLoadingPortfolio 和 !portfolio 檢查現在在父元件 PerformancePage 中
 
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* 頁首 */}
-        <div className="flex justify-between items-start mb-6 gap-4">
-          <div className="flex flex-col gap-2">
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
-              <p className="text-[var(--text-secondary)] text-sm mt-1">
-                查看投資組合的年度績效表現
-              </p>
-            </div>
-            <PortfolioSelector onCreateNew={onCreatePortfolio} />
+        <div className="mb-6 space-y-4">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">歷史績效</h1>
+            <p className="text-[var(--text-secondary)] text-sm mt-1">
+              查看投資組合的年度績效表現
+            </p>
           </div>
 
-          <div className="flex items-center gap-4">
-            <YearSelector
-              years={availableYears?.years ?? []}
-              selectedYear={selectedYear}
-              currentYear={availableYears?.currentYear ?? new Date().getFullYear()}
-              onChange={handleYearChange}
-              isLoading={isLoadingYears}
-            />
+          <div className="flex flex-wrap items-start gap-3" data-testid="performance-control-row">
+            <PortfolioSelector onCreateNew={onCreatePortfolio} />
+
+            <div className="flex w-full flex-wrap items-center justify-start gap-3 sm:w-auto sm:ml-auto sm:justify-end">
+              {performance && (
+                <CurrencyToggle
+                  value={currencyMode}
+                  onChange={setCurrencyMode}
+                  sourceCurrency={performance.sourceCurrency}
+                  homeCurrency={displayHomeCurrency}
+                />
+              )}
+              <YearSelector
+                years={availableYears?.years ?? []}
+                selectedYear={selectedYear}
+                currentYear={availableYears?.currentYear ?? new Date().getFullYear()}
+                onChange={handleYearChange}
+                isLoading={isLoadingYears}
+              />
+            </div>
           </div>
         </div>
 
@@ -1427,15 +1526,6 @@ function PerformancePageContent({
                 </div>
               </div>
             )}
-
-            <div className="flex justify-end mb-4">
-              <CurrencyToggle
-                value={currencyMode}
-                onChange={setCurrencyMode}
-                sourceCurrency={performance.sourceCurrency}
-                homeCurrency={displayHomeCurrency}
-              />
-            </div>
 
             {/* 績效指標 - 年度報酬率卡片 */}
             <div className="grid grid-cols-1 gap-6 mb-6">
@@ -1768,92 +1858,26 @@ function PerformancePageContent({
                   </div>
                 )}
                 {/* 等待所有基準資料載入完成後才顯示長條圖，避免分批渲染閃爍 */}
-                {/* 只有當所有選擇的基準都有資料時才顯示，否則等待載入 */}
-                {(() => {
-                  // 檢查是否所有選擇的基準都有資料
-                  const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
-                  const allSystemBenchmarksReady = systemBenchmarks.length === 0 ||
-                    systemBenchmarks.every(k => benchmarkReturns[k] !== undefined);
-
-                  const selectedCustomBenchmarkIds = customBenchmarks
-                    .filter(b => selectedBenchmarks.includes(`custom_${b.id}`))
-                    .map(b => b.id);
-                  const allCustomBenchmarksReady = selectedCustomBenchmarkIds.length === 0 ||
-                    selectedCustomBenchmarkIds.every(id => customBenchmarkReturns[id] !== undefined);
-
-                  // 需要等待所有資料都準備好
-                  const allDataReady = allSystemBenchmarksReady && allCustomBenchmarksReady;
-
-                  if (!allDataReady) {
-                    return (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                        <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <PerformanceBarChart
-                      data={[
-                        // Only include portfolio return if value exists
-                        ...((currencyMode === 'home'
-                          ? performance.modifiedDietzPercentage
-                          : performance.modifiedDietzPercentageSource) != null
-                          ? [{
-                              label: `我的投資組合 (${currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})`,
-                              value: currencyMode === 'home'
-                                ? performance.modifiedDietzPercentage!
-                                : performance.modifiedDietzPercentageSource!,
-                              tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
-                            }]
-                          : []),
-                        /* FR-134: 過濾掉資料為 null 的基準，不顯示為 0 */
-                        ...selectedBenchmarks
-                          .filter(benchmarkKey => benchmarkReturns[benchmarkKey] != null)
-                          .map(benchmarkKey => {
-                            const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
-                            const returnValue = benchmarkReturns[benchmarkKey]!;
-                            const source = benchmarkReturnSources[benchmarkKey];
-
-                            return {
-                              label: benchmarkInfo?.label ?? benchmarkKey,
-                              value: returnValue,
-                              tooltip: `${selectedYear} 年度報酬率${source ? `（來源：${source}）` : ''}`,
-                            };
-                          }),
-                        /* 自訂使用者基準 - 僅顯示已選擇的 */
-                        ...customBenchmarks
-                          .filter(b => {
-                            const customKey = `custom_${b.id}`;
-                            return selectedBenchmarks.includes(customKey) && customBenchmarkReturns[b.id] != null;
-                          })
-                          .map(b => ({
-                            label: b.displayName || b.ticker,
-                            value: customBenchmarkReturns[b.id]!,
-                            tooltip: `${selectedYear} 年度報酬率（自訂）`,
-                          })),
-                      ]}
-                      height={80 + (selectedBenchmarks.filter(k => benchmarkReturns[k] != null).length + customBenchmarks.filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] != null).length) * 40}
+                {!allDataReady ? (
+                  <div className="flex items-center justify-center" style={{ minHeight: benchmarkChartHeight }}>
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                    <span className="ml-2 text-[var(--text-muted)]">載入基準報酬中...</span>
+                  </div>
+                ) : (
+                  <>
+                    <PerformanceBarChart
+                      data={benchmarkChartData}
+                      height={benchmarkChartHeight}
                     />
                     {/* FR-134: 顯示因資料不可用而隱藏的基準 */}
-                    {(selectedBenchmarks.some(k => !k.startsWith('custom_') && benchmarkReturns[k] == null) || customBenchmarks.some(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)) && (
+                    {hiddenBenchmarkLabels.length > 0 && (
                       <p className="text-xs text-[var(--color-warning)] mt-2">
                         以下指數因資料不可用已隱藏：
-                        {[
-                          ...selectedBenchmarks
-                            .filter(k => !k.startsWith('custom_') && benchmarkReturns[k] == null)
-                            .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k),
-                          ...customBenchmarks
-                            .filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)
-                            .map(b => b.displayName || b.ticker),
-                        ].join('、')}
+                        {hiddenBenchmarkLabels.join('、')}
                       </p>
                     )}
                   </>
-                  );
-                })()}
+                )}
               </div>
             )}
           </>

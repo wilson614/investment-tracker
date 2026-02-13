@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useHistoricalPerformance } from '../hooks/useHistoricalPerformance';
 import { portfolioApi } from '../services/api';
+import {
+  PERFORMANCE_CACHE_VERSION_STORAGE_KEY,
+  buildPerformanceDataCacheKey,
+  buildPerformanceYearsCacheKey,
+  invalidatePerformanceLocalStorageCache,
+} from '../utils/cacheInvalidation';
 import type { AvailableYears, YearPerformance } from '../types';
 
 vi.mock('../services/api', () => ({
@@ -715,6 +721,88 @@ describe('useHistoricalPerformance', () => {
     });
 
     expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds perf cache keys with perf_cache_version when version is enabled', () => {
+    const cacheNamespace = 'portfolio-versioned';
+
+    localStorage.setItem(PERFORMANCE_CACHE_VERSION_STORAGE_KEY, '2');
+
+    expect(buildPerformanceYearsCacheKey(cacheNamespace)).toBe('perf_years_v2_portfolio-versioned');
+    expect(buildPerformanceDataCacheKey(cacheNamespace, previousYear)).toBe(
+      `perf_data_v2_portfolio-versioned_${previousYear}`,
+    );
+  });
+
+  it('does not hit old versioned key after version bump', async () => {
+    const cacheNamespace = 'portfolio-version-bump';
+
+    localStorage.setItem(PERFORMANCE_CACHE_VERSION_STORAGE_KEY, '1');
+    localStorage.setItem(
+      buildPerformanceYearsCacheKey(cacheNamespace, 1),
+      JSON.stringify({
+        years: [previousYear],
+        earliestYear: previousYear,
+        currentYear,
+      } satisfies AvailableYears),
+    );
+    localStorage.setItem(
+      buildPerformanceDataCacheKey(cacheNamespace, previousYear, 1),
+      JSON.stringify(createPerformance(previousYear)),
+    );
+
+    const nextVersion = invalidatePerformanceLocalStorageCache();
+    expect(nextVersion).toBe(2);
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce({
+      years: [currentYear],
+      earliestYear: currentYear,
+      currentYear,
+    });
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValueOnce(createPerformance(currentYear));
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: cacheNamespace,
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith(cacheNamespace);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(currentYear);
+    });
+
+    expect(result.current.selectedYear).not.toBe(previousYear);
+    expect(result.current.performance?.year).toBe(currentYear);
+  });
+
+  it('invalidates both legacy and versioned perf keys without touching unrelated keys', () => {
+    localStorage.setItem('perf_years_aggregate', JSON.stringify(aggregateYearsMock));
+    localStorage.setItem(`perf_data_aggregate_${currentYear}`, JSON.stringify(createPerformance(currentYear)));
+    localStorage.setItem('perf_years_v3_portfolio-cleanup', JSON.stringify(singlePortfolioYearsMock));
+    localStorage.setItem(
+      `perf_data_v3_portfolio-cleanup_${previousYear}`,
+      JSON.stringify(createPerformance(previousYear)),
+    );
+    localStorage.setItem('perf_years_shared', JSON.stringify({ years: [currentYear] }));
+    localStorage.setItem('quote_cache_AAPL', JSON.stringify({ quote: { price: 100 } }));
+
+    invalidatePerformanceLocalStorageCache();
+
+    expect(localStorage.getItem('perf_years_aggregate')).toBeNull();
+    expect(localStorage.getItem(`perf_data_aggregate_${currentYear}`)).toBeNull();
+    expect(localStorage.getItem('perf_years_v3_portfolio-cleanup')).toBeNull();
+    expect(localStorage.getItem(`perf_data_v3_portfolio-cleanup_${previousYear}`)).toBeNull();
+
+    // 不是本功能 schema（避免誤刪）
+    expect(localStorage.getItem('perf_years_shared')).not.toBeNull();
+    // 無關 key
+    expect(localStorage.getItem('quote_cache_AAPL')).not.toBeNull();
   });
 
   it('treats recognizable aggregate calculate 404 as empty state without error', async () => {

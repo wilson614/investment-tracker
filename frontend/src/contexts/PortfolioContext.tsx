@@ -1,7 +1,37 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Portfolio } from '../types';
 import { portfolioApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { ASSETS_KEYS } from '../features/total-assets/hooks/useTotalAssets';
+import {
+  invalidatePerformanceAndAssetsCaches,
+  invalidatePerformanceLocalStorageCache,
+} from '../utils/cacheInvalidation';
+
+/**
+ * invalidateSharedCaches 的部分參數語意：
+ * - 未傳入 options 時，預設同時清理 performance 與 assets（維持既有行為）
+ * - 只傳入其中一個欄位時，另一個欄位仍預設為 true
+ */
+export interface CacheInvalidationOptions {
+  performance?: boolean;
+  assets?: boolean;
+}
+
+export const DEFAULT_CACHE_INVALIDATION_OPTIONS: Readonly<Required<CacheInvalidationOptions>> = {
+  performance: true,
+  assets: true,
+};
+
+export function resolveCacheInvalidationOptions(
+  options: CacheInvalidationOptions = {},
+): Readonly<Required<CacheInvalidationOptions>> {
+  return {
+    performance: options.performance ?? DEFAULT_CACHE_INVALIDATION_OPTIONS.performance,
+    assets: options.assets ?? DEFAULT_CACHE_INVALIDATION_OPTIONS.assets,
+  };
+}
 
 interface PortfolioContextValue {
   // Current selected portfolio
@@ -19,6 +49,7 @@ interface PortfolioContextValue {
 
   // Performance state management
   clearPerformanceState: () => void;
+  invalidateSharedCaches: (options?: CacheInvalidationOptions) => void;
   performanceVersion: number; // Increment to trigger re-fetch
 }
 
@@ -29,6 +60,7 @@ const SELECTED_PORTFOLIO_KEY = 'selected_portfolio_id';
 
 export function PortfolioProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [currentPortfolioId, setCurrentPortfolioId] = useState<string | null>(() => {
     // Load from localStorage on init
@@ -79,11 +111,30 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const invalidateSharedCaches = useCallback((options: CacheInvalidationOptions = {}) => {
+    const {
+      performance: shouldInvalidatePerformance,
+      assets: shouldInvalidateAssets,
+    } = resolveCacheInvalidationOptions(options);
+
+    if (shouldInvalidatePerformance && shouldInvalidateAssets) {
+      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summaryQuery);
+    } else if (shouldInvalidatePerformance) {
+      invalidatePerformanceLocalStorageCache();
+    } else if (shouldInvalidateAssets) {
+      void queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summaryQuery }).catch(() => undefined);
+    }
+
+    if (shouldInvalidatePerformance) {
+      setPerformanceVersion(v => v + 1);
+    }
+  }, [queryClient]);
+
   const selectPortfolio = useCallback((portfolioId: string) => {
     if (portfolioId === currentPortfolioId) return;
 
     // Clear performance state immediately (FR-100: within 100ms)
-    setPerformanceVersion(v => v + 1);
+    invalidateSharedCaches({ performance: true, assets: false });
 
     // Update selection
     setCurrentPortfolioId(portfolioId);
@@ -92,11 +143,11 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore localStorage errors
     }
-  }, [currentPortfolioId]);
+  }, [currentPortfolioId, invalidateSharedCaches]);
 
   const clearPerformanceState = useCallback(() => {
-    setPerformanceVersion(v => v + 1);
-  }, []);
+    invalidateSharedCaches({ performance: true, assets: false });
+  }, [invalidateSharedCaches]);
 
   // Load portfolios on mount - only when user is logged in
   useEffect(() => {
@@ -121,6 +172,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         selectPortfolio,
         refreshPortfolios,
         clearPerformanceState,
+        invalidateSharedCaches,
         performanceVersion,
       }}
     >

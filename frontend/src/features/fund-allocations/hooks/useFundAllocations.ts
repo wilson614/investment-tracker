@@ -3,13 +3,14 @@ import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { allocationsApi } from '../api/allocationsApi';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
+import { invalidatePerformanceAndAssetsCaches } from '../../../utils/cacheInvalidation';
 import type { CreateFundAllocationRequest, UpdateFundAllocationRequest } from '../types';
 
 export const FUND_ALLOCATIONS_QUERY_KEY = ['fundAllocations'];
 
 const invalidateAllocationRelatedQueries = (queryClient: ReturnType<typeof useQueryClient>) => {
   queryClient.invalidateQueries({ queryKey: FUND_ALLOCATIONS_QUERY_KEY });
-  queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() });
+  invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
 };
 
 export function useFundAllocations() {

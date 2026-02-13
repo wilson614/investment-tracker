@@ -145,7 +145,9 @@ beforeEach(() => {
     source: 'test',
     fetchedAt: nowIso,
   });
-  mockedStockPriceApi.getQuote.mockResolvedValue(null);
+  mockedStockPriceApi.getQuote.mockResolvedValue(
+    null as unknown as Awaited<ReturnType<(typeof stockPriceApi)['getQuote']>>
+  );
 });
 
 describe('currency transaction type display naming consistency', () => {

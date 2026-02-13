@@ -5,6 +5,7 @@ import { fetchApi } from '../../services/api';
 import { parseCSV, type ParsedCSV } from '../../utils/csvParser';
 import { BANK_ACCOUNTS_QUERY_KEY } from '../../features/bank-accounts/hooks/useBankAccounts';
 import { ASSETS_KEYS } from '../../features/total-assets/hooks/useTotalAssets';
+import { invalidatePerformanceAndAssetsCaches } from '../../utils/cacheInvalidation';
 import { useToast } from '../common';
 
 interface BankAccountImportModalProps {
@@ -204,10 +205,8 @@ export function BankAccountImportModal({ isOpen, onClose, file }: BankAccountImp
         }),
       });
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summary() }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
+      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
 
       toast.success(`匯入完成：新增 ${result.createdCount} 筆、更新 ${result.updatedCount} 筆、略過 ${result.skippedCount} 筆`);
       handleClose();

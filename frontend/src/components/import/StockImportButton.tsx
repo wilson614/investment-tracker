@@ -29,6 +29,8 @@ interface StockImportButtonProps {
   portfolioId: string;
   /** 匯入完成後 callback（通常用於重新載入頁面資料） */
   onImportComplete: () => void;
+  /** 匯入成功後執行 shared cache invalidation */
+  onImportSuccess?: () => void;
   /** 縮小版按鈕樣式 */
   compact?: boolean;
   /** 若提供，改用自訂 trigger（常用於搭配 FileDropdown） */
@@ -209,6 +211,7 @@ function parseCurrency(currencyStr: string): CurrencyType | null {
 export function StockImportButton({
   portfolioId,
   onImportComplete,
+  onImportSuccess,
   compact = false,
   renderTrigger,
 }: StockImportButtonProps) {
@@ -380,6 +383,7 @@ export function StockImportButton({
     }
 
     if (successCount > 0) {
+      onImportSuccess?.();
       onImportComplete();
     }
 
