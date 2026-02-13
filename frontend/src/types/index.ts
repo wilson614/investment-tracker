@@ -165,6 +165,31 @@ export const CurrencyTransactionType = {
 } as const;
 export type CurrencyTransactionType = (typeof CurrencyTransactionType)[keyof typeof CurrencyTransactionType];
 
+export const CurrencyTransactionTypeNameToValue = {
+  ExchangeBuy: CurrencyTransactionType.ExchangeBuy,
+  ExchangeSell: CurrencyTransactionType.ExchangeSell,
+  Interest: CurrencyTransactionType.Interest,
+  Spend: CurrencyTransactionType.Spend,
+  InitialBalance: CurrencyTransactionType.InitialBalance,
+  OtherIncome: CurrencyTransactionType.OtherIncome,
+  OtherExpense: CurrencyTransactionType.OtherExpense,
+  Deposit: CurrencyTransactionType.Deposit,
+  Withdraw: CurrencyTransactionType.Withdraw,
+} as const;
+export type CurrencyTransactionTypeName = keyof typeof CurrencyTransactionTypeNameToValue;
+
+export const CurrencyTransactionTypeLabels: Record<CurrencyTransactionType, string> = {
+  [CurrencyTransactionType.ExchangeBuy]: '換匯買入',
+  [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
+  [CurrencyTransactionType.Interest]: '利息收入',
+  [CurrencyTransactionType.Spend]: '消費支出',
+  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
+  [CurrencyTransactionType.OtherIncome]: '其他收入',
+  [CurrencyTransactionType.OtherExpense]: '其他支出',
+  [CurrencyTransactionType.Deposit]: '存入',
+  [CurrencyTransactionType.Withdraw]: '提領',
+};
+
 export interface CurrencyLedger {
   id: string;
   currencyCode: string;

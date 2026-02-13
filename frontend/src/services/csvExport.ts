@@ -4,7 +4,13 @@
  */
 
 import type { StockTransaction, StockPosition, CurrencyTransaction, BankAccount } from '../types';
-import { TransactionType, CurrencyTransactionType, StockMarket, Currency } from '../types';
+import {
+  TransactionType,
+  CurrencyTransactionType,
+  StockMarket,
+  Currency,
+  CurrencyTransactionTypeLabels,
+} from '../types';
 
 // UTF-8 BOM for Excel compatibility
 const UTF8_BOM = '\uFEFF';
@@ -34,17 +40,7 @@ const CURRENCY_LABELS: Record<number, string> = {
 };
 
 // Currency transaction type labels in Chinese
-const CURRENCY_TX_TYPE_LABELS: Record<number, string> = {
-  [CurrencyTransactionType.ExchangeBuy]: '換匯買入',
-  [CurrencyTransactionType.ExchangeSell]: '換匯賣出',
-  [CurrencyTransactionType.Deposit]: '存入',
-  [CurrencyTransactionType.Withdraw]: '提領',
-  [CurrencyTransactionType.Interest]: '利息收入',
-  [CurrencyTransactionType.Spend]: '消費支出',
-  [CurrencyTransactionType.InitialBalance]: '轉入餘額',
-  [CurrencyTransactionType.OtherIncome]: '其他收入',
-  [CurrencyTransactionType.OtherExpense]: '其他支出',
-};
+const CURRENCY_TX_TYPE_LABELS = CurrencyTransactionTypeLabels;
 
 /**
  * Escape CSV field value
