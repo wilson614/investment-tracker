@@ -15,7 +15,8 @@ public class CreateCurrencyTransactionUseCase(
     ICurrencyLedgerRepository ledgerRepository,
     IPortfolioRepository portfolioRepository,
     ITransactionPortfolioSnapshotService txSnapshotService,
-    ICurrentUserService currentUserService)
+    ICurrentUserService currentUserService,
+    IAppDbTransactionManager transactionManager)
 {
     public async Task<CurrencyTransactionDto> ExecuteAsync(
         CreateCurrencyTransactionRequest request,
@@ -32,6 +33,16 @@ public class CreateCurrencyTransactionUseCase(
 
         if (ledger.UserId != currentUserService.UserId)
             throw new AccessDeniedException();
+
+        if (request.RelatedStockTransactionId.HasValue)
+            throw new BusinessRuleException("RelatedStockTransactionId cannot be provided when creating currency transactions.");
+
+        CurrencyTransactionTypePolicy.EnsureValidOrThrow(
+            ledger.CurrencyCode,
+            request.TransactionType,
+            new CurrencyTransactionAmountPresence(
+                HasAmount: request.ForeignAmount != default,
+                HasTargetAmount: request.HomeAmount.HasValue));
 
         // 備註：Spend 與 ExchangeSell 可能導致帳本餘額為負
         // IB 等券商支援融資/槓桿交易
@@ -55,28 +66,39 @@ public class CreateCurrencyTransactionUseCase(
             request.RelatedStockTransactionId,
             request.Notes);
 
-        await transactionRepository.AddAsync(transaction, cancellationToken);
+        await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-        if (IsExternalCashFlowType(transaction.TransactionType))
+        try
         {
-            var userId = currentUserService.UserId
-                ?? throw new AccessDeniedException("User not authenticated");
+            await transactionRepository.AddAsync(transaction, cancellationToken);
 
-            var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
-                .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
-                .ToList();
-
-            foreach (var portfolio in boundPortfolios)
+            if (IsExternalCashFlowType(transaction.TransactionType))
             {
-                await txSnapshotService.UpsertSnapshotAsync(
-                    portfolio.Id,
-                    transaction.Id,
-                    transaction.TransactionDate,
-                    cancellationToken);
-            }
-        }
+                var userId = currentUserService.UserId
+                    ?? throw new AccessDeniedException("User not authenticated");
 
-        return MapToDto(transaction);
+                var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
+                    .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
+                    .ToList();
+
+                foreach (var portfolio in boundPortfolios)
+                {
+                    await txSnapshotService.UpsertSnapshotAsync(
+                        portfolio.Id,
+                        transaction.Id,
+                        transaction.TransactionDate,
+                        cancellationToken);
+                }
+            }
+
+            await tx.CommitAsync(cancellationToken);
+            return MapToDto(transaction);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     private static bool IsExternalCashFlowType(CurrencyTransactionType transactionType)

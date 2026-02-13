@@ -5,15 +5,12 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.Validators;
 
 /// <summary>
-/// <see cref="CreateCurrencyTransactionRequest"/> 的輸入驗證器。
+/// <see cref="UpdateCurrencyTransactionRequest"/> 的輸入驗證器。
 /// </summary>
-public class CreateCurrencyTransactionRequestValidator : AbstractValidator<CreateCurrencyTransactionRequest>
+public class UpdateCurrencyTransactionRequestValidator : AbstractValidator<UpdateCurrencyTransactionRequest>
 {
-    public CreateCurrencyTransactionRequestValidator()
+    public UpdateCurrencyTransactionRequestValidator()
     {
-        RuleFor(x => x.CurrencyLedgerId)
-            .NotEmpty().WithMessage("Currency ledger ID is required");
-
         RuleFor(x => x.TransactionType)
             .IsInEnum().WithMessage("Invalid transaction type");
 
@@ -43,10 +40,6 @@ public class CreateCurrencyTransactionRequestValidator : AbstractValidator<Creat
         RuleFor(x => x.TransactionDate)
             .NotEmpty().WithMessage("Transaction date is required")
             .LessThanOrEqualTo(DateTime.UtcNow.AddDays(1)).WithMessage("Transaction date cannot be in the future");
-
-        RuleFor(x => x.RelatedStockTransactionId)
-            .Must(x => !x.HasValue)
-            .WithMessage("RelatedStockTransactionId cannot be provided when creating currency transactions.");
 
         RuleFor(x => x.Notes)
             .MaximumLength(500).WithMessage("Notes cannot exceed 500 characters")

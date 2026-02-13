@@ -132,6 +132,30 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
     }
 
     [Fact]
+    public async Task CreateCurrencyTransaction_WithRelatedStockTransactionId_ShouldReturnBadRequest()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Currency Tx Invalid RelatedStockTransactionId");
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 1000m,
+            RelatedStockTransactionId = Guid.NewGuid(),
+            Notes = "should fail"
+        };
+
+        // Act
+        var response = await Client.PostAsJsonAsync("/api/currencytransactions", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("RelatedStockTransactionId cannot be provided when creating currency transactions.");
+    }
+
+    [Fact]
     public async Task Unauthorized_WhenNoToken()
     {
         // Arrange

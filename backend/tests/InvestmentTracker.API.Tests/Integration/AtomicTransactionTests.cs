@@ -1,6 +1,8 @@
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.Validators;
+using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
@@ -9,6 +11,7 @@ using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.Persistence;
 using InvestmentTracker.Infrastructure.Repositories;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 
@@ -20,6 +23,7 @@ namespace InvestmentTracker.API.Tests.Integration;
 /// </summary>
 public class AtomicTransactionTests : IDisposable
 {
+    private readonly SqliteConnection _connection;
     private readonly AppDbContext _dbContext;
     private readonly IPortfolioRepository _portfolioRepository;
     private readonly IStockTransactionRepository _stockTransactionRepository;
@@ -31,12 +35,16 @@ public class AtomicTransactionTests : IDisposable
     private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock;
     private readonly Mock<IMonthlySnapshotService> _monthlySnapshotServiceMock;
     private readonly Mock<ITransactionPortfolioSnapshotService> _txSnapshotServiceMock;
+    private readonly IAppDbTransactionManager _transactionManager;
     private readonly Guid _testUserId = Guid.NewGuid();
 
     public AtomicTransactionTests()
     {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
+
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseSqlite(_connection)
             .Options;
 
         _currentUserServiceMock = new Mock<ICurrentUserService>();
@@ -61,23 +69,27 @@ public class AtomicTransactionTests : IDisposable
             .Returns(Task.CompletedTask);
 
         _dbContext = new AppDbContext(options, _currentUserServiceMock.Object);
+        _dbContext.Database.EnsureCreated();
+
         _portfolioRepository = new PortfolioRepository(_dbContext);
         _stockTransactionRepository = new StockTransactionRepository(_dbContext);
         _currencyLedgerRepository = new CurrencyLedgerRepository(_dbContext);
         _currencyTransactionRepository = new CurrencyTransactionRepository(_dbContext);
         _portfolioCalculator = new PortfolioCalculator();
         _currencyLedgerService = new CurrencyLedgerService();
+        _transactionManager = new AppDbTransactionManager(_dbContext);
     }
 
     public void Dispose()
     {
         _dbContext.Dispose();
+        _connection.Dispose();
     }
 
     private async Task<(Portfolio portfolio, CurrencyLedger ledger)> SetupTestDataAsync()
     {
         // Create user
-        var user = new User("test@example.com", "password", "Test User");
+        var user = new User($"test-{Guid.NewGuid():N}@example.com", "password", "Test User");
         typeof(User).GetProperty("Id")!.SetValue(user, _testUserId);
         _dbContext.Users.Add(user);
 
@@ -104,6 +116,24 @@ public class AtomicTransactionTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         return (portfolio, ledger);
+    }
+
+    private async Task<(Portfolio portfolio, CurrencyLedger ledger, CurrencyTransaction transaction)> SetupCurrencyTransactionForUpdateAsync()
+    {
+        var (portfolio, ledger) = await SetupTestDataAsync();
+
+        var transaction = new CurrencyTransaction(
+            ledger.Id,
+            DateTime.UtcNow.AddDays(-2),
+            CurrencyTransactionType.Deposit,
+            foreignAmount: 120m,
+            homeAmount: 3780m,
+            exchangeRate: 31.5m,
+            notes: "update-target");
+
+        await _currencyTransactionRepository.AddAsync(transaction);
+
+        return (portfolio, ledger, transaction);
     }
 
     [Fact]
@@ -365,4 +395,134 @@ public class AtomicTransactionTests : IDisposable
         incomeTx.Should().NotBeNull();
         incomeTx!.ForeignAmount.Should().Be(295m); // 5*60 - 5 fees
     }
+
+    [Fact]
+    public async Task CreateCurrencyTransaction_WhenSnapshotUpsertFails_ShouldRollbackAndNotPersistTransaction()
+    {
+        // Arrange
+        var (portfolio, ledger) = await SetupTestDataAsync();
+
+        _txSnapshotServiceMock
+            .Setup(x => x.UpsertSnapshotAsync(
+                portfolio.Id,
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("snapshot update failed"));
+
+        var useCase = new CreateCurrencyTransactionUseCase(
+            _currencyTransactionRepository,
+            _currencyLedgerRepository,
+            _portfolioRepository,
+            _txSnapshotServiceMock.Object,
+            _currentUserServiceMock.Object,
+            _transactionManager);
+
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = ledger.Id,
+            TransactionDate = DateTime.UtcNow,
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 50m,
+            HomeAmount = 1575m,
+            ExchangeRate = 31.5m,
+            Notes = "should rollback"
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(request);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("snapshot update failed");
+
+        var transactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
+        transactions.Should().HaveCount(1, "snapshot upsert failure should rollback the newly created deposit transaction");
+        transactions.Should().OnlyContain(t => t.TransactionType == CurrencyTransactionType.ExchangeBuy);
+    }
+
+    [Fact]
+    public async Task UpdateCurrencyTransaction_WhenSnapshotUpsertFails_ShouldRollbackAndPreserveOriginalValues()
+    {
+        // Arrange
+        var (portfolio, ledger, transaction) = await SetupCurrencyTransactionForUpdateAsync();
+        var originalDate = transaction.TransactionDate;
+        var originalType = transaction.TransactionType;
+        var originalAmount = transaction.ForeignAmount;
+        var originalNotes = transaction.Notes;
+
+        _txSnapshotServiceMock
+            .Setup(x => x.UpsertSnapshotAsync(
+                portfolio.Id,
+                transaction.Id,
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("snapshot update failed"));
+
+        var useCase = new UpdateCurrencyTransactionUseCase(
+            _currencyTransactionRepository,
+            _currencyLedgerRepository,
+            _portfolioRepository,
+            _txSnapshotServiceMock.Object,
+            _currentUserServiceMock.Object,
+            _transactionManager);
+
+        var request = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = originalDate.AddDays(1),
+            TransactionType = CurrencyTransactionType.Withdraw,
+            ForeignAmount = 80m,
+            HomeAmount = 2520m,
+            ExchangeRate = 31.5m,
+            Notes = "should rollback update"
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(transaction.Id, request);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("snapshot update failed");
+
+        _dbContext.ChangeTracker.Clear();
+
+        var reloaded = await _currencyTransactionRepository.GetByIdAsync(transaction.Id);
+        reloaded.Should().NotBeNull();
+        reloaded!.TransactionDate.Should().Be(originalDate);
+        reloaded.TransactionType.Should().Be(originalType);
+        reloaded.ForeignAmount.Should().Be(originalAmount);
+        reloaded.Notes.Should().Be(originalNotes);
+
+        var ledgerTransactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
+        ledgerTransactions.Should().HaveCount(2, "update failure should not create or delete extra transactions");
+    }
+
+    [Theory]
+    [InlineData(CurrencyTransactionType.ExchangeBuy)]
+    [InlineData(CurrencyTransactionType.ExchangeSell)]
+    public void CreateCurrencyTransactionRequest_MissingExchangeRate_ForExchangeType_ShouldFailValidation(
+        CurrencyTransactionType transactionType)
+    {
+        // Arrange
+        var validator = new CreateCurrencyTransactionRequestValidator();
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = Guid.NewGuid(),
+            TransactionDate = DateTime.UtcNow,
+            TransactionType = transactionType,
+            ForeignAmount = 1000m,
+            HomeAmount = 31500m,
+            ExchangeRate = null
+        };
+
+        // Act
+        var result = validator.Validate(request);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == nameof(CreateCurrencyTransactionRequest.ExchangeRate) &&
+            e.ErrorMessage == "Exchange rate is required for exchange transactions");
+    }
+
 }

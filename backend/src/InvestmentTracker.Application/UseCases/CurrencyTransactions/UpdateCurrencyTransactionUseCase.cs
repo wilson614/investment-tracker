@@ -15,7 +15,8 @@ public class UpdateCurrencyTransactionUseCase(
     ICurrencyLedgerRepository ledgerRepository,
     IPortfolioRepository portfolioRepository,
     ITransactionPortfolioSnapshotService txSnapshotService,
-    ICurrentUserService currentUserService)
+    ICurrentUserService currentUserService,
+    IAppDbTransactionManager transactionManager)
 {
     public async Task<CurrencyTransactionDto> ExecuteAsync(
         Guid transactionId,
@@ -36,6 +37,13 @@ public class UpdateCurrencyTransactionUseCase(
         if (transaction.RelatedStockTransactionId.HasValue)
             throw new BusinessRuleException("Cannot edit transactions linked to stock purchases. Edit the stock transaction instead.");
 
+        CurrencyTransactionTypePolicy.EnsureValidOrThrow(
+            ledger.CurrencyCode,
+            request.TransactionType,
+            new CurrencyTransactionAmountPresence(
+                HasAmount: request.ForeignAmount != default,
+                HasTargetAmount: request.HomeAmount.HasValue));
+
         var wasExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
 
         var homeAmount = request.HomeAmount;
@@ -55,39 +63,50 @@ public class UpdateCurrencyTransactionUseCase(
             exchangeRate);
         transaction.SetNotes(request.Notes);
 
-        await transactionRepository.UpdateAsync(transaction, cancellationToken);
+        await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-        var isExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
-        if (wasExternalCashFlow || isExternalCashFlow)
+        try
         {
-            var userId = currentUserService.UserId
-                ?? throw new AccessDeniedException("User not authenticated");
+            await transactionRepository.UpdateAsync(transaction, cancellationToken);
 
-            var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
-                .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
-                .ToList();
-
-            foreach (var portfolio in boundPortfolios)
+            var isExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
+            if (wasExternalCashFlow || isExternalCashFlow)
             {
-                if (isExternalCashFlow)
+                var userId = currentUserService.UserId
+                    ?? throw new AccessDeniedException("User not authenticated");
+
+                var boundPortfolios = (await portfolioRepository.GetByUserIdAsync(userId, cancellationToken))
+                    .Where(p => p.BoundCurrencyLedgerId == transaction.CurrencyLedgerId)
+                    .ToList();
+
+                foreach (var portfolio in boundPortfolios)
                 {
-                    await txSnapshotService.UpsertSnapshotAsync(
-                        portfolio.Id,
-                        transaction.Id,
-                        transaction.TransactionDate,
-                        cancellationToken);
-                }
-                else
-                {
-                    await txSnapshotService.DeleteSnapshotAsync(
-                        portfolio.Id,
-                        transaction.Id,
-                        cancellationToken);
+                    if (isExternalCashFlow)
+                    {
+                        await txSnapshotService.UpsertSnapshotAsync(
+                            portfolio.Id,
+                            transaction.Id,
+                            transaction.TransactionDate,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        await txSnapshotService.DeleteSnapshotAsync(
+                            portfolio.Id,
+                            transaction.Id,
+                            cancellationToken);
+                    }
                 }
             }
-        }
 
-        return MapToDto(transaction);
+            await tx.CommitAsync(cancellationToken);
+            return MapToDto(transaction);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     private static bool IsExternalCashFlowType(CurrencyTransactionType transactionType)
