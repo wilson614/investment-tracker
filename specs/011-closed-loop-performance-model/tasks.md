@@ -88,10 +88,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Refactor return cash-flow strategy to include explicit external categories only and explicitly classify/exclude internal FX effects per new policy in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Domain/Services/ReturnCashFlowStrategy.cs
-- [ ] T029 [US2] Update annual performance calculation pipeline to use closed-loop baseline for MD and TWR consistently in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs
-- [ ] T030 [US2] Remove non-positive ledger floor logic from snapshot valuation path in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs
-- [ ] T031 [US2] Verify and align stock-linked transaction generation with internal-event exclusion policy in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockTransactionLinking.cs
+- [x] T028 [US2] Refactor return cash-flow strategy to include explicit external categories only and explicitly classify/exclude internal FX effects per new policy in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Domain/Services/ReturnCashFlowStrategy.cs
+- [x] T029 [US2] Update annual performance calculation pipeline to use closed-loop baseline for MD and TWR consistently in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs
+- [x] T030 [US2] Remove non-positive ledger floor logic from snapshot valuation path in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs
+- [x] T031 [US2] Verify and align stock-linked transaction generation with internal-event exclusion policy in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockTransactionLinking.cs
 
 **Checkpoint**: User Stories 1 and 2 should both be independently functional.
 
