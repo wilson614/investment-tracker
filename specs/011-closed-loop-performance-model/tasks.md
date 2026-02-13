@@ -31,8 +31,8 @@
 - [ ] T003 Rename and redefine currency transaction enum contract in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Domain/Enums/CurrencyTransactionType.cs
 - [ ] T004 [P] Align currency transaction DTO/request enum usage with redesigned categories in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/DTOs/CurrencyLedgerDtos.cs
 - [ ] T005 [P] Update domain entity-level transaction invariants for redesigned categories in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Domain/Entities/CurrencyTransaction.cs
-- [ ] T006 Implement shared ledger-currency/type validation policy helper for create/update/import flows in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CurrencyTransactionTypePolicy.cs
-- [ ] T007 Update stock-linked ledger transaction category mapping to dedicated internal categories in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockTransactionLinking.cs
+- [x] T006 Implement shared ledger-currency/type validation policy helper for create/update/import flows in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CurrencyTransactionTypePolicy.cs
+- [x] T007 Update stock-linked ledger transaction category mapping to dedicated internal categories in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockTransactionLinking.cs
 
 **Checkpoint**: Foundation ready — user story implementation can begin.
 
