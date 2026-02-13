@@ -65,8 +65,8 @@
 - [x] T019 [US1] Update frontend category labels and parser mappings to accept redesigned enum names only (no deprecated enum mappings) in /workspaces/InvestmentTracker/frontend/src/components/currency/CurrencyTransactionForm.tsx
 - [x] T020 [P] [US1] Update frontend category labels and options in stock transaction supplement flow in /workspaces/InvestmentTracker/frontend/src/components/transactions/TransactionForm.tsx
 - [x] T021 [P] [US1] Update transaction type labels in currency detail display in /workspaces/InvestmentTracker/frontend/src/pages/CurrencyDetail.tsx
-- [ ] T022 [P] [US1] Update transaction type export labels for CSV consistency in /workspaces/InvestmentTracker/frontend/src/services/csvExport.ts
-- [ ] T023 [US1] Update shared transaction type constants for redesigned enum names in /workspaces/InvestmentTracker/frontend/src/types/index.ts
+- [x] T022 [P] [US1] Update transaction type export labels for CSV consistency in /workspaces/InvestmentTracker/frontend/src/services/csvExport.ts
+- [x] T023 [US1] Update shared transaction type constants for redesigned enum names in /workspaces/InvestmentTracker/frontend/src/types/index.ts
 
 **Checkpoint**: User Story 1 should be fully functional and independently testable.
 
@@ -124,9 +124,9 @@
 
 **Purpose**: Final consistency and verification across stories.
 
-- [ ] T039 [P] Run backend regression suite for impacted domains in /workspaces/InvestmentTracker/backend/InvestmentTracker.sln
-- [ ] T040 [P] Run frontend type-check and test suite for impacted pages/components in /workspaces/InvestmentTracker/frontend/package.json
-- [ ] T041 Validate quickstart execution and update completion checkboxes in /workspaces/InvestmentTracker/specs/011-closed-loop-performance-model/quickstart.md
+- [x] T039 [P] Run backend regression suite for impacted domains in /workspaces/InvestmentTracker/backend/InvestmentTracker.sln
+- [x] T040 [P] Run frontend type-check and test suite for impacted pages/components in /workspaces/InvestmentTracker/frontend/package.json
+- [x] T041 Validate quickstart execution and update completion checkboxes in /workspaces/InvestmentTracker/specs/011-closed-loop-performance-model/quickstart.md
 - [x] T042 Perform cross-story consistency pass on contracts/spec/tasks wording alignment in /workspaces/InvestmentTracker/specs/011-closed-loop-performance-model/contracts/api-contracts.md
 
 ---

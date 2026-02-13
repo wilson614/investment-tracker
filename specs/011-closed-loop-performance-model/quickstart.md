@@ -72,21 +72,26 @@ Target behavior:
 ## 4) Run validation commands
 
 ```bash
-# backend tests
-bash -lc "dotnet test /workspaces/InvestmentTracker/tests"
+# backend regression suite (Phase 6 / T039)
+bash -lc "dotnet test /workspaces/InvestmentTracker/backend/InvestmentTracker.sln"
 
-# frontend checks/tests
+# frontend checks/tests (Phase 6 / T040)
 bash -lc "npm --prefix /workspaces/InvestmentTracker/frontend run type-check"
 bash -lc "npm --prefix /workspaces/InvestmentTracker/frontend run test"
 ```
 
+### Latest verification snapshot (2026-02-13)
+
+- Backend: PASS (`InvestmentTracker.Domain.Tests` 147, `InvestmentTracker.Application.Tests` 55, `InvestmentTracker.Infrastructure.Tests` 27, `InvestmentTracker.API.Tests` 61)
+- Frontend: PASS (`tsc --noEmit` succeeded; Vitest 8 files / 58 tests passed)
+
 ## 5) Expected completion checklist
 
-- [ ] Enum semantics and naming updated across backend/frontend
-- [ ] Backend create/update strict validation implemented
-- [ ] CSV import endpoint supports all-or-nothing + full diagnostics
-- [ ] Closed-loop valuation baseline unified for MD/TWR
-- [ ] Negative ledger is not floored
-- [ ] CF policy aligned to explicit external events including non-TWD exchange rules
-- [ ] MD/TWR help text wording updated
-- [ ] Regression tests added/updated and passing
+- [ ] Enum semantics and naming updated across backend/frontend (T022/T023 remain open in tasks.md)
+- [x] Backend create/update strict validation implemented
+- [x] CSV import endpoint supports all-or-nothing + full diagnostics
+- [x] Closed-loop valuation baseline unified for MD/TWR
+- [x] Negative ledger is not floored
+- [x] CF policy aligned to explicit external events including non-TWD exchange rules
+- [x] MD/TWR help text wording updated
+- [x] Regression tests added/updated and passing
