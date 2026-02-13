@@ -55,10 +55,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Enforce strict ledger-currency/type policy in create flow in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CreateCurrencyTransactionUseCase.cs
-- [ ] T013 [US1] Enforce strict ledger-currency/type policy in update flow in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/UpdateCurrencyTransactionUseCase.cs
-- [ ] T014 [US1] Update create request validator for redesigned category semantics and required fields in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/CreateCurrencyTransactionRequestValidator.cs
-- [ ] T015 [US1] Update update request validator to match create-rule strictness in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/UpdateCurrencyTransactionRequestValidator.cs
+- [x] T012 [US1] Enforce strict ledger-currency/type policy in create flow in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/CreateCurrencyTransactionUseCase.cs
+- [x] T013 [US1] Enforce strict ledger-currency/type policy in update flow in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/UpdateCurrencyTransactionUseCase.cs
+- [x] T014 [US1] Update create request validator for redesigned category semantics and required fields in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/CreateCurrencyTransactionRequestValidator.cs
+- [x] T015 [US1] Update update request validator to match create-rule strictness in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/Validators/UpdateCurrencyTransactionRequestValidator.cs
 - [ ] T016 [US1] Add atomic currency CSV import endpoint with all-or-nothing behavior in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/Controllers/CurrencyTransactionsController.cs
 - [ ] T017 [US1] Implement currency CSV parsing/validation/diagnostics application service for full error set responses in /workspaces/InvestmentTracker/backend/src/InvestmentTracker.Application/UseCases/CurrencyTransactions/ImportCurrencyTransactionsUseCase.cs
 - [ ] T018 [US1] Align frontend CSV import flow to new backend atomic import contract in /workspaces/InvestmentTracker/frontend/src/components/import/CurrencyImportButton.tsx
