@@ -54,7 +54,7 @@
 
 - [x] T014 [P] [US1] Add backend preview/execute contract tests (including preview-to-created value consistency checks for date/quantity/price/fees) in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 - [x] T015 [P] [US1] Add TWSE sync endpoint tests (including per-unresolved-row sync-attempt assertions) in `backend/tests/InvestmentTracker.API.Tests/Controllers/MarketDataControllerTwseSyncTests.cs`
-- [ ] T016 [P] [US1] Add frontend import preview flow tests for broker format detection/override, ambiguous-side per-row confirmation, and stable row ordering in `frontend/src/test/stock-import.broker-preview.test.tsx`
+- [x] T016 [P] [US1] Add frontend import preview flow tests for broker format detection/override, ambiguous-side per-row confirmation, and stable row ordering in `frontend/src/test/stock-import.broker-preview.test.tsx`
 
 ### Implementation for User Story 1
 
@@ -63,9 +63,9 @@
 - [x] T019 [US1] Implement stock import preview use case in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/PreviewStockImportUseCase.cs`
 - [x] T020 [US1] Implement stock import execute use case with pre-execution blocking for unresolved ambiguous-side confirmations in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
 - [x] T021 [US1] Add stock import preview/execute API endpoints in `backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs`
-- [ ] T022 [US1] Extend stock import button flow for format detection/override and unresolved-row remediation in `frontend/src/components/import/StockImportButton.tsx`
-- [ ] T023 [US1] Extend reusable import modal view states for unresolved symbol input rows in original row order and manual ticker entry in `frontend/src/components/import/CSVImportModal.tsx`
-- [ ] T024 [P] [US1] Add broker-statement field aliases, normalization helpers, and row-order-preserving metadata in `frontend/src/utils/csvParser.ts`
+- [x] T022 [US1] Extend stock import button flow for format detection/override and unresolved-row remediation in `frontend/src/components/import/StockImportButton.tsx`
+- [x] T023 [US1] Extend reusable import modal view states for unresolved symbol input rows in original row order and manual ticker entry in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T024 [P] [US1] Add broker-statement field aliases, normalization helpers, and row-order-preserving metadata in `frontend/src/utils/csvParser.ts`
 
 **Checkpoint**: User Story 1 should be fully functional and independently testable.
 
