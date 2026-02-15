@@ -20,6 +20,7 @@ using InvestmentTracker.Application.UseCases.Installments;
 using InvestmentTracker.Application.Validators;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using InvestmentTracker.Infrastructure;
 using InvestmentTracker.Infrastructure.External;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
@@ -173,6 +174,9 @@ builder.Services.AddScoped<IBenchmarkAnnualReturnRepository, BenchmarkAnnualRetu
 builder.Services.AddScoped<IFundAllocationRepository, FundAllocationRepository>();
 builder.Services.AddScoped<ICreditCardRepository, CreditCardRepository>();
 builder.Services.AddScoped<IInstallmentRepository, InstallmentRepository>();
+
+// Register Infrastructure dependency bundles
+builder.Services.AddTwseSymbolMappingServices();
 
 // Register External API Clients
 builder.Services.AddHttpClient<IEuronextApiClient, EuronextApiClient>();

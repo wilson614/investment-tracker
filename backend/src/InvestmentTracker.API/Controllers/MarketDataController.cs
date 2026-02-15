@@ -22,6 +22,7 @@ public class MarketDataController(
     ICapeDataService capeDataService,
     IMarketYtdService marketYtdService,
     EuronextQuoteService euronextQuoteService,
+    TwseSymbolMappingService twseSymbolMappingService,
     IStooqHistoricalPriceService stooqService,
     ITwseStockHistoricalPriceService twseService,
     IYahooHistoricalPriceService yahooHistoricalPriceService,
@@ -298,6 +299,42 @@ public class MarketDataController(
             mapping.Mic,
             mapping.Currency,
             mapping.Name));
+    }
+
+    /// <summary>
+    /// 按需同步 TWSE ISIN source，嘗試解析指定證券名稱的 ticker 映射。
+    /// </summary>
+    [HttpPost("twse/symbol-mappings/sync-on-demand")]
+    [ProducesResponseType(typeof(TwseSymbolSyncOnDemandResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<TwseSymbolSyncOnDemandResponse>> SyncTwseSymbolMappingsOnDemand(
+        [FromBody] TwseSymbolSyncOnDemandRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.SecurityNames.Count == 0)
+        {
+            return BadRequest("SecurityNames is required");
+        }
+
+        var result = await twseSymbolMappingService.SyncOnDemandAsync(request.SecurityNames, cancellationToken);
+
+        return Ok(new TwseSymbolSyncOnDemandResponse(
+            result.Requested,
+            result.Resolved,
+            result.Unresolved,
+            result.Mappings
+                .Select(mapping => new TwseSymbolSyncMappingResponse(
+                    mapping.SecurityName,
+                    mapping.Ticker,
+                    mapping.Isin,
+                    mapping.Market))
+                .ToList(),
+            result.Errors
+                .Select(error => new TwseSymbolSyncErrorResponse(
+                    error.SecurityName,
+                    error.ErrorCode,
+                    error.Message))
+                .ToList()));
     }
 
     /// <summary>
@@ -1260,3 +1297,29 @@ public record EuronextSymbolMappingResponse(
     string Mic,
     string Currency,
     string? Name);
+
+/// <summary>
+/// TWSE symbol mapping 按需同步請求。
+/// </summary>
+public record TwseSymbolSyncOnDemandRequest(IReadOnlyList<string> SecurityNames);
+
+/// <summary>
+/// TWSE symbol mapping 按需同步回應。
+/// </summary>
+public record TwseSymbolSyncOnDemandResponse(
+    int Requested,
+    int Resolved,
+    int Unresolved,
+    IReadOnlyList<TwseSymbolSyncMappingResponse> Mappings,
+    IReadOnlyList<TwseSymbolSyncErrorResponse> Errors);
+
+public record TwseSymbolSyncMappingResponse(
+    string SecurityName,
+    string Ticker,
+    string Isin,
+    string? Market);
+
+public record TwseSymbolSyncErrorResponse(
+    string SecurityName,
+    string ErrorCode,
+    string Message);
