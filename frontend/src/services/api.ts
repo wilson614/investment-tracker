@@ -36,6 +36,10 @@ import type {
   StockSplit,
   CreateStockSplitRequest,
   UpdateStockSplitRequest,
+  StockImportPreviewRequest,
+  StockImportPreviewResponse,
+  StockImportExecuteRequest,
+  StockImportExecuteResponse,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -354,6 +358,20 @@ export const transactionApi = {
   /** 刪除交易 */
   delete: (id: string) =>
     fetchApi<void>(`/stocktransactions/${id}`, { method: 'DELETE' }),
+
+  /** 股票匯入預覽 */
+  previewImport: (data: StockImportPreviewRequest) =>
+    fetchApi<StockImportPreviewResponse>('/stocktransactions/import/preview', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** 執行股票匯入 */
+  executeImport: (data: StockImportExecuteRequest) =>
+    fetchApi<StockImportExecuteResponse>('/stocktransactions/import/execute', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // ============================================================================

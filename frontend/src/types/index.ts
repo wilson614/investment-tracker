@@ -118,6 +118,111 @@ export interface UpdateStockTransactionRequest {
   currency?: Currency;
 }
 
+// Stock Import API Types
+export type StockImportSelectedFormat = 'legacy_csv' | 'broker_statement';
+export type StockImportDetectedFormat = StockImportSelectedFormat | 'unknown';
+export type StockImportTradeSide = 'buy' | 'sell';
+export type StockImportPreviewTradeSide = StockImportTradeSide | 'ambiguous';
+export type StockImportRowStatus = 'valid' | 'requires_user_action' | 'invalid';
+export type StockImportActionRequired = 'confirm_trade_side' | 'input_ticker' | 'select_balance_action';
+
+export interface StockImportPreviewRequest {
+  portfolioId: string;
+  csvContent: string;
+  selectedFormat: StockImportSelectedFormat;
+}
+
+export interface StockImportPreviewSummary {
+  totalRows: number;
+  validRows: number;
+  requiresActionRows: number;
+  invalidRows: number;
+}
+
+export interface StockImportPreviewRow {
+  rowNumber: number;
+  tradeDate: string | null;
+  rawSecurityName: string | null;
+  ticker: string | null;
+  tradeSide: StockImportPreviewTradeSide;
+  confirmedTradeSide: StockImportTradeSide | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  fees: number;
+  taxes: number;
+  netSettlement: number | null;
+  currency: string | null;
+  status: StockImportRowStatus;
+  actionsRequired: StockImportActionRequired[];
+}
+
+export interface StockImportDiagnostic {
+  rowNumber: number;
+  fieldName: string;
+  invalidValue: string | null;
+  errorCode: string;
+  message: string;
+  correctionGuidance: string;
+}
+
+export interface StockImportPreviewResponse {
+  sessionId: string;
+  detectedFormat: StockImportDetectedFormat;
+  selectedFormat: StockImportSelectedFormat;
+  summary: StockImportPreviewSummary;
+  rows: StockImportPreviewRow[];
+  errors: StockImportDiagnostic[];
+}
+
+export type StockImportExecuteBalanceAction = 'None' | 'Margin' | 'TopUp';
+export type StockImportTopUpTransactionType = 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+
+export interface StockImportExecuteRowRequest {
+  rowNumber: number;
+  ticker: string;
+  confirmedTradeSide: StockImportTradeSide;
+  exclude: boolean;
+  balanceAction: StockImportExecuteBalanceAction;
+  topUpTransactionType?: StockImportTopUpTransactionType;
+}
+
+export interface StockImportDefaultBalanceAction {
+  action: Exclude<StockImportExecuteBalanceAction, 'None'>;
+  topUpTransactionType?: StockImportTopUpTransactionType;
+}
+
+export interface StockImportExecuteRequest {
+  sessionId: string;
+  portfolioId: string;
+  rows: StockImportExecuteRowRequest[];
+  defaultBalanceAction?: StockImportDefaultBalanceAction;
+}
+
+export type StockImportExecuteStatus = 'committed' | 'partially_committed' | 'rejected';
+
+export interface StockImportExecuteSummary {
+  totalRows: number;
+  insertedRows: number;
+  failedRows: number;
+  errorCount: number;
+}
+
+export interface StockImportExecuteResult {
+  rowNumber: number;
+  success: boolean;
+  transactionId?: string;
+  errorCode?: string;
+  message: string;
+  confirmedTradeSide?: StockImportTradeSide | null;
+}
+
+export interface StockImportExecuteResponse {
+  status: StockImportExecuteStatus;
+  summary: StockImportExecuteSummary;
+  results: StockImportExecuteResult[];
+  errors: StockImportDiagnostic[];
+}
+
 export interface StockPosition {
   ticker: string;
   totalShares: number;

@@ -22,6 +22,12 @@ vi.mock('../contexts/LedgerContext', () => ({
   useLedger: vi.fn(),
 }));
 
+vi.mock('../contexts/PortfolioContext', () => ({
+  usePortfolio: vi.fn(() => ({
+    invalidateSharedCaches: vi.fn(),
+  })),
+}));
+
 vi.mock('../components/ledger/LedgerSelector', () => ({
   LedgerSelector: () => <div data-testid="ledger-selector" />,
 }));

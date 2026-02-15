@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using InvestmentTracker.Domain.Enums;
 
@@ -124,6 +125,118 @@ public record UpdateStockTransactionRequest
     /// 交易計價幣別。若未提供，會根據 Market 自動推測（TW → TWD，其他 → USD）。
     /// </summary>
     public Currency? Currency { get; init; }
+}
+
+/// <summary>
+/// 預覽股票匯入（支援 legacy CSV 與 broker statement）的請求 DTO。
+/// </summary>
+public record PreviewStockImportRequest
+{
+    [Required]
+    public Guid PortfolioId { get; init; }
+
+    [Required]
+    public required string CsvContent { get; init; }
+
+    [Required]
+    [RegularExpression("^(legacy_csv|broker_statement)$", ErrorMessage = "SelectedFormat must be either 'legacy_csv' or 'broker_statement'.")]
+    public required string SelectedFormat { get; init; }
+}
+
+/// <summary>
+/// 執行股票匯入的請求 DTO。
+/// </summary>
+public record ExecuteStockImportRequest : IValidatableObject
+{
+    [Required]
+    public Guid SessionId { get; init; }
+
+    [Required]
+    public Guid PortfolioId { get; init; }
+
+    [Required]
+    [MinLength(1, ErrorMessage = "Rows must contain at least one item.")]
+    public IReadOnlyList<ExecuteStockImportRowRequest> Rows { get; init; } = [];
+
+    /// <summary>
+    /// 預設餘額處理決策（套用到餘額不足列，可被逐列覆寫）。
+    /// </summary>
+    public StockImportDefaultBalanceDecisionRequest? DefaultBalanceAction { get; init; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Rows.Count == 0)
+        {
+            yield return new ValidationResult(
+                "Rows must contain at least one item.",
+                [nameof(Rows)]);
+        }
+
+        if (DefaultBalanceAction?.Action == BalanceAction.TopUp && DefaultBalanceAction.TopUpTransactionType is null)
+        {
+            yield return new ValidationResult(
+                "DefaultBalanceAction.TopUpTransactionType is required when DefaultBalanceAction.Action is TopUp.",
+                [nameof(DefaultBalanceAction)]);
+        }
+
+        for (var i = 0; i < Rows.Count; i++)
+        {
+            var row = Rows[i];
+            if (row.BalanceAction == BalanceAction.TopUp && row.TopUpTransactionType is null)
+            {
+                yield return new ValidationResult(
+                    $"Rows[{i}].TopUpTransactionType is required when Rows[{i}].BalanceAction is TopUp.",
+                    [nameof(Rows)]);
+            }
+        }
+    }
+}
+
+/// <summary>
+/// 股票匯入逐列執行參數。
+/// </summary>
+public record ExecuteStockImportRowRequest
+{
+    [Range(1, int.MaxValue)]
+    public int RowNumber { get; init; }
+
+    [StringLength(20, MinimumLength = 1)]
+    public string? Ticker { get; init; }
+
+    /// <summary>
+    /// Canonical confirmed trade side: buy | sell.
+    /// 當預覽列為 ambiguous 時，執行前需提供此欄位。
+    /// </summary>
+    [RegularExpression("^(buy|sell)$", ErrorMessage = "ConfirmedTradeSide must be either 'buy' or 'sell'.")]
+    public string? ConfirmedTradeSide { get; init; }
+
+    public bool Exclude { get; init; }
+
+    /// <summary>
+    /// 逐列餘額不足決策（None / Margin / TopUp）。
+    /// </summary>
+    public BalanceAction? BalanceAction { get; init; }
+
+    /// <summary>
+    /// 僅當 BalanceAction=TopUp 時需要。
+    /// </summary>
+    public CurrencyTransactionType? TopUpTransactionType { get; init; }
+}
+
+/// <summary>
+/// 股票匯入預設餘額決策（global default）。
+/// </summary>
+public record StockImportDefaultBalanceDecisionRequest
+{
+    /// <summary>
+    /// 建議值為 Margin 或 TopUp。
+    /// </summary>
+    public BalanceAction? Action { get; init; }
+
+    /// <summary>
+    /// 僅當 Action=TopUp 時需要。
+    /// </summary>
+    public CurrencyTransactionType? TopUpTransactionType { get; init; }
 }
 
 /// <summary>
