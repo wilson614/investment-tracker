@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
-import { invalidatePerformanceAndAssetsCaches } from '../../../utils/cacheInvalidation';
+import { invalidateAssetsSummaryQuery } from '../../../utils/cacheInvalidation';
 import { installmentsApi } from '../api/installmentsApi';
 import { CREDIT_CARDS_QUERY_KEY } from './useCreditCards';
 import type { CreateInstallmentRequest, InstallmentResponse } from '../types';
@@ -19,6 +19,7 @@ export function useInstallments(options?: {
   creditCardId?: string;
   status?: InstallmentResponse['status'];
   upcomingMonths?: number;
+  enabled?: boolean;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -26,6 +27,7 @@ export function useInstallments(options?: {
   const creditCardId = options?.creditCardId;
   const status = options?.status;
   const upcomingMonths = options?.upcomingMonths ?? 3;
+  const isInstallmentsEnabled = options?.enabled ?? true;
 
   const installmentsQuery = useQuery({
     queryKey: creditCardId ? installmentsKeyByCard(creditCardId) : installmentsKeyByStatus(status),
@@ -33,12 +35,14 @@ export function useInstallments(options?: {
       creditCardId
         ? installmentsApi.getInstallments(creditCardId, status)
         : installmentsApi.getAllInstallments(status),
+    enabled: isInstallmentsEnabled,
     placeholderData: keepPreviousData,
   });
 
   const upcomingQuery = useQuery({
     queryKey: upcomingPaymentsKey(upcomingMonths),
     queryFn: () => installmentsApi.getUpcomingPayments(upcomingMonths),
+    enabled: isInstallmentsEnabled,
     placeholderData: keepPreviousData,
   });
 
@@ -46,7 +50,7 @@ export function useInstallments(options?: {
     queryClient.invalidateQueries({ queryKey: INSTALLMENTS_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: INSTALLMENTS_UPCOMING_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: CREDIT_CARDS_QUERY_KEY });
-    invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+    invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
   };
 
   const createMutation = useMutation({
@@ -75,6 +79,8 @@ export function useInstallments(options?: {
     installments: installmentsQuery.data ?? [],
     upcomingPayments: upcomingQuery.data ?? [],
     isLoading: installmentsQuery.isLoading,
+    isFetching: installmentsQuery.isFetching,
+    isPlaceholderData: installmentsQuery.isPlaceholderData,
     isUpcomingLoading: upcomingQuery.isLoading,
     error: installmentsQuery.error
       ? installmentsQuery.error instanceof Error

@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 /**
  * SkeletonLoader
  *
@@ -130,6 +132,44 @@ export function SkeletonTable({
         </div>
       ))}
     </div>
+  );
+}
+
+interface NumberValueSlotProps {
+  value: ReactNode;
+  isLoading?: boolean;
+  minWidthClassName?: string;
+  textClassName?: string;
+  skeletonHeightClassName?: string;
+  skeletonWidthClassName?: string;
+  testId?: string;
+}
+
+/**
+ * 數字欄位槽位：在 loading 時使用固定寬度骨架，避免數字晚出導致版面跳動。
+ */
+export function NumberValueSlot({
+  value,
+  isLoading = false,
+  minWidthClassName = 'min-w-[8ch]',
+  textClassName = '',
+  skeletonHeightClassName = 'h-5',
+  skeletonWidthClassName = 'w-full',
+  testId,
+}: NumberValueSlotProps) {
+  return (
+    <span
+      className={`inline-flex items-center align-middle ${minWidthClassName}`}
+      data-testid={testId}
+      data-number-slot="true"
+      data-slot-loading={isLoading ? 'true' : 'false'}
+    >
+      {isLoading ? (
+        <Skeleton width={skeletonWidthClassName} height={skeletonHeightClassName} />
+      ) : (
+        <span className={textClassName}>{value}</span>
+      )}
+    </span>
   );
 }
 

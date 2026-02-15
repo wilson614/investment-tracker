@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { ErrorDisplay, Skeleton } from '../components/common';
 import { ConfirmationModal } from '../components/modals/ConfirmationModal';
@@ -17,49 +17,27 @@ import type {
   InstallmentResponse,
 } from '../features/credit-cards/types';
 
-function CreditCardsPageSkeleton() {
+function CreditCardListSkeleton() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8" aria-label="信用卡頁面載入中">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="space-y-2">
-          <Skeleton width="w-28" height="h-8" />
-          <Skeleton width="w-64" height="h-5" />
-        </div>
-        <Skeleton width="w-32" height="h-10" className="rounded-lg" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2, 3].map((item) => (
-          <div key={item} className="card-dark p-5 space-y-4 border border-[var(--border-color)]">
-            <div className="space-y-2">
-              <Skeleton width="w-32" height="h-6" />
-              <Skeleton width="w-24" height="h-4" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Skeleton width="w-16" height="h-4" />
-                <Skeleton width="w-14" height="h-6" className="mt-2" />
-              </div>
-              <div>
-                <Skeleton width="w-16" height="h-4" />
-                <Skeleton width="w-20" height="h-6" className="mt-2" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card-dark p-5 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-label="信用卡清單載入中">
+      {[1, 2, 3].map((item) => (
+        <div key={item} className="card-dark p-5 space-y-4 border border-[var(--border-color)]">
           <div className="space-y-2">
-            <Skeleton width="w-48" height="h-7" />
-            <Skeleton width="w-72" height="h-4" />
+            <Skeleton width="w-32" height="h-6" />
+            <Skeleton width="w-24" height="h-4" />
           </div>
-          <Skeleton width="w-24" height="h-9" className="rounded-lg" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Skeleton width="w-16" height="h-4" />
+              <Skeleton width="w-14" height="h-6" className="mt-2" />
+            </div>
+            <div>
+              <Skeleton width="w-16" height="h-4" />
+              <Skeleton width="w-20" height="h-6" className="mt-2" />
+            </div>
+          </div>
         </div>
-
-        <InstallmentListSkeleton />
-      </div>
+      ))}
     </div>
   );
 }
@@ -102,6 +80,18 @@ function InstallmentListSkeleton() {
   );
 }
 
+function InstallmentsSectionHeaderSkeleton() {
+  return (
+    <>
+      <div className="space-y-2">
+        <Skeleton width="w-48" height="h-7" />
+        <Skeleton width="w-72" height="h-4" />
+      </div>
+      <Skeleton width="w-24" height="h-9" className="rounded-lg" />
+    </>
+  );
+}
+
 export function CreditCardsPage() {
   const { creditCards, isLoading, error, refetch, createCreditCard, updateCreditCard } = useCreditCards();
 
@@ -109,6 +99,7 @@ export function CreditCardsPage() {
   const [editingCard, setEditingCard] = useState<CreditCardResponse | undefined>(undefined);
   const [isCardSubmitting, setIsCardSubmitting] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [navigatingCardId, setNavigatingCardId] = useState<string | null>(null);
 
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
   const [isInstallmentSubmitting, setIsInstallmentSubmitting] = useState(false);
@@ -117,10 +108,15 @@ export function CreditCardsPage() {
   const effectiveSelectedCard =
     creditCards.find((card) => card.id === selectedCardId) ?? (creditCards.length > 0 ? creditCards[0] : null);
 
+  const hasCards = creditCards.length > 0;
+  const selectedCardKey = effectiveSelectedCard?.id ?? null;
+
   const {
     installments,
     upcomingPayments,
     isLoading: isInstallmentsLoading,
+    isFetching: isInstallmentsFetching,
+    isPlaceholderData: isInstallmentsPlaceholderData,
     isUpcomingLoading,
     error: installmentsError,
     upcomingError,
@@ -131,7 +127,39 @@ export function CreditCardsPage() {
   } = useInstallments({
     creditCardId: effectiveSelectedCard?.id,
     upcomingMonths: 3,
+    enabled: hasCards,
   });
+
+  const visibleInstallments =
+    effectiveSelectedCard == null
+      ? []
+      : installments.filter((installment) => installment.creditCardId === effectiveSelectedCard.id);
+
+  const shouldRenderInstallmentsSection = Boolean(effectiveSelectedCard) || (isLoading && !hasCards);
+  const isInstallmentsSectionShellLoading = !effectiveSelectedCard;
+  const isSwitchingInstallmentsCard =
+    Boolean(effectiveSelectedCard) &&
+    Boolean(navigatingCardId) &&
+    navigatingCardId === selectedCardKey &&
+    isInstallmentsFetching &&
+    !isInstallmentsLoading &&
+    isInstallmentsPlaceholderData;
+  const shouldShowValuePlaceholders = isSwitchingInstallmentsCard;
+
+  useEffect(() => {
+    if (!navigatingCardId) {
+      return;
+    }
+
+    if (selectedCardKey == null || navigatingCardId !== selectedCardKey) {
+      setNavigatingCardId(null);
+      return;
+    }
+
+    if (!isInstallmentsPlaceholderData) {
+      setNavigatingCardId(null);
+    }
+  }, [navigatingCardId, selectedCardKey, isInstallmentsPlaceholderData]);
 
   const handleCreateCard = () => {
     setEditingCard(undefined);
@@ -143,6 +171,14 @@ export function CreditCardsPage() {
     setShowCardForm(true);
   };
 
+  const handleSelectCard = (card: CreditCardResponse) => {
+    if (card.id === selectedCardKey) {
+      return;
+    }
+
+    setNavigatingCardId(card.id);
+    setSelectedCardId(card.id);
+  };
 
   const handleCardSubmit = async (data: CreateCreditCardRequest | UpdateCreditCardRequest) => {
     setIsCardSubmitting(true);
@@ -196,10 +232,6 @@ export function CreditCardsPage() {
     setDeletingInstallment(null);
   };
 
-  if (isLoading && creditCards.length === 0) {
-    return <CreditCardsPageSkeleton />;
-  }
-
   if (error) {
     return <ErrorDisplay message={error} onRetry={refetch} />;
   }
@@ -221,49 +253,71 @@ export function CreditCardsPage() {
         </button>
       </div>
 
-      <CreditCardList
-        creditCards={creditCards}
-        selectedCardId={effectiveSelectedCard?.id ?? null}
-        onSelect={(card) => setSelectedCardId(card.id)}
-        onEdit={handleEditCard}
-      />
+      {isLoading && !hasCards ? (
+        <CreditCardListSkeleton />
+      ) : (
+        <CreditCardList
+          creditCards={creditCards}
+          selectedCardId={effectiveSelectedCard?.id ?? null}
+          onSelect={handleSelectCard}
+          onEdit={handleEditCard}
+          isValueLoading={shouldShowValuePlaceholders}
+        />
+      )}
 
-      {effectiveSelectedCard ? (
-        <div className="space-y-6">
-          <div className="card-dark p-5 space-y-4">
+      {shouldRenderInstallmentsSection ? (
+        <div
+          className="space-y-6"
+          aria-label={isInstallmentsSectionShellLoading ? '分期區塊載入中' : undefined}
+        >
+          <div className="card-dark p-5 space-y-4 min-h-[25rem]">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold text-[var(--text-primary)]">{effectiveSelectedCard.cardName} 分期清單</h2>
-                <p className="text-sm text-[var(--text-muted)]">
-                  {effectiveSelectedCard.bankName} · 管理該卡分期與未繳餘額
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCreateInstallment}
-                className="btn-accent inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                新增分期
-              </button>
+              {isInstallmentsSectionShellLoading ? (
+                <InstallmentsSectionHeaderSkeleton />
+              ) : (
+                <>
+                  <div>
+                    <h2 className="text-xl font-bold text-[var(--text-primary)]">{effectiveSelectedCard?.cardName} 分期清單</h2>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      {effectiveSelectedCard?.bankName} · 管理該卡分期與未繳餘額
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateInstallment}
+                    className="btn-accent inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    新增分期
+                  </button>
+                </>
+              )}
             </div>
 
-            {isInstallmentsLoading && installments.length === 0 ? (
+            {isInstallmentsSectionShellLoading ||
+            isSwitchingInstallmentsCard ||
+            (isInstallmentsLoading && visibleInstallments.length === 0) ? (
               <InstallmentListSkeleton />
             ) : installmentsError ? (
               <ErrorDisplay message={installmentsError} onRetry={() => void refetchInstallments()} />
             ) : (
               <InstallmentList
-                installments={installments}
+                installments={visibleInstallments}
                 onDelete={handleDeleteInstallment}
+                isValueLoading={shouldShowValuePlaceholders}
               />
             )}
           </div>
 
-          {upcomingError ? (
+          {isInstallmentsSectionShellLoading ? (
+            <UpcomingPayments months={[]} isLoading={true} />
+          ) : upcomingError && upcomingPayments.length === 0 ? (
             <ErrorDisplay message={upcomingError} onRetry={() => void refetchUpcoming()} />
           ) : (
-            <UpcomingPayments months={upcomingPayments} isLoading={isUpcomingLoading} />
+            <UpcomingPayments
+              months={upcomingPayments}
+              isLoading={isUpcomingLoading}
+            />
           )}
         </div>
       ) : null}

@@ -92,121 +92,132 @@ describe('Benchmark Selection Logic', () => {
 
 describe('Render Gate Logic', () => {
   /**
-   * Helper function that mirrors the render gate logic from Performance.tsx
-   * The bar chart should only render when both conditions are met:
-   * 1. Holdings data is ready (not fetching prices, no missing prices)
-   * 2. Benchmark data is ready (not loading, has returns)
+   * Helper function that mirrors the selectedYear-bound render gate logic from Performance.tsx
    */
   const shouldRenderBarChart = (params: {
-    isLoadingBenchmark: boolean;
-    benchmarkReturnsCount: number;
-    isFetchingPrices: boolean;
-    hasMissingPrices: boolean;
-    performanceVersion: number;
-    lastResetVersion: number;
+    selectedYear: number | null;
+    selectedSystemBenchmarks: string[];
+    selectedCustomBenchmarkIds: string[];
+    benchmarkReturns: Record<string, number | null | undefined>;
+    benchmarkReturnYears: Record<string, number | undefined>;
+    customBenchmarkReturns: Record<string, number | null | undefined>;
+    customBenchmarkReturnYears: Record<string, number | undefined>;
   }): boolean => {
     const {
-      isLoadingBenchmark,
-      benchmarkReturnsCount,
-      isFetchingPrices,
-      hasMissingPrices,
-      performanceVersion,
-      lastResetVersion,
+      selectedYear,
+      selectedSystemBenchmarks,
+      selectedCustomBenchmarkIds,
+      benchmarkReturns,
+      benchmarkReturnYears,
+      customBenchmarkReturns,
+      customBenchmarkReturnYears,
     } = params;
 
-    // Version mismatch means stale data
-    if (lastResetVersion !== performanceVersion) return false;
-    
-    // Still loading benchmarks
-    if (isLoadingBenchmark) return false;
-    
-    // No benchmark data yet
-    if (benchmarkReturnsCount === 0) return false;
-    
-    // Still fetching prices for current year
-    if (isFetchingPrices) return false;
-    
-    // Has missing prices that need user input
-    if (hasMissingPrices) return false;
-    
-    return true;
+    if (!selectedYear) return false;
+
+    const allSystemBenchmarksReady = selectedSystemBenchmarks.length === 0 ||
+      selectedSystemBenchmarks.every((key) => (
+        benchmarkReturns[key] !== undefined &&
+        benchmarkReturnYears[key] === selectedYear
+      ));
+
+    const allCustomBenchmarksReady = selectedCustomBenchmarkIds.length === 0 ||
+      selectedCustomBenchmarkIds.every((id) => (
+        customBenchmarkReturns[id] !== undefined &&
+        customBenchmarkReturnYears[id] === selectedYear
+      ));
+
+    return allSystemBenchmarksReady && allCustomBenchmarksReady;
   };
 
-  it('should not render when benchmark is loading', () => {
+  it('should not render when selectedYear is null', () => {
     const result = shouldRenderBarChart({
-      isLoadingBenchmark: true,
-      benchmarkReturnsCount: 5,
-      isFetchingPrices: false,
-      hasMissingPrices: false,
-      performanceVersion: 1,
-      lastResetVersion: 1,
+      selectedYear: null,
+      selectedSystemBenchmarks: ['All Country'],
+      selectedCustomBenchmarkIds: [],
+      benchmarkReturns: { 'All Country': 10 },
+      benchmarkReturnYears: { 'All Country': 2025 },
+      customBenchmarkReturns: {},
+      customBenchmarkReturnYears: {},
     });
-    
+
     expect(result).toBe(false);
   });
 
-  it('should not render when no benchmark data', () => {
+  it('should not render when benchmark value exists but belongs to a different year', () => {
     const result = shouldRenderBarChart({
-      isLoadingBenchmark: false,
-      benchmarkReturnsCount: 0,
-      isFetchingPrices: false,
-      hasMissingPrices: false,
-      performanceVersion: 1,
-      lastResetVersion: 1,
+      selectedYear: 2024,
+      selectedSystemBenchmarks: ['All Country'],
+      selectedCustomBenchmarkIds: [],
+      benchmarkReturns: { 'All Country': 12.5 },
+      benchmarkReturnYears: { 'All Country': 2025 },
+      customBenchmarkReturns: {},
+      customBenchmarkReturnYears: {},
     });
-    
+
     expect(result).toBe(false);
   });
 
-  it('should not render when fetching prices', () => {
+  it('should not render when custom benchmark value exists but belongs to a different year', () => {
     const result = shouldRenderBarChart({
-      isLoadingBenchmark: false,
-      benchmarkReturnsCount: 5,
-      isFetchingPrices: true,
-      hasMissingPrices: false,
-      performanceVersion: 1,
-      lastResetVersion: 1,
+      selectedYear: 2024,
+      selectedSystemBenchmarks: ['All Country'],
+      selectedCustomBenchmarkIds: ['custom-1'],
+      benchmarkReturns: { 'All Country': 8.8 },
+      benchmarkReturnYears: { 'All Country': 2024 },
+      customBenchmarkReturns: { 'custom-1': 6.6 },
+      customBenchmarkReturnYears: { 'custom-1': 2025 },
     });
-    
+
     expect(result).toBe(false);
   });
 
-  it('should not render when has missing prices', () => {
+  it('should render only when both system/custom benchmark data match selectedYear', () => {
     const result = shouldRenderBarChart({
-      isLoadingBenchmark: false,
-      benchmarkReturnsCount: 5,
-      isFetchingPrices: false,
-      hasMissingPrices: true,
-      performanceVersion: 1,
-      lastResetVersion: 1,
+      selectedYear: 2024,
+      selectedSystemBenchmarks: ['All Country', 'US Large'],
+      selectedCustomBenchmarkIds: ['custom-1'],
+      benchmarkReturns: {
+        'All Country': 10.1,
+        'US Large': 9.9,
+      },
+      benchmarkReturnYears: {
+        'All Country': 2024,
+        'US Large': 2024,
+      },
+      customBenchmarkReturns: {
+        'custom-1': 7.7,
+      },
+      customBenchmarkReturnYears: {
+        'custom-1': 2024,
+      },
     });
-    
-    expect(result).toBe(false);
-  });
 
-  it('should not render when version mismatch (stale data)', () => {
-    const result = shouldRenderBarChart({
-      isLoadingBenchmark: false,
-      benchmarkReturnsCount: 5,
-      isFetchingPrices: false,
-      hasMissingPrices: false,
-      performanceVersion: 2,
-      lastResetVersion: 1,
-    });
-    
-    expect(result).toBe(false);
-  });
-
-  it('should render when all conditions are met', () => {
-    const result = shouldRenderBarChart({
-      isLoadingBenchmark: false,
-      benchmarkReturnsCount: 5,
-      isFetchingPrices: false,
-      hasMissingPrices: false,
-      performanceVersion: 1,
-      lastResetVersion: 1,
-    });
-    
     expect(result).toBe(true);
+  });
+
+  it('should switch from ready to not-ready when selectedYear changes but data year has not switched yet', () => {
+    const readyFor2024 = shouldRenderBarChart({
+      selectedYear: 2024,
+      selectedSystemBenchmarks: ['All Country'],
+      selectedCustomBenchmarkIds: [],
+      benchmarkReturns: { 'All Country': 5.5 },
+      benchmarkReturnYears: { 'All Country': 2024 },
+      customBenchmarkReturns: {},
+      customBenchmarkReturnYears: {},
+    });
+
+    const notReadyFor2025 = shouldRenderBarChart({
+      selectedYear: 2025,
+      selectedSystemBenchmarks: ['All Country'],
+      selectedCustomBenchmarkIds: [],
+      benchmarkReturns: { 'All Country': 5.5 },
+      benchmarkReturnYears: { 'All Country': 2024 },
+      customBenchmarkReturns: {},
+      customBenchmarkReturnYears: {},
+    });
+
+    expect(readyFor2024).toBe(true);
+    expect(notReadyFor2025).toBe(false);
   });
 });

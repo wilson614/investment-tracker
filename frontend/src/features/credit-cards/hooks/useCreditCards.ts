@@ -3,7 +3,7 @@ import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { creditCardsApi } from '../api/creditCardsApi';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
-import { invalidatePerformanceAndAssetsCaches } from '../../../utils/cacheInvalidation';
+import { invalidateAssetsSummaryQuery } from '../../../utils/cacheInvalidation';
 import type { CreateCreditCardRequest, UpdateCreditCardRequest } from '../types';
 
 export const CREDIT_CARDS_QUERY_KEY = ['creditCards'];
@@ -21,7 +21,7 @@ export function useCreditCards() {
     mutationFn: (data: CreateCreditCardRequest) => creditCardsApi.createCreditCard(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CREDIT_CARDS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('信用卡建立成功');
     },
     onError: (err: Error) => {
@@ -34,7 +34,7 @@ export function useCreditCards() {
       creditCardsApi.updateCreditCard(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CREDIT_CARDS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('信用卡更新成功');
     },
     onError: (err: Error) => {

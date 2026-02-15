@@ -294,6 +294,8 @@ function PerformancePageContent({
   const [dismissMissingPricesOverlay, setDismissMissingPricesOverlay] = useState(false);
   const hasFetchedForYearRef = useRef<number | null>(null);
   const fetchRetryCountRef = useRef<number>(0); // 限制自動重試次數以防止無限迴圈
+  const benchmarkRequestIdRef = useRef(0);
+  const customBenchmarkRequestIdRef = useRef(0);
 
   const displayHomeCurrency = portfolio?.homeCurrency ?? 'TWD';
 
@@ -340,6 +342,36 @@ function PerformancePageContent({
         returns[key] = systemCache.returns[key] ?? null;
       }
       return returns;
+    }
+
+    return {};
+  });
+  // 追蹤每個系統 benchmark 報酬值對應的年份，避免 selectedYear 與資料年份錯位
+  const [benchmarkReturnYears, setBenchmarkReturnYears] = useState<Record<string, number>>(() => {
+    const currentYear = new Date().getFullYear();
+    const savedBenchmarks = loadSelectedBenchmarksFromLocalStorage();
+    const systemBenchmarks = savedBenchmarks.filter(k => !k.startsWith('custom_'));
+
+    if (systemBenchmarks.length === 0) {
+      return {};
+    }
+
+    const cachedYtd = loadCachedYtdData();
+    if (cachedYtd.data) {
+      const years: Record<string, number> = {};
+      for (const key of systemBenchmarks) {
+        years[key] = currentYear;
+      }
+      return years;
+    }
+
+    const systemCache = loadCachedSystemBenchmarkReturns(currentYear);
+    if (Object.keys(systemCache.returns).length > 0) {
+      const years: Record<string, number> = {};
+      for (const key of systemBenchmarks) {
+        years[key] = currentYear;
+      }
+      return years;
     }
 
     return {};
@@ -406,6 +438,17 @@ function PerformancePageContent({
       }
     }
     return Object.keys(returns).length > 0 ? returns : cachedReturns;
+  });
+  const [customBenchmarkReturnYears, setCustomBenchmarkReturnYears] = useState<Record<string, number>>(() => {
+    const currentYear = new Date().getFullYear();
+    const cachedReturns = loadCachedCustomBenchmarkReturns(currentYear);
+    const years: Record<string, number> = {};
+
+    for (const benchmarkId of Object.keys(cachedReturns)) {
+      years[benchmarkId] = currentYear;
+    }
+
+    return years;
   });
 
   // 元件掛載時從 API 載入使用者偏好設定
@@ -525,13 +568,19 @@ function PerformancePageContent({
 
   // aggregate 模式下保守做一次 ticker 去重，避免跨投組重複項目。
   // 單一投資組合模式保留原始資料（可能同 ticker 需 YearStart/YearEnd 兩種價格）。
-  const effectiveMissingPrices = performance
-    ? (isAggregate
-        ? performance.missingPrices.filter((mp, index, arr) =>
-            arr.findIndex(item => item.ticker === mp.ticker) === index
-          )
-        : performance.missingPrices)
-    : [];
+  const effectiveMissingPrices = useMemo(() => {
+    if (!performance) {
+      return [];
+    }
+
+    if (!isAggregate) {
+      return performance.missingPrices;
+    }
+
+    return performance.missingPrices.filter((mp, index, arr) =>
+      arr.findIndex(item => item.ticker === mp.ticker) === index
+    );
+  }, [performance, isAggregate]);
 
   /**
    * 當年度或 benchmark 選擇變動時，更新 benchmark 報酬。
@@ -544,9 +593,20 @@ function PerformancePageContent({
    * - 避免閃爍（FR-095）：更新時不清空舊值，等新值回來再覆蓋。
    */
   useEffect(() => {
+    const requestId = ++benchmarkRequestIdRef.current;
+    const isLatestRequest = () => benchmarkRequestIdRef.current === requestId;
+
     const fetchBenchmarkReturns = async () => {
-      if (!selectedYear || !availableYears || selectedBenchmarks.length === 0) {
+      if (!selectedYear || !availableYears) {
         // 在取得必要資料前保持 loading 狀態
+        return;
+      }
+
+      const selectedSystemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
+      if (selectedSystemBenchmarks.length === 0) {
+        if (isLatestRequest()) {
+          setIsLoadingBenchmark(false);
+        }
         return;
       }
 
@@ -556,7 +616,9 @@ function PerformancePageContent({
       // 確保 YTD API 抓取時顯示 loading 狀態
       if (isCurrentYear && !ytdData) {
         // 保持 loading 狀態 - ytdData 到達時會重新執行
-        setIsLoadingBenchmark(true);
+        if (isLatestRequest()) {
+          setIsLoadingBenchmark(true);
+        }
         return;
       }
 
@@ -566,26 +628,58 @@ function PerformancePageContent({
       if (!isCurrentYear) {
         const cached = loadCachedSystemBenchmarkReturns(selectedYear);
         if (Object.keys(cached.returns).length > 0) {
-          setBenchmarkReturns(prev => ({ ...prev, ...cached.returns }));
-          setBenchmarkReturnSources(prev => ({ ...prev, ...cached.sources }));
+          const cachedReturnsForSelection: Record<string, number | null> = {};
+          const cachedSourcesForSelection: Record<string, string | null> = {};
+          const cachedYearsForSelection: Record<string, number> = {};
+
+          for (const key of selectedSystemBenchmarks) {
+            if (cached.returns[key] !== undefined) {
+              cachedReturnsForSelection[key] = cached.returns[key] ?? null;
+              cachedSourcesForSelection[key] = cached.sources[key] ?? null;
+              cachedYearsForSelection[key] = selectedYear;
+            }
+          }
+
+          if (Object.keys(cachedReturnsForSelection).length > 0 && isLatestRequest()) {
+            setBenchmarkReturns(prev => ({ ...prev, ...cachedReturnsForSelection }));
+            setBenchmarkReturnSources(prev => ({ ...prev, ...cachedSourcesForSelection }));
+            setBenchmarkReturnYears(prev => ({ ...prev, ...cachedYearsForSelection }));
+          }
+
           // 檢查所有選擇的系統基準是否都在快取中
-          const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
-          hasCachedData = systemBenchmarks.every(k => cached.returns[k] !== undefined);
+          hasCachedData = selectedSystemBenchmarks.every(k => cached.returns[k] !== undefined);
         }
       } else {
         // 當年度：檢查 YTD 快取是否有資料
         const cachedYtd = loadCachedYtdData();
         if (cachedYtd.data) {
           const ytd = transformYtdData(cachedYtd.data);
-          const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
-          hasCachedData = systemBenchmarks.some(k => ytd.benchmarks.some(b => b.marketKey === k && b.ytdReturnPercent != null));
+          const cachedReturnsForSelection: Record<string, number | null> = {};
+          const cachedYearsForSelection: Record<string, number> = {};
+
+          for (const key of selectedSystemBenchmarks) {
+            const benchmark = ytd.benchmarks.find(b => b.marketKey === key);
+            if (benchmark) {
+              cachedReturnsForSelection[key] = benchmark.ytdReturnPercent ?? null;
+              cachedYearsForSelection[key] = selectedYear;
+            }
+          }
+
+          if (Object.keys(cachedReturnsForSelection).length > 0 && isLatestRequest()) {
+            setBenchmarkReturns(prev => ({ ...prev, ...cachedReturnsForSelection }));
+            setBenchmarkReturnYears(prev => ({ ...prev, ...cachedYearsForSelection }));
+          }
+
+          hasCachedData = selectedSystemBenchmarks.some(k => ytd.benchmarks.some(b => b.marketKey === k));
         }
       }
 
       // 只在沒有快取資料時才顯示 loading，否則在背景更新
       if (!hasCachedData) {
-        setIsLoadingBenchmark(true);
-      } else {
+        if (isLatestRequest()) {
+          setIsLoadingBenchmark(true);
+        }
+      } else if (isLatestRequest()) {
         // 有快取資料時確保 loading 為 false（避免初始值問題）
         setIsLoadingBenchmark(false);
       }
@@ -594,10 +688,11 @@ function PerformancePageContent({
       try {
         const newReturns: Record<string, number | null> = {};
         const newSources: Record<string, string | null> = {};
+        const newReturnYears: Record<string, number> = {};
 
         if (isCurrentYear && ytdData) {
           // 當年度使用 YTD 資料 - 以英文 key 查詢（與後端一致）
-          for (const benchmarkKey of selectedBenchmarks) {
+          for (const benchmarkKey of selectedSystemBenchmarks) {
             const benchmark = ytdData.benchmarks.find(b => b.marketKey === benchmarkKey);
             if (benchmark?.ytdReturnPercent != null) {
               newReturns[benchmarkKey] = benchmark.ytdReturnPercent;
@@ -606,33 +701,43 @@ function PerformancePageContent({
               newReturns[benchmarkKey] = null;
               newSources[benchmarkKey] = null;
             }
+            newReturnYears[benchmarkKey] = selectedYear;
           }
         } else {
           // 歷史年度使用快取的基準報酬（優先 Yahoo Total Return，備援為計算值）
           try {
             const benchmarkData = await marketDataApi.getBenchmarkReturns(selectedYear);
-            for (const benchmarkKey of selectedBenchmarks) {
+            for (const benchmarkKey of selectedSystemBenchmarks) {
               const returnValue = benchmarkData.returns[benchmarkKey];
               newReturns[benchmarkKey] = returnValue ?? null;
               newSources[benchmarkKey] = benchmarkData.dataSources?.[benchmarkKey] ?? null;
+              newReturnYears[benchmarkKey] = selectedYear;
             }
             // 儲存至快取供未來使用
             saveCachedSystemBenchmarkReturns(selectedYear, newReturns, newSources);
           } catch {
             // API 失敗時所有基準為 null
-            for (const benchmarkKey of selectedBenchmarks) {
+            for (const benchmarkKey of selectedSystemBenchmarks) {
               newReturns[benchmarkKey] = null;
               newSources[benchmarkKey] = null;
+              newReturnYears[benchmarkKey] = selectedYear;
             }
           }
         }
 
+        if (!isLatestRequest()) {
+          return;
+        }
+
         setBenchmarkReturns(prev => ({ ...prev, ...newReturns }));
         setBenchmarkReturnSources(prev => ({ ...prev, ...newSources }));
+        setBenchmarkReturnYears(prev => ({ ...prev, ...newReturnYears }));
       } catch (err) {
         console.error('無法抓取基準報酬:', err);
       } finally {
-        setIsLoadingBenchmark(false);
+        if (isLatestRequest()) {
+          setIsLoadingBenchmark(false);
+        }
       }
     };
 
@@ -649,10 +754,16 @@ function PerformancePageContent({
    * - 更新後寫入快取。
    */
   useEffect(() => {
+    const requestId = ++customBenchmarkRequestIdRef.current;
+    const isLatestRequest = () => customBenchmarkRequestIdRef.current === requestId;
+
     const fetchCustomBenchmarkReturns = async () => {
       if (!selectedYear || !availableYears || customBenchmarks.length === 0) {
-        setCustomBenchmarkReturns({});
-        setIsLoadingCustomBenchmark(false);
+        if (isLatestRequest()) {
+          setCustomBenchmarkReturns({});
+          setCustomBenchmarkReturnYears({});
+          setIsLoadingCustomBenchmark(false);
+        }
         return;
       }
 
@@ -662,14 +773,29 @@ function PerformancePageContent({
 
       // 若沒有選擇任何自訂基準，直接完成
       if (selectedCustomBenchmarks.length === 0) {
-        setIsLoadingCustomBenchmark(false);
+        if (isLatestRequest()) {
+          setIsLoadingCustomBenchmark(false);
+        }
         return;
       }
 
       // 檢查是否有足夠的快取資料
       let hasCachedData = false;
       if (Object.keys(cachedReturns).length > 0) {
-        setCustomBenchmarkReturns(prev => ({ ...prev, ...cachedReturns }));
+        const cachedReturnsForSelection: Record<string, number | null> = {};
+        const cachedYearsForSelection: Record<string, number> = {};
+
+        for (const benchmark of selectedCustomBenchmarks) {
+          if (cachedReturns[benchmark.id] !== undefined) {
+            cachedReturnsForSelection[benchmark.id] = cachedReturns[benchmark.id] ?? null;
+            cachedYearsForSelection[benchmark.id] = selectedYear;
+          }
+        }
+
+        if (Object.keys(cachedReturnsForSelection).length > 0 && isLatestRequest()) {
+          setCustomBenchmarkReturns(prev => ({ ...prev, ...cachedReturnsForSelection }));
+          setCustomBenchmarkReturnYears(prev => ({ ...prev, ...cachedYearsForSelection }));
+        }
 
         // 歷史年度（非當年度）可完全信任快取（若完整）
         const isCurrentYear = selectedYear === availableYears.currentYear;
@@ -678,7 +804,9 @@ function PerformancePageContent({
            const allCached = selectedCustomBenchmarks.every(b => cachedReturns[b.id] !== undefined);
 
            if (allCached) {
-             setIsLoadingCustomBenchmark(false);
+             if (isLatestRequest()) {
+               setIsLoadingCustomBenchmark(false);
+             }
              return; // 歷史年度若快取存在則跳過網路請求
            }
         }
@@ -689,8 +817,10 @@ function PerformancePageContent({
 
       // 只在沒有快取資料時才顯示 loading，否則在背景更新
       if (!hasCachedData && selectedCustomBenchmarks.length > 0) {
-        setIsLoadingCustomBenchmark(true);
-      } else {
+        if (isLatestRequest()) {
+          setIsLoadingCustomBenchmark(true);
+        }
+      } else if (isLatestRequest()) {
         // 有快取資料或沒有選擇自訂基準時，確保 loading 為 false
         setIsLoadingCustomBenchmark(false);
       }
@@ -789,13 +919,25 @@ function PerformancePageContent({
             // 更新本地集合
             collectedReturns[benchmark.id] = returnValue;
 
+            if (!isLatestRequest()) {
+              return;
+            }
+
             // 每個基準完成後漸進更新狀態
             setCustomBenchmarkReturns(prev => ({
               ...prev,
               [benchmark.id]: returnValue
             }));
+            setCustomBenchmarkReturnYears(prev => ({
+              ...prev,
+              [benchmark.id]: selectedYear,
+            }));
           })
         );
+
+        if (!isLatestRequest()) {
+          return;
+        }
 
         // 儲存完整結果至快取
         saveCachedCustomBenchmarkReturns(selectedYear, collectedReturns);
@@ -803,7 +945,9 @@ function PerformancePageContent({
       } catch (err) {
         console.error('無法計算自訂基準報酬:', err);
       } finally {
-        setIsLoadingCustomBenchmark(false);
+        if (isLatestRequest()) {
+          setIsLoadingCustomBenchmark(false);
+        }
       }
     };
 
@@ -1220,7 +1364,7 @@ function PerformancePageContent({
     };
 
     autoFetchPrices();
-  }, [performance, selectedYear, availableYears, loadCachedPrices, fetchCurrentPrices, fetchHistoricalPrices, calculatePerformance, displayHomeCurrency]);
+  }, [performance, selectedYear, availableYears, effectiveMissingPrices, loadCachedPrices, fetchCurrentPrices, fetchHistoricalPrices, calculatePerformance, displayHomeCurrency]);
 
   // 手動重新整理按鈕處理
   const handleRefreshPrices = async () => {
@@ -1289,6 +1433,38 @@ function PerformancePageContent({
     return Math.round(value).toLocaleString('zh-TW');
   };
 
+  const selectedCurrencyLabel = currencyMode === 'source'
+    ? performance?.sourceCurrency
+    : displayHomeCurrency;
+  const modifiedDietzValue = currencyMode === 'source'
+    ? performance?.modifiedDietzPercentageSource
+    : performance?.modifiedDietzPercentage;
+  const timeWeightedReturnValue = currencyMode === 'source'
+    ? performance?.timeWeightedReturnPercentageSource
+    : performance?.timeWeightedReturnPercentage;
+  const startValue = currencyMode === 'source'
+    ? performance?.startValueSource
+    : performance?.startValueHome;
+  const endValue = currencyMode === 'source'
+    ? performance?.endValueSource
+    : performance?.endValueHome;
+  const netContributionValue = currencyMode === 'source'
+    ? performance?.netContributionsSource
+    : performance?.netContributionsHome;
+
+  const isPerformanceValueReady = Boolean(
+    performance &&
+    selectedYear != null &&
+    performance.year === selectedYear &&
+    performance.isComplete &&
+    selectedCurrencyLabel != null &&
+    modifiedDietzValue != null &&
+    timeWeightedReturnValue != null &&
+    startValue != null &&
+    endValue != null &&
+    netContributionValue != null
+  );
+
   const selectedCustomBenchmarkIds = useMemo(
     () => customBenchmarks
       .filter(b => selectedBenchmarks.includes(`custom_${b.id}`))
@@ -1297,15 +1473,31 @@ function PerformancePageContent({
   );
 
   const allDataReady = useMemo(() => {
+    if (!selectedYear) return false;
+
     const systemBenchmarks = selectedBenchmarks.filter(k => !k.startsWith('custom_'));
     const allSystemBenchmarksReady = systemBenchmarks.length === 0 ||
-      systemBenchmarks.every(k => benchmarkReturns[k] !== undefined);
+      systemBenchmarks.every(k => (
+        benchmarkReturns[k] !== undefined &&
+        benchmarkReturnYears[k] === selectedYear
+      ));
 
     const allCustomBenchmarksReady = selectedCustomBenchmarkIds.length === 0 ||
-      selectedCustomBenchmarkIds.every(id => customBenchmarkReturns[id] !== undefined);
+      selectedCustomBenchmarkIds.every(id => (
+        customBenchmarkReturns[id] !== undefined &&
+        customBenchmarkReturnYears[id] === selectedYear
+      ));
 
     return allSystemBenchmarksReady && allCustomBenchmarksReady;
-  }, [selectedBenchmarks, benchmarkReturns, selectedCustomBenchmarkIds, customBenchmarkReturns]);
+  }, [
+    selectedYear,
+    selectedBenchmarks,
+    benchmarkReturns,
+    benchmarkReturnYears,
+    selectedCustomBenchmarkIds,
+    customBenchmarkReturns,
+    customBenchmarkReturnYears,
+  ]);
 
   const benchmarkChartData = useMemo(() => {
     if (!performance) return [];
@@ -1325,7 +1517,11 @@ function PerformancePageContent({
         : []),
       /* FR-134: 過濾掉資料為 null 的基準，不顯示為 0 */
       ...selectedBenchmarks
-        .filter(benchmarkKey => !benchmarkKey.startsWith('custom_') && benchmarkReturns[benchmarkKey] != null)
+        .filter(benchmarkKey => (
+          !benchmarkKey.startsWith('custom_') &&
+          benchmarkReturnYears[benchmarkKey] === selectedYear &&
+          benchmarkReturns[benchmarkKey] != null
+        ))
         .map(benchmarkKey => {
           const benchmarkInfo = BENCHMARK_OPTIONS.find(b => b.key === benchmarkKey);
           const returnValue = benchmarkReturns[benchmarkKey]!;
@@ -1337,11 +1533,15 @@ function PerformancePageContent({
             tooltip: `${selectedYear} 年度報酬率${source ? `（來源：${source}）` : ''}`,
           };
         }),
-      /* 自訂使用者基準 - 僅顯示已選擇的 */
+      /* 自訂使用者基準 - 僅顯示已選擇且屬於當前年度 */
       ...customBenchmarks
         .filter(b => {
           const customKey = `custom_${b.id}`;
-          return selectedBenchmarks.includes(customKey) && customBenchmarkReturns[b.id] != null;
+          return (
+            selectedBenchmarks.includes(customKey) &&
+            customBenchmarkReturnYears[b.id] === selectedYear &&
+            customBenchmarkReturns[b.id] != null
+          );
         })
         .map(b => ({
           label: b.displayName || b.ticker,
@@ -1356,9 +1556,11 @@ function PerformancePageContent({
     selectedYear,
     selectedBenchmarks,
     benchmarkReturns,
+    benchmarkReturnYears,
     benchmarkReturnSources,
     customBenchmarks,
     customBenchmarkReturns,
+    customBenchmarkReturnYears,
   ]);
 
   // 固定以「選擇中的 benchmark 數量」保留圖表高度，避免資料分批完成時高度跳動
@@ -1368,16 +1570,34 @@ function PerformancePageContent({
   }, [selectedBenchmarks, selectedCustomBenchmarkIds.length]);
 
   const hiddenBenchmarkLabels = useMemo(() => {
+    if (!selectedYear) return [];
+
     const hiddenSystemBenchmarks = selectedBenchmarks
-      .filter(k => !k.startsWith('custom_') && benchmarkReturns[k] == null)
+      .filter(k => (
+        !k.startsWith('custom_') &&
+        benchmarkReturnYears[k] === selectedYear &&
+        benchmarkReturns[k] == null
+      ))
       .map(k => BENCHMARK_OPTIONS.find(b => b.key === k)?.label ?? k);
 
     const hiddenCustomBenchmarks = customBenchmarks
-      .filter(b => selectedBenchmarks.includes(`custom_${b.id}`) && customBenchmarkReturns[b.id] == null)
+      .filter(b => (
+        selectedBenchmarks.includes(`custom_${b.id}`) &&
+        customBenchmarkReturnYears[b.id] === selectedYear &&
+        customBenchmarkReturns[b.id] == null
+      ))
       .map(b => b.displayName || b.ticker);
 
     return [...hiddenSystemBenchmarks, ...hiddenCustomBenchmarks];
-  }, [selectedBenchmarks, benchmarkReturns, customBenchmarks, customBenchmarkReturns]);
+  }, [
+    selectedYear,
+    selectedBenchmarks,
+    benchmarkReturns,
+    benchmarkReturnYears,
+    customBenchmarks,
+    customBenchmarkReturns,
+    customBenchmarkReturnYears,
+  ]);
 
   // 注意：isLoadingPortfolio 和 !portfolio 檢查現在在父元件 PerformancePage 中
 
@@ -1533,7 +1753,7 @@ function PerformancePageContent({
                 <div className="flex items-center gap-2 mb-4">
                   <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                   <h3 className="text-[var(--text-muted)]">
-                    {selectedYear} 年度報酬 ({currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})
+                    {selectedYear} 年度報酬 {selectedCurrencyLabel ? `(${selectedCurrencyLabel})` : ''}
                   </h3>
                   <div className="relative group">
                     <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
@@ -1547,153 +1767,119 @@ function PerformancePageContent({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* 資金加權報酬率 */}
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
-                      <div className="relative group">
-                        <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量比例的重壓 (Modified Dietz)
+                {!isPerformanceValueReady ? (
+                  <div className="flex items-center gap-2 py-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                    <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 資金加權報酬率 */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
+                        <div className="relative group">
+                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              衡量比例的重壓 (Modified Dietz)
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                    {(currencyMode === 'source'
-                      ? performance.modifiedDietzPercentageSource
-                      : performance.modifiedDietzPercentage) != null ? (
                       <div className="flex items-center gap-2">
-                        {(currencyMode === 'source'
-                          ? performance.modifiedDietzPercentageSource!
-                          : performance.modifiedDietzPercentage!) >= 0 ? (
+                        {modifiedDietzValue! >= 0 ? (
                           <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                         ) : (
                           <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
                         )}
                         <span className={`text-3xl font-bold number-display ${
-                          (currencyMode === 'source'
-                            ? performance.modifiedDietzPercentageSource!
-                            : performance.modifiedDietzPercentage!) >= 0 ? 'number-positive' : 'number-negative'
+                          modifiedDietzValue! >= 0 ? 'number-positive' : 'number-negative'
                         }`}>
-                          {formatPercent(currencyMode === 'source'
-                            ? performance.modifiedDietzPercentageSource
-                            : performance.modifiedDietzPercentage)}
+                          {formatPercent(modifiedDietzValue)}
                         </span>
                       </div>
-                    ) : isFetchingPrices ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                        <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
-                      </div>
-                    ) : (
-                      <span className="text-2xl text-[var(--text-muted)]">—</span>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* 時間加權報酬率 */}
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
-                      <div className="relative group">
-                        <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                            衡量本金的重壓 (TWR)
+                    {/* 時間加權報酬率 */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
+                        <div className="relative group">
+                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              衡量本金的重壓 (TWR)
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                    {(currencyMode === 'source'
-                      ? performance.timeWeightedReturnPercentageSource
-                      : performance.timeWeightedReturnPercentage) != null ? (
                       <div className="flex items-center gap-2">
-                        {(currencyMode === 'source'
-                          ? performance.timeWeightedReturnPercentageSource!
-                          : performance.timeWeightedReturnPercentage!) >= 0 ? (
+                        {timeWeightedReturnValue! >= 0 ? (
                           <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                         ) : (
                           <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
                         )}
                         <span className={`text-3xl font-bold number-display ${
-                          (currencyMode === 'source'
-                            ? performance.timeWeightedReturnPercentageSource!
-                            : performance.timeWeightedReturnPercentage!) >= 0 ? 'number-positive' : 'number-negative'
+                          timeWeightedReturnValue! >= 0 ? 'number-positive' : 'number-negative'
                         }`}>
-                          {formatPercent(currencyMode === 'source'
-                            ? performance.timeWeightedReturnPercentageSource
-                            : performance.timeWeightedReturnPercentage)}
+                          {formatPercent(timeWeightedReturnValue)}
                         </span>
                       </div>
-                    ) : isFetchingPrices ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                        <span className="text-lg text-[var(--text-muted)]">抓取價格中...</span>
-                      </div>
-                    ) : (
-                      <span className="text-2xl text-[var(--text-muted)]">—</span>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
             {/* Value Summary */}
             <div className={`card-dark p-6 mb-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                {selectedYear} 年度摘要 ({currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})
+                {selectedYear} 年度摘要 {selectedCurrencyLabel ? `(${selectedCurrencyLabel})` : ''}
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-sm text-[var(--text-muted)]">年初價值</p>
-                  <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {currencyMode === 'source'
-                      ? (performance.startValueSource == null || performance.startValueSource === 0
-                          ? '首年'
-                          : `${formatCurrency(performance.startValueSource)} ${performance.sourceCurrency}`)
-                      : (performance.startValueHome == null || performance.startValueHome === 0
-                          ? '首年'
-                          : `${formatCurrency(performance.startValueHome)} ${displayHomeCurrency}`)}
-                  </p>
+              {!isPerformanceValueReady ? (
+                <div className="flex items-center gap-2 py-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                  <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
                 </div>
-                <div>
-                  <p className="text-sm text-[var(--text-muted)]">
-                    {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
-                  </p>
-                  <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {currencyMode === 'source'
-                      ? `${formatCurrency(performance.endValueSource)} ${performance.sourceCurrency}`
-                      : `${formatCurrency(performance.endValueHome)} ${displayHomeCurrency}`}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-[var(--text-muted)]">淨投入</p>
-                  <p className="text-lg font-medium text-[var(--text-primary)] number-display">
-                    {currencyMode === 'source'
-                      ? `${formatCurrency(performance.netContributionsSource)} ${performance.sourceCurrency}`
-                      : `${formatCurrency(performance.netContributionsHome)} ${displayHomeCurrency}`}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-[var(--text-muted)]">淨獲利</p>
-                  {(() => {
-                    const profit = currencyMode === 'source'
-                      ? (performance.endValueSource ?? 0) - (performance.startValueSource ?? 0) - (performance.netContributionsSource ?? 0)
-                      : (performance.endValueHome ?? 0) - (performance.startValueHome ?? 0) - performance.netContributionsHome;
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-[var(--text-muted)]">年初價值</p>
+                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
+                      {startValue === 0
+                        ? '首年'
+                        : `${formatCurrency(startValue)} ${selectedCurrencyLabel}`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      {selectedYear === availableYears?.currentYear ? '目前價值' : '年底價值'}
+                    </p>
+                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
+                      {formatCurrency(endValue)} {selectedCurrencyLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--text-muted)]">淨投入</p>
+                    <p className="text-lg font-medium text-[var(--text-primary)] number-display">
+                      {formatCurrency(netContributionValue)} {selectedCurrencyLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--text-muted)]">淨獲利</p>
+                    {(() => {
+                      const profit = endValue! - startValue! - netContributionValue!;
 
-                    const currencyLabel = currencyMode === 'source'
-                      ? performance.sourceCurrency
-                      : displayHomeCurrency;
-
-                    return (
-                      <p className={`text-lg font-medium number-display ${profit >= 0 ? 'number-positive' : 'number-negative'}`}>
-                        {formatCurrency(profit)} {currencyLabel}
-                      </p>
-                    );
-                  })()}
+                      return (
+                        <p className={`text-lg font-medium number-display ${profit >= 0 ? 'number-positive' : 'number-negative'}`}>
+                          {formatCurrency(profit)} {selectedCurrencyLabel}
+                        </p>
+                      );
+                    })()}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* 績效比較長條圖 - 投資組合 vs 基準（多選） */}

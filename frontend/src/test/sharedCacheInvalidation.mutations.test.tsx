@@ -63,6 +63,8 @@ vi.mock('../utils/cacheInvalidation', async () => {
 
   return {
     ...actual,
+    invalidateAssetsSummaryQuery: vi.fn(),
+    invalidatePerformanceLocalStorageCache: vi.fn(),
     invalidatePerformanceAndAssetsCaches: vi.fn(),
   };
 });
@@ -71,12 +73,18 @@ import { creditCardsApi } from '../features/credit-cards/api/creditCardsApi';
 import { installmentsApi } from '../features/credit-cards/api/installmentsApi';
 import { bankAccountsApi } from '../features/bank-accounts/api/bankAccountsApi';
 import { allocationsApi } from '../features/fund-allocations/api/allocationsApi';
-import { invalidatePerformanceAndAssetsCaches } from '../utils/cacheInvalidation';
+import {
+  invalidateAssetsSummaryQuery,
+  invalidatePerformanceAndAssetsCaches,
+  invalidatePerformanceLocalStorageCache,
+} from '../utils/cacheInvalidation';
 
 const mockedCreditCardsApi = vi.mocked(creditCardsApi, { deep: true });
 const mockedInstallmentsApi = vi.mocked(installmentsApi, { deep: true });
 const mockedBankAccountsApi = vi.mocked(bankAccountsApi, { deep: true });
 const mockedAllocationsApi = vi.mocked(allocationsApi, { deep: true });
+const mockedInvalidateAssetsSummaryQuery = vi.mocked(invalidateAssetsSummaryQuery);
+const mockedInvalidatePerformanceLocalStorageCache = vi.mocked(invalidatePerformanceLocalStorageCache);
 const mockedInvalidatePerformanceAndAssetsCaches = vi.mocked(invalidatePerformanceAndAssetsCaches);
 
 describe('shared cache invalidation on mutation success', () => {
@@ -170,7 +178,7 @@ describe('shared cache invalidation on mutation success', () => {
     );
   }
 
-  it('useCreditCards create mutation triggers shared invalidation helper', async () => {
+  it('useCreditCards create mutation triggers assets-only invalidation', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -195,15 +203,17 @@ describe('shared cache invalidation on mutation success', () => {
 
     await waitFor(() => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['creditCards'] });
-      expect(mockedInvalidatePerformanceAndAssetsCaches).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidateAssetsSummaryQuery).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidatePerformanceLocalStorageCache).not.toHaveBeenCalled();
+      expect(mockedInvalidatePerformanceAndAssetsCaches).not.toHaveBeenCalled();
     });
 
-    const [passedQueryClient, passedAssetsKey] = mockedInvalidatePerformanceAndAssetsCaches.mock.calls[0] as [QueryClient, readonly string[]];
+    const [passedQueryClient, passedAssetsKey] = mockedInvalidateAssetsSummaryQuery.mock.calls[0] as [QueryClient, readonly string[]];
     expect(passedQueryClient).toBe(queryClient);
     expect(passedAssetsKey).toEqual(['assets', 'summary']);
   });
 
-  it('useBankAccounts create mutation triggers shared invalidation helper', async () => {
+  it('useBankAccounts create mutation triggers assets-only invalidation', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -229,15 +239,17 @@ describe('shared cache invalidation on mutation success', () => {
 
     await waitFor(() => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['bankAccounts'] });
-      expect(mockedInvalidatePerformanceAndAssetsCaches).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidateAssetsSummaryQuery).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidatePerformanceLocalStorageCache).not.toHaveBeenCalled();
+      expect(mockedInvalidatePerformanceAndAssetsCaches).not.toHaveBeenCalled();
     });
 
-    const [passedQueryClient, passedAssetsKey] = mockedInvalidatePerformanceAndAssetsCaches.mock.calls[0] as [QueryClient, readonly string[]];
+    const [passedQueryClient, passedAssetsKey] = mockedInvalidateAssetsSummaryQuery.mock.calls[0] as [QueryClient, readonly string[]];
     expect(passedQueryClient).toBe(queryClient);
     expect(passedAssetsKey).toEqual(['assets', 'summary']);
   });
 
-  it('useBankAccounts close mutation triggers shared invalidation helper', async () => {
+  it('useBankAccounts close mutation triggers assets-only invalidation', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -255,15 +267,17 @@ describe('shared cache invalidation on mutation success', () => {
 
     await waitFor(() => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['bankAccounts'] });
-      expect(mockedInvalidatePerformanceAndAssetsCaches).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidateAssetsSummaryQuery).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidatePerformanceLocalStorageCache).not.toHaveBeenCalled();
+      expect(mockedInvalidatePerformanceAndAssetsCaches).not.toHaveBeenCalled();
     });
 
-    const [passedQueryClient, passedAssetsKey] = mockedInvalidatePerformanceAndAssetsCaches.mock.calls[0] as [QueryClient, readonly string[]];
+    const [passedQueryClient, passedAssetsKey] = mockedInvalidateAssetsSummaryQuery.mock.calls[0] as [QueryClient, readonly string[]];
     expect(passedQueryClient).toBe(queryClient);
     expect(passedAssetsKey).toEqual(['assets', 'summary']);
   });
 
-  it('useInstallments create mutation triggers shared invalidation helper', async () => {
+  it('useInstallments create mutation triggers assets-only invalidation', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -292,15 +306,17 @@ describe('shared cache invalidation on mutation success', () => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['installments'] });
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['installmentsUpcoming'] });
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['creditCards'] });
-      expect(mockedInvalidatePerformanceAndAssetsCaches).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidateAssetsSummaryQuery).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidatePerformanceLocalStorageCache).not.toHaveBeenCalled();
+      expect(mockedInvalidatePerformanceAndAssetsCaches).not.toHaveBeenCalled();
     });
 
-    const [passedQueryClient, passedAssetsKey] = mockedInvalidatePerformanceAndAssetsCaches.mock.calls[0] as [QueryClient, readonly string[]];
+    const [passedQueryClient, passedAssetsKey] = mockedInvalidateAssetsSummaryQuery.mock.calls[0] as [QueryClient, readonly string[]];
     expect(passedQueryClient).toBe(queryClient);
     expect(passedAssetsKey).toEqual(['assets', 'summary']);
   });
 
-  it('useFundAllocations create mutation triggers shared invalidation helper', async () => {
+  it('useFundAllocations create mutation triggers assets-only invalidation', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -324,10 +340,12 @@ describe('shared cache invalidation on mutation success', () => {
 
     await waitFor(() => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['fundAllocations'] });
-      expect(mockedInvalidatePerformanceAndAssetsCaches).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidateAssetsSummaryQuery).toHaveBeenCalledTimes(1);
+      expect(mockedInvalidatePerformanceLocalStorageCache).not.toHaveBeenCalled();
+      expect(mockedInvalidatePerformanceAndAssetsCaches).not.toHaveBeenCalled();
     });
 
-    const [passedQueryClient, passedAssetsKey] = mockedInvalidatePerformanceAndAssetsCaches.mock.calls[0] as [QueryClient, readonly string[]];
+    const [passedQueryClient, passedAssetsKey] = mockedInvalidateAssetsSummaryQuery.mock.calls[0] as [QueryClient, readonly string[]];
     expect(passedQueryClient).toBe(queryClient);
     expect(passedAssetsKey).toEqual(['assets', 'summary']);
   });

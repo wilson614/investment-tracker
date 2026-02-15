@@ -117,7 +117,6 @@ export function PortfolioPage() {
     portfolios: contextPortfolios,
     selectPortfolio,
     refreshPortfolios,
-    clearPerformanceState,
     invalidateSharedCaches,
   } = usePortfolio();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
@@ -152,10 +151,7 @@ export function PortfolioPage() {
    */
   const loadDataForPortfolio = useCallback(async (
     portfolioId: string,
-    options?: { clearSharedPerformanceState?: boolean },
   ) => {
-    const shouldClearSharedPerformanceState = options?.clearSharedPerformanceState ?? true;
-
     try {
       setIsLoading(true);
       setError(null);
@@ -163,10 +159,6 @@ export function PortfolioPage() {
       setSummary(null);
       setXirrResult(null);
       setTransactions([]);
-      // Also clear performance state in context (for Performance page)
-      if (shouldClearSharedPerformanceState) {
-        clearPerformanceState();
-      }
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);
@@ -197,7 +189,7 @@ export function PortfolioPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [clearPerformanceState]);
+  }, []);
 
   /**
    * 載入目前使用者的投資組合（若不存在則建立預設投資組合），並取得 summary / 交易。
@@ -260,7 +252,6 @@ export function PortfolioPage() {
 
   const hasFetchedOnLoad = useRef(false);
   const firstPortfolioId = contextPortfolios[0]?.id;
-  const previousPortfolioIdRef = useRef<string | null>(currentPortfolioId);
 
   useEffect(() => {
     if (isAllPortfolios && firstPortfolioId) {
@@ -273,22 +264,14 @@ export function PortfolioPage() {
       if (!firstPortfolioId) {
         loadData();
       }
-      previousPortfolioIdRef.current = currentPortfolioId;
       return;
     }
 
     if (currentPortfolioId) {
-      const isPortfolioSwitchTriggeredBySelect =
-        previousPortfolioIdRef.current !== currentPortfolioId;
-
-      loadDataForPortfolio(currentPortfolioId, {
-        clearSharedPerformanceState: !isPortfolioSwitchTriggeredBySelect,
-      });
+      loadDataForPortfolio(currentPortfolioId);
     } else {
       loadData();
     }
-
-    previousPortfolioIdRef.current = currentPortfolioId;
   }, [currentPortfolioId, isAllPortfolios, firstPortfolioId, loadDataForPortfolio, loadData]);
 
   // Auto-fetch all prices on page load (after summary is loaded)
@@ -389,7 +372,7 @@ export function PortfolioPage() {
 
     // Reload current portfolio data (not reset to first portfolio)
     if (currentPortfolioId) {
-      await loadDataForPortfolio(currentPortfolioId, { clearSharedPerformanceState: false });
+      await loadDataForPortfolio(currentPortfolioId);
     } else {
       await loadData();
     }
@@ -432,7 +415,7 @@ export function PortfolioPage() {
 
     // Reload current portfolio data (not reset to first portfolio)
     if (currentPortfolioId) {
-      await loadDataForPortfolio(currentPortfolioId, { clearSharedPerformanceState: false });
+      await loadDataForPortfolio(currentPortfolioId);
     } else {
       await loadData();
     }
@@ -709,6 +692,7 @@ export function PortfolioPage() {
                 exportDisabled={transactions.length === 0}
               />
               <button
+                data-testid="portfolio-add-transaction"
                 onClick={() => setShowForm(true)}
                 className="btn-accent px-3 py-1.5 text-sm"
               >

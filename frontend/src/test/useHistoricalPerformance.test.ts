@@ -685,6 +685,178 @@ describe('useHistoricalPerformance', () => {
     });
   });
 
+  it('prefers complete historical cache and skips calculate API when data has not changed', async () => {
+    const cacheNamespace = 'portfolio-history-cache-hit';
+    const years: AvailableYears = {
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    localStorage.setItem('perf_selected_year', String(previousYear));
+    localStorage.setItem(buildPerformanceYearsCacheKey(cacheNamespace), JSON.stringify(years));
+    localStorage.setItem(
+      buildPerformanceDataCacheKey(cacheNamespace, previousYear),
+      JSON.stringify(createPerformance(previousYear)),
+    );
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce(years);
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: cacheNamespace,
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(mockedPortfolioApi.calculateYearPerformance).not.toHaveBeenCalled();
+    expect(result.current.isLoadingPerformance).toBe(false);
+  });
+
+  it('recalculates historical year when cached performance is incomplete', async () => {
+    const cacheNamespace = 'portfolio-history-cache-incomplete';
+    const years: AvailableYears = {
+      years: [currentYear, previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    localStorage.setItem('perf_selected_year', String(previousYear));
+    localStorage.setItem(buildPerformanceYearsCacheKey(cacheNamespace), JSON.stringify(years));
+    localStorage.setItem(
+      buildPerformanceDataCacheKey(cacheNamespace, previousYear),
+      JSON.stringify({
+        ...createPerformance(previousYear),
+        isComplete: false,
+      } satisfies YearPerformance),
+    );
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce(years);
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValueOnce(createPerformance(previousYear));
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: cacheNamespace,
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        cacheNamespace,
+        expect.objectContaining({ year: previousYear }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.performance?.isComplete).toBe(true);
+      expect(result.current.performance?.year).toBe(previousYear);
+    });
+  });
+
+  it('guards against historical incomplete-result refetch loop but still recalculates after year switch', async () => {
+    const cacheNamespace = 'portfolio-history-incomplete-loop-guard';
+    const years: AvailableYears = {
+      years: [previousYear, twoYearsAgo],
+      earliestYear: twoYearsAgo,
+      currentYear,
+    };
+
+    const incompletePreviousYearPerformance: YearPerformance = {
+      ...createPerformance(previousYear),
+      isComplete: false,
+    };
+
+    const incompleteTwoYearsAgoPerformance: YearPerformance = {
+      ...createPerformance(twoYearsAgo),
+      isComplete: false,
+    };
+
+    localStorage.setItem('perf_selected_year', String(previousYear));
+    localStorage.setItem(buildPerformanceYearsCacheKey(cacheNamespace), JSON.stringify(years));
+    localStorage.setItem(
+      buildPerformanceDataCacheKey(cacheNamespace, previousYear),
+      JSON.stringify(incompletePreviousYearPerformance),
+    );
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce(years);
+    mockedPortfolioApi.calculateYearPerformance.mockImplementation(async (_portfolioId, request) => {
+      if (request.year === previousYear) {
+        return {
+          ...incompletePreviousYearPerformance,
+        };
+      }
+
+      if (request.year === twoYearsAgo) {
+        return {
+          ...incompleteTwoYearsAgoPerformance,
+        };
+      }
+
+      return createPerformance(request.year);
+    });
+
+    const getHistoricalCallCount = (year: number) =>
+      mockedPortfolioApi.calculateYearPerformance.mock.calls.filter(
+        ([portfolioId, request]) => portfolioId === cacheNamespace && request.year === year,
+      ).length;
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: cacheNamespace,
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(getHistoricalCallCount(previousYear)).toBe(1);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(getHistoricalCallCount(previousYear)).toBe(1);
+
+    act(() => {
+      result.current.setSelectedYear(twoYearsAgo);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(twoYearsAgo);
+      expect(getHistoricalCallCount(twoYearsAgo)).toBe(1);
+    });
+
+    act(() => {
+      result.current.setSelectedYear(previousYear);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedYear).toBe(previousYear);
+      expect(getHistoricalCallCount(previousYear)).toBe(2);
+    });
+  });
+
   it('does not repeatedly refetch historical year after first successful load', async () => {
     localStorage.setItem('perf_selected_year', String(previousYear));
 

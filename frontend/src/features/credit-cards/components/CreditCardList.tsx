@@ -1,4 +1,5 @@
 import { Edit, CreditCard } from 'lucide-react';
+import { NumberValueSlot } from '../../../components/common';
 import { formatCurrency } from '../../../utils/currency';
 import type { CreditCardResponse } from '../types';
 
@@ -7,6 +8,7 @@ interface CreditCardListProps {
   selectedCardId?: string | null;
   onSelect?: (card: CreditCardResponse) => void;
   onEdit: (card: CreditCardResponse) => void;
+  isValueLoading?: boolean;
 }
 
 export function CreditCardList({
@@ -14,6 +16,7 @@ export function CreditCardList({
   selectedCardId,
   onSelect,
   onEdit,
+  isValueLoading = false,
 }: CreditCardListProps) {
   if (creditCards.length === 0) {
     return (
@@ -29,6 +32,7 @@ export function CreditCardList({
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {creditCards.map((card) => {
         const isSelected = selectedCardId === card.id;
+        const shouldShowValueLoading = isValueLoading && isSelected;
 
         return (
           <div
@@ -64,15 +68,25 @@ export function CreditCardList({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">進行中分期</p>
-                <p className="text-lg font-semibold text-[var(--accent-peach)] number-display">
-                  {card.activeInstallmentsCount.toLocaleString('zh-TW')} 筆
-                </p>
+                <NumberValueSlot
+                  value={`${card.activeInstallmentsCount.toLocaleString('zh-TW')} 筆`}
+                  isLoading={shouldShowValueLoading}
+                  minWidthClassName="min-w-[8ch]"
+                  textClassName="text-lg font-semibold text-[var(--accent-peach)] number-display"
+                  skeletonHeightClassName="h-7"
+                  testId="credit-card-active-installments-slot"
+                />
               </div>
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">未繳總額</p>
-                <p className="text-lg font-semibold text-[var(--text-primary)] number-display">
-                  {formatCurrency(card.totalUnpaidBalance, 'TWD')}
-                </p>
+                <NumberValueSlot
+                  value={formatCurrency(card.totalUnpaidBalance, 'TWD')}
+                  isLoading={shouldShowValueLoading}
+                  minWidthClassName="min-w-[12ch]"
+                  textClassName="text-lg font-semibold text-[var(--text-primary)] number-display"
+                  skeletonHeightClassName="h-7"
+                  testId="credit-card-total-unpaid-slot"
+                />
               </div>
             </div>
           </div>

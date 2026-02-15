@@ -1,10 +1,12 @@
 import { CircleDollarSign, Trash2 } from 'lucide-react';
+import { NumberValueSlot } from '../../../components/common';
 import { formatCurrency } from '../../../utils/currency';
 import type { InstallmentResponse } from '../types';
 
 interface InstallmentListProps {
   installments: InstallmentResponse[];
   onDelete: (installment: InstallmentResponse) => void;
+  isValueLoading?: boolean;
 }
 
 function getStatusBadgeClass(status: InstallmentResponse['status']) {
@@ -51,6 +53,7 @@ function formatDate(dateString: string): string {
 export function InstallmentList({
   installments,
   onDelete,
+  isValueLoading = false,
 }: InstallmentListProps) {
   if (installments.length === 0) {
     return (
@@ -102,40 +105,60 @@ export function InstallmentList({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">總金額</p>
-                <p className="text-base font-semibold text-[var(--text-primary)] number-display">
-                  {formatCurrency(installment.totalAmount, 'TWD')}
-                </p>
+                <NumberValueSlot
+                  value={formatCurrency(installment.totalAmount, 'TWD')}
+                  isLoading={isValueLoading}
+                  minWidthClassName="min-w-[10ch]"
+                  textClassName="text-base font-semibold text-[var(--text-primary)] number-display"
+                  testId="installment-total-amount-slot"
+                />
               </div>
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">每月應付</p>
-                <p className="text-base font-semibold text-[var(--accent-peach)] number-display">
-                  {formatCurrency(installment.monthlyPayment, 'TWD')}
-                </p>
+                <NumberValueSlot
+                  value={formatCurrency(installment.monthlyPayment, 'TWD')}
+                  isLoading={isValueLoading}
+                  minWidthClassName="min-w-[10ch]"
+                  textClassName="text-base font-semibold text-[var(--accent-peach)] number-display"
+                  testId="installment-monthly-payment-slot"
+                />
               </div>
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">剩餘期數</p>
-                <p className="text-base font-semibold text-[var(--text-primary)] number-display">
-                  {installment.remainingInstallments} / {installment.numberOfInstallments}
-                </p>
+                <NumberValueSlot
+                  value={`${installment.remainingInstallments} / ${installment.numberOfInstallments}`}
+                  isLoading={isValueLoading}
+                  minWidthClassName="min-w-[8ch]"
+                  textClassName="text-base font-semibold text-[var(--text-primary)] number-display"
+                  testId="installment-remaining-slot"
+                />
               </div>
               <div>
                 <p className="text-sm text-[var(--text-muted)] mb-1">未繳餘額</p>
-                <p className="text-base font-semibold text-[var(--text-primary)] number-display">
-                  {formatCurrency(installment.unpaidBalance, 'TWD')}
-                </p>
+                <NumberValueSlot
+                  value={formatCurrency(installment.unpaidBalance, 'TWD')}
+                  isLoading={isValueLoading}
+                  minWidthClassName="min-w-[10ch]"
+                  textClassName="text-base font-semibold text-[var(--text-primary)] number-display"
+                  testId="installment-unpaid-balance-slot"
+                />
               </div>
             </div>
 
             <div className="mt-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm text-[var(--text-muted)]">付款進度</span>
-                <span className="text-sm text-[var(--text-secondary)] number-display">
-                  {progress.toLocaleString('zh-TW', {
+                <NumberValueSlot
+                  value={`${progress.toLocaleString('zh-TW', {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
-                  })}
-                  %
-                </span>
+                  })}%`}
+                  isLoading={isValueLoading}
+                  minWidthClassName="min-w-[6ch]"
+                  textClassName="text-sm text-[var(--text-secondary)] number-display"
+                  skeletonHeightClassName="h-4"
+                  testId="installment-progress-percentage-slot"
+                />
               </div>
               <div className="w-full h-2 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
                 <div

@@ -13,15 +13,18 @@ import {
  * invalidateSharedCaches 的部分參數語意：
  * - 未傳入 options 時，預設同時清理 performance 與 assets（維持既有行為）
  * - 只傳入其中一個欄位時，另一個欄位仍預設為 true
+ * - clearPerformanceStorage=false 時，只重置 Performance UI 狀態，不清 localStorage 的 perf cache
  */
 export interface CacheInvalidationOptions {
   performance?: boolean;
   assets?: boolean;
+  clearPerformanceStorage?: boolean;
 }
 
 export const DEFAULT_CACHE_INVALIDATION_OPTIONS: Readonly<Required<CacheInvalidationOptions>> = {
   performance: true,
   assets: true,
+  clearPerformanceStorage: true,
 };
 
 export function resolveCacheInvalidationOptions(
@@ -30,6 +33,8 @@ export function resolveCacheInvalidationOptions(
   return {
     performance: options.performance ?? DEFAULT_CACHE_INVALIDATION_OPTIONS.performance,
     assets: options.assets ?? DEFAULT_CACHE_INVALIDATION_OPTIONS.assets,
+    clearPerformanceStorage: options.clearPerformanceStorage
+      ?? DEFAULT_CACHE_INVALIDATION_OPTIONS.clearPerformanceStorage,
   };
 }
 
@@ -115,14 +120,21 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     const {
       performance: shouldInvalidatePerformance,
       assets: shouldInvalidateAssets,
+      clearPerformanceStorage,
     } = resolveCacheInvalidationOptions(options);
 
-    if (shouldInvalidatePerformance && shouldInvalidateAssets) {
+    const shouldClearPerformanceStorage = shouldInvalidatePerformance && clearPerformanceStorage;
+
+    if (shouldClearPerformanceStorage && shouldInvalidateAssets) {
       invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summaryQuery);
-    } else if (shouldInvalidatePerformance) {
-      invalidatePerformanceLocalStorageCache();
-    } else if (shouldInvalidateAssets) {
-      void queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summaryQuery }).catch(() => undefined);
+    } else {
+      if (shouldClearPerformanceStorage) {
+        invalidatePerformanceLocalStorageCache();
+      }
+
+      if (shouldInvalidateAssets) {
+        void queryClient.invalidateQueries({ queryKey: ASSETS_KEYS.summaryQuery }).catch(() => undefined);
+      }
     }
 
     if (shouldInvalidatePerformance) {
@@ -133,8 +145,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const selectPortfolio = useCallback((portfolioId: string) => {
     if (portfolioId === currentPortfolioId) return;
 
-    // Clear performance state immediately (FR-100: within 100ms)
-    invalidateSharedCaches({ performance: true, assets: false });
+    // 僅重置 Performance UI 狀態，不清除既有績效 localStorage 快取
+    // 讓 A↔B↔A 可復用各投組已存在的 perf_data_* / perf_years_* cache
+    invalidateSharedCaches({ performance: true, assets: false, clearPerformanceStorage: false });
 
     // Update selection
     setCurrentPortfolioId(portfolioId);

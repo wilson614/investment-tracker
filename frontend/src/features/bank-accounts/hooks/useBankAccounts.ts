@@ -4,7 +4,7 @@ import type { CloseBankAccountRequest, CreateBankAccountRequest, UpdateBankAccou
 import { useToast } from '../../../components/common';
 import { getErrorMessage } from '../../../utils/errorMapping';
 import { ASSETS_KEYS } from '../../total-assets/hooks/useTotalAssets';
-import { invalidatePerformanceAndAssetsCaches } from '../../../utils/cacheInvalidation';
+import { invalidateAssetsSummaryQuery } from '../../../utils/cacheInvalidation';
 
 export const BANK_ACCOUNTS_QUERY_KEY = ['bankAccounts'];
 
@@ -21,7 +21,7 @@ export function useBankAccounts() {
     mutationFn: (data: CreateBankAccountRequest) => bankAccountsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('銀行帳戶建立成功');
     },
     onError: (err: Error) => {
@@ -34,7 +34,7 @@ export function useBankAccounts() {
       bankAccountsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('銀行帳戶更新成功');
     },
     onError: (err: Error) => {
@@ -47,7 +47,7 @@ export function useBankAccounts() {
       bankAccountsApi.closeBankAccount(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('定存帳戶已結清');
     },
     onError: (err: Error) => {
@@ -59,7 +59,7 @@ export function useBankAccounts() {
     mutationFn: (id: string) => bankAccountsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANK_ACCOUNTS_QUERY_KEY });
-      invalidatePerformanceAndAssetsCaches(queryClient, ASSETS_KEYS.summary());
+      invalidateAssetsSummaryQuery(queryClient, ASSETS_KEYS.summary());
       toast.success('銀行帳戶已刪除');
     },
     onError: (err: Error) => {

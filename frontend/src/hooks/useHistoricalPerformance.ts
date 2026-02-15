@@ -149,6 +149,10 @@ function createEmptyAvailableYears(): AvailableYears {
   };
 }
 
+function isCompletePerformanceCache(performance: YearPerformance | null | undefined): performance is YearPerformance {
+  return Boolean(performance && performance.isComplete === true);
+}
+
 export function useHistoricalPerformance({
   portfolioId,
   isAggregate = false,
@@ -183,6 +187,12 @@ export function useHistoricalPerformance({
   // 追蹤目前已選擇的年份，供 callback 讀取最新值
   const selectedYearRef = useRef<number | null>(initialCache.selectedYear);
 
+  // 追蹤 selectedYear 是否發生切換，用於重設歷史年度自動重算旗標
+  const previousSelectedYearRef = useRef<number | null>(initialCache.selectedYear);
+
+  // 追蹤歷史年度是否已自動重算，避免 isComplete=false 時迴圈重算
+  const fetchedHistoricalYearRef = useRef<number | null>(null);
+
   // 追蹤最新的績效請求，避免舊回應覆寫最新年度資料
   const performanceRequestIdRef = useRef<number>(0);
 
@@ -191,6 +201,11 @@ export function useHistoricalPerformance({
   const fetchedCurrentYearRef = useRef<boolean>(false);
 
   useEffect(() => {
+    if (previousSelectedYearRef.current !== selectedYear) {
+      fetchedHistoricalYearRef.current = null;
+      previousSelectedYearRef.current = selectedYear;
+    }
+
     selectedYearRef.current = selectedYear;
   }, [selectedYear]);
 
@@ -396,7 +411,7 @@ export function useHistoricalPerformance({
    * - 當年度（YTD）：若快取有完整資料（startValueSource 有值），
    *   不在此處呼叫 API，改由 Performance.tsx 的 autoFetchPrices 處理，
    *   以避免 API 在補價前回傳 null 導致閃爍
-   * - 歷史年度：僅使用快取（資料來自資料庫，不會變動）
+   * - 歷史年度：快取完整時直接使用；快取缺失/不完整時僅自動重算一次，避免迴圈重算
    */
   useEffect(() => {
     if (!selectedYear || !autoFetch || (!isAggregate && !portfolioId)) return;
@@ -404,8 +419,18 @@ export function useHistoricalPerformance({
     const currentYear = new Date().getFullYear();
     const isCurrentYear = selectedYear === currentYear;
 
-    // 歷史年度：有快取則跳過 API
-    if (!isCurrentYear && cachedYearRef.current === selectedYear && performance) {
+    // 歷史年度：快取完整時跳過 API；快取不完整僅自動重算一次，避免迴圈請求
+    if (!isCurrentYear) {
+      if (cachedYearRef.current === selectedYear && isCompletePerformanceCache(performance)) {
+        return;
+      }
+
+      if (fetchedHistoricalYearRef.current === selectedYear) {
+        return;
+      }
+
+      fetchedHistoricalYearRef.current = selectedYear;
+      calculatePerformance(selectedYear);
       return;
     }
 
