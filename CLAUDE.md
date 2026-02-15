@@ -42,6 +42,12 @@ This project uses Speckit. Specification files location:
 /team-exec (PM reads tasks.md, executes with team)
 ```
 
+## Speckit Feature Numbering
+
+- Feature branch and `specs/` directory names MUST use a **global incrementing 3-digit prefix** across the entire project (for example: `010-*`, `011-*`, `012-*`).
+- Do **not** restart numbering per short name.
+- The next feature number MUST be `max(existing feature numbers) + 1`, considering both branches and `specs/` directories.
+
 **Trigger Conditions** (must use Speckit flow):
 - Route structure changes
 - Data model changes
