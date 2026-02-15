@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<IndexPriceSnapshot> IndexPriceSnapshots => Set<IndexPriceSnapshot>();
     public DbSet<StockSplit> StockSplits => Set<StockSplit>();
     public DbSet<EuronextSymbolMapping> EuronextSymbolMappings => Set<EuronextSymbolMapping>();
+    public DbSet<TwSecurityMapping> TwSecurityMappings => Set<TwSecurityMapping>();
     public DbSet<EtfClassification> EtfClassifications => Set<EtfClassification>();
     public DbSet<HistoricalYearEndData> HistoricalYearEndData => Set<HistoricalYearEndData>();
     public DbSet<HistoricalExchangeRateCache> HistoricalExchangeRateCaches => Set<HistoricalExchangeRateCache>();

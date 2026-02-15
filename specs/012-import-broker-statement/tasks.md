@@ -17,10 +17,10 @@
 
 **Purpose**: Prepare shared contracts/types for new import workflow
 
-- [ ] T001 Add stock import API request/response client types in `frontend/src/types/index.ts`
-- [ ] T002 Add stock import API client methods in `frontend/src/services/api.ts`
-- [ ] T003 [P] Add backend DTO skeletons for stock import preview/execute, including canonical `confirmedTradeSide` and balance-decision fields, in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T004 [P] Add backend response DTOs for stock import diagnostics in `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs`
+- [x] T001 Add stock import API request/response client types in `frontend/src/types/index.ts`
+- [x] T002 Add stock import API client methods in `frontend/src/services/api.ts`
+- [x] T003 [P] Add backend DTO skeletons for stock import preview/execute, including canonical `confirmedTradeSide` and balance-decision fields, in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
+- [x] T004 [P] Add backend response DTOs for stock import diagnostics in `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs
 
 ---
 
