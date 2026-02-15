@@ -35,10 +35,10 @@
 - [x] T007 Register mapping DbSet in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
 - [x] T008 Add EF migration for TW security mapping table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
 - [x] T009 [P] Add repository interface for TW security mapping lookup/upsert in `backend/src/InvestmentTracker.Domain/Interfaces/ITwSecurityMappingRepository.cs`
-- [x] T010 [P] Implement TW security mapping repository in `backend/src/InvestmentTracker.Infrastructure/Repositories/TwSecurityMappingRepository.cs
-- [ ] T011 Implement on-demand TWSE ISIN source synchronization service in `backend/src/InvestmentTracker.Infrastructure/Services/TwseSymbolMappingService.cs`
-- [ ] T012 Wire DI registrations for mapping repository/service in `backend/src/InvestmentTracker.Infrastructure/DependencyInjection.cs`
-- [ ] T013 Add API endpoint for on-demand symbol sync in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [x] T010 [P] Implement TW security mapping repository in `backend/src/InvestmentTracker.Infrastructure/Repositories/TwSecurityMappingRepository.cs`
+- [x] T011 Implement on-demand TWSE ISIN source synchronization service in `backend/src/InvestmentTracker.Infrastructure/Services/TwseSymbolMappingService.cs`
+- [x] T012 Wire DI registrations for mapping repository/service in `backend/src/InvestmentTracker.Infrastructure/DependencyInjection.cs`
+- [x] T013 Add API endpoint for on-demand symbol sync in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
 
 **Checkpoint**: Foundation ready - user story implementation can now begin.
 
