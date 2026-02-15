@@ -1,28 +1,47 @@
 /**
  * StockImportButton
  *
- * 股票交易 CSV 匯入按鈕：開啟 CSVImportModal → 逐列解析/驗證 → 呼叫交易 API。
- *
- * 重要行為：
- * - 會先將 CSV rows 依日期排序，避免出現 sell-before-buy 的計算/驗證問題。
- * - 交易會自動連結到 Portfolio 綁定的帳本（FR-001）。
- * - 匯率欄位為可選：若 CSV 未提供，backend 會自動從交易日期抓取。
+ * 股票交易 CSV 匯入按鈕：
+ * - legacy csv：保留既有逐列 parse + transactionApi.create 流程
+ * - broker / unified：改走 previewImport / executeImport 與 unresolved-row remediation
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Upload } from 'lucide-react';
-import { CSVImportModal, type FieldDefinition } from './CSVImportModal';
+import {
+  CSVImportModal,
+  type CSVImportPreviewExtensions,
+  type CSVImportRemediationRow,
+  type FieldDefinition,
+} from './CSVImportModal';
 import { transactionApi } from '../../services/api';
 import {
   getRowValue,
   parseDate,
   parseNumber,
   formatDateISO,
+  detectStockImportFormat,
+  normalizeCurrencyCode,
+  normalizeTickerValue,
+  BROKER_STATEMENT_FIELD_ALIASES,
+  LEGACY_STOCK_FIELD_ALIASES,
   type ParsedCSV,
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
 import { StockMarket, Currency } from '../../types';
-import type { CreateStockTransactionRequest, TransactionType, StockMarket as StockMarketType, Currency as CurrencyType } from '../../types';
+import type {
+  CreateStockTransactionRequest,
+  TransactionType,
+  StockMarket as StockMarketType,
+  Currency as CurrencyType,
+  StockImportExecuteRequest,
+  StockImportPreviewRequest,
+  StockImportPreviewResponse,
+  StockImportPreviewRow,
+  StockImportSelectedFormat,
+  StockImportTradeSide,
+  StockImportExecuteRowRequest,
+} from '../../types';
 
 interface StockImportButtonProps {
   /** 目標 portfolio ID */
@@ -47,44 +66,68 @@ const stockFields: FieldDefinition[] = [
   {
     name: 'date',
     label: '日期',
-    aliases: ['transactionDate', 'transaction_date', 'Date', '交易日期', '日期', '買進日期'],
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.date, ...BROKER_STATEMENT_FIELD_ALIASES.tradeDate],
     required: true,
   },
   {
     name: 'ticker',
     label: '股票代號',
-    aliases: ['Ticker', 'symbol', 'Symbol', 'stock', 'Stock', '代碼', '股票', '股票代號'],
-    required: true,
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.ticker, ...BROKER_STATEMENT_FIELD_ALIASES.ticker],
+    required: false,
+  },
+  {
+    name: 'securityName',
+    label: '標的名稱（券商）',
+    aliases: [...BROKER_STATEMENT_FIELD_ALIASES.securityName],
+    required: false,
   },
   {
     name: 'type',
     label: '交易類型',
-    aliases: ['transactionType', 'transaction_type', 'Type', '類型', '買賣'],
-    required: true,
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.type],
+    required: false,
   },
   {
     name: 'market',
     label: '市場',
-    aliases: ['Market', 'exchange', 'Exchange', '市場', '交易所'],
-    required: true,
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.market],
+    required: false,
   },
   {
     name: 'currency',
     label: '幣別',
-    aliases: ['Currency', 'currencyCode', 'currency_code', '幣別', '貨幣'],
-    required: true,
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.currency, ...BROKER_STATEMENT_FIELD_ALIASES.currency],
+    required: false,
   },
   {
     name: 'shares',
     label: '股數',
-    aliases: ['Shares', 'quantity', 'Quantity', 'qty', 'Qty', '數量', '股', '買進股數', '股數'],
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.shares, ...BROKER_STATEMENT_FIELD_ALIASES.quantity],
     required: true,
   },
   {
     name: 'price',
     label: '每股價格',
-    aliases: ['pricePerShare', 'price_per_share', 'Price', '價格', '單價', '買進價格'],
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.price, ...BROKER_STATEMENT_FIELD_ALIASES.unitPrice],
     required: true,
+  },
+  {
+    name: 'netSettlement',
+    label: '淨收付（券商）',
+    aliases: [...BROKER_STATEMENT_FIELD_ALIASES.netSettlement],
+    required: false,
+  },
+  {
+    name: 'fees',
+    label: '手續費',
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.fees, ...BROKER_STATEMENT_FIELD_ALIASES.fees],
+    required: false,
+  },
+  {
+    name: 'taxes',
+    label: '交易稅（券商）',
+    aliases: [...BROKER_STATEMENT_FIELD_ALIASES.taxes],
+    required: false,
   },
   {
     name: 'exchangeRate',
@@ -93,17 +136,16 @@ const stockFields: FieldDefinition[] = [
     required: false,
   },
   {
-    name: 'fees',
-    label: '手續費',
-    aliases: ['Fees', 'commission', 'Commission', 'fee', 'Fee', '手續費', '費用'],
-    required: false,
-  },
-  {
     name: 'notes',
     label: '備註',
-    aliases: ['Notes', 'memo', 'Memo', 'description', 'Description', '備註', '說明'],
+    aliases: [...LEGACY_STOCK_FIELD_ALIASES.notes, ...BROKER_STATEMENT_FIELD_ALIASES.notes],
     required: false,
   },
+];
+
+const formatOptions: Array<{ value: StockImportSelectedFormat; label: string }> = [
+  { value: 'broker_statement', label: '券商對帳單（Broker Statement）' },
+  { value: 'legacy_csv', label: '舊版 CSV（Legacy CSV）' },
 ];
 
 /**
@@ -208,6 +250,26 @@ function parseCurrency(currencyStr: string): CurrencyType | null {
   return null;
 }
 
+function parseTradeSideFromRow(row: StockImportPreviewRow): StockImportTradeSide | null {
+  if (row.confirmedTradeSide === 'buy' || row.confirmedTradeSide === 'sell') {
+    return row.confirmedTradeSide;
+  }
+
+  if (row.tradeSide === 'buy' || row.tradeSide === 'sell') {
+    return row.tradeSide;
+  }
+
+  return null;
+}
+
+function mapPreviewErrorsToParseErrors(preview: StockImportPreviewResponse): ParseError[] {
+  return preview.errors.map((error) => ({
+    row: error.rowNumber,
+    column: error.fieldName,
+    message: [error.message, error.correctionGuidance].filter(Boolean).join('；'),
+  }));
+}
+
 export function StockImportButton({
   portfolioId,
   onImportComplete,
@@ -217,6 +279,17 @@ export function StockImportButton({
 }: StockImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const [csvContent, setCsvContent] = useState('');
+  const [selectedFormat, setSelectedFormat] = useState<StockImportSelectedFormat>('broker_statement');
+  const [detectedFormat, setDetectedFormat] = useState<'legacy_csv' | 'broker_statement' | 'unknown'>('unknown');
+
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [latestPreview, setLatestPreview] = useState<StockImportPreviewResponse | null>(null);
+  const [previewErrors, setPreviewErrors] = useState<ParseError[]>([]);
+
+  const [manualTickerByRow, setManualTickerByRow] = useState<Record<number, string>>({});
+  const [confirmedTradeSideByRow, setConfirmedTradeSideByRow] = useState<Record<number, StockImportTradeSide>>({});
+
   /**
    * 開啟匯入 modal。
    */
@@ -224,15 +297,232 @@ export function StockImportButton({
     setIsModalOpen(true);
   };
 
+  const resetImportState = () => {
+    setCsvContent('');
+    setSelectedFormat('broker_statement');
+    setDetectedFormat('unknown');
+    setLatestPreview(null);
+    setPreviewErrors([]);
+    setManualTickerByRow({});
+    setConfirmedTradeSideByRow({});
+    setIsPreviewing(false);
+  };
+
+  const handleRequestPreview = async (csvData: ParsedCSV): Promise<void> => {
+    if (!csvContent) {
+      const reconstructed = [
+        csvData.headers.join(','),
+        ...csvData.rows.map((row) => row.map((cell) => {
+          if (/[",\n\r]/.test(cell)) {
+            return `"${cell.replace(/"/g, '""')}"`;
+          }
+          return cell;
+        }).join(',')),
+      ].join('\n');
+      setCsvContent(reconstructed);
+    }
+
+    const nextCsvContent = csvContent || [
+      csvData.headers.join(','),
+      ...csvData.rows.map((row) => row.map((cell) => {
+        if (/[",\n\r]/.test(cell)) {
+          return `"${cell.replace(/"/g, '""')}"`;
+        }
+        return cell;
+      }).join(',')),
+    ].join('\n');
+
+    const detected = detectStockImportFormat(csvData.headers);
+    setDetectedFormat(detected);
+
+    const request: StockImportPreviewRequest = {
+      portfolioId,
+      csvContent: nextCsvContent,
+      selectedFormat,
+    };
+
+    setIsPreviewing(true);
+    try {
+      const preview = await transactionApi.previewImport(request);
+
+      setLatestPreview(preview);
+      setSelectedFormat(preview.selectedFormat);
+      setPreviewErrors(mapPreviewErrorsToParseErrors(preview));
+
+      // Build/refresh remediation state, keep previous manual edits
+      const nextManualTickerByRow: Record<number, string> = {};
+      const nextConfirmedTradeSideByRow: Record<number, StockImportTradeSide> = {};
+
+      for (const row of preview.rows) {
+        const normalizedTicker = normalizeTickerValue(row.ticker);
+        const existingManual = normalizeTickerValue(manualTickerByRow[row.rowNumber]);
+
+        if (existingManual) {
+          nextManualTickerByRow[row.rowNumber] = existingManual;
+        } else if (normalizedTicker) {
+          nextManualTickerByRow[row.rowNumber] = normalizedTicker;
+        }
+
+        const existingSide = confirmedTradeSideByRow[row.rowNumber];
+        if (existingSide) {
+          nextConfirmedTradeSideByRow[row.rowNumber] = existingSide;
+        } else {
+          const parsed = parseTradeSideFromRow(row);
+          if (parsed) {
+            nextConfirmedTradeSideByRow[row.rowNumber] = parsed;
+          }
+        }
+      }
+
+      setManualTickerByRow(nextManualTickerByRow);
+      setConfirmedTradeSideByRow(nextConfirmedTradeSideByRow);
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const hasUnresolvedTicker = useMemo(() => {
+    if (!latestPreview) return false;
+
+    return latestPreview.rows.some((row) => {
+      if (!row.actionsRequired.includes('input_ticker')) {
+        return false;
+      }
+
+      const resolved = normalizeTickerValue(manualTickerByRow[row.rowNumber] ?? row.ticker);
+      return !resolved;
+    });
+  }, [latestPreview, manualTickerByRow]);
+
+  const hasUnconfirmedTradeSide = useMemo(() => {
+    if (!latestPreview) return false;
+
+    return latestPreview.rows.some((row) => {
+      if (row.actionsRequired.includes('confirm_trade_side')) {
+        return !confirmedTradeSideByRow[row.rowNumber];
+      }
+
+      return parseTradeSideFromRow(row) === null;
+    });
+  }, [latestPreview, confirmedTradeSideByRow]);
+
+  const executeDisabledReason = useMemo(() => {
+    if (!latestPreview) {
+      return '請先產生預覽';
+    }
+
+    if (hasUnresolvedTicker) {
+      return '仍有列需要手動輸入股票代號';
+    }
+
+    if (hasUnconfirmedTradeSide) {
+      return '仍有列缺少買賣方向，請先逐列確認';
+    }
+
+    return null;
+  }, [latestPreview, hasUnresolvedTicker, hasUnconfirmedTradeSide]);
+
+  const remediationRows = useMemo<CSVImportRemediationRow[]>(() => {
+    if (!latestPreview) return [];
+
+    return latestPreview.rows.map((row) => {
+      const requiresTickerInput = row.actionsRequired.includes('input_ticker');
+      const requiresTradeSideConfirmation = row.actionsRequired.includes('confirm_trade_side');
+
+      const manualTicker = normalizeTickerValue(manualTickerByRow[row.rowNumber]);
+      const effectiveTicker = normalizeTickerValue(manualTicker ?? row.ticker);
+      const side = confirmedTradeSideByRow[row.rowNumber] ?? parseTradeSideFromRow(row);
+
+      return {
+        rowNumber: row.rowNumber,
+        rawSecurityName: row.rawSecurityName,
+        ticker: row.ticker,
+        displayTicker: effectiveTicker,
+        status: row.status,
+        requiresTickerInput,
+        manualTicker: manualTicker ?? row.ticker ?? '',
+        tradeSide: row.tradeSide,
+        confirmedTradeSide: side,
+        requiresTradeSideConfirmation,
+        note: requiresTickerInput
+          ? '此列需手動輸入 ticker'
+          : requiresTradeSideConfirmation
+            ? '此列需手動確認買賣方向'
+            : null,
+      };
+    });
+  }, [latestPreview, manualTickerByRow, confirmedTradeSideByRow]);
+
+  const handleExecuteImport = async (): Promise<{ success: boolean; errors: ParseError[]; successCount?: number }> => {
+    if (!latestPreview) {
+      return {
+        success: false,
+        errors: [{ row: 1, message: '請先產生預覽' }],
+      };
+    }
+
+    const unresolvedExecuteErrors: ParseError[] = [];
+    const rows: StockImportExecuteRowRequest[] = [];
+
+    for (const row of latestPreview.rows) {
+      const ticker = normalizeTickerValue(manualTickerByRow[row.rowNumber] ?? row.ticker) ?? '';
+      const confirmedTradeSide = confirmedTradeSideByRow[row.rowNumber] ?? parseTradeSideFromRow(row);
+
+      if (!confirmedTradeSide) {
+        unresolvedExecuteErrors.push({
+          row: row.rowNumber,
+          column: '買賣方向',
+          message: '此列尚未確認買賣方向，請先於預覽區逐列確認',
+        });
+        continue;
+      }
+
+      rows.push({
+        rowNumber: row.rowNumber,
+        ticker,
+        confirmedTradeSide,
+        exclude: false,
+        balanceAction: 'None',
+      });
+    }
+
+    if (unresolvedExecuteErrors.length > 0) {
+      return {
+        success: false,
+        errors: unresolvedExecuteErrors,
+      };
+    }
+
+    const request: StockImportExecuteRequest = {
+      sessionId: latestPreview.sessionId,
+      portfolioId,
+      rows,
+    };
+
+    const response = await transactionApi.executeImport(request);
+
+    const errors: ParseError[] = response.errors.map((error) => ({
+      row: error.rowNumber,
+      column: error.fieldName,
+      message: [error.message, error.correctionGuidance].filter(Boolean).join('；'),
+    }));
+
+    if (response.summary.insertedRows > 0) {
+      onImportSuccess?.();
+      onImportComplete();
+    }
+
+    return {
+      success: response.status === 'committed' && errors.length === 0,
+      errors,
+      successCount: response.summary.insertedRows,
+    };
+  };
+
   /**
-   * 實際匯入：逐列解析/驗證後呼叫 API 建立交易。
-   *
-   * 設計重點：
-   * - 先依日期排序，避免 sell-before-buy 的順序問題。
-   * - 台股自動設定匯率 = 1。
-   * - 非台股若無匯率，backend 會自動從交易日期抓取。
+   * Legacy fallback: 逐列解析/驗證後呼叫 API 建立交易。
    */
-  const handleImport = async (
+  const handleLegacyImport = async (
     csvData: ParsedCSV,
     mapping: ColumnMapping
   ): Promise<{ success: boolean; errors: ParseError[] }> => {
@@ -257,7 +547,7 @@ export function StockImportButton({
 
     for (let i = 0; i < sortedRows.length; i++) {
       const { row, index: originalIndex } = sortedRows[i];
-      const rowNum = originalIndex + 2; // 1-based, skip header row
+      const rowNum = csvData.rowMetadata[originalIndex]?.originalRowNumber ?? originalIndex + 2; // 1-based, skip header row
 
       try {
         // Parse date
@@ -310,7 +600,8 @@ export function StockImportButton({
           errors.push({ row: rowNum, column: '幣別', message: '幣別為必填欄位' });
           continue;
         }
-        const currency = parseCurrency(currencyStr);
+        const normalizedCurrencyStr = normalizeCurrencyCode(currencyStr) ?? currencyStr;
+        const currency = parseCurrency(normalizedCurrencyStr);
         if (currency === null) {
           errors.push({ row: rowNum, column: '幣別', message: `無法辨識幣別: ${currencyStr}（支援 TWD/USD/GBP/EUR 或 台幣/美元/英鎊/歐元）` });
           continue;
@@ -355,7 +646,7 @@ export function StockImportButton({
         const feesStr = getRowValue(row, csvData.headers, mapping, 'fees');
         const notes = getRowValue(row, csvData.headers, mapping, 'notes');
 
-        const fees = feesStr ? parseNumber(feesStr) ?? 0 : 0;
+        const fees = feesStr ? Math.abs(parseNumber(feesStr) ?? 0) : 0;
 
         // Build request
         const request: CreateStockTransactionRequest = {
@@ -393,6 +684,50 @@ export function StockImportButton({
     };
   };
 
+  const previewExtensions: CSVImportPreviewExtensions = {
+    formatLabel: '匯入格式',
+    selectedFormat,
+    detectedFormatLabel:
+      detectedFormat === 'unknown'
+        ? '系統偵測：未知格式'
+        : detectedFormat === 'broker_statement'
+          ? '系統偵測：券商對帳單'
+          : '系統偵測：舊版 CSV',
+    formatOptions,
+    onChangeFormat: (nextValue) => {
+      if (nextValue === 'legacy_csv' || nextValue === 'broker_statement') {
+        setSelectedFormat(nextValue);
+      }
+    },
+    previewButtonLabel: latestPreview ? '重新預覽' : '產生預覽',
+    isPreviewing,
+    hasPreview: Boolean(latestPreview),
+    summaryItems: latestPreview
+      ? [
+          { key: 'totalRows', label: '總筆數', value: latestPreview.summary.totalRows },
+          { key: 'validRows', label: '可匯入', value: latestPreview.summary.validRows },
+          { key: 'requiresActionRows', label: '需補充', value: latestPreview.summary.requiresActionRows },
+          { key: 'invalidRows', label: '無效列', value: latestPreview.summary.invalidRows },
+        ]
+      : [],
+    remediationRows,
+    previewErrors,
+    onManualTickerChange: (rowNumber, value) => {
+      setManualTickerByRow((prev) => ({
+        ...prev,
+        [rowNumber]: normalizeTickerValue(value) ?? '',
+      }));
+    },
+    onChangeTradeSide: (rowNumber, side) => {
+      setConfirmedTradeSideByRow((prev) => ({
+        ...prev,
+        [rowNumber]: side,
+      }));
+    },
+    executeDisabled: Boolean(executeDisabledReason),
+    executeDisabledReason,
+  };
+
   return (
     <>
       {renderTrigger ? (
@@ -412,10 +747,28 @@ export function StockImportButton({
 
       <CSVImportModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          resetImportState();
+        }}
         title="匯入股票交易"
         fields={stockFields}
-        onImport={handleImport}
+        onRequestPreview={(csvData) => {
+          const content = [
+            csvData.headers.join(','),
+            ...csvData.rows.map((row) => row.map((cell) => {
+              if (/[",\n\r]/.test(cell)) {
+                return `"${cell.replace(/"/g, '""')}"`;
+              }
+              return cell;
+            }).join(',')),
+          ].join('\n');
+          setCsvContent(content);
+          return handleRequestPreview(csvData);
+        }}
+        onExecute={handleExecuteImport}
+        onImport={handleLegacyImport}
+        previewExtensions={previewExtensions}
       />
     </>
   );

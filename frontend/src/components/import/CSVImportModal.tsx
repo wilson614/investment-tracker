@@ -1,15 +1,11 @@
 /**
  * CSVImportModal
  *
- * 通用 CSV 匯入 Modal：提供「上傳 → 欄位對應 → 預覽 → 匯入結果」的流程 UI。
- *
- * 主要職責：
- * - 讀取檔案文字並呼叫 `parseCSV`。
- * - 使用 `autoMapColumns` 依欄位別名自動對應。
- * - 將解析後的 `ParsedCSV` 與使用者確認的 mapping 交給呼叫端的 `onImport`。
+ * 通用 CSV 匯入 Modal：提供「上傳 → 欄位對應 → 預覽 → 匯入結果」流程。
+ * 可透過可選 props 擴充為 preview/execute 雙階段，以及 unresolved row remediation UI。
  */
 import { useState, useCallback } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Upload, FileText, AlertCircle, CheckCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import {
   parseCSV,
   autoMapColumns,
@@ -29,6 +25,59 @@ export interface FieldDefinition {
   required: boolean;
 }
 
+export interface CSVImportActionResult {
+  success: boolean;
+  errors: ParseError[];
+  successCount?: number;
+}
+
+export interface CSVImportFormatOption {
+  value: string;
+  label: string;
+}
+
+export interface CSVImportSummaryItem {
+  key: string;
+  label: string;
+  value: number | string;
+}
+
+export interface CSVImportRemediationRow {
+  rowNumber: number;
+  rawSecurityName: string | null;
+  ticker: string | null;
+  displayTicker?: string | null;
+  status: 'valid' | 'requires_user_action' | 'invalid';
+  requiresTickerInput?: boolean;
+  manualTicker?: string | null;
+  tradeSide?: 'buy' | 'sell' | 'ambiguous';
+  confirmedTradeSide?: 'buy' | 'sell' | null;
+  requiresTradeSideConfirmation?: boolean;
+  note?: string | null;
+}
+
+export interface CSVImportPreviewExtensions {
+  formatLabel?: string;
+  selectedFormat?: string;
+  detectedFormatLabel?: string | null;
+  formatOptions?: CSVImportFormatOption[];
+  onChangeFormat?: (nextValue: string) => void;
+
+  previewButtonLabel?: string;
+  isPreviewing?: boolean;
+  hasPreview?: boolean;
+
+  summaryItems?: CSVImportSummaryItem[];
+  remediationRows?: CSVImportRemediationRow[];
+  previewErrors?: ParseError[];
+
+  onManualTickerChange?: (rowNumber: number, value: string) => void;
+  onChangeTradeSide?: (rowNumber: number, side: 'buy' | 'sell') => void;
+
+  executeDisabled?: boolean;
+  executeDisabledReason?: string | null;
+}
+
 interface CSVImportModalProps {
   /** 是否顯示 Modal */
   isOpen: boolean;
@@ -39,13 +88,42 @@ interface CSVImportModalProps {
   /** 欄位定義（決定 mapping UI 與必填檢查） */
   fields: FieldDefinition[];
   /**
-   * 實際匯入處理：由呼叫端將 `ParsedCSV` + mapping 轉成 API request。
-   * 回傳 errors 讓 UI 顯示錯誤列表。
+   * 既有單步匯入流程（保留 legacy 相容）
    */
-  onImport: (
+  onImport?: (
     data: ParsedCSV,
     mapping: ColumnMapping
-  ) => Promise<{ success: boolean; errors: ParseError[] }>;
+  ) => Promise<CSVImportActionResult>;
+  /**
+   * 可選：先產生 preview，再執行 execute 的流程。
+   */
+  onRequestPreview?: (
+    data: ParsedCSV,
+    mapping: ColumnMapping
+  ) => Promise<void>;
+  /**
+   * 可選：preview/execute 流程的 execute handler。
+   * 若未提供，會退回使用 onImport。
+   */
+  onExecute?: (
+    data: ParsedCSV,
+    mapping: ColumnMapping
+  ) => Promise<CSVImportActionResult>;
+  /** 可選：預覽步驟擴充內容（format selector / unresolved rows / diagnostics） */
+  previewExtensions?: CSVImportPreviewExtensions;
+}
+
+function getTradeSideLabel(side: 'buy' | 'sell' | 'ambiguous' | null | undefined): string {
+  if (side === 'buy') return '買入';
+  if (side === 'sell') return '賣出';
+  if (side === 'ambiguous') return '待確認';
+  return '-';
+}
+
+function getStatusLabel(status: CSVImportRemediationRow['status']): string {
+  if (status === 'valid') return '可匯入';
+  if (status === 'requires_user_action') return '需補充';
+  return '無法匯入';
 }
 
 export function CSVImportModal({
@@ -54,6 +132,9 @@ export function CSVImportModal({
   title,
   fields,
   onImport,
+  onRequestPreview,
+  onExecute,
+  previewExtensions,
 }: CSVImportModalProps) {
   const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'result'>('upload');
   const [csvData, setCsvData] = useState<ParsedCSV | null>(null);
@@ -118,24 +199,43 @@ export function CSVImportModal({
   };
 
   const handleProceedToPreview = () => {
-    if (validateMapping()) {
+    // preview/execute 模式允許先進入 preview，再由 backend 驗證欄位與格式
+    if (onRequestPreview || validateMapping()) {
       setStep('preview');
     }
   };
 
+  const handleRequestPreview = async () => {
+    if (!csvData || !onRequestPreview) return;
+
+    try {
+      await onRequestPreview(csvData, mapping);
+    } catch (err) {
+      alert(`產生預覽失敗：${err instanceof Error ? err.message : '未知錯誤'}`);
+    }
+  };
+
   /**
-   * 執行匯入：呼叫外部 `onImport`，並整理成功筆數/錯誤列表供 UI 呈現。
+   * 執行匯入：
+   * - default：呼叫 onImport
+   * - preview/execute：呼叫 onExecute（若有）
    */
   const handleImport = async () => {
     if (!csvData) return;
 
+    const runner = onExecute ?? onImport;
+    if (!runner) {
+      alert('匯入設定錯誤：未提供匯入處理函式');
+      return;
+    }
+
     setIsImporting(true);
     try {
-      const result = await onImport(csvData, mapping);
+      const result = await runner(csvData, mapping);
       setImportResult({
         success: result.success,
         errors: result.errors,
-        successCount: csvData.rowCount - result.errors.length,
+        successCount: result.successCount ?? csvData.rowCount - result.errors.length,
       });
       setStep('result');
     } catch (err) {
@@ -159,9 +259,18 @@ export function CSVImportModal({
 
   if (!isOpen) return null;
 
+  const hasCustomPreview = Boolean(onRequestPreview);
+  const hasPreviewData = previewExtensions?.hasPreview ?? false;
+  const isPreviewing = previewExtensions?.isPreviewing ?? false;
+  const executeDisabled =
+    isImporting ||
+    isPreviewing ||
+    (hasCustomPreview && !hasPreviewData) ||
+    Boolean(previewExtensions?.executeDisabled);
+
   return (
     <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
-      <div className="card-dark rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="card-dark rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
@@ -232,7 +341,7 @@ export function CSVImportModal({
                           handleMappingChange(field.name, e.target.value)
                         }
                         className={`flex-1 input-dark ${
-                          field.required && !mapping[field.name]
+                          !onRequestPreview && field.required && !mapping[field.name]
                             ? 'border-[var(--color-danger)]'
                             : ''
                         }`}
@@ -294,6 +403,41 @@ export function CSVImportModal({
                 </p>
               </div>
 
+              {previewExtensions?.formatOptions && previewExtensions.selectedFormat && (
+                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
+                  <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="import-format-selector">
+                    {previewExtensions.formatLabel ?? '匯入格式'}
+                  </label>
+                  <select
+                    id="import-format-selector"
+                    aria-label={previewExtensions.formatLabel ?? '匯入格式'}
+                    value={previewExtensions.selectedFormat}
+                    onChange={(event) => previewExtensions.onChangeFormat?.(event.target.value)}
+                    className="input-dark w-full"
+                  >
+                    {previewExtensions.formatOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {previewExtensions.detectedFormatLabel && (
+                    <p className="text-sm text-[var(--text-muted)]">{previewExtensions.detectedFormatLabel}</p>
+                  )}
+                </div>
+              )}
+
+              {previewExtensions?.summaryItems && previewExtensions.summaryItems.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {previewExtensions.summaryItems.map((item) => (
+                    <div key={item.key} className="bg-[var(--bg-secondary)] rounded-lg p-3">
+                      <p className="text-xs text-[var(--text-muted)]">{item.label}</p>
+                      <p className="text-lg font-semibold text-[var(--text-primary)]">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div>
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">欄位對應摘要</h4>
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
@@ -309,6 +453,98 @@ export function CSVImportModal({
                   ))}
                 </div>
               </div>
+
+              {previewExtensions?.previewErrors && previewExtensions.previewErrors.length > 0 && (
+                <div className="bg-[var(--color-danger-soft)] p-4 rounded-lg max-h-60 overflow-y-auto">
+                  {previewExtensions.previewErrors.map((error, idx) => (
+                    <div
+                      key={`${error.row}-${error.column ?? ''}-${idx}`}
+                      className="text-sm text-[var(--color-danger)] py-1 border-b border-[var(--color-danger)]/20 last:border-0"
+                    >
+                      <span className="font-medium">第 {error.row} 行</span>
+                      {error.column && ` (${error.column})`}: {error.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {previewExtensions?.remediationRows && previewExtensions.remediationRows.length > 0 && (
+                <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[820px]">
+                      <thead>
+                        <tr className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">列號</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">標的名稱</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">股票代號</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">買賣方向</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">狀態</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewExtensions.remediationRows.map((row) => (
+                          <tr key={row.rowNumber} className="border-b border-[var(--border-color)] last:border-0 align-top">
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">{row.rowNumber}</td>
+                            <td className="px-3 py-3 text-[var(--text-primary)]">{row.rawSecurityName ?? '-'}</td>
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">
+                              {row.requiresTickerInput ? (
+                                <input
+                                  type="text"
+                                  value={row.manualTicker ?? ''}
+                                  onChange={(event) =>
+                                    previewExtensions.onManualTickerChange?.(row.rowNumber, event.target.value)
+                                  }
+                                  placeholder="請輸入 ticker"
+                                  aria-label={`第 ${row.rowNumber} 行股票代號`}
+                                  className="input-dark w-44"
+                                />
+                              ) : (
+                                row.displayTicker ?? row.ticker ?? '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">
+                              {row.requiresTradeSideConfirmation ? (
+                                <div className="flex items-center gap-4">
+                                  <label className="inline-flex items-center gap-1.5 cursor-pointer text-[var(--text-primary)]">
+                                    <input
+                                      type="radio"
+                                      name={`trade-side-${row.rowNumber}`}
+                                      checked={row.confirmedTradeSide === 'buy'}
+                                      onChange={() => previewExtensions.onChangeTradeSide?.(row.rowNumber, 'buy')}
+                                    />
+                                    <span>買入</span>
+                                  </label>
+                                  <label className="inline-flex items-center gap-1.5 cursor-pointer text-[var(--text-primary)]">
+                                    <input
+                                      type="radio"
+                                      name={`trade-side-${row.rowNumber}`}
+                                      checked={row.confirmedTradeSide === 'sell'}
+                                      onChange={() => previewExtensions.onChangeTradeSide?.(row.rowNumber, 'sell')}
+                                    />
+                                    <span>賣出</span>
+                                  </label>
+                                </div>
+                              ) : (
+                                getTradeSideLabel(row.confirmedTradeSide ?? row.tradeSide)
+                              )}
+                              {row.note && (
+                                <p className="mt-1 text-xs text-[var(--text-muted)]">{row.note}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">{getStatusLabel(row.status)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {previewExtensions?.executeDisabledReason && executeDisabled && (
+                <p className="text-sm text-[var(--color-warning)]">
+                  {previewExtensions.executeDisabledReason}
+                </p>
+              )}
             </div>
           )}
 
@@ -371,7 +607,7 @@ export function CSVImportModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[var(--border-color)] flex justify-between">
+        <div className="px-6 py-4 border-t border-[var(--border-color)] flex justify-between gap-2">
           {step === 'upload' && (
             <button
               onClick={handleClose}
@@ -406,13 +642,27 @@ export function CSVImportModal({
               >
                 上一步
               </button>
-              <button
-                onClick={handleImport}
-                disabled={isImporting}
-                className="btn-accent disabled:opacity-50"
-              >
-                {isImporting ? '匯入中...' : '確認匯入'}
-              </button>
+
+              <div className="ml-auto flex items-center gap-2">
+                {hasCustomPreview && (
+                  <button
+                    onClick={handleRequestPreview}
+                    disabled={isPreviewing || isImporting}
+                    className="btn-dark disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    {(isPreviewing || isImporting) && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {previewExtensions?.previewButtonLabel ?? (hasPreviewData ? '重新預覽' : '產生預覽')}
+                  </button>
+                )}
+
+                <button
+                  onClick={handleImport}
+                  disabled={executeDisabled}
+                  className="btn-accent disabled:opacity-50"
+                >
+                  {isImporting ? '匯入中...' : '確認匯入'}
+                </button>
+              </div>
             </>
           )}
 
