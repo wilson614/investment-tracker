@@ -20,7 +20,7 @@
 - [x] T001 Add stock import API request/response client types in `frontend/src/types/index.ts`
 - [x] T002 Add stock import API client methods in `frontend/src/services/api.ts`
 - [x] T003 [P] Add backend DTO skeletons for stock import preview/execute, including canonical `confirmedTradeSide` and balance-decision fields, in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [x] T004 [P] Add backend response DTOs for stock import diagnostics in `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs
+- [x] T004 [P] Add backend response DTOs for stock import diagnostics in `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs`
 
 ---
 
@@ -30,12 +30,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Create TW security mapping entity in `backend/src/InvestmentTracker.Domain/Entities/TwSecurityMapping.cs`
-- [ ] T006 Configure TW security mapping table/indexes in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/TwSecurityMappingConfiguration.cs`
-- [ ] T007 Register mapping DbSet in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
-- [ ] T008 Add EF migration for TW security mapping table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
-- [ ] T009 [P] Add repository interface for TW security mapping lookup/upsert in `backend/src/InvestmentTracker.Domain/Interfaces/ITwSecurityMappingRepository.cs`
-- [ ] T010 [P] Implement TW security mapping repository in `backend/src/InvestmentTracker.Infrastructure/Repositories/TwSecurityMappingRepository.cs`
+- [x] T005 Create TW security mapping entity in `backend/src/InvestmentTracker.Domain/Entities/TwSecurityMapping.cs`
+- [x] T006 Configure TW security mapping table/indexes in `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/TwSecurityMappingConfiguration.cs`
+- [x] T007 Register mapping DbSet in `backend/src/InvestmentTracker.Infrastructure/Persistence/AppDbContext.cs`
+- [x] T008 Add EF migration for TW security mapping table in `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [x] T009 [P] Add repository interface for TW security mapping lookup/upsert in `backend/src/InvestmentTracker.Domain/Interfaces/ITwSecurityMappingRepository.cs`
+- [x] T010 [P] Implement TW security mapping repository in `backend/src/InvestmentTracker.Infrastructure/Repositories/TwSecurityMappingRepository.cs
 - [ ] T011 Implement on-demand TWSE ISIN source synchronization service in `backend/src/InvestmentTracker.Infrastructure/Services/TwseSymbolMappingService.cs`
 - [ ] T012 Wire DI registrations for mapping repository/service in `backend/src/InvestmentTracker.Infrastructure/DependencyInjection.cs`
 - [ ] T013 Add API endpoint for on-demand symbol sync in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
