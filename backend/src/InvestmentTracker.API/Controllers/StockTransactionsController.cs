@@ -1,5 +1,7 @@
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.StockTransactions;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -16,10 +18,14 @@ namespace InvestmentTracker.API.Controllers;
 public class StockTransactionsController(
     IStockTransactionRepository transactionRepository,
     IStockSplitRepository stockSplitRepository,
+    IPortfolioRepository portfolioRepository,
+    ICurrentUserService currentUserService,
     StockSplitAdjustmentService splitAdjustmentService,
     CreateStockTransactionUseCase createUseCase,
     UpdateStockTransactionUseCase updateUseCase,
-    DeleteStockTransactionUseCase deleteUseCase) : ControllerBase
+    DeleteStockTransactionUseCase deleteUseCase,
+    IPreviewStockImportUseCase previewStockImportUseCase,
+    IExecuteStockImportUseCase executeStockImportUseCase) : ControllerBase
 {
     /// <summary>
     /// 取得指定投資組合的所有交易。
@@ -27,10 +33,21 @@ public class StockTransactionsController(
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<StockTransactionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IEnumerable<StockTransactionDto>>> GetByPortfolio(
         [FromQuery] Guid portfolioId,
         CancellationToken cancellationToken)
     {
+        var userId = currentUserService.UserId
+            ?? throw new AccessDeniedException("User not authenticated");
+
+        var portfolio = await portfolioRepository.GetByIdAsync(portfolioId, cancellationToken)
+            ?? throw new EntityNotFoundException("Portfolio", portfolioId);
+
+        if (portfolio.UserId != userId)
+            throw new AccessDeniedException();
+
         var transactions = await transactionRepository.GetByPortfolioIdAsync(portfolioId, cancellationToken);
         var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
         var splitList = stockSplits.ToList();
@@ -74,13 +91,21 @@ public class StockTransactionsController(
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(StockTransactionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockTransactionDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var transaction = await transactionRepository.GetByIdAsync(id, cancellationToken);
+        var userId = currentUserService.UserId
+            ?? throw new AccessDeniedException("User not authenticated");
 
-        if (transaction == null)
-            return NotFound();
+        var transaction = await transactionRepository.GetByIdAsync(id, cancellationToken)
+            ?? throw new EntityNotFoundException("Transaction", id);
+
+        var portfolio = await portfolioRepository.GetByIdAsync(transaction.PortfolioId, cancellationToken)
+            ?? throw new EntityNotFoundException("Portfolio", transaction.PortfolioId);
+
+        if (portfolio.UserId != userId)
+            throw new AccessDeniedException();
 
         var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
         var adjusted = splitAdjustmentService.GetAdjustedValues(transaction, stockSplits);
@@ -133,6 +158,38 @@ public class StockTransactionsController(
     {
         var result = await createUseCase.ExecuteAsync(request, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+    }
+
+    /// <summary>
+    /// 預覽股票 CSV 匯入結果（legacy_csv / broker_statement）。
+    /// </summary>
+    [HttpPost("import/preview")]
+    [ProducesResponseType(typeof(StockImportPreviewResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StockImportPreviewResponseDto>> PreviewImport(
+        [FromBody] PreviewStockImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await previewStockImportUseCase.ExecuteAsync(request, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 執行股票 CSV 匯入（最小可用垂直切片）。
+    /// </summary>
+    [HttpPost("import/execute")]
+    [ProducesResponseType(typeof(StockImportExecuteResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StockImportExecuteResponseDto>> ExecuteImport(
+        [FromBody] ExecuteStockImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await executeStockImportUseCase.ExecuteAsync(request, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>

@@ -3,6 +3,40 @@ using InvestmentTracker.Domain.Enums;
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
+/// Preview 產生後、Execute 驗證使用的 session snapshot。
+/// </summary>
+public record StockImportSessionSnapshotDto
+{
+    public Guid SessionId { get; init; }
+    public Guid UserId { get; init; }
+    public Guid PortfolioId { get; init; }
+    public string SelectedFormat { get; init; } = string.Empty;
+    public string DetectedFormat { get; init; } = string.Empty;
+    public IReadOnlyList<StockImportSessionRowSnapshotDto> Rows { get; init; } = [];
+}
+
+/// <summary>
+/// Preview row 的可驗證快照。
+/// </summary>
+public record StockImportSessionRowSnapshotDto
+{
+    public int RowNumber { get; init; }
+    public DateTime? TradeDate { get; init; }
+    public string? Ticker { get; init; }
+    public string TradeSide { get; init; } = string.Empty;
+    public string? ConfirmedTradeSide { get; init; }
+    public decimal? Quantity { get; init; }
+    public decimal? UnitPrice { get; init; }
+    public decimal Fees { get; init; }
+    public decimal Taxes { get; init; }
+    public decimal? NetSettlement { get; init; }
+    public string? Currency { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public IReadOnlyList<string> ActionsRequired { get; init; } = [];
+    public bool IsInvalid { get; init; }
+}
+
+/// <summary>
 /// 股票匯入預覽回應 DTO。
 /// </summary>
 public record StockImportPreviewResponseDto

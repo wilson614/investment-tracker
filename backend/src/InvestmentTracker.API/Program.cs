@@ -193,6 +193,11 @@ builder.Services.AddScoped<InterestEstimationService>();
 builder.Services.AddScoped<TotalAssetsService>();
 
 // Register Use Cases
+builder.Services.AddScoped<IStockImportParser, StockImportParser>();
+builder.Services.AddScoped<IStockImportSymbolResolver, StockImportSymbolResolver>();
+builder.Services.AddSingleton<IStockImportSessionStore, StockImportSessionStore>();
+builder.Services.AddScoped<IPreviewStockImportUseCase, PreviewStockImportUseCase>();
+builder.Services.AddScoped<IExecuteStockImportUseCase, ExecuteStockImportUseCase>();
 builder.Services.AddScoped<CreateStockTransactionUseCase>();
 builder.Services.AddScoped<UpdateStockTransactionUseCase>();
 builder.Services.AddScoped<DeleteStockTransactionUseCase>();

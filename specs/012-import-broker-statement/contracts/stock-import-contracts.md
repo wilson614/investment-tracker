@@ -75,7 +75,7 @@
     {
       "rowNumber": 1,
       "ticker": "2330",
-      "tradeSide": "buy|sell",
+      "confirmedTradeSide": "buy|sell",
       "exclude": false,
       "balanceAction": "None|Margin|TopUp",
       "topUpTransactionType": "ExchangeBuy|Deposit|InitialBalance|Interest|OtherIncome"

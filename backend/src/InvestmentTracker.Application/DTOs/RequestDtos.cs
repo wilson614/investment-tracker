@@ -179,6 +179,20 @@ public record ExecuteStockImportRequest : IValidatableObject
                 [nameof(DefaultBalanceAction)]);
         }
 
+        var duplicatedRowNumbers = Rows
+            .GroupBy(row => row.RowNumber)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .OrderBy(rowNumber => rowNumber)
+            .ToList();
+
+        if (duplicatedRowNumbers.Count > 0)
+        {
+            yield return new ValidationResult(
+                $"Rows.RowNumber contains duplicates: {string.Join(",", duplicatedRowNumbers)}.",
+                [nameof(Rows)]);
+        }
+
         for (var i = 0; i < Rows.Count; i++)
         {
             var row = Rows[i];
