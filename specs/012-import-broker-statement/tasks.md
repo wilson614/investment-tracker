@@ -108,8 +108,8 @@
 ### Implementation for User Story 3
 
 - [x] T034 [US3] Implement legacy-vs-broker format routing with manual override precedence in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockImportParser.cs`
-- [ ] T035 [US3] Preserve existing row-level result mapping shape for legacy imports in `frontend/src/components/import/StockImportButton.tsx`
-- [ ] T036 [US3] Update import UX copy for dual-format support without changing legacy workflow defaults in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T035 [US3] Preserve existing row-level result mapping shape for legacy imports in `frontend/src/components/import/StockImportButton.tsx`
+- [x] T036 [US3] Update import UX copy for dual-format support without changing legacy workflow defaults in `frontend/src/components/import/CSVImportModal.tsx`
 
 **Checkpoint**: User Stories 1-3 should all work independently.
 
