@@ -6,6 +6,7 @@ using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.UseCases.StockTransactions;
 
@@ -44,18 +45,21 @@ public sealed class ExecuteStockImportUseCase(
     ITransactionPortfolioSnapshotService txSnapshotService,
     CurrencyLedgerService currencyLedgerService,
     PortfolioCalculator portfolioCalculator,
-    IAppDbTransactionManager transactionManager) : IExecuteStockImportUseCase
+    IAppDbTransactionManager transactionManager,
+    ILogger<ExecuteStockImportUseCase> logger) : IExecuteStockImportUseCase
 {
     private const string StatusCommitted = "committed";
     private const string StatusPartiallyCommitted = "partially_committed";
     private const string StatusRejected = "rejected";
 
     private const string ErrorCodeSymbolUnresolved = "SYMBOL_UNRESOLVED";
+    private const string ErrorCodeSessionRowMismatch = "SESSION_ROW_MISMATCH";
     private const string ErrorCodeTradeSideConfirmationRequired = "TRADE_SIDE_CONFIRMATION_REQUIRED";
     private const string ErrorCodeBalanceActionRequired = "BALANCE_ACTION_REQUIRED";
     private const string ErrorCodeBusinessRuleViolation = "BUSINESS_RULE_VIOLATION";
 
     private const string FieldTicker = "ticker";
+    private const string FieldRowNumber = "rowNumber";
     private const string FieldConfirmedTradeSide = "confirmedTradeSide";
     private const string FieldRow = "row";
     private const string FieldBalanceAction = StockBalanceActionRules.FieldBalanceAction;
@@ -95,6 +99,13 @@ public sealed class ExecuteStockImportUseCase(
         var results = new List<StockImportExecuteRowResultDto>(request.Rows.Count);
         var diagnostics = new List<StockImportDiagnosticDto>();
 
+        logger.LogInformation(
+            "Stock import execute started. PortfolioId={PortfolioId}, SessionId={SessionId}, UserId={UserId}, RequestedRows={RequestedRows}",
+            request.PortfolioId,
+            request.SessionId,
+            userId,
+            request.Rows.Count);
+
         var insertedRows = 0;
         var failedRows = 0;
 
@@ -103,181 +114,215 @@ public sealed class ExecuteStockImportUseCase(
 
         await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-        foreach (var row in request.Rows.OrderBy(r => r.RowNumber))
+        try
         {
-            if (!sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRow))
+            foreach (var row in request.Rows.OrderBy(r => r.RowNumber))
             {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeSymbolUnresolved,
-                    fieldName: FieldTicker,
-                    invalidValue: row.RowNumber.ToString(),
-                    message: "此列不屬於目前預覽 Session。",
-                    correctionGuidance: "請重新預覽後再執行。",
-                    confirmedTradeSide: NormalizeConfirmedTradeSide(row.ConfirmedTradeSide));
-                failedRows++;
-                continue;
-            }
-
-            var normalizedTradeSide = NormalizeConfirmedTradeSide(row.ConfirmedTradeSide)
-                ?? NormalizeConfirmedTradeSide(sessionRow.ConfirmedTradeSide)
-                ?? NormalizeConfirmedTradeSide(sessionRow.TradeSide);
-
-            if (row.Exclude)
-            {
-                results.Add(new StockImportExecuteRowResultDto
+                if (!sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRow))
                 {
-                    RowNumber = row.RowNumber,
-                    Success = true,
-                    Message = MessageExcluded,
-                    ConfirmedTradeSide = normalizedTradeSide
-                });
-                continue;
-            }
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeSessionRowMismatch,
+                        fieldName: FieldRowNumber,
+                        invalidValue: row.RowNumber.ToString(),
+                        message: "此列不屬於目前預覽 Session。",
+                        correctionGuidance: "請重新預覽後再執行。",
+                        confirmedTradeSide: NormalizeConfirmedTradeSide(row.ConfirmedTradeSide),
+                        logger: logger);
+                    failedRows++;
+                    continue;
+                }
 
-            var normalizedTicker = NormalizeTicker(row.Ticker) ?? NormalizeTicker(sessionRow.Ticker);
-            if (string.IsNullOrWhiteSpace(normalizedTicker))
-            {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeSymbolUnresolved,
-                    fieldName: FieldTicker,
-                    invalidValue: row.Ticker,
-                    message: "此列尚未解析股票代號。",
-                    correctionGuidance: "請先填入 ticker，或將此列排除後再執行。",
-                    confirmedTradeSide: normalizedTradeSide);
-                failedRows++;
-                continue;
-            }
+                var normalizedTradeSide = NormalizeConfirmedTradeSide(row.ConfirmedTradeSide)
+                    ?? NormalizeConfirmedTradeSide(sessionRow.ConfirmedTradeSide)
+                    ?? NormalizeConfirmedTradeSide(sessionRow.TradeSide);
 
-            if (normalizedTradeSide is null)
-            {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeTradeSideConfirmationRequired,
-                    fieldName: FieldConfirmedTradeSide,
-                    invalidValue: row.ConfirmedTradeSide,
-                    message: "此列尚未確認買賣方向。",
-                    correctionGuidance: "請先確認此列為 buy 或 sell，或將此列排除後再執行。",
-                    confirmedTradeSide: null);
-                failedRows++;
-                continue;
-            }
-
-            if (sessionRow.IsInvalid)
-            {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeSymbolUnresolved,
-                    fieldName: FieldTicker,
-                    invalidValue: normalizedTicker,
-                    message: "此列在預覽結果中為無效列，無法執行。",
-                    correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
-                    confirmedTradeSide: normalizedTradeSide);
-                failedRows++;
-                continue;
-            }
-
-            if (sessionRow.TradeDate is null || sessionRow.Quantity is null || sessionRow.UnitPrice is null)
-            {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeSymbolUnresolved,
-                    fieldName: FieldTicker,
-                    invalidValue: normalizedTicker,
-                    message: "此列缺少建立交易所需資料。",
-                    correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
-                    confirmedTradeSide: normalizedTradeSide);
-                failedRows++;
-                continue;
-            }
-
-            try
-            {
-                var createdTransaction = await CreateImportedTransactionAsync(
-                    portfolio,
-                    boundLedger,
-                    sessionRow,
-                    normalizedTicker,
-                    normalizedTradeSide,
-                    row,
-                    request.DefaultBalanceAction,
-                    cancellationToken);
-
-                insertedRows++;
-
-                results.Add(new StockImportExecuteRowResultDto
+                if (row.Exclude)
                 {
-                    RowNumber = row.RowNumber,
-                    Success = true,
-                    TransactionId = createdTransaction.Id,
-                    Message = MessageCreated,
-                    ConfirmedTradeSide = normalizedTradeSide
-                });
+                    results.Add(new StockImportExecuteRowResultDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Success = true,
+                        Message = MessageExcluded,
+                        ConfirmedTradeSide = normalizedTradeSide
+                    });
+                    continue;
+                }
+
+                var normalizedTicker = NormalizeTicker(row.Ticker) ?? NormalizeTicker(sessionRow.Ticker);
+                if (string.IsNullOrWhiteSpace(normalizedTicker))
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeSymbolUnresolved,
+                        fieldName: FieldTicker,
+                        invalidValue: row.Ticker,
+                        message: "此列尚未解析股票代號。",
+                        correctionGuidance: "請先填入 ticker，或將此列排除後再執行。",
+                        confirmedTradeSide: normalizedTradeSide,
+                        logger: logger);
+                    failedRows++;
+                    continue;
+                }
+
+                if (normalizedTradeSide is null)
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeTradeSideConfirmationRequired,
+                        fieldName: FieldConfirmedTradeSide,
+                        invalidValue: row.ConfirmedTradeSide,
+                        message: "此列尚未確認買賣方向。",
+                        correctionGuidance: "請先確認此列為 buy 或 sell，或將此列排除後再執行。",
+                        confirmedTradeSide: null,
+                        logger: logger);
+                    failedRows++;
+                    continue;
+                }
+
+                if (sessionRow.IsInvalid)
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeSymbolUnresolved,
+                        fieldName: FieldTicker,
+                        invalidValue: normalizedTicker,
+                        message: "此列在預覽結果中為無效列，無法執行。",
+                        correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
+                        confirmedTradeSide: normalizedTradeSide,
+                        logger: logger);
+                    failedRows++;
+                    continue;
+                }
+
+                if (sessionRow.TradeDate is null || sessionRow.Quantity is null || sessionRow.UnitPrice is null)
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeSymbolUnresolved,
+                        fieldName: FieldTicker,
+                        invalidValue: normalizedTicker,
+                        message: "此列缺少建立交易所需資料。",
+                        correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
+                        confirmedTradeSide: normalizedTradeSide,
+                        logger: logger);
+                    failedRows++;
+                    continue;
+                }
+
+                try
+                {
+                    var createdTransaction = await CreateImportedTransactionAsync(
+                        portfolio,
+                        boundLedger,
+                        sessionRow,
+                        normalizedTicker,
+                        normalizedTradeSide,
+                        row,
+                        request.DefaultBalanceAction,
+                        cancellationToken);
+
+                    insertedRows++;
+
+                    results.Add(new StockImportExecuteRowResultDto
+                    {
+                        RowNumber = row.RowNumber,
+                        Success = true,
+                        TransactionId = createdTransaction.Id,
+                        Message = MessageCreated,
+                        ConfirmedTradeSide = normalizedTradeSide
+                    });
+                }
+                catch (StockImportRowFailureException ex)
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ex.ErrorCode,
+                        fieldName: ex.FieldName,
+                        invalidValue: ex.InvalidValue ?? ResolveInvalidValueForField(ex.FieldName, normalizedTradeSide, row),
+                        message: ex.Message,
+                        correctionGuidance: ex.CorrectionGuidance,
+                        confirmedTradeSide: normalizedTradeSide,
+                        balanceDecision: ex.BalanceDecision ?? BuildBalanceDecisionContext(request.DefaultBalanceAction, row),
+                        logger: logger);
+                    failedRows++;
+                }
+                catch (BusinessRuleException ex)
+                {
+                    AddFailure(
+                        row,
+                        results,
+                        diagnostics,
+                        errorCode: ErrorCodeBusinessRuleViolation,
+                        fieldName: FieldRow,
+                        invalidValue: row.RowNumber.ToString(),
+                        message: ex.Message,
+                        correctionGuidance: "請檢查該列交易資料與持倉/匯率條件後重試，必要時調整或排除此列。",
+                        confirmedTradeSide: normalizedTradeSide,
+                        balanceDecision: BuildBalanceDecisionContext(request.DefaultBalanceAction, row),
+                        logger: logger);
+                    failedRows++;
+                }
             }
-            catch (StockImportRowFailureException ex)
+
+            if (insertedRows > 0)
             {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ex.ErrorCode,
-                    fieldName: ex.FieldName,
-                    invalidValue: ex.InvalidValue ?? ResolveInvalidValueForField(ex.FieldName, normalizedTradeSide, row),
-                    message: ex.Message,
-                    correctionGuidance: ex.CorrectionGuidance,
-                    confirmedTradeSide: normalizedTradeSide,
-                    balanceDecision: ex.BalanceDecision ?? BuildBalanceDecisionContext(request.DefaultBalanceAction, row));
-                failedRows++;
+                await tx.CommitAsync(cancellationToken);
+                await stockImportSessionStore.RemoveAsync(request.SessionId, cancellationToken);
             }
-            catch (BusinessRuleException ex)
+
+            var status = ResolveStatus(insertedRows, failedRows);
+
+            logger.LogInformation(
+                "Stock import execute completed. PortfolioId={PortfolioId}, SessionId={SessionId}, Status={Status}, RequestedRows={RequestedRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}, ErrorCount={ErrorCount}",
+                request.PortfolioId,
+                request.SessionId,
+                status,
+                request.Rows.Count,
+                insertedRows,
+                failedRows,
+                diagnostics.Count);
+
+            return new StockImportExecuteResponseDto
             {
-                AddFailure(
-                    row,
-                    results,
-                    diagnostics,
-                    errorCode: ErrorCodeBusinessRuleViolation,
-                    fieldName: FieldRow,
-                    invalidValue: row.RowNumber.ToString(),
-                    message: ex.Message,
-                    correctionGuidance: "請檢查該列交易資料與持倉/匯率條件後重試，必要時調整或排除此列。",
-                    confirmedTradeSide: normalizedTradeSide,
-                    balanceDecision: BuildBalanceDecisionContext(request.DefaultBalanceAction, row));
-                failedRows++;
-            }
+                Status = status,
+                Summary = new StockImportExecuteSummaryDto
+                {
+                    TotalRows = request.Rows.Count,
+                    InsertedRows = insertedRows,
+                    FailedRows = failedRows,
+                    ErrorCount = diagnostics.Count
+                },
+                Results = results,
+                Errors = diagnostics
+            };
         }
-
-        if (insertedRows > 0)
+        catch (Exception ex)
         {
-            await tx.CommitAsync(cancellationToken);
-            await stockImportSessionStore.RemoveAsync(request.SessionId, cancellationToken);
+            logger.LogError(
+                ex,
+                "Stock import execute operation failed. PortfolioId={PortfolioId}, SessionId={SessionId}, RequestedRows={RequestedRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}",
+                request.PortfolioId,
+                request.SessionId,
+                request.Rows.Count,
+                insertedRows,
+                failedRows);
+
+            await tx.RollbackAsync(cancellationToken);
+            throw;
         }
-
-        var status = ResolveStatus(insertedRows, failedRows);
-
-        return new StockImportExecuteResponseDto
-        {
-            Status = status,
-            Summary = new StockImportExecuteSummaryDto
-            {
-                TotalRows = request.Rows.Count,
-                InsertedRows = insertedRows,
-                FailedRows = failedRows,
-                ErrorCount = diagnostics.Count
-            },
-            Results = results,
-            Errors = diagnostics
-        };
     }
 
     private async Task<StockTransaction> CreateImportedTransactionAsync(
@@ -793,8 +838,11 @@ public sealed class ExecuteStockImportUseCase(
         string message,
         string correctionGuidance,
         string? confirmedTradeSide,
+        ILogger<ExecuteStockImportUseCase> logger,
         StockImportBalanceDecisionContextDto? balanceDecision = null)
     {
+        var normalizedInvalidValue = string.IsNullOrWhiteSpace(invalidValue) ? null : invalidValue;
+
         results.Add(new StockImportExecuteRowResultDto
         {
             RowNumber = row.RowNumber,
@@ -809,11 +857,19 @@ public sealed class ExecuteStockImportUseCase(
         {
             RowNumber = row.RowNumber,
             FieldName = fieldName,
-            InvalidValue = string.IsNullOrWhiteSpace(invalidValue) ? null : invalidValue,
+            InvalidValue = normalizedInvalidValue,
             ErrorCode = errorCode,
             Message = message,
             CorrectionGuidance = correctionGuidance
         });
+
+        logger.LogWarning(
+            "Stock import execute row failed. RowNumber={RowNumber}, ErrorCode={ErrorCode}, FieldName={FieldName}, HasInvalidValue={HasInvalidValue}, HasConfirmedTradeSide={HasConfirmedTradeSide}",
+            row.RowNumber,
+            errorCode,
+            fieldName,
+            normalizedInvalidValue is not null,
+            confirmedTradeSide is not null);
     }
 
     private static string? NormalizeTicker(string? ticker)

@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.API.Middleware;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
@@ -163,9 +164,55 @@ public class StockTransactionsController(
     /// <summary>
     /// 預覽股票 CSV 匯入結果（legacy_csv / broker_statement）。
     /// </summary>
+    /// <remarks>
+    /// <para>用途：解析 CSV 並回傳可執行的 session snapshot；此端點不會寫入交易資料。</para>
+    /// <para><b>成功回應範例（200）</b></para>
+    /// <code>
+    /// {
+    ///   "sessionId": "9f45a39b-1cc7-4f3f-b2c4-73a8f15f2d01",
+    ///   "detectedFormat": "broker_statement",
+    ///   "selectedFormat": "broker_statement",
+    ///   "summary": {
+    ///     "totalRows": 2,
+    ///     "validRows": 1,
+    ///     "requiresActionRows": 1,
+    ///     "invalidRows": 0
+    ///   },
+    ///   "rows": [
+    ///     {
+    ///       "rowNumber": 1,
+    ///       "tradeDate": "2026-01-22T00:00:00Z",
+    ///       "ticker": "2330",
+    ///       "tradeSide": "buy",
+    ///       "confirmedTradeSide": "buy",
+    ///       "quantity": 1000,
+    ///       "unitPrice": 625,
+    ///       "fees": 1425,
+    ///       "taxes": 0,
+    ///       "status": "valid",
+    ///       "actionsRequired": []
+    ///     }
+    ///   ],
+    ///   "errors": []
+    /// }
+    /// </code>
+    /// <para><b>失敗回應範例（400，模型驗證失敗）</b></para>
+    /// <code>
+    /// {
+    ///   "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+    ///   "title": "One or more validation errors occurred.",
+    ///   "status": 400,
+    ///   "errors": {
+    ///     "SelectedFormat": [
+    ///       "SelectedFormat must be either 'legacy_csv' or 'broker_statement'."
+    ///     ]
+    ///   }
+    /// }
+    /// </code>
+    /// </remarks>
     [HttpPost("import/preview")]
     [ProducesResponseType(typeof(StockImportPreviewResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockImportPreviewResponseDto>> PreviewImport(
@@ -179,9 +226,56 @@ public class StockTransactionsController(
     /// <summary>
     /// 執行股票 CSV 匯入（最小可用垂直切片）。
     /// </summary>
+    /// <remarks>
+    /// <para>用途：依 preview session 執行逐列匯入，回傳 committed / partially_committed / rejected。</para>
+    /// <para><b>成功回應範例（200）</b></para>
+    /// <code>
+    /// {
+    ///   "status": "committed",
+    ///   "summary": {
+    ///     "totalRows": 2,
+    ///     "insertedRows": 2,
+    ///     "failedRows": 0,
+    ///     "errorCount": 0
+    ///   },
+    ///   "results": [
+    ///     {
+    ///       "rowNumber": 1,
+    ///       "success": true,
+    ///       "transactionId": "7fd4efab-1f8d-4754-9028-0d4708b18873",
+    ///       "message": "Created",
+    ///       "confirmedTradeSide": "buy"
+    ///     }
+    ///   ],
+    ///   "errors": []
+    /// }
+    /// </code>
+    /// <para><b>失敗回應範例（400，Session 已失效）</b></para>
+    /// <code>
+    /// {
+    ///   "error": "Import session not found or expired.",
+    ///   "statusCode": 400,
+    ///   "timestamp": "2026-02-16T09:30:00Z"
+    /// }
+    /// </code>
+    /// <para><b>失敗回應範例（400，模型驗證失敗）</b></para>
+    /// <code>
+    /// {
+    ///   "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+    ///   "title": "One or more validation errors occurred.",
+    ///   "status": 400,
+    ///   "errors": {
+    ///     "Rows": [
+    ///       "Rows.RowNumber contains duplicates: 1"
+    ///     ]
+    ///   }
+    /// }
+    /// </code>
+    /// </remarks>
     [HttpPost("import/execute")]
     [ProducesResponseType(typeof(StockImportExecuteResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<StockImportExecuteResponseDto>> ExecuteImport(

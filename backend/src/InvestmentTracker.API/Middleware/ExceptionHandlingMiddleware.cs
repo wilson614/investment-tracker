@@ -58,12 +58,10 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        var response = new
-        {
-            error = message,
-            statusCode = (int)statusCode,
-            timestamp = DateTime.UtcNow
-        };
+        var response = new ApiErrorResponse(
+            Error: message,
+            StatusCode: (int)statusCode,
+            Timestamp: DateTime.UtcNow);
 
         var jsonResponse = JsonSerializer.Serialize(response, new JsonSerializerOptions
         {
@@ -73,6 +71,11 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         await context.Response.WriteAsync(jsonResponse);
     }
 }
+
+public sealed record ApiErrorResponse(
+    string Error,
+    int StatusCode,
+    DateTime Timestamp);
 
 public static class ExceptionHandlingMiddlewareExtensions
 {

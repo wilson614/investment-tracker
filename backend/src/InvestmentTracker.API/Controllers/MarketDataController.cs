@@ -304,9 +304,39 @@ public class MarketDataController(
     /// <summary>
     /// 按需同步 TWSE ISIN source，嘗試解析指定證券名稱的 ticker 映射。
     /// </summary>
+    /// <remarks>
+    /// <para>用途：針對未解析證券名稱進行補同步；即使上游不可用，也會在 <c>errors</c> 提供逐列錯誤資訊。</para>
+    /// <para><b>成功回應範例（200）</b></para>
+    /// <code>
+    /// {
+    ///   "requested": 2,
+    ///   "resolved": 1,
+    ///   "unresolved": 1,
+    ///   "mappings": [
+    ///     {
+    ///       "securityName": "台積電",
+    ///       "ticker": "2330",
+    ///       "isin": "TW0002330008",
+    ///       "market": "TWSE"
+    ///     }
+    ///   ],
+    ///   "errors": [
+    ///     {
+    ///       "securityName": "未知公司",
+    ///       "errorCode": "NOT_FOUND",
+    ///       "message": "No mapping found after synchronization"
+    ///     }
+    ///   ]
+    /// }
+    /// </code>
+    /// <para><b>失敗回應範例（400，請求缺少 securityNames）</b></para>
+    /// <code>
+    /// SecurityNames is required
+    /// </code>
+    /// </remarks>
     [HttpPost("twse/symbol-mappings/sync-on-demand")]
     [ProducesResponseType(typeof(TwseSymbolSyncOnDemandResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<TwseSymbolSyncOnDemandResponse>> SyncTwseSymbolMappingsOnDemand(
         [FromBody] TwseSymbolSyncOnDemandRequest request,
         CancellationToken cancellationToken = default)

@@ -205,6 +205,65 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
+    public async Task Execute_ReturnsRejectedWithSessionRowMismatch_WhenRowIsNotInPreviewSession()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Session Row Mismatch");
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 999,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var response = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+        var root = json.RootElement;
+
+        root.GetProperty("status").GetString().Should().Be("rejected");
+
+        var result = root.GetProperty("results").EnumerateArray().Single();
+        result.GetProperty("rowNumber").GetInt32().Should().Be(999);
+        result.GetProperty("success").GetBoolean().Should().BeFalse();
+        result.GetProperty("errorCode").GetString().Should().Be("SESSION_ROW_MISMATCH");
+
+        var error = root.GetProperty("errors").EnumerateArray().Single();
+        error.GetProperty("rowNumber").GetInt32().Should().Be(999);
+        error.GetProperty("fieldName").GetString().Should().Be("rowNumber");
+        error.GetProperty("errorCode").GetString().Should().Be("SESSION_ROW_MISMATCH");
+        error.GetProperty("invalidValue").GetString().Should().Be("999");
+    }
+
+    [Fact]
     public async Task Execute_Blocks_WhenSessionBelongsToDifferentPortfolio()
     {
         // Arrange

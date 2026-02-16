@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.UseCases.StockTransactions;
 
@@ -17,7 +18,8 @@ public sealed class PreviewStockImportUseCase(
     ICurrentUserService currentUserService,
     IStockImportParser stockImportParser,
     IStockImportSymbolResolver stockImportSymbolResolver,
-    IStockImportSessionStore stockImportSessionStore) : IPreviewStockImportUseCase
+    IStockImportSessionStore stockImportSessionStore,
+    ILogger<PreviewStockImportUseCase> logger) : IPreviewStockImportUseCase
 {
     private const string StatusValid = "valid";
     private const string StatusRequiresUserAction = "requires_user_action";
@@ -41,6 +43,15 @@ public sealed class PreviewStockImportUseCase(
         }
 
         var parseResult = stockImportParser.Parse(request.CsvContent, request.SelectedFormat);
+        logger.LogInformation(
+            "Stock import preview parsed. PortfolioId={PortfolioId}, UserId={UserId}, SelectedFormat={SelectedFormat}, DetectedFormat={DetectedFormat}, ParsedRows={ParsedRows}, ParseDiagnostics={ParseDiagnosticsCount}",
+            request.PortfolioId,
+            userId,
+            parseResult.SelectedFormat,
+            parseResult.DetectedFormat,
+            parseResult.Rows.Count,
+            parseResult.Diagnostics.Count);
+
         var symbolResolution = await stockImportSymbolResolver.ResolveAsync(parseResult.Rows, cancellationToken);
 
         var diagnostics = parseResult.Diagnostics
@@ -56,6 +67,16 @@ public sealed class PreviewStockImportUseCase(
 
         var summary = BuildSummary(rows);
         var sessionId = Guid.NewGuid();
+
+        logger.LogInformation(
+            "Stock import preview resolved. PortfolioId={PortfolioId}, SessionId={SessionId}, TotalRows={TotalRows}, ValidRows={ValidRows}, RequiresActionRows={RequiresActionRows}, InvalidRows={InvalidRows}, DiagnosticCount={DiagnosticCount}",
+            request.PortfolioId,
+            sessionId,
+            summary.TotalRows,
+            summary.ValidRows,
+            summary.RequiresActionRows,
+            summary.InvalidRows,
+            diagnostics.Count);
 
         await stockImportSessionStore.SaveAsync(new StockImportSessionSnapshotDto
         {

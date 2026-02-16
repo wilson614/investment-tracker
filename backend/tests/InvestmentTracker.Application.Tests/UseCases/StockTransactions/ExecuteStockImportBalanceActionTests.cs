@@ -53,6 +53,40 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_RowNotInSession_ShouldReturnSessionRowMismatchErrorCode()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        const int missingRowNumber = 999;
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: missingRowNumber,
+            ticker: "2330");
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("rejected");
+        result.Summary.InsertedRows.Should().Be(0);
+        result.Summary.FailedRows.Should().Be(1);
+
+        var rowResult = result.Results.Should().ContainSingle().Subject;
+        rowResult.RowNumber.Should().Be(missingRowNumber);
+        rowResult.Success.Should().BeFalse();
+        rowResult.ErrorCode.Should().Be("SESSION_ROW_MISMATCH");
+        rowResult.Message.Should().Be("此列不屬於目前預覽 Session。");
+
+        var diagnostic = result.Errors.Should().ContainSingle().Subject;
+        diagnostic.RowNumber.Should().Be(missingRowNumber);
+        diagnostic.ErrorCode.Should().Be("SESSION_ROW_MISMATCH");
+        diagnostic.FieldName.Should().Be("rowNumber");
+        diagnostic.InvalidValue.Should().Be(missingRowNumber.ToString());
+    }
+
+    [Fact]
     public async Task ExecuteAsync_BuyShortfall_WithMarginDecision_ShouldSucceed()
     {
         // Arrange
@@ -560,7 +594,8 @@ public class ExecuteStockImportBalanceActionTests
                 TxSnapshotServiceMock.Object,
                 new CurrencyLedgerService(),
                 new PortfolioCalculator(),
-                TransactionManagerMock.Object);
+                TransactionManagerMock.Object,
+                Mock.Of<Microsoft.Extensions.Logging.ILogger<ExecuteStockImportUseCase>>());
         }
 
         public ExecuteStockImportRequest BuildExecuteRequest(

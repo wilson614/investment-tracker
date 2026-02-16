@@ -2,6 +2,7 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Application.UseCases.StockTransactions;
 
@@ -14,7 +15,8 @@ public interface IStockImportSymbolResolver
 
 public sealed class StockImportSymbolResolver(
     ITwSecurityMappingRepository mappingRepository,
-    ITwseSymbolMappingSyncService twseSymbolMappingSyncService) : IStockImportSymbolResolver
+    ITwseSymbolMappingSyncService twseSymbolMappingSyncService,
+    ILogger<StockImportSymbolResolver> logger) : IStockImportSymbolResolver
 {
     private const string ActionInputTicker = "input_ticker";
 
@@ -33,6 +35,10 @@ public sealed class StockImportSymbolResolver(
         {
             return new StockImportSymbolResolutionResult([], []);
         }
+
+        logger.LogInformation(
+            "Stock import symbol resolution started. TotalRows={TotalRows}",
+            rows.Count);
 
         var rowsNeedingResolution = rows
             .Where(CanResolveBySecurityName)
@@ -56,6 +62,11 @@ public sealed class StockImportSymbolResolver(
         var localMappings = await mappingRepository.GetBySecurityNamesAsync(securityNames, cancellationToken);
         var localCandidatesByName = BuildCandidatesBySecurityName(localMappings);
 
+        logger.LogInformation(
+            "Stock import symbol resolution local lookup completed. DistinctSecurityNames={DistinctSecurityNames}, LocalMappingRows={LocalMappingRows}",
+            securityNames.Count,
+            localMappings.Count);
+
         HashSet<string> namesRequireSync = [];
 
         foreach (var row in rowsNeedingResolution)
@@ -72,11 +83,18 @@ public sealed class StockImportSymbolResolver(
             if (candidates.Count > 1)
             {
                 resolvedByRowNumber[row.RowNumber] = RequireTickerInput(row);
-                diagnostics.Add(CreateUnresolvedDiagnostic(
+                var unresolvedDiagnostic = CreateUnresolvedDiagnostic(
                     row.RowNumber,
                     row.RawSecurityName,
                     message: "證券名稱對應到多個代號，無法唯一解析",
-                    correctionGuidance: "請手動輸入 ticker 或排除此列。"));
+                    correctionGuidance: "請手動輸入 ticker 或排除此列。");
+                diagnostics.Add(unresolvedDiagnostic);
+                logger.LogWarning(
+                    "Stock import symbol resolution requires user action. RowNumber={RowNumber}, ErrorCode={ErrorCode}, FieldName={FieldName}, HasInvalidValue={HasInvalidValue}",
+                    unresolvedDiagnostic.RowNumber,
+                    unresolvedDiagnostic.ErrorCode,
+                    unresolvedDiagnostic.FieldName,
+                    unresolvedDiagnostic.InvalidValue is not null);
                 continue;
             }
 
@@ -87,7 +105,18 @@ public sealed class StockImportSymbolResolver(
 
         if (namesRequireSync.Count > 0)
         {
+            logger.LogInformation(
+                "Stock import symbol resolution triggering TWSE sync. NamesRequireSync={NamesRequireSync}",
+                namesRequireSync.Count);
+
             var syncResult = await twseSymbolMappingSyncService.SyncOnDemandAsync(namesRequireSync, cancellationToken);
+            logger.LogInformation(
+                "Stock import symbol resolution TWSE sync completed. Requested={Requested}, Resolved={Resolved}, Unresolved={Unresolved}, ErrorCount={ErrorCount}",
+                syncResult.Requested,
+                syncResult.Resolved,
+                syncResult.Unresolved,
+                syncResult.Errors.Count);
+
             syncErrorsByName = syncResult.Errors
                 .Select(error => new KeyValuePair<string, TwseSymbolMappingSyncError>(
                     NormalizeSecurityName(error.SecurityName),
@@ -123,21 +152,35 @@ public sealed class StockImportSymbolResolver(
                 if (syncErrorsByName.TryGetValue(securityName, out var syncError) &&
                     string.Equals(syncError.ErrorCode, "UPSTREAM_UNAVAILABLE", StringComparison.OrdinalIgnoreCase))
                 {
-                    diagnostics.Add(CreateDiagnostic(
+                    var syncUnavailableDiagnostic = CreateDiagnostic(
                         rowNumber: row.RowNumber,
                         fieldName: FieldRawSecurityName,
                         invalidValue: row.RawSecurityName,
                         errorCode: ErrorCodeSymbolSyncUnavailable,
                         message: "TWSE 對照同步暫時不可用，無法自動解析代號",
-                        correctionGuidance: "請手動輸入 ticker，或稍後重新預覽。"));
+                        correctionGuidance: "請手動輸入 ticker，或稍後重新預覽。");
+                    diagnostics.Add(syncUnavailableDiagnostic);
+
+                    logger.LogWarning(
+                        "Stock import symbol resolution sync failure. RowNumber={RowNumber}, UpstreamErrorCode={UpstreamErrorCode}, ErrorCode={ErrorCode}, NameNormalized={NameNormalized}",
+                        row.RowNumber,
+                        syncError.ErrorCode,
+                        syncUnavailableDiagnostic.ErrorCode,
+                        !string.IsNullOrWhiteSpace(securityName));
                     continue;
                 }
 
-                diagnostics.Add(CreateUnresolvedDiagnostic(
+                var unresolvedAfterSyncDiagnostic = CreateUnresolvedDiagnostic(
                     row.RowNumber,
                     row.RawSecurityName,
                     message: "無法解析對應的證券代號",
-                    correctionGuidance: "請手動輸入 ticker 或排除此列。"));
+                    correctionGuidance: "請手動輸入 ticker 或排除此列。");
+                diagnostics.Add(unresolvedAfterSyncDiagnostic);
+                logger.LogWarning(
+                    "Stock import symbol resolution unresolved after sync. RowNumber={RowNumber}, ErrorCode={ErrorCode}, NameNormalized={NameNormalized}",
+                    row.RowNumber,
+                    unresolvedAfterSyncDiagnostic.ErrorCode,
+                    !string.IsNullOrWhiteSpace(securityName));
             }
         }
 
@@ -149,6 +192,12 @@ public sealed class StockImportSymbolResolver(
             .OrderBy(d => d.RowNumber)
             .ThenBy(d => d.FieldName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        logger.LogInformation(
+            "Stock import symbol resolution completed. TotalRows={TotalRows}, ResolvedRows={ResolvedRows}, DiagnosticCount={DiagnosticCount}",
+            rows.Count,
+            mergedRows.Count(row => !string.IsNullOrWhiteSpace(row.Ticker) && !row.ActionsRequired.Contains(ActionInputTicker, StringComparer.Ordinal)),
+            sortedDiagnostics.Count);
 
         return new StockImportSymbolResolutionResult(mergedRows, sortedDiagnostics);
     }
