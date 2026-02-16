@@ -334,7 +334,7 @@ describe('Stock import legacy regression flow', () => {
           sessionId: 'session-legacy-format-1',
           detectedFormat: 'legacy_csv',
           selectedFormat: 'broker_statement',
-          rows: [],
+          rows: [buildPreviewRow({ rowNumber: 15, rawSecurityName: 'STALE-PREVIEW-ROW' })],
           errors: [
             {
               rowNumber: 1,
@@ -374,13 +374,27 @@ describe('Stock import legacy regression flow', () => {
     const firstPreviewRequest = getLatestPreviewRequest();
     expect(firstPreviewRequest.selectedFormat).toBe('broker_statement');
     expect(screen.getByText('系統偵測：舊版 CSV')).toBeInTheDocument();
-    expect(screen.queryByText('LEGACY-FORMAT-ROW')).not.toBeInTheDocument();
+    expect(await screen.findByText('STALE-PREVIEW-ROW')).toBeInTheDocument();
 
     const brokerOverrideError = await screen.findByText(/CSV_HEADER_MISSING/i);
     expect(brokerOverrideError).toHaveTextContent(/第\s*\d+\s*行/);
     expect(brokerOverrideError).toHaveTextContent(/\(netSettlement\)/i);
 
+    const executeButtonBeforeFormatChange = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonBeforeFormatChange).toBeEnabled();
+
     await selectImportFormat(user, 'legacy_csv');
+
+    expect(screen.queryByText('STALE-PREVIEW-ROW')).not.toBeInTheDocument();
+
+    const executeButtonAfterFormatChange = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonAfterFormatChange).toBeDisabled();
+    expect(screen.getByText('請先產生預覽')).toBeInTheDocument();
+
     await requestPreview(user);
 
     const secondPreviewRequest = getLatestPreviewRequest();
@@ -476,4 +490,5 @@ describe('Stock import legacy regression flow', () => {
     expect(errorRow).toHaveTextContent(/Security identity cannot be resolved uniquely/);
     expect(errorRow).toHaveTextContent(/Enter ticker manually or exclude this row/);
   });
+
 });

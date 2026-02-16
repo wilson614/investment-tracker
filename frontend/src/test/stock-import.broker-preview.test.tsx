@@ -286,7 +286,7 @@ describe('Stock import broker preview flow', () => {
       .mockResolvedValueOnce(
         buildPreviewResponse({
           sessionId: 'session-format-1',
-          detectedFormat: 'broker_statement',
+          detectedFormat: 'legacy_csv',
           selectedFormat: 'broker_statement',
           rows: [buildPreviewRow({ rawSecurityName: 'ROW-FORMAT-1' })],
         }),
@@ -322,12 +322,31 @@ describe('Stock import broker preview flow', () => {
       }),
     );
     expect(firstPreviewRequest.csvContent).toContain('代碼');
+    expect(screen.getByText('系統偵測：舊版 CSV')).toBeInTheDocument();
+
+    const executeButtonBeforeRepreview = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonBeforeRepreview).toBeEnabled();
 
     await selectImportFormat(user, 'legacy_csv');
+
+    const executeButtonAfterFormatChange = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonAfterFormatChange).toBeDisabled();
+    expect(screen.getByText('請先產生預覽')).toBeInTheDocument();
+
     await requestPreview(user);
 
     const secondPreviewRequest = getLatestPreviewRequest();
     expect(secondPreviewRequest.selectedFormat).toBe('legacy_csv');
+    expect(screen.getByText('系統偵測：券商對帳單')).toBeInTheDocument();
+
+    const executeButtonAfterRepreview = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonAfterRepreview).toBeEnabled();
   });
 
   it('ambiguous-side rows require per-row confirmation and submit confirmed side in execute payload', async () => {

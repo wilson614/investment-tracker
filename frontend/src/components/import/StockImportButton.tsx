@@ -429,10 +429,7 @@ export function StockImportButton({
     setIsModalOpen(true);
   };
 
-  const resetImportState = () => {
-    setCsvContent('');
-    setSelectedFormat('broker_statement');
-    setDetectedFormat('unknown');
+  const clearPreviewSessionState = () => {
     setLatestPreview(null);
     setPreviewErrors([]);
     setManualTickerByRow({});
@@ -441,6 +438,13 @@ export function StockImportButton({
     setGlobalTopUpTransactionType(null);
     setRowBalanceActionSelectionByRow({});
     setRowTopUpTransactionTypeByRow({});
+  };
+
+  const resetImportState = () => {
+    setCsvContent('');
+    setSelectedFormat('broker_statement');
+    setDetectedFormat('unknown');
+    clearPreviewSessionState();
     setIsPreviewing(false);
   };
 
@@ -483,6 +487,7 @@ export function StockImportButton({
 
       setLatestPreview(preview);
       setSelectedFormat(preview.selectedFormat);
+      setDetectedFormat(preview.detectedFormat);
       setPreviewErrors(mapPreviewErrorsToParseErrors(preview));
 
       // Build/refresh remediation state, keep previous manual edits
@@ -982,7 +987,10 @@ export function StockImportButton({
     formatOptions,
     onChangeFormat: (nextValue) => {
       if (nextValue === 'legacy_csv' || nextValue === 'broker_statement') {
-        setSelectedFormat(nextValue);
+        if (nextValue !== selectedFormat) {
+          setSelectedFormat(nextValue);
+          clearPreviewSessionState();
+        }
       }
     },
     previewButtonLabel: latestPreview ? '重新預覽' : '產生預覽',
