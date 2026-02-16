@@ -158,7 +158,9 @@ public sealed class StockImportParser : IStockImportParser
                 ]);
         }
 
-        return selected switch
+        var routingFormat = ResolveRoutingFormat(selected, detectedFormat);
+
+        return routingFormat switch
         {
             FormatBrokerStatement => ParseBrokerStatement(detectedFormat, selected, header, dataRows),
             FormatLegacyCsv => ParseLegacyCsv(detectedFormat, selected, header, dataRows),
@@ -928,6 +930,23 @@ public sealed class StockImportParser : IStockImportParser
         }
 
         return FormatUnknown;
+    }
+
+    private static string ResolveRoutingFormat(string selectedFormat, string detectedFormat)
+    {
+        // Manual selectedFormat should always take precedence over auto-detection.
+        if (selectedFormat is FormatLegacyCsv or FormatBrokerStatement)
+        {
+            return selectedFormat;
+        }
+
+        // Defensive fallback (currently unreachable due to NormalizeSelectedFormat validation).
+        if (detectedFormat is FormatLegacyCsv or FormatBrokerStatement)
+        {
+            return detectedFormat;
+        }
+
+        return selectedFormat;
     }
 
     private static int? FindHeaderIndex(IReadOnlyList<string> headers, IReadOnlyList<string> aliases)
