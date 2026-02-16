@@ -121,8 +121,8 @@
 
 - [x] T037 [P] Add structured logging and error codes for import preview/execute and TWSE ISIN source sync failures in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/`
 - [x] T038 [P] Add OpenAPI annotations/examples for new import and sync endpoints in `backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs` and `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
-- [ ] T039 Update quickstart verification notes after implementation in `specs/012-import-broker-statement/quickstart.md`
-- [ ] T040 Execute quickstart scenarios and record verification evidence by updating `specs/012-import-broker-statement/quickstart.md`
+- [x] T039 Update quickstart verification notes after implementation in `specs/012-import-broker-statement/quickstart.md`
+- [x] T040 Execute quickstart scenarios and record verification evidence by updating `specs/012-import-broker-statement/quickstart.md`
 - [x] T041 [P] Run 500-row broker preview performance benchmark and assert <=3s target in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/PreviewStockImportPerformanceTests.cs`
 
 ---
