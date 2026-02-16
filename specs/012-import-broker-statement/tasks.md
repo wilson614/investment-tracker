@@ -102,12 +102,12 @@
 
 ### Tests for User Story 3
 
-- [ ] T032 [P] [US3] Add backend regression tests for legacy CSV preview/execute path in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsLegacyImportRegressionTests.cs`
-- [ ] T033 [P] [US3] Add frontend legacy import regression test in `frontend/src/test/stock-import.legacy-regression.test.tsx`
+- [x] T032 [P] [US3] Add backend regression tests for legacy CSV preview/execute path in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsLegacyImportRegressionTests.cs`
+- [x] T033 [P] [US3] Add frontend legacy import regression test in `frontend/src/test/stock-import.legacy-regression.test.tsx`
 
 ### Implementation for User Story 3
 
-- [ ] T034 [US3] Implement legacy-vs-broker format routing with manual override precedence in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockImportParser.cs`
+- [x] T034 [US3] Implement legacy-vs-broker format routing with manual override precedence in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/StockImportParser.cs`
 - [ ] T035 [US3] Preserve existing row-level result mapping shape for legacy imports in `frontend/src/components/import/StockImportButton.tsx`
 - [ ] T036 [US3] Update import UX copy for dual-format support without changing legacy workflow defaults in `frontend/src/components/import/CSVImportModal.tsx`
 
