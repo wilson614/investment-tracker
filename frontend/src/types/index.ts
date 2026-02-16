@@ -125,6 +125,7 @@ export type StockImportTradeSide = 'buy' | 'sell';
 export type StockImportPreviewTradeSide = StockImportTradeSide | 'ambiguous';
 export type StockImportRowStatus = 'valid' | 'requires_user_action' | 'invalid';
 export type StockImportActionRequired = 'confirm_trade_side' | 'input_ticker' | 'select_balance_action';
+export type StockImportBalanceDecisionScope = 'global_default' | 'row_override';
 
 export interface StockImportPreviewRequest {
   portfolioId: string;
@@ -137,6 +138,15 @@ export interface StockImportPreviewSummary {
   validRows: number;
   requiresActionRows: number;
   invalidRows: number;
+}
+
+export interface StockImportBalanceDecisionContext {
+  requiredAmount: number;
+  availableBalance: number;
+  shortfall: number;
+  decisionScope?: StockImportBalanceDecisionScope | null;
+  action?: StockImportExecuteBalanceAction | null;
+  topUpTransactionType?: StockImportTopUpTransactionType | null;
 }
 
 export interface StockImportPreviewRow {
@@ -154,6 +164,7 @@ export interface StockImportPreviewRow {
   currency: string | null;
   status: StockImportRowStatus;
   actionsRequired: StockImportActionRequired[];
+  balanceDecision?: StockImportBalanceDecisionContext | null;
 }
 
 export interface StockImportDiagnostic {
@@ -182,7 +193,7 @@ export interface StockImportExecuteRowRequest {
   ticker: string;
   confirmedTradeSide: StockImportTradeSide;
   exclude: boolean;
-  balanceAction: StockImportExecuteBalanceAction;
+  balanceAction?: StockImportExecuteBalanceAction;
   topUpTransactionType?: StockImportTopUpTransactionType;
 }
 

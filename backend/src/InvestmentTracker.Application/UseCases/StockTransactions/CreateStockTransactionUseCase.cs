@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
@@ -21,7 +22,8 @@ public class CreateStockTransactionUseCase(
     ICurrentUserService currentUserService,
     ITransactionDateExchangeRateService txDateFxService,
     IMonthlySnapshotService monthlySnapshotService,
-    ITransactionPortfolioSnapshotService txSnapshotService)
+    ITransactionPortfolioSnapshotService txSnapshotService,
+    IAppDbTransactionManager transactionManager)
 {
     public async Task<StockTransactionDto> ExecuteAsync(
         CreateStockTransactionRequest request,
@@ -148,75 +150,43 @@ public class CreateStockTransactionUseCase(
             transaction.SetRealizedPnl(realizedPnlHome.Value);
         }
 
-        await transactionRepository.AddAsync(transaction, cancellationToken);
+        await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-        // 交易異動後：使月度快照失效
-        var affectedFromMonth = new DateOnly(request.TransactionDate.Year, request.TransactionDate.Month, 1);
-        await monthlySnapshotService.InvalidateFromMonthAsync(
-            request.PortfolioId, affectedFromMonth, cancellationToken);
-
-        // 使用 shared helper 產生連動的 CurrencyTransaction 規格
-        var linkedSpec = StockTransactionLinking.BuildLinkedCurrencyTransactionSpec(
-            request.TransactionType, transaction, boundLedger);
-
-        if (linkedSpec != null)
+        try
         {
-            if (request.TransactionType == TransactionType.Buy)
+            await transactionRepository.AddAsync(transaction, cancellationToken);
+
+            // 交易異動後：使月度快照失效
+            var affectedFromMonth = new DateOnly(request.TransactionDate.Year, request.TransactionDate.Month, 1);
+            await monthlySnapshotService.InvalidateFromMonthAsync(
+                request.PortfolioId, affectedFromMonth, cancellationToken);
+
+            // 使用 shared helper 產生連動的 CurrencyTransaction 規格
+            var linkedSpec = StockTransactionLinking.BuildLinkedCurrencyTransactionSpec(
+                request.TransactionType, transaction, boundLedger);
+
+            if (linkedSpec != null)
             {
-                ledgerTransactions ??= await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                    boundLedger.Id, cancellationToken);
-
-                var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);
-                var shortfall = linkedSpec.Amount - currentBalance;
-
-                if (shortfall > 0)
+                if (request.TransactionType == TransactionType.Buy)
                 {
-                    switch (request.BalanceAction)
+                    ledgerTransactions ??= await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                        boundLedger.Id, cancellationToken);
+
+                    var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);
+                    var shortfall = linkedSpec.Amount - currentBalance;
+
+                    if (shortfall > 0)
                     {
-                        case BalanceAction.None:
-                            throw new BusinessRuleException("帳本餘額不足，請選擇處理方式");
+                        var decisionValidation = StockBalanceActionRules.ValidateShortfallDecision(
+                            request.BalanceAction,
+                            request.TopUpTransactionType);
 
-                        case BalanceAction.Margin:
+                        if (decisionValidation is not null)
+                            throw new BusinessRuleException(decisionValidation.Value.Message);
+
+                        switch (request.BalanceAction)
                         {
-                            if (marketRate == null)
-                            {
-                                var fxResult = await txDateFxService.GetOrFetchAsync(
-                                    portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
-                                marketRate = fxResult?.Rate;
-                            }
-
-                            var marginMarketRate = marketRate ?? exchangeRate
-                                ?? throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
-
-                            var blendedRate = currencyLedgerService.CalculateExchangeRateWithMargin(
-                                ledgerTransactions,
-                                request.TransactionDate,
-                                buyAmount,
-                                currentBalance,
-                                marginMarketRate);
-
-                            transaction.SetExchangeRate(blendedRate);
-                            break;
-                        }
-
-                        case BalanceAction.TopUp:
-                        {
-                            if (!request.TopUpTransactionType.HasValue)
-                                throw new BusinessRuleException("補足餘額需指定交易類型");
-
-                            if (!IsTopUpIncomeType(request.TopUpTransactionType.Value))
-                                throw new BusinessRuleException("補足餘額的交易類型必須為入帳類型");
-
-                            decimal? topUpExchangeRate = null;
-                            decimal? topUpHomeAmount = null;
-
-                            if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
-                            {
-                                topUpExchangeRate = 1.0m;
-                                topUpHomeAmount = shortfall;
-                            }
-
-                            if (request.TopUpTransactionType.Value == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
+                            case BalanceAction.Margin:
                             {
                                 if (marketRate == null)
                                 {
@@ -225,90 +195,129 @@ public class CreateStockTransactionUseCase(
                                     marketRate = fxResult?.Rate;
                                 }
 
-                                if (marketRate == null)
-                                    throw new BusinessRuleException("無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄");
+                                var marginMarketRate = marketRate ?? exchangeRate
+                                    ?? throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
-                                topUpExchangeRate = marketRate;
-                                topUpHomeAmount = Math.Round(shortfall * marketRate.Value, 2);
+                                var blendedRate = currencyLedgerService.CalculateExchangeRateWithMargin(
+                                    ledgerTransactions,
+                                    request.TransactionDate,
+                                    buyAmount,
+                                    currentBalance,
+                                    marginMarketRate);
+
+                                transaction.SetExchangeRate(blendedRate);
+                                break;
                             }
 
-                            var topUpTransaction = new CurrencyTransaction(
-                                boundLedger.Id,
-                                request.TransactionDate,
-                                request.TopUpTransactionType.Value,
-                                shortfall,
-                                homeAmount: topUpHomeAmount,
-                                exchangeRate: topUpExchangeRate,
-                                relatedStockTransactionId: transaction.Id,
-                                notes: $"補足買入 {request.Ticker} 差額");
+                            case BalanceAction.TopUp:
+                            {
+                                var topUpTransactionType = request.TopUpTransactionType!.Value;
+                                CurrencyTransactionTypePolicy.EnsureValidOrThrow(
+                                    boundLedger.CurrencyCode,
+                                    topUpTransactionType);
 
-                            await currencyTransactionRepository.AddAsync(topUpTransaction, cancellationToken);
+                                decimal? topUpExchangeRate = null;
+                                decimal? topUpHomeAmount = null;
 
-                            await txSnapshotService.UpsertSnapshotAsync(
-                                request.PortfolioId,
-                                topUpTransaction.Id,
-                                topUpTransaction.TransactionDate,
-                                cancellationToken);
+                                if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
+                                {
+                                    topUpExchangeRate = 1.0m;
+                                    topUpHomeAmount = shortfall;
+                                }
 
-                            ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                                boundLedger.Id, cancellationToken);
+                                if (topUpTransactionType == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
+                                {
+                                    if (marketRate == null)
+                                    {
+                                        var fxResult = await txDateFxService.GetOrFetchAsync(
+                                            portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+                                        marketRate = fxResult?.Rate;
+                                    }
 
-                            var newLifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
-                                ledgerTransactions,
-                                request.TransactionDate,
-                                buyAmount);
+                                    if (marketRate == null)
+                                        throw new BusinessRuleException("無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄");
 
-                            if (newLifoRate > 0)
-                                transaction.SetExchangeRate(newLifoRate);
+                                    topUpExchangeRate = marketRate;
+                                    topUpHomeAmount = Math.Round(shortfall * marketRate.Value, 2);
+                                }
 
-                            break;
+                                var topUpTransaction = new CurrencyTransaction(
+                                    boundLedger.Id,
+                                    request.TransactionDate,
+                                    topUpTransactionType,
+                                    shortfall,
+                                    homeAmount: topUpHomeAmount,
+                                    exchangeRate: topUpExchangeRate,
+                                    relatedStockTransactionId: transaction.Id,
+                                    notes: $"補足買入 {request.Ticker} 差額");
+
+                                await currencyTransactionRepository.AddAsync(topUpTransaction, cancellationToken);
+
+                                await txSnapshotService.UpsertSnapshotAsync(
+                                    request.PortfolioId,
+                                    topUpTransaction.Id,
+                                    topUpTransaction.TransactionDate,
+                                    cancellationToken);
+
+                                ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                                    boundLedger.Id, cancellationToken);
+
+                                var newLifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
+                                    ledgerTransactions,
+                                    request.TransactionDate,
+                                    buyAmount);
+
+                                if (newLifoRate > 0)
+                                    transaction.SetExchangeRate(newLifoRate);
+
+                                break;
+                            }
+
+                            default:
+                                throw new BusinessRuleException("帳本餘額不足，請選擇處理方式");
                         }
-
-                        default:
-                            throw new BusinessRuleException("帳本餘額不足，請選擇處理方式");
                     }
                 }
+
+                // 本幣帳本強制 exchangeRate=1.0
+                decimal? linkedHomeAmount = null;
+                decimal? linkedExchangeRate = null;
+                if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
+                {
+                    linkedExchangeRate = 1.0m;
+                    linkedHomeAmount = linkedSpec.Amount;
+                }
+
+                var noteAction = linkedSpec.TransactionType == CurrencyTransactionType.Spend ? "買入" : "賣出";
+                var currencyTransaction = new CurrencyTransaction(
+                    boundLedger.Id,
+                    request.TransactionDate,
+                    linkedSpec.TransactionType,
+                    linkedSpec.Amount,
+                    homeAmount: linkedHomeAmount,
+                    exchangeRate: linkedExchangeRate,
+                    relatedStockTransactionId: transaction.Id,
+                    notes: $"{noteAction} {request.Ticker} × {request.Shares}");
+
+                await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
             }
 
-            // 本幣帳本強制 exchangeRate=1.0
-            decimal? linkedHomeAmount = null;
-            decimal? linkedExchangeRate = null;
-            if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
-            {
-                linkedExchangeRate = 1.0m;
-                linkedHomeAmount = linkedSpec.Amount;
-            }
+            // US1: 寫入交易日快照
+            await txSnapshotService.UpsertSnapshotAsync(
+                request.PortfolioId,
+                transaction.Id,
+                transaction.TransactionDate,
+                cancellationToken);
 
-            var noteAction = linkedSpec.TransactionType == CurrencyTransactionType.Spend ? "買入" : "賣出";
-            var currencyTransaction = new CurrencyTransaction(
-                boundLedger.Id,
-                request.TransactionDate,
-                linkedSpec.TransactionType,
-                linkedSpec.Amount,
-                homeAmount: linkedHomeAmount,
-                exchangeRate: linkedExchangeRate,
-                relatedStockTransactionId: transaction.Id,
-                notes: $"{noteAction} {request.Ticker} × {request.Shares}");
-
-            await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+            return MapToDto(transaction);
         }
-
-        // US1: 寫入交易日快照
-        await txSnapshotService.UpsertSnapshotAsync(
-            request.PortfolioId,
-            transaction.Id,
-            transaction.TransactionDate,
-            cancellationToken);
-
-        return MapToDto(transaction);
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
-
-    private static bool IsTopUpIncomeType(CurrencyTransactionType transactionType)
-        => transactionType is CurrencyTransactionType.ExchangeBuy
-            or CurrencyTransactionType.Interest
-            or CurrencyTransactionType.InitialBalance
-            or CurrencyTransactionType.OtherIncome
-            or CurrencyTransactionType.Deposit;
 
     private static StockTransactionDto MapToDto(StockTransaction transaction)
     {

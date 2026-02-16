@@ -173,7 +173,10 @@ public class AtomicTransactionTests : IDisposable
         return JsonSerializer.Deserialize<T>(payload, _apiJsonOptions);
     }
 
-    private async Task<(Portfolio portfolio, CurrencyLedger ledger)> SetupTestDataAsync()
+    private async Task<(Portfolio portfolio, CurrencyLedger ledger)> SetupTestDataAsync(
+        string currencyCode = "USD",
+        decimal initialForeignAmount = 1000m,
+        CurrencyTransactionType initialTransactionType = CurrencyTransactionType.ExchangeBuy)
     {
         // Create user
         var user = new User($"test-{Guid.NewGuid():N}@example.com", "password", "Test User");
@@ -181,7 +184,8 @@ public class AtomicTransactionTests : IDisposable
         _dbContext.Users.Add(user);
 
         // Create currency ledger with initial balance
-        var ledger = new CurrencyLedger(_testUserId, "USD", "美金帳戶");
+        var ledgerName = currencyCode == "TWD" ? "台幣帳戶" : "美金帳戶";
+        var ledger = new CurrencyLedger(_testUserId, currencyCode, ledgerName);
         await _currencyLedgerRepository.AddAsync(ledger);
 
         // Create portfolio bound to the ledger (Story 0.2: 1:1 binding)
@@ -189,14 +193,20 @@ public class AtomicTransactionTests : IDisposable
         portfolio.SetDescription("Test Portfolio");
         await _portfolioRepository.AddAsync(portfolio);
 
-        // Add initial currency transaction (exchange buy) to have balance
+        // Add initial currency transaction to have balance
+        var initialHomeAmount = currencyCode == "TWD"
+            ? initialForeignAmount
+            : initialForeignAmount * 31.5m;
+        var initialExchangeRate = currencyCode == "TWD"
+            ? 1.0m
+            : 31.5m;
         var initialTransaction = new CurrencyTransaction(
             ledger.Id,
             DateTime.UtcNow.AddDays(-10),
-            CurrencyTransactionType.ExchangeBuy,
-            1000m, // 1000 USD
-            homeAmount: 31500m, // 31500 TWD
-            exchangeRate: 31.5m
+            initialTransactionType,
+            initialForeignAmount,
+            homeAmount: initialHomeAmount,
+            exchangeRate: initialExchangeRate
         );
         await _currencyTransactionRepository.AddAsync(initialTransaction);
 
@@ -239,7 +249,8 @@ public class AtomicTransactionTests : IDisposable
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
             _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
 
         var request = new CreateStockTransactionRequest
         {
@@ -291,7 +302,8 @@ public class AtomicTransactionTests : IDisposable
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
             _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
 
         var request = new CreateStockTransactionRequest
         {
@@ -324,6 +336,51 @@ public class AtomicTransactionTests : IDisposable
     }
 
     [Fact]
+    public async Task BuyStock_WithTopUpExchangeBuyOnTwdLedger_ShouldThrowBusinessRuleException()
+    {
+        // Arrange
+        var (portfolio, _) = await SetupTestDataAsync(
+            currencyCode: "TWD",
+            initialForeignAmount: 100m,
+            initialTransactionType: CurrencyTransactionType.Deposit);
+
+        var useCase = new CreateStockTransactionUseCase(
+            _stockTransactionRepository,
+            _portfolioRepository,
+            _currencyLedgerRepository,
+            _currencyTransactionRepository,
+            _portfolioCalculator,
+            _currencyLedgerService,
+            _currentUserServiceMock.Object,
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
+
+        var request = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow,
+            Ticker = "2330",
+            TransactionType = TransactionType.Buy,
+            Shares = 1,
+            PricePerShare = 1000m,
+            Fees = 0m,
+            Currency = Currency.TWD,
+            BalanceAction = BalanceAction.TopUp,
+            TopUpTransactionType = CurrencyTransactionType.ExchangeBuy
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(request);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<BusinessRuleException>();
+        ex.Which.Message.Should().Contain("交易類型不符合此帳本規則");
+        ex.Which.Message.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+    }
+
+    [Fact]
     public async Task BuyStock_WithCurrencyMismatch_ShouldThrowException()
     {
         // Arrange - Portfolio bound to USD ledger
@@ -339,7 +396,8 @@ public class AtomicTransactionTests : IDisposable
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
             _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
 
         // Try to buy TWD stock with USD ledger
         var request = new CreateStockTransactionRequest
@@ -378,7 +436,8 @@ public class AtomicTransactionTests : IDisposable
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
             _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
 
         // First purchase: 200 USD
         var request1 = new CreateStockTransactionRequest
@@ -435,7 +494,8 @@ public class AtomicTransactionTests : IDisposable
             _currentUserServiceMock.Object,
             _txDateFxServiceMock.Object,
             _monthlySnapshotServiceMock.Object,
-            _txSnapshotServiceMock.Object);
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
 
         // First buy some shares
         var buyRequest = new CreateStockTransactionRequest
@@ -481,6 +541,60 @@ public class AtomicTransactionTests : IDisposable
         var incomeTx = transactions.FirstOrDefault(t => t.TransactionType == CurrencyTransactionType.OtherIncome);
         incomeTx.Should().NotBeNull();
         incomeTx.ForeignAmount.Should().Be(295m); // 5*60 - 5 fees
+    }
+
+    [Fact]
+    public async Task CreateStockTransaction_WhenSnapshotUpsertFails_ShouldRollbackAndNotPersistStockAndLinkedTransactions()
+    {
+        // Arrange
+        var (portfolio, ledger) = await SetupTestDataAsync();
+
+        _txSnapshotServiceMock
+            .Setup(x => x.UpsertSnapshotAsync(
+                portfolio.Id,
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("snapshot update failed"));
+
+        var useCase = new CreateStockTransactionUseCase(
+            _stockTransactionRepository,
+            _portfolioRepository,
+            _currencyLedgerRepository,
+            _currencyTransactionRepository,
+            _portfolioCalculator,
+            _currencyLedgerService,
+            _currentUserServiceMock.Object,
+            _txDateFxServiceMock.Object,
+            _monthlySnapshotServiceMock.Object,
+            _txSnapshotServiceMock.Object,
+            _transactionManager);
+
+        var request = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = DateTime.UtcNow,
+            Ticker = "VWRA",
+            TransactionType = TransactionType.Buy,
+            Shares = 10,
+            PricePerShare = 50m,
+            Fees = 5m,
+            Currency = Currency.USD
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(request);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("snapshot update failed");
+
+        var stockTransactions = await _stockTransactionRepository.GetByPortfolioIdAsync(portfolio.Id);
+        stockTransactions.Should().BeEmpty("snapshot failure should rollback newly created stock transaction");
+
+        var currencyTransactions = await _currencyTransactionRepository.GetByLedgerIdOrderedAsync(ledger.Id);
+        currencyTransactions.Should().HaveCount(1, "snapshot failure should rollback linked spend transaction");
+        currencyTransactions.Should().OnlyContain(t => t.TransactionType == CurrencyTransactionType.ExchangeBuy);
     }
 
     [Fact]

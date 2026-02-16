@@ -1,5 +1,6 @@
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
@@ -13,13 +14,15 @@ internal sealed class StockImportRowFailureException(
     string fieldName,
     string message,
     string correctionGuidance,
-    string? invalidValue = null)
+    string? invalidValue = null,
+    StockImportBalanceDecisionContextDto? balanceDecision = null)
     : BusinessRuleException(message)
 {
     public string ErrorCode { get; } = errorCode;
     public string FieldName { get; } = fieldName;
     public string CorrectionGuidance { get; } = correctionGuidance;
     public string? InvalidValue { get; } = invalidValue;
+    public StockImportBalanceDecisionContextDto? BalanceDecision { get; } = balanceDecision;
 }
 
 public interface IExecuteStockImportUseCase
@@ -55,6 +58,7 @@ public sealed class ExecuteStockImportUseCase(
     private const string FieldTicker = "ticker";
     private const string FieldConfirmedTradeSide = "confirmedTradeSide";
     private const string FieldRow = "row";
+    private const string FieldBalanceAction = StockBalanceActionRules.FieldBalanceAction;
 
     private const string MessageExcluded = "此列已由使用者排除。";
     private const string MessageCreated = "Created";
@@ -233,7 +237,7 @@ public sealed class ExecuteStockImportUseCase(
                     message: ex.Message,
                     correctionGuidance: ex.CorrectionGuidance,
                     confirmedTradeSide: normalizedTradeSide,
-                    balanceDecision: BuildBalanceDecisionContext(request.DefaultBalanceAction, row));
+                    balanceDecision: ex.BalanceDecision ?? BuildBalanceDecisionContext(request.DefaultBalanceAction, row));
                 failedRows++;
             }
             catch (BusinessRuleException ex)
@@ -399,6 +403,7 @@ public sealed class ExecuteStockImportUseCase(
             boundLedger);
 
         var pendingCurrencyTransactions = new List<CurrencyTransaction>();
+        var pendingTopUpTransactions = new List<CurrencyTransaction>();
 
         if (linkedSpec != null)
         {
@@ -413,14 +418,33 @@ public sealed class ExecuteStockImportUseCase(
 
                 if (shortfall > 0)
                 {
+                    var balanceDecisionContext = BuildBalanceDecisionContext(
+                        defaultBalanceDecision,
+                        requestRow,
+                        requiredAmount: linkedSpec.Amount,
+                        availableBalance: currentBalance,
+                        shortfall: shortfall);
+
+                    var decisionValidation = StockBalanceActionRules.ValidateShortfallDecision(
+                        balanceDecision.Action,
+                        balanceDecision.TopUpTransactionType);
+
+                    if (decisionValidation is StockBalanceDecisionValidationError validationError)
+                    {
+                        throw CreateBalanceActionFailure(
+                            message: validationError.Message,
+                            action: balanceDecision.Action,
+                            topUpTransactionType: balanceDecision.TopUpTransactionType,
+                            requiredAmount: linkedSpec.Amount,
+                            availableBalance: currentBalance,
+                            shortfall: shortfall,
+                            decisionScope: balanceDecisionContext?.DecisionScope,
+                            fieldName: validationError.FieldName,
+                            invalidValue: validationError.InvalidValue);
+                    }
+
                     switch (balanceDecision.Action)
                     {
-                        case BalanceAction.None:
-                            throw CreateBalanceActionFailure(
-                                "帳本餘額不足，請選擇處理方式",
-                                balanceDecision.Action,
-                                balanceDecision.TopUpTransactionType);
-
                         case BalanceAction.Margin:
                         {
                             if (marketRate == null)
@@ -437,9 +461,13 @@ public sealed class ExecuteStockImportUseCase(
                             if (marginMarketRate == null)
                             {
                                 throw CreateBalanceActionFailure(
-                                    "無法計算匯率，請先在帳本中建立換匯紀錄",
-                                    balanceDecision.Action,
-                                    balanceDecision.TopUpTransactionType);
+                                    message: "無法計算匯率，請先在帳本中建立換匯紀錄",
+                                    action: balanceDecision.Action,
+                                    topUpTransactionType: balanceDecision.TopUpTransactionType,
+                                    requiredAmount: linkedSpec.Amount,
+                                    availableBalance: currentBalance,
+                                    shortfall: shortfall,
+                                    decisionScope: balanceDecisionContext?.DecisionScope);
                             }
 
                             var blendedRate = currencyLedgerService.CalculateExchangeRateWithMargin(
@@ -455,20 +483,35 @@ public sealed class ExecuteStockImportUseCase(
 
                         case BalanceAction.TopUp:
                         {
-                            if (!balanceDecision.TopUpTransactionType.HasValue)
+                            var topUpTransactionType = balanceDecision.TopUpTransactionType!.Value;
+
+                            CurrencyTransactionTypePolicyValidationResult? topUpTypeValidationResult = null;
+                            try
                             {
-                                throw CreateBalanceActionFailure(
-                                    "補足餘額需指定交易類型",
-                                    balanceDecision.Action,
-                                    balanceDecision.TopUpTransactionType);
+                                CurrencyTransactionTypePolicy.EnsureValidOrThrow(
+                                    boundLedger.CurrencyCode,
+                                    topUpTransactionType);
+                            }
+                            catch (BusinessRuleException)
+                            {
+                                topUpTypeValidationResult = CurrencyTransactionTypePolicy.Validate(
+                                    boundLedger.CurrencyCode,
+                                    topUpTransactionType);
                             }
 
-                            if (!IsTopUpIncomeType(balanceDecision.TopUpTransactionType.Value))
+                            if (topUpTypeValidationResult is { IsValid: false })
                             {
+                                var firstDiagnostic = topUpTypeValidationResult.Diagnostics[0];
                                 throw CreateBalanceActionFailure(
-                                    "補足餘額的交易類型必須為入帳類型",
-                                    balanceDecision.Action,
-                                    balanceDecision.TopUpTransactionType);
+                                    message: $"{firstDiagnostic.Message} {firstDiagnostic.CorrectionGuidance}".Trim(),
+                                    action: balanceDecision.Action,
+                                    topUpTransactionType: balanceDecision.TopUpTransactionType,
+                                    requiredAmount: linkedSpec.Amount,
+                                    availableBalance: currentBalance,
+                                    shortfall: shortfall,
+                                    decisionScope: balanceDecisionContext?.DecisionScope,
+                                    fieldName: StockBalanceActionRules.FieldTopUpTransactionType,
+                                    invalidValue: topUpTransactionType.ToString());
                             }
 
                             decimal? topUpExchangeRate = null;
@@ -480,7 +523,7 @@ public sealed class ExecuteStockImportUseCase(
                                 topUpHomeAmount = shortfall;
                             }
 
-                            if (balanceDecision.TopUpTransactionType.Value == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
+                            if (topUpTransactionType == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
                             {
                                 if (marketRate == null)
                                 {
@@ -495,9 +538,13 @@ public sealed class ExecuteStockImportUseCase(
                                 if (marketRate == null)
                                 {
                                     throw CreateBalanceActionFailure(
-                                        "無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄",
-                                        balanceDecision.Action,
-                                        balanceDecision.TopUpTransactionType);
+                                        message: "無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄",
+                                        action: balanceDecision.Action,
+                                        topUpTransactionType: balanceDecision.TopUpTransactionType,
+                                        requiredAmount: linkedSpec.Amount,
+                                        availableBalance: currentBalance,
+                                        shortfall: shortfall,
+                                        decisionScope: balanceDecisionContext?.DecisionScope);
                                 }
 
                                 topUpExchangeRate = marketRate;
@@ -507,7 +554,7 @@ public sealed class ExecuteStockImportUseCase(
                             var topUpTransaction = new CurrencyTransaction(
                                 boundLedger.Id,
                                 tradeDate,
-                                balanceDecision.TopUpTransactionType.Value,
+                                topUpTransactionType,
                                 shortfall,
                                 homeAmount: topUpHomeAmount,
                                 exchangeRate: topUpExchangeRate,
@@ -515,6 +562,7 @@ public sealed class ExecuteStockImportUseCase(
                                 notes: $"補足買入 {normalizedTicker} 差額");
 
                             pendingCurrencyTransactions.Add(topUpTransaction);
+                            pendingTopUpTransactions.Add(topUpTransaction);
 
                             var effectiveLedgerTransactions = ledgerTransactions
                                 .Concat(pendingCurrencyTransactions)
@@ -533,9 +581,13 @@ public sealed class ExecuteStockImportUseCase(
 
                         default:
                             throw CreateBalanceActionFailure(
-                                "帳本餘額不足，請選擇處理方式",
-                                balanceDecision.Action,
-                                balanceDecision.TopUpTransactionType);
+                                message: "帳本餘額不足，請選擇處理方式",
+                                action: balanceDecision.Action,
+                                topUpTransactionType: balanceDecision.TopUpTransactionType,
+                                requiredAmount: linkedSpec.Amount,
+                                availableBalance: currentBalance,
+                                shortfall: shortfall,
+                                decisionScope: balanceDecisionContext?.DecisionScope);
                     }
                 }
             }
@@ -567,6 +619,15 @@ public sealed class ExecuteStockImportUseCase(
         foreach (var pendingCurrencyTransaction in pendingCurrencyTransactions)
         {
             await currencyTransactionRepository.AddAsync(pendingCurrencyTransaction, cancellationToken);
+
+            if (pendingTopUpTransactions.Contains(pendingCurrencyTransaction))
+            {
+                await txSnapshotService.UpsertSnapshotAsync(
+                    portfolio.Id,
+                    pendingCurrencyTransaction.Id,
+                    pendingCurrencyTransaction.TransactionDate,
+                    cancellationToken);
+            }
         }
 
         var affectedFromMonth = new DateOnly(tradeDate.Year, tradeDate.Month, 1);
@@ -592,45 +653,90 @@ public sealed class ExecuteStockImportUseCase(
             ?? defaultDecision?.Action
             ?? BalanceAction.None;
 
-        var topUpType = row.TopUpTransactionType
-            ?? defaultDecision?.TopUpTransactionType;
+        var topUpType = action == BalanceAction.TopUp
+            ? row.TopUpTransactionType ?? defaultDecision?.TopUpTransactionType
+            : null;
 
         return (action, topUpType);
     }
 
     private static StockImportBalanceDecisionContextDto? BuildBalanceDecisionContext(
         StockImportDefaultBalanceDecisionRequest? defaultDecision,
-        ExecuteStockImportRowRequest row)
+        ExecuteStockImportRowRequest row,
+        decimal? requiredAmount = null,
+        decimal? availableBalance = null,
+        decimal? shortfall = null)
     {
         var action = row.BalanceAction ?? defaultDecision?.Action;
-        var topUpType = row.TopUpTransactionType ?? defaultDecision?.TopUpTransactionType;
+        var topUpType = action == BalanceAction.TopUp
+            ? row.TopUpTransactionType ?? defaultDecision?.TopUpTransactionType
+            : null;
 
-        if (action is null && topUpType is null)
+        if (action is null && topUpType is null && !requiredAmount.HasValue && !availableBalance.HasValue && !shortfall.HasValue)
             return null;
+
+        var resolvedRequiredAmount = requiredAmount ?? 0m;
+        var resolvedAvailableBalance = availableBalance ?? 0m;
+        var resolvedShortfall = shortfall ?? 0m;
 
         return new StockImportBalanceDecisionContextDto
         {
+            RequiredAmount = resolvedRequiredAmount,
+            AvailableBalance = resolvedAvailableBalance,
+            Shortfall = resolvedShortfall,
             Action = action,
             TopUpTransactionType = topUpType,
-            DecisionScope = row.BalanceAction.HasValue ? "row_override" : "global_default"
+            DecisionScope = ResolveDecisionScope(defaultDecision, row)
         };
+    }
+
+    private static string? ResolveDecisionScope(
+        StockImportDefaultBalanceDecisionRequest? defaultDecision,
+        ExecuteStockImportRowRequest row)
+    {
+        if (row.BalanceAction.HasValue || row.TopUpTransactionType.HasValue)
+            return "row_override";
+
+        if (defaultDecision?.Action.HasValue == true || defaultDecision?.TopUpTransactionType.HasValue == true)
+            return "global_default";
+
+        return null;
     }
 
     private static StockImportRowFailureException CreateBalanceActionFailure(
         string message,
         BalanceAction action,
-        CurrencyTransactionType? topUpTransactionType)
+        CurrencyTransactionType? topUpTransactionType,
+        decimal requiredAmount,
+        decimal availableBalance,
+        decimal shortfall,
+        string? decisionScope,
+        string fieldName = FieldBalanceAction,
+        string? invalidValue = null)
     {
-        var invalidValue = action == BalanceAction.TopUp
-            ? topUpTransactionType?.ToString() ?? action.ToString()
-            : action.ToString();
+        var resolvedInvalidValue = invalidValue;
+        if (resolvedInvalidValue is null)
+        {
+            resolvedInvalidValue = action == BalanceAction.TopUp
+                ? topUpTransactionType?.ToString() ?? action.ToString()
+                : action.ToString();
+        }
 
         return new StockImportRowFailureException(
             errorCode: ErrorCodeBalanceActionRequired,
-            fieldName: "balanceAction",
+            fieldName: fieldName,
             message: message,
             correctionGuidance: "請先指定 Margin 或 TopUp，並在 TopUp 時提供合法的入帳類型。",
-            invalidValue: invalidValue);
+            invalidValue: resolvedInvalidValue,
+            balanceDecision: new StockImportBalanceDecisionContextDto
+            {
+                RequiredAmount = requiredAmount,
+                AvailableBalance = availableBalance,
+                Shortfall = shortfall,
+                Action = action,
+                TopUpTransactionType = topUpTransactionType,
+                DecisionScope = decisionScope
+            });
     }
 
     private static string? ResolveInvalidValueForField(
@@ -640,7 +746,8 @@ public sealed class ExecuteStockImportUseCase(
     {
         return fieldName switch
         {
-            "balanceAction" => row.BalanceAction?.ToString(),
+            FieldBalanceAction => row.BalanceAction?.ToString(),
+            StockBalanceActionRules.FieldTopUpTransactionType => row.TopUpTransactionType?.ToString(),
             FieldTicker => row.Ticker,
             FieldConfirmedTradeSide => normalizedTradeSide,
             _ => normalizedTradeSide
@@ -665,13 +772,6 @@ public sealed class ExecuteStockImportUseCase(
 
         return null;
     }
-
-    private static bool IsTopUpIncomeType(CurrencyTransactionType transactionType)
-        => transactionType is CurrencyTransactionType.ExchangeBuy
-            or CurrencyTransactionType.Interest
-            or CurrencyTransactionType.InitialBalance
-            or CurrencyTransactionType.OtherIncome
-            or CurrencyTransactionType.Deposit;
 
     private static string ResolveStatus(int insertedRows, int failedRows)
     {

@@ -28,17 +28,26 @@ import {
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
-import { StockMarket, Currency } from '../../types';
+import {
+  StockMarket,
+  Currency,
+  CurrencyTransactionType as CurrencyTransactionTypeEnum,
+  CurrencyTransactionTypeLabels,
+} from '../../types';
 import type {
   CreateStockTransactionRequest,
   TransactionType,
   StockMarket as StockMarketType,
   Currency as CurrencyType,
+  StockImportBalanceDecisionContext,
+  StockImportDefaultBalanceAction,
+  StockImportExecuteBalanceAction,
   StockImportExecuteRequest,
   StockImportPreviewRequest,
   StockImportPreviewResponse,
   StockImportPreviewRow,
   StockImportSelectedFormat,
+  StockImportTopUpTransactionType,
   StockImportTradeSide,
   StockImportExecuteRowRequest,
 } from '../../types';
@@ -146,6 +155,37 @@ const stockFields: FieldDefinition[] = [
 const formatOptions: Array<{ value: StockImportSelectedFormat; label: string }> = [
   { value: 'broker_statement', label: '券商對帳單（Broker Statement）' },
   { value: 'legacy_csv', label: '舊版 CSV（Legacy CSV）' },
+];
+
+const topUpTransactionTypeValues: StockImportTopUpTransactionType[] = [
+  'ExchangeBuy',
+  'Deposit',
+  'InitialBalance',
+  'Interest',
+  'OtherIncome',
+];
+
+const topUpTransactionTypeOptions: Array<{ value: StockImportTopUpTransactionType; label: string }> = [
+  {
+    value: 'ExchangeBuy',
+    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.ExchangeBuy],
+  },
+  {
+    value: 'Deposit',
+    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.Deposit],
+  },
+  {
+    value: 'InitialBalance',
+    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.InitialBalance],
+  },
+  {
+    value: 'Interest',
+    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.Interest],
+  },
+  {
+    value: 'OtherIncome',
+    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.OtherIncome],
+  },
 ];
 
 /**
@@ -270,6 +310,94 @@ function mapPreviewErrorsToParseErrors(preview: StockImportPreviewResponse): Par
   }));
 }
 
+function isTopUpTransactionType(
+  value: StockImportTopUpTransactionType | null | undefined,
+): value is StockImportTopUpTransactionType {
+  if (!value) {
+    return false;
+  }
+
+  return topUpTransactionTypeValues.includes(value);
+}
+
+function hasBalanceDecisionRequirement(
+  row: StockImportPreviewRow,
+): boolean {
+  if (row.actionsRequired.includes('select_balance_action')) {
+    return true;
+  }
+
+  return Boolean(row.balanceDecision?.shortfall && row.balanceDecision.shortfall > 0);
+}
+
+function deriveRowBalanceAction(
+  rowSelection: 'default' | 'Margin' | 'TopUp' | undefined,
+  rowContext: StockImportBalanceDecisionContext | null | undefined,
+  globalDefault: 'Margin' | 'TopUp' | null,
+): StockImportExecuteBalanceAction {
+  if (rowSelection === 'Margin' || rowSelection === 'TopUp') {
+    return rowSelection;
+  }
+
+  if (rowContext?.action === 'Margin' || rowContext?.action === 'TopUp') {
+    return rowContext.action;
+  }
+
+  return globalDefault ?? 'None';
+}
+
+function deriveTopUpTransactionType(
+  rowSelection: 'default' | 'Margin' | 'TopUp' | undefined,
+  rowContext: StockImportBalanceDecisionContext | null | undefined,
+  rowTopUp: StockImportTopUpTransactionType | null | undefined,
+  globalDefault: 'Margin' | 'TopUp' | null,
+  globalTopUp: StockImportTopUpTransactionType | null,
+): StockImportTopUpTransactionType | undefined {
+  const rowContextTopUp = rowContext?.topUpTransactionType;
+
+  if (rowSelection === 'TopUp') {
+    if (isTopUpTransactionType(rowTopUp)) {
+      return rowTopUp;
+    }
+
+    if (isTopUpTransactionType(rowContextTopUp)) {
+      return rowContextTopUp;
+    }
+
+    if (isTopUpTransactionType(globalTopUp)) {
+      return globalTopUp;
+    }
+
+    return undefined;
+  }
+
+  if (rowSelection === 'Margin') {
+    return undefined;
+  }
+
+  if (rowContext?.action === 'TopUp') {
+    if (isTopUpTransactionType(rowTopUp)) {
+      return rowTopUp;
+    }
+
+    if (isTopUpTransactionType(rowContextTopUp)) {
+      return rowContextTopUp;
+    }
+
+    if (isTopUpTransactionType(globalTopUp)) {
+      return globalTopUp;
+    }
+
+    return undefined;
+  }
+
+  if (globalTopUp && globalDefault === 'TopUp') {
+    return globalTopUp;
+  }
+
+  return undefined;
+}
+
 export function StockImportButton({
   portfolioId,
   onImportComplete,
@@ -289,6 +417,10 @@ export function StockImportButton({
 
   const [manualTickerByRow, setManualTickerByRow] = useState<Record<number, string>>({});
   const [confirmedTradeSideByRow, setConfirmedTradeSideByRow] = useState<Record<number, StockImportTradeSide>>({});
+  const [globalBalanceAction, setGlobalBalanceAction] = useState<'Margin' | 'TopUp' | null>(null);
+  const [globalTopUpTransactionType, setGlobalTopUpTransactionType] = useState<StockImportTopUpTransactionType | null>(null);
+  const [rowBalanceActionSelectionByRow, setRowBalanceActionSelectionByRow] = useState<Record<number, 'default' | 'Margin' | 'TopUp'>>({});
+  const [rowTopUpTransactionTypeByRow, setRowTopUpTransactionTypeByRow] = useState<Record<number, StockImportTopUpTransactionType | null>>({});
 
   /**
    * 開啟匯入 modal。
@@ -305,6 +437,10 @@ export function StockImportButton({
     setPreviewErrors([]);
     setManualTickerByRow({});
     setConfirmedTradeSideByRow({});
+    setGlobalBalanceAction(null);
+    setGlobalTopUpTransactionType(null);
+    setRowBalanceActionSelectionByRow({});
+    setRowTopUpTransactionTypeByRow({});
     setIsPreviewing(false);
   };
 
@@ -352,6 +488,8 @@ export function StockImportButton({
       // Build/refresh remediation state, keep previous manual edits
       const nextManualTickerByRow: Record<number, string> = {};
       const nextConfirmedTradeSideByRow: Record<number, StockImportTradeSide> = {};
+      const nextRowBalanceActionSelectionByRow: Record<number, 'default' | 'Margin' | 'TopUp'> = {};
+      const nextRowTopUpTransactionTypeByRow: Record<number, StockImportTopUpTransactionType | null> = {};
 
       for (const row of preview.rows) {
         const normalizedTicker = normalizeTickerValue(row.ticker);
@@ -372,10 +510,28 @@ export function StockImportButton({
             nextConfirmedTradeSideByRow[row.rowNumber] = parsed;
           }
         }
+
+        const existingRowSelection = rowBalanceActionSelectionByRow[row.rowNumber];
+        if (existingRowSelection) {
+          nextRowBalanceActionSelectionByRow[row.rowNumber] = existingRowSelection;
+        } else {
+          nextRowBalanceActionSelectionByRow[row.rowNumber] = 'default';
+        }
+
+        const existingRowTopUp = rowTopUpTransactionTypeByRow[row.rowNumber];
+        if (isTopUpTransactionType(existingRowTopUp)) {
+          nextRowTopUpTransactionTypeByRow[row.rowNumber] = existingRowTopUp;
+        } else if (isTopUpTransactionType(row.balanceDecision?.topUpTransactionType)) {
+          nextRowTopUpTransactionTypeByRow[row.rowNumber] = row.balanceDecision.topUpTransactionType;
+        } else {
+          nextRowTopUpTransactionTypeByRow[row.rowNumber] = null;
+        }
       }
 
       setManualTickerByRow(nextManualTickerByRow);
       setConfirmedTradeSideByRow(nextConfirmedTradeSideByRow);
+      setRowBalanceActionSelectionByRow(nextRowBalanceActionSelectionByRow);
+      setRowTopUpTransactionTypeByRow(nextRowTopUpTransactionTypeByRow);
     } finally {
       setIsPreviewing(false);
     }
@@ -406,6 +562,47 @@ export function StockImportButton({
     });
   }, [latestPreview, confirmedTradeSideByRow]);
 
+  const hasMissingTopUpTransactionType = useMemo(() => {
+    if (!latestPreview) return false;
+
+    if (globalBalanceAction === 'TopUp' && !globalTopUpTransactionType) {
+      return true;
+    }
+
+    return latestPreview.rows.some((row) => {
+      if (!hasBalanceDecisionRequirement(row)) {
+        return false;
+      }
+
+      const rowSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
+      const effectiveAction = deriveRowBalanceAction(
+        rowSelection,
+        row.balanceDecision,
+        globalBalanceAction,
+      );
+
+      if (effectiveAction !== 'TopUp') {
+        return false;
+      }
+
+      const effectiveTopUpType = deriveTopUpTransactionType(
+        rowSelection,
+        row.balanceDecision,
+        rowTopUpTransactionTypeByRow[row.rowNumber],
+        globalBalanceAction,
+        globalTopUpTransactionType,
+      );
+
+      return !effectiveTopUpType;
+    });
+  }, [
+    latestPreview,
+    rowBalanceActionSelectionByRow,
+    rowTopUpTransactionTypeByRow,
+    globalBalanceAction,
+    globalTopUpTransactionType,
+  ]);
+
   const executeDisabledReason = useMemo(() => {
     if (!latestPreview) {
       return '請先產生預覽';
@@ -419,8 +616,17 @@ export function StockImportButton({
       return '仍有列缺少買賣方向，請先逐列確認';
     }
 
+    if (hasMissingTopUpTransactionType) {
+      return '補足餘額（Top-up）需選擇交易類型';
+    }
+
     return null;
-  }, [latestPreview, hasUnresolvedTicker, hasUnconfirmedTradeSide]);
+  }, [
+    latestPreview,
+    hasUnresolvedTicker,
+    hasUnconfirmedTradeSide,
+    hasMissingTopUpTransactionType,
+  ]);
 
   const remediationRows = useMemo<CSVImportRemediationRow[]>(() => {
     if (!latestPreview) return [];
@@ -428,10 +634,26 @@ export function StockImportButton({
     return latestPreview.rows.map((row) => {
       const requiresTickerInput = row.actionsRequired.includes('input_ticker');
       const requiresTradeSideConfirmation = row.actionsRequired.includes('confirm_trade_side');
+      const requiresBalanceAction = hasBalanceDecisionRequirement(row);
 
       const manualTicker = normalizeTickerValue(manualTickerByRow[row.rowNumber]);
       const effectiveTicker = normalizeTickerValue(manualTicker ?? row.ticker);
       const side = confirmedTradeSideByRow[row.rowNumber] ?? parseTradeSideFromRow(row);
+
+      const rowSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
+      const rowTopUpType = rowTopUpTransactionTypeByRow[row.rowNumber] ?? null;
+      const effectiveBalanceAction = deriveRowBalanceAction(
+        rowSelection,
+        row.balanceDecision,
+        globalBalanceAction,
+      );
+      const effectiveTopUpTransactionType = deriveTopUpTransactionType(
+        rowSelection,
+        row.balanceDecision,
+        rowTopUpType,
+        globalBalanceAction,
+        globalTopUpTransactionType,
+      );
 
       return {
         rowNumber: row.rowNumber,
@@ -444,14 +666,34 @@ export function StockImportButton({
         tradeSide: row.tradeSide,
         confirmedTradeSide: side,
         requiresTradeSideConfirmation,
+        requiresBalanceAction,
+        balanceActionSelection: rowSelection,
+        effectiveBalanceAction:
+          effectiveBalanceAction === 'Margin' || effectiveBalanceAction === 'TopUp'
+            ? effectiveBalanceAction
+            : null,
+        topUpTransactionType: effectiveTopUpTransactionType ?? null,
+        shortfall: row.balanceDecision?.shortfall ?? null,
+        availableBalance: row.balanceDecision?.availableBalance ?? null,
+        requiredAmount: row.balanceDecision?.requiredAmount ?? null,
         note: requiresTickerInput
           ? '此列需手動輸入 ticker'
           : requiresTradeSideConfirmation
             ? '此列需手動確認買賣方向'
-            : null,
+            : requiresBalanceAction
+              ? '此列需指定餘額不足處理方式'
+              : null,
       };
     });
-  }, [latestPreview, manualTickerByRow, confirmedTradeSideByRow]);
+  }, [
+    latestPreview,
+    manualTickerByRow,
+    confirmedTradeSideByRow,
+    rowBalanceActionSelectionByRow,
+    rowTopUpTransactionTypeByRow,
+    globalBalanceAction,
+    globalTopUpTransactionType,
+  ]);
 
   const handleExecuteImport = async (): Promise<{ success: boolean; errors: ParseError[]; successCount?: number }> => {
     if (!latestPreview) {
@@ -477,12 +719,46 @@ export function StockImportButton({
         continue;
       }
 
+      const rowBalanceSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
+      const rowTopUpType = rowTopUpTransactionTypeByRow[row.rowNumber] ?? null;
+      const requiresBalanceAction = hasBalanceDecisionRequirement(row);
+
+      const effectiveBalanceAction = deriveRowBalanceAction(
+        rowBalanceSelection,
+        row.balanceDecision,
+        globalBalanceAction,
+      );
+
+      const effectiveTopUpTransactionType = deriveTopUpTransactionType(
+        rowBalanceSelection,
+        row.balanceDecision,
+        rowTopUpType,
+        globalBalanceAction,
+        globalTopUpTransactionType,
+      );
+
+      if (requiresBalanceAction && effectiveBalanceAction === 'TopUp' && !effectiveTopUpTransactionType) {
+        unresolvedExecuteErrors.push({
+          row: row.rowNumber,
+          column: '補足交易類型',
+          message: '選擇 Top-up 時需指定交易類型',
+        });
+        continue;
+      }
+
       rows.push({
         rowNumber: row.rowNumber,
         ticker,
         confirmedTradeSide,
         exclude: false,
-        balanceAction: 'None',
+        ...(requiresBalanceAction
+          ? {
+              balanceAction: effectiveBalanceAction,
+              ...(effectiveBalanceAction === 'TopUp' && effectiveTopUpTransactionType
+                ? { topUpTransactionType: effectiveTopUpTransactionType }
+                : {}),
+            }
+          : {}),
       });
     }
 
@@ -493,10 +769,20 @@ export function StockImportButton({
       };
     }
 
+    const defaultBalanceAction: StockImportDefaultBalanceAction | undefined = globalBalanceAction
+      ? {
+          action: globalBalanceAction,
+          ...(globalBalanceAction === 'TopUp'
+            ? { topUpTransactionType: globalTopUpTransactionType ?? undefined }
+            : {}),
+        }
+      : undefined;
+
     const request: StockImportExecuteRequest = {
       sessionId: latestPreview.sessionId,
       portfolioId,
       rows,
+      ...(defaultBalanceAction ? { defaultBalanceAction } : {}),
     };
 
     const response = await transactionApi.executeImport(request);
@@ -724,6 +1010,40 @@ export function StockImportButton({
         [rowNumber]: side,
       }));
     },
+    globalBalanceActionLabel: '餘額不足預設處理方式',
+    globalBalanceAction,
+    onChangeGlobalBalanceAction: (value) => {
+      setGlobalBalanceAction(value);
+      if (value !== 'TopUp') {
+        setGlobalTopUpTransactionType(null);
+      }
+    },
+    globalTopUpTransactionType,
+    onChangeGlobalTopUpTransactionType: (value) => {
+      setGlobalTopUpTransactionType(value);
+    },
+    rowBalanceActionLabel: '逐列餘額不足處理方式',
+    rowTopUpTransactionTypeLabel: '逐列補足交易類型',
+    onChangeRowBalanceActionSelection: (rowNumber, value) => {
+      setRowBalanceActionSelectionByRow((prev) => ({
+        ...prev,
+        [rowNumber]: value,
+      }));
+
+      if (value !== 'TopUp') {
+        setRowTopUpTransactionTypeByRow((prev) => ({
+          ...prev,
+          [rowNumber]: null,
+        }));
+      }
+    },
+    onChangeRowTopUpTransactionType: (rowNumber, value) => {
+      setRowTopUpTransactionTypeByRow((prev) => ({
+        ...prev,
+        [rowNumber]: value,
+      }));
+    },
+    topUpTransactionTypeOptions,
     executeDisabled: Boolean(executeDisabledReason),
     executeDisabledReason,
   };

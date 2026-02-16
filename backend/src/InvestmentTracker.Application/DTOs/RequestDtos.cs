@@ -172,11 +172,45 @@ public record ExecuteStockImportRequest : IValidatableObject
                 [nameof(Rows)]);
         }
 
-        if (DefaultBalanceAction?.Action == BalanceAction.TopUp && DefaultBalanceAction.TopUpTransactionType is null)
+        if (DefaultBalanceAction is not null)
         {
-            yield return new ValidationResult(
-                "DefaultBalanceAction.TopUpTransactionType is required when DefaultBalanceAction.Action is TopUp.",
-                [nameof(DefaultBalanceAction)]);
+            if (!DefaultBalanceAction.Action.HasValue)
+            {
+                yield return new ValidationResult(
+                    "DefaultBalanceAction.Action is required when DefaultBalanceAction is provided.",
+                    [nameof(DefaultBalanceAction)]);
+            }
+            else
+            {
+                if (!StockBalanceActionRules.IsExecutableDefaultAction(DefaultBalanceAction.Action))
+                {
+                    yield return new ValidationResult(
+                        "DefaultBalanceAction.Action must be Margin or TopUp when DefaultBalanceAction is provided.",
+                        [nameof(DefaultBalanceAction)]);
+                }
+
+                if (DefaultBalanceAction.Action == BalanceAction.TopUp)
+                {
+                    if (!DefaultBalanceAction.TopUpTransactionType.HasValue)
+                    {
+                        yield return new ValidationResult(
+                            "DefaultBalanceAction.TopUpTransactionType is required when DefaultBalanceAction.Action is TopUp.",
+                            [nameof(DefaultBalanceAction)]);
+                    }
+                    else if (!StockBalanceActionRules.IsTopUpIncomeType(DefaultBalanceAction.TopUpTransactionType.Value))
+                    {
+                        yield return new ValidationResult(
+                            "DefaultBalanceAction.TopUpTransactionType must be an income type when DefaultBalanceAction.Action is TopUp.",
+                            [nameof(DefaultBalanceAction)]);
+                    }
+                }
+                else if (DefaultBalanceAction.TopUpTransactionType.HasValue)
+                {
+                    yield return new ValidationResult(
+                        "DefaultBalanceAction.TopUpTransactionType is only allowed when DefaultBalanceAction.Action is TopUp.",
+                        [nameof(DefaultBalanceAction)]);
+                }
+            }
         }
 
         var duplicatedRowNumbers = Rows
@@ -196,11 +230,37 @@ public record ExecuteStockImportRequest : IValidatableObject
         for (var i = 0; i < Rows.Count; i++)
         {
             var row = Rows[i];
-            if (row.BalanceAction == BalanceAction.TopUp && row.TopUpTransactionType is null)
+            var rowMember = $"{nameof(Rows)}[{i}]";
+
+            var resolvedAction = row.BalanceAction
+                ?? DefaultBalanceAction?.Action
+                ?? BalanceAction.None;
+
+            var resolvedTopUpTransactionType = resolvedAction == BalanceAction.TopUp
+                ? row.TopUpTransactionType ?? DefaultBalanceAction?.TopUpTransactionType
+                : null;
+
+            if (resolvedAction != BalanceAction.TopUp && row.TopUpTransactionType.HasValue)
             {
                 yield return new ValidationResult(
-                    $"Rows[{i}].TopUpTransactionType is required when Rows[{i}].BalanceAction is TopUp.",
-                    [nameof(Rows)]);
+                    $"Rows[{i}].TopUpTransactionType is only allowed when resolved BalanceAction is TopUp.",
+                    [rowMember]);
+            }
+
+            if (resolvedAction == BalanceAction.TopUp)
+            {
+                if (!resolvedTopUpTransactionType.HasValue)
+                {
+                    yield return new ValidationResult(
+                        $"Rows[{i}].TopUpTransactionType is required when resolved BalanceAction is TopUp.",
+                        [rowMember]);
+                }
+                else if (!StockBalanceActionRules.IsTopUpIncomeType(resolvedTopUpTransactionType.Value))
+                {
+                    yield return new ValidationResult(
+                        $"Rows[{i}].TopUpTransactionType must be an income type when resolved BalanceAction is TopUp.",
+                        [rowMember]);
+                }
             }
         }
     }
@@ -251,6 +311,61 @@ public record StockImportDefaultBalanceDecisionRequest
     /// 僅當 Action=TopUp 時需要。
     /// </summary>
     public CurrencyTransactionType? TopUpTransactionType { get; init; }
+}
+
+internal readonly record struct StockBalanceDecisionValidationError(
+    string FieldName,
+    string Message,
+    string? InvalidValue = null);
+
+internal static class StockBalanceActionRules
+{
+    public const string FieldBalanceAction = "balanceAction";
+    public const string FieldTopUpTransactionType = "topUpTransactionType";
+
+    public static bool IsExecutableDefaultAction(BalanceAction? action)
+        => action is BalanceAction.Margin or BalanceAction.TopUp;
+
+    public static bool IsTopUpIncomeType(CurrencyTransactionType transactionType)
+        => transactionType is CurrencyTransactionType.ExchangeBuy
+            or CurrencyTransactionType.Interest
+            or CurrencyTransactionType.InitialBalance
+            or CurrencyTransactionType.OtherIncome
+            or CurrencyTransactionType.Deposit;
+
+    public static StockBalanceDecisionValidationError? ValidateShortfallDecision(
+        BalanceAction action,
+        CurrencyTransactionType? topUpTransactionType)
+    {
+        if (!Enum.IsDefined(action) || action == BalanceAction.None)
+        {
+            return new StockBalanceDecisionValidationError(
+                FieldBalanceAction,
+                "帳本餘額不足，請選擇處理方式",
+                action.ToString());
+        }
+
+        if (action == BalanceAction.TopUp)
+        {
+            if (!topUpTransactionType.HasValue)
+            {
+                return new StockBalanceDecisionValidationError(
+                    FieldTopUpTransactionType,
+                    "補足餘額需指定交易類型");
+            }
+
+            var resolvedTopUpTransactionType = topUpTransactionType.Value;
+            if (!IsTopUpIncomeType(resolvedTopUpTransactionType))
+            {
+                return new StockBalanceDecisionValidationError(
+                    FieldTopUpTransactionType,
+                    "補足餘額的交易類型必須為入帳類型",
+                    resolvedTopUpTransactionType.ToString());
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>

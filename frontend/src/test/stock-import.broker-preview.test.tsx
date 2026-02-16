@@ -262,14 +262,6 @@ async function confirmTradeSideForRow(
   throw new Error('找不到每列買賣方向控制項');
 }
 
-async function executeImport(user: ReturnType<typeof userEvent.setup>) {
-  const executeButton = await screen.findByRole('button', {
-    name: /確認匯入|執行匯入|開始匯入/i,
-  });
-
-  await user.click(executeButton);
-}
-
 function expectVisibleTextOrder(textsInExpectedOrder: string[]) {
   const nodes = textsInExpectedOrder.map((text) => screen.getByText(text));
 

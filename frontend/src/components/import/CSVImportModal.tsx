@@ -53,6 +53,13 @@ export interface CSVImportRemediationRow {
   tradeSide?: 'buy' | 'sell' | 'ambiguous';
   confirmedTradeSide?: 'buy' | 'sell' | null;
   requiresTradeSideConfirmation?: boolean;
+  requiresBalanceAction?: boolean;
+  balanceActionSelection?: 'default' | 'Margin' | 'TopUp';
+  effectiveBalanceAction?: 'Margin' | 'TopUp' | null;
+  topUpTransactionType?: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null;
+  shortfall?: number | null;
+  availableBalance?: number | null;
+  requiredAmount?: number | null;
   note?: string | null;
 }
 
@@ -73,6 +80,25 @@ export interface CSVImportPreviewExtensions {
 
   onManualTickerChange?: (rowNumber: number, value: string) => void;
   onChangeTradeSide?: (rowNumber: number, side: 'buy' | 'sell') => void;
+
+  globalBalanceActionLabel?: string;
+  globalBalanceAction?: 'Margin' | 'TopUp' | null;
+  onChangeGlobalBalanceAction?: (value: 'Margin' | 'TopUp' | null) => void;
+  globalTopUpTransactionType?: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null;
+  onChangeGlobalTopUpTransactionType?: (value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null) => void;
+
+  rowBalanceActionLabel?: string;
+  rowTopUpTransactionTypeLabel?: string;
+  onChangeRowBalanceActionSelection?: (rowNumber: number, value: 'default' | 'Margin' | 'TopUp') => void;
+  onChangeRowTopUpTransactionType?: (
+    rowNumber: number,
+    value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null,
+  ) => void;
+
+  topUpTransactionTypeOptions?: Array<{
+    value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+    label: string;
+  }>;
 
   executeDisabled?: boolean;
   executeDisabledReason?: string | null;
@@ -124,6 +150,12 @@ function getStatusLabel(status: CSVImportRemediationRow['status']): string {
   if (status === 'valid') return '可匯入';
   if (status === 'requires_user_action') return '需補充';
   return '無法匯入';
+}
+
+function getBalanceActionLabel(action: 'Margin' | 'TopUp' | null | undefined): string {
+  if (action === 'Margin') return '融資';
+  if (action === 'TopUp') return '補足餘額';
+  return '未設定';
 }
 
 export function CSVImportModal({
@@ -438,6 +470,68 @@ export function CSVImportModal({
                 </div>
               )}
 
+              {previewExtensions?.onChangeGlobalBalanceAction && (
+                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-3">
+                  <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-balance-action-selector">
+                    {previewExtensions.globalBalanceActionLabel ?? '餘額不足預設處理方式'}
+                  </label>
+                  <select
+                    id="global-balance-action-selector"
+                    aria-label={previewExtensions.globalBalanceActionLabel ?? '餘額不足預設處理方式'}
+                    value={previewExtensions.globalBalanceAction ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'Margin' || value === 'TopUp') {
+                        previewExtensions.onChangeGlobalBalanceAction?.(value);
+                      } else {
+                        previewExtensions.onChangeGlobalBalanceAction?.(null);
+                      }
+                    }}
+                    className="input-dark w-full"
+                  >
+                    <option value="">無（沿用後端預設）</option>
+                    <option value="Margin">融資（Margin）</option>
+                    <option value="TopUp">補足餘額（Top-up）</option>
+                  </select>
+
+                  {previewExtensions.globalBalanceAction === 'TopUp' && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-topup-transaction-type-selector">
+                        補足交易類型
+                      </label>
+                      <select
+                        id="global-topup-transaction-type-selector"
+                        aria-label="補足交易類型"
+                        value={previewExtensions.globalTopUpTransactionType ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value === '') {
+                            previewExtensions.onChangeGlobalTopUpTransactionType?.(null);
+                            return;
+                          }
+
+                          if (
+                            value === 'ExchangeBuy'
+                            || value === 'Deposit'
+                            || value === 'InitialBalance'
+                            || value === 'Interest'
+                            || value === 'OtherIncome'
+                          ) {
+                            previewExtensions.onChangeGlobalTopUpTransactionType?.(value);
+                          }
+                        }}
+                        className="input-dark w-full"
+                      >
+                        <option value="">請選擇補足交易類型</option>
+                        {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">欄位對應摘要</h4>
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
@@ -471,13 +565,14 @@ export function CSVImportModal({
               {previewExtensions?.remediationRows && previewExtensions.remediationRows.length > 0 && (
                 <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[820px]">
+                    <table className="w-full text-sm min-w-[1100px]">
                       <thead>
                         <tr className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">列號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">標的名稱</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">股票代號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">買賣方向</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">餘額不足處理</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">狀態</th>
                         </tr>
                       </thead>
@@ -529,6 +624,66 @@ export function CSVImportModal({
                               )}
                               {row.note && (
                                 <p className="mt-1 text-xs text-[var(--text-muted)]">{row.note}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">
+                              {row.requiresBalanceAction ? (
+                                <div className="space-y-2">
+                                  <select
+                                    value={row.balanceActionSelection ?? 'default'}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      if (value === 'default' || value === 'Margin' || value === 'TopUp') {
+                                        previewExtensions.onChangeRowBalanceActionSelection?.(row.rowNumber, value);
+                                      }
+                                    }}
+                                    aria-label={previewExtensions.rowBalanceActionLabel ?? `第 ${row.rowNumber} 行餘額不足處理方式`}
+                                    className="input-dark w-full"
+                                  >
+                                    <option value="default">套用預設（{getBalanceActionLabel(row.effectiveBalanceAction)})</option>
+                                    <option value="Margin">融資（Margin）</option>
+                                    <option value="TopUp">補足餘額（Top-up）</option>
+                                  </select>
+
+                                  {(row.effectiveBalanceAction === 'TopUp' || row.balanceActionSelection === 'TopUp') && (
+                                    <select
+                                      value={row.topUpTransactionType ?? ''}
+                                      onChange={(event) => {
+                                        const value = event.target.value;
+                                        if (value === '') {
+                                          previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, null);
+                                          return;
+                                        }
+
+                                        if (
+                                          value === 'ExchangeBuy'
+                                          || value === 'Deposit'
+                                          || value === 'InitialBalance'
+                                          || value === 'Interest'
+                                          || value === 'OtherIncome'
+                                        ) {
+                                          previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, value);
+                                        }
+                                      }}
+                                      aria-label={previewExtensions.rowTopUpTransactionTypeLabel ?? `第 ${row.rowNumber} 行補足交易類型`}
+                                      className="input-dark w-full"
+                                    >
+                                      <option value="">請選擇補足交易類型</option>
+                                      {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                  )}
+
+                                  {typeof row.shortfall === 'number' && (
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                      差額 {row.shortfall.toFixed(2)}
+                                      {typeof row.availableBalance === 'number' && `，可用餘額 ${row.availableBalance.toFixed(2)}`}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[var(--text-muted)]">-</span>
                               )}
                             </td>
                             <td className="px-3 py-3 text-[var(--text-secondary)]">{getStatusLabel(row.status)}</td>
