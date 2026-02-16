@@ -79,16 +79,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Add backend use-case tests for shortfall decision handling, unresolved-decision execution blocking, and row-level error codes/messages in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
-- [ ] T026 [P] [US2] Add frontend interaction tests for global/per-row balance actions in `frontend/src/test/stock-import.balance-action.test.tsx`
+- [x] T025 [P] [US2] Add backend use-case tests for shortfall decision handling, unresolved-decision execution blocking, and row-level error codes/messages in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+- [x] T026 [P] [US2] Add frontend interaction tests for global/per-row balance actions in `frontend/src/test/stock-import.balance-action.test.tsx`
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Add import execution orchestration that applies `BalanceAction`/`TopUpTransactionType` per row and blocks rows with unresolved decisions using explicit row-level failure reasons in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
-- [ ] T028 [US2] Reuse and adapt manual transaction shortfall checks for import rows in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
-- [ ] T029 [US2] Extend import execute request DTO for default + per-row balance decisions in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
-- [ ] T030 [US2] Add UI for global default and per-row override of balance action in `frontend/src/components/import/StockImportButton.tsx`
-- [ ] T031 [US2] Add Top-up transaction type selection and validation messaging in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T027 [US2] Add import execution orchestration that applies `BalanceAction`/`TopUpTransactionType` per row and blocks rows with unresolved decisions using explicit row-level failure reasons in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T028 [US2] Reuse and adapt manual transaction shortfall checks for import rows in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/CreateStockTransactionUseCase.cs`
+- [x] T029 [US2] Extend import execute request DTO for default + per-row balance decisions in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
+- [x] T030 [US2] Add UI for global default and per-row override of balance action in `frontend/src/components/import/StockImportButton.tsx`
+- [x] T031 [US2] Add Top-up transaction type selection and validation messaging in `frontend/src/components/import/CSVImportModal.tsx`
 
 **Checkpoint**: User Story 2 should be independently functional and testable.
 
