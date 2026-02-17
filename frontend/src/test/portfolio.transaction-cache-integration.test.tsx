@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PortfolioPage } from '../pages/Portfolio';
 import { PortfolioProvider } from '../contexts/PortfolioContext';
-import { portfolioApi, transactionApi } from '../services/api';
+import { portfolioApi, transactionApi, currencyLedgerApi } from '../services/api';
 import { Currency, StockMarket, TransactionType } from '../types';
 import type {
   CreateStockTransactionRequest,
@@ -35,6 +35,9 @@ vi.mock('../services/api', () => ({
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+  },
+  currencyLedgerApi: {
+    getAll: vi.fn(),
   },
   stockPriceApi: {
     getQuoteWithRate: vi.fn(),
@@ -134,6 +137,7 @@ vi.mock('../services/csvExport', () => ({
 
 const mockedPortfolioApi = vi.mocked(portfolioApi, { deep: true });
 const mockedTransactionApi = vi.mocked(transactionApi, { deep: true });
+const mockedCurrencyLedgerApi = vi.mocked(currencyLedgerApi, { deep: true });
 
 const nowIso = '2026-01-01T00:00:00.000Z';
 
@@ -229,6 +233,27 @@ describe('PortfolioPage transaction cache invalidation integration', () => {
     mockedTransactionApi.getByPortfolio.mockResolvedValue([] as StockTransaction[]);
     mockedTransactionApi.create.mockResolvedValue(createdTransaction);
     mockedTransactionApi.update.mockResolvedValue(updatedTransaction);
+    mockedCurrencyLedgerApi.getAll.mockResolvedValue([
+      {
+        ledger: {
+          id: 'ledger-a',
+          currencyCode: 'USD',
+          name: 'USD Ledger',
+          homeCurrency: 'TWD',
+          isActive: true,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        balance: 0,
+        averageExchangeRate: 1,
+        totalExchanged: 0,
+        totalSpentOnStocks: 0,
+        totalInterest: 0,
+        totalCost: 0,
+        realizedPnl: 0,
+        recentTransactions: [],
+      },
+    ]);
   });
 
   it('clears perf_years_/perf_data_ localStorage after create transaction with real PortfolioProvider', async () => {

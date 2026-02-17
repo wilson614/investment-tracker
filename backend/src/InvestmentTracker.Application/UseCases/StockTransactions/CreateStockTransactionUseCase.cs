@@ -172,7 +172,10 @@ public class CreateStockTransactionUseCase(
                     ledgerTransactions ??= await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                         boundLedger.Id, cancellationToken);
 
-                    var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);
+                    var currentBalance = CalculateBalanceAsOfDate(
+                        currencyLedgerService,
+                        ledgerTransactions,
+                        request.TransactionDate);
                     var shortfall = linkedSpec.Amount - currentBalance;
 
                     if (shortfall > 0)
@@ -211,6 +214,12 @@ public class CreateStockTransactionUseCase(
 
                             case BalanceAction.TopUp:
                             {
+                                var topUpAmount = shortfall;
+                                if (topUpAmount <= 0m)
+                                {
+                                    break;
+                                }
+
                                 var topUpTransactionType = request.TopUpTransactionType!.Value;
                                 CurrencyTransactionTypePolicy.EnsureValidOrThrow(
                                     boundLedger.CurrencyCode,
@@ -222,7 +231,7 @@ public class CreateStockTransactionUseCase(
                                 if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
                                 {
                                     topUpExchangeRate = 1.0m;
-                                    topUpHomeAmount = shortfall;
+                                    topUpHomeAmount = topUpAmount;
                                 }
 
                                 if (topUpTransactionType == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
@@ -238,14 +247,14 @@ public class CreateStockTransactionUseCase(
                                         throw new BusinessRuleException("無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄");
 
                                     topUpExchangeRate = marketRate;
-                                    topUpHomeAmount = Math.Round(shortfall * marketRate.Value, 2);
+                                    topUpHomeAmount = Math.Round(topUpAmount * marketRate.Value, 2);
                                 }
 
                                 var topUpTransaction = new CurrencyTransaction(
                                     boundLedger.Id,
                                     request.TransactionDate,
                                     topUpTransactionType,
-                                    shortfall,
+                                    topUpAmount,
                                     homeAmount: topUpHomeAmount,
                                     exchangeRate: topUpExchangeRate,
                                     relatedStockTransactionId: transaction.Id,
@@ -317,6 +326,19 @@ public class CreateStockTransactionUseCase(
             await tx.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    private static decimal CalculateBalanceAsOfDate(
+        CurrencyLedgerService currencyLedgerService,
+        IEnumerable<CurrencyTransaction> ledgerTransactions,
+        DateTime asOfDate)
+    {
+        var asOfDateOnly = asOfDate.Date;
+        var transactionsUpToDate = ledgerTransactions
+            .Where(transaction => transaction.TransactionDate.Date <= asOfDateOnly)
+            .ToList();
+
+        return currencyLedgerService.CalculateBalance(transactionsUpToDate);
     }
 
     private static StockTransactionDto MapToDto(StockTransaction transaction)

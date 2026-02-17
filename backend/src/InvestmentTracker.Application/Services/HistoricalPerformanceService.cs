@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
@@ -159,96 +160,106 @@ public class HistoricalPerformanceService(
             .GroupBy(t => t.Ticker, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Market, StringComparer.OrdinalIgnoreCase);
 
-        // Auto-fetch missing year-end prices using HistoricalYearEndDataService (in parallel)
-        var yearEndMissingTickers = yearEndPositions
+        var yearStartYear = year - 1;
+
+        // 合併 year-end / year-start 缺價代號，避免重複抓價與重複 FX 查詢
+        var uniqueMissingTickers = yearEndPositions
             .Where(p => !yearEndPrices.ContainsKey(p.Ticker))
             .Select(p => p.Ticker)
-            .Distinct()
+            .Concat(
+                yearStartPositions
+                    .Where(p => !yearStartPrices.ContainsKey(p.Ticker))
+                    .Select(p => p.Ticker))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Fetch year-end prices sequentially to avoid DbContext concurrency issues
-        foreach (var ticker in yearEndMissingTickers)
+        var fxRateCache = new ConcurrentDictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        async Task<decimal> ResolveExchangeRateAsync(string currency, int targetYear)
         {
-            try
+            if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             {
-                tickerMarketLookup.TryGetValue(ticker, out var market);
-                var priceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
-                    ticker, year, market, cancellationToken);
-                if (priceResult == null) continue;
-
-                // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
-                var currency = GetCurrencyForMarket(market);
-
-                decimal exchangeRate;
-                if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
-                {
-                    exchangeRate = 1m;
-                }
-                else
-                {
-                    var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
-                        currency, homeCurrency, year, cancellationToken);
-                    exchangeRate = rateResult?.Rate ?? 1m;
-                }
-
-                yearEndPrices[ticker] = new YearEndPriceInfo
-                {
-                    Price = priceResult.Price,
-                    ExchangeRate = exchangeRate
-                };
-                logger.LogInformation("Auto-fetched year-end price for {Ticker}/{Year}", ticker, year);
+                return 1m;
             }
-            catch (Exception ex)
+
+            var fxKey = $"{currency}->{homeCurrency}:{targetYear}";
+            if (fxRateCache.TryGetValue(fxKey, out var cachedRate))
             {
-                // Log and continue - this ticker will be added to missingPrices later
-                logger.LogWarning(ex, "Failed to fetch year-end price for {Ticker}/{Year}, will be added to missing prices", ticker, year);
+                return cachedRate;
             }
+
+            var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
+                currency,
+                homeCurrency,
+                targetYear,
+                cancellationToken);
+
+            var resolvedRate = rateResult?.Rate ?? 1m;
+            fxRateCache.TryAdd(fxKey, resolvedRate);
+            return resolvedRate;
         }
 
-        // Auto-fetch missing year-start prices (previous year end)
-        var yearStartYear = year - 1;
-        var yearStartMissingTickers = yearStartPositions
-            .Where(p => !yearStartPrices.ContainsKey(p.Ticker))
-            .Select(p => p.Ticker)
-            .Distinct()
-            .ToList();
-
-        // Fetch year-start prices sequentially to avoid DbContext concurrency issues
-        foreach (var ticker in yearStartMissingTickers)
+        foreach (var ticker in uniqueMissingTickers)
         {
-            try
+            tickerMarketLookup.TryGetValue(ticker, out var market);
+            var currency = GetCurrencyForMarket(market);
+
+            if (!yearEndPrices.ContainsKey(ticker))
             {
-                tickerMarketLookup.TryGetValue(ticker, out var market);
-                var priceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
-                    ticker, yearStartYear, market, cancellationToken);
-                if (priceResult == null) continue;
-
-                // 根據 market 判斷貨幣，而不是依賴緩存中的 Currency（可能是舊的錯誤值）
-                var currency = GetCurrencyForMarket(market);
-
-                decimal exchangeRate;
-                if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    exchangeRate = 1m;
+                    var yearEndPriceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                        ticker,
+                        year,
+                        market,
+                        cancellationToken);
+
+                    if (yearEndPriceResult != null)
+                    {
+                        var exchangeRate = await ResolveExchangeRateAsync(currency, year);
+                        yearEndPrices[ticker] = new YearEndPriceInfo
+                        {
+                            Price = yearEndPriceResult.Price,
+                            ExchangeRate = exchangeRate
+                        };
+
+                        logger.LogInformation("Auto-fetched year-end price for {Ticker}/{Year}", ticker, year);
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    var rateResult = await historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(
-                        currency, homeCurrency, yearStartYear, cancellationToken);
-                    exchangeRate = rateResult?.Rate ?? 1m;
+                    // Log and continue - this ticker will be added to missingPrices later
+                    logger.LogWarning(ex, "Failed to fetch year-end price for {Ticker}/{Year}, will be added to missing prices", ticker, year);
                 }
-
-                yearStartPrices[ticker] = new YearEndPriceInfo
-                {
-                    Price = priceResult.Price,
-                    ExchangeRate = exchangeRate
-                };
-                logger.LogInformation("Auto-fetched year-start price for {Ticker}/{Year}", ticker, yearStartYear);
             }
-            catch (Exception ex)
+
+            if (!yearStartPrices.ContainsKey(ticker))
             {
-                // Log and continue - this ticker will be added to missingPrices later
-                logger.LogWarning(ex, "Failed to fetch year-start price for {Ticker}/{Year}, will be added to missing prices", ticker, yearStartYear);
+                try
+                {
+                    var yearStartPriceResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
+                        ticker,
+                        yearStartYear,
+                        market,
+                        cancellationToken);
+
+                    if (yearStartPriceResult != null)
+                    {
+                        var exchangeRate = await ResolveExchangeRateAsync(currency, yearStartYear);
+                        yearStartPrices[ticker] = new YearEndPriceInfo
+                        {
+                            Price = yearStartPriceResult.Price,
+                            ExchangeRate = exchangeRate
+                        };
+
+                        logger.LogInformation("Auto-fetched year-start price for {Ticker}/{Year}", ticker, yearStartYear);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log and continue - this ticker will be added to missingPrices later
+                    logger.LogWarning(ex, "Failed to fetch year-start price for {Ticker}/{Year}, will be added to missing prices", ticker, yearStartYear);
+                }
             }
         }
 
@@ -472,7 +483,7 @@ public class HistoricalPerformanceService(
                 }
                 case TransactionType.Sell:
                 {
-                    var proceeds = tx.Shares * tx.PricePerShare - tx.Fees;
+                    var proceeds = tx.NetProceedsSource;
                     var proceedsInSource = ConvertAmountToSource(
                         proceeds,
                         txCurrency,
@@ -539,7 +550,7 @@ public class HistoricalPerformanceService(
                                          .Where(t => t.TransactionType == TransactionType.Sell)
                                          .Sum(t =>
                                          {
-                                             var proceeds = t.Shares * t.PricePerShare - t.Fees;
+                                             var proceeds = t.NetProceedsSource;
                                              return ConvertAmountToSource(
                                                  proceeds,
                                                  t.Currency.ToString(),
@@ -783,7 +794,7 @@ public class HistoricalPerformanceService(
                     break;
                 case TransactionType.Sell:
                 {
-                    var proceeds = tx.Shares * tx.PricePerShare * tx.ExchangeRate!.Value - tx.Fees * tx.ExchangeRate!.Value;
+                    var proceeds = tx.NetProceedsSource * tx.ExchangeRate!.Value;
                     cashFlowsHome.Add(new CashFlow(proceeds, tx.TransactionDate));
                     break;
                 }
@@ -811,7 +822,7 @@ public class HistoricalPerformanceService(
                                        .Sum(t => t.TotalCostHome ?? 0)
                                    - yearTransactions
                                        .Where(t => t.TransactionType == TransactionType.Sell)
-                                       .Sum(t => t.Shares * t.PricePerShare * (t.ExchangeRate ?? 1) - t.Fees * (t.ExchangeRate ?? 1));
+                                       .Sum(t => t.NetProceedsSource * (t.ExchangeRate ?? 1));
 
         // Calculate home currency XIRR
         double? xirrHome = null;

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { StockImportButton } from '../components/import/StockImportButton';
 import { transactionApi } from '../services/api';
 import type {
+  StockImportDiagnostic,
   StockImportExecuteRequest,
   StockImportExecuteResponse,
   StockImportPreviewRequest,
@@ -41,6 +42,23 @@ function buildImportCsvFile(rows: string[] = []): File {
   return file;
 }
 
+function buildBrokerStatementCsvFile(rows: string[] = []): File {
+  const headers = '股名,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,幣別,備註';
+  const sampleRows = rows.length > 0
+    ? rows
+    : ['"台積電","2026/01/22","1,000","-625,010","625","625,000","10","0","台幣",""'];
+
+  const content = `${headers}\n${sampleRows.join('\n')}`;
+  const file = new File([content], 'stock-import-broker.csv', { type: 'text/csv' });
+
+  Object.defineProperty(file, 'text', {
+    configurable: true,
+    value: () => Promise.resolve(content),
+  });
+
+  return file;
+}
+
 function buildPreviewRow(overrides: Partial<StockImportPreviewRow> = {}): StockImportPreviewRow {
   return {
     rowNumber: 1,
@@ -66,6 +84,7 @@ function buildPreviewResponse(params: {
   detectedFormat?: StockImportPreviewResponse['detectedFormat'];
   selectedFormat?: StockImportSelectedFormat;
   rows?: StockImportPreviewRow[];
+  errors?: StockImportPreviewResponse['errors'];
 } = {}): StockImportPreviewResponse {
   const rows = params.rows ?? [buildPreviewRow()];
 
@@ -80,7 +99,7 @@ function buildPreviewResponse(params: {
       invalidRows: rows.filter((row) => row.status === 'invalid').length,
     },
     rows,
-    errors: [],
+    errors: params.errors ?? [],
   };
 }
 
@@ -102,6 +121,18 @@ function buildExecuteResponse(overrides: Partial<StockImportExecuteResponse> = {
       },
     ],
     errors: [],
+    ...overrides,
+  };
+}
+
+function buildDiagnostic(overrides: Partial<StockImportDiagnostic> = {}): StockImportDiagnostic {
+  return {
+    rowNumber: 1,
+    fieldName: 'unknownField',
+    invalidValue: null,
+    errorCode: 'UNKNOWN_ERROR',
+    message: 'Something went wrong',
+    correctionGuidance: 'Please check input data',
     ...overrides,
   };
 }
@@ -167,7 +198,7 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
 }
 
 function findFormatSelector(): HTMLSelectElement | null {
-  const labeled = screen.queryByLabelText(/格式|format/i);
+  const labeled = screen.queryByLabelText(/類型|格式|format/i);
   if (labeled instanceof HTMLSelectElement) {
     return labeled;
   }
@@ -181,8 +212,8 @@ function findFormatSelector(): HTMLSelectElement | null {
       `${option.value} ${option.textContent ?? ''}`.toLowerCase(),
     );
 
-    const hasLegacy = optionTexts.some((text) => /legacy|舊/.test(text));
-    const hasBroker = optionTexts.some((text) => /broker|對帳|證券/.test(text));
+    const hasLegacy = optionTexts.some((text) => /legacy_csv|legacy|一般|舊/.test(text));
+    const hasBroker = optionTexts.some((text) => /broker_statement|broker|券商|對帳|證券/.test(text));
 
     return hasLegacy && hasBroker;
   }) ?? null;
@@ -198,13 +229,7 @@ async function selectImportFormat(
     return control as HTMLSelectElement;
   });
 
-  const matcher = targetFormat === 'legacy_csv'
-    ? /legacy|舊/
-    : /broker|對帳|證券/;
-
-  const option = Array.from(selector.options).find((candidate) =>
-    matcher.test(`${candidate.value} ${candidate.textContent ?? ''}`.toLowerCase()),
-  );
+  const option = Array.from(selector.options).find((candidate) => candidate.value === targetFormat);
 
   if (!option) {
     throw new Error(`找不到格式選項: ${targetFormat}`);
@@ -322,7 +347,7 @@ describe('Stock import broker preview flow', () => {
       }),
     );
     expect(firstPreviewRequest.csvContent).toContain('代碼');
-    expect(screen.getByText('系統偵測：舊版 CSV')).toBeInTheDocument();
+    expect(screen.getByText('系統偵測：一般')).toBeInTheDocument();
 
     const executeButtonBeforeRepreview = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
@@ -341,7 +366,7 @@ describe('Stock import broker preview flow', () => {
 
     const secondPreviewRequest = getLatestPreviewRequest();
     expect(secondPreviewRequest.selectedFormat).toBe('legacy_csv');
-    expect(screen.getByText('系統偵測：券商對帳單')).toBeInTheDocument();
+    expect(screen.getByText('系統偵測：券商')).toBeInTheDocument();
 
     const executeButtonAfterRepreview = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
@@ -438,6 +463,199 @@ describe('Stock import broker preview flow', () => {
         }),
       ]),
     );
+  });
+
+  it('broker statement local detection hides mapping selectors before preview and uses renamed format labels', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-kgi-mapping-hidden',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [buildPreviewRow({ rawSecurityName: 'ROW-BROKER-HIDDEN' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildBrokerStatementCsvFile());
+
+    await moveToPreviewStep(user);
+
+    const formatSelector = await waitFor(() => {
+      const selector = findFormatSelector();
+      expect(selector).not.toBeNull();
+      return selector as HTMLSelectElement;
+    });
+
+    expect(Array.from(formatSelector.options).map((option) => option.textContent)).toEqual(
+      expect.arrayContaining(['券商', '一般']),
+    );
+
+    await requestPreview(user);
+
+    expect(screen.getByText('系統偵測：券商')).toBeInTheDocument();
+    expect(screen.queryByText('系統偵測：未知格式')).not.toBeInTheDocument();
+  });
+
+  it('tw stock csv mapping should not include market/currency/exchange rate selectors', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-tw-mapping-fields',
+        detectedFormat: 'legacy_csv',
+        selectedFormat: 'legacy_csv',
+        rows: [buildPreviewRow({ rawSecurityName: 'ROW-TW-MAPPING' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+
+    expect(screen.queryByText(/市場\s*\*/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/幣別\s*\*/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/匯率（選填）\s*\*/)).not.toBeInTheDocument();
+
+    await moveToPreviewStep(user);
+    await selectImportFormat(user, 'legacy_csv');
+    await requestPreview(user);
+
+    const latestPreviewRequest = getLatestPreviewRequest();
+    expect(latestPreviewRequest.selectedFormat).toBe('legacy_csv');
+  });
+
+  it('disables execute when preview contains blocking errors and does not call execute API', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-blocking-errors',
+        rows: [buildPreviewRow({ rowNumber: 1, rawSecurityName: 'ROW-BLOCKING-ERROR' })],
+        errors: [
+          buildDiagnostic({
+            rowNumber: 1,
+            fieldName: 'netSettlement',
+            invalidValue: null,
+            errorCode: 'CSV_HEADER_MISSING',
+            message: 'CSV_HEADER_MISSING: required header netSettlement is missing',
+            correctionGuidance: 'Please provide broker statement netSettlement column before preview.',
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText('預覽有錯誤，請先修正')).toBeInTheDocument();
+    expect(screen.getByText(/required header netSettlement is missing/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/建議：Please provide broker statement netSettlement column before preview\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/代碼：CSV_HEADER_MISSING/i)).toBeInTheDocument();
+
+    await user.click(executeButton);
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
+  });
+
+  it('shows clearer diagnostics for backend-specific errors (message, guidance, code, invalid value)', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-backend-diagnostic-preview',
+        rows: [buildPreviewRow({ rowNumber: 5, rawSecurityName: 'ROW-BACKEND-DIAGNOSTIC' })],
+        errors: [
+          buildDiagnostic({
+            rowNumber: 5,
+            fieldName: 'ticker',
+            invalidValue: '??',
+            errorCode: 'TICKER_NOT_RECOGNIZED',
+            message: 'Ticker cannot be resolved for this broker statement row',
+            correctionGuidance: 'Please provide a valid ticker or map a correct security name.',
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    expect(screen.getByText(/Ticker cannot be resolved for this broker statement row/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/建議：Please provide a valid ticker or map a correct security name\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/代碼：TICKER_NOT_RECOGNIZED/i)).toBeInTheDocument();
+    expect(screen.getByText(/輸入值：\?\?/i)).toBeInTheDocument();
+  });
+
+  it('disables execute when preview rows are empty and does not call execute API', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-empty-rows',
+        rows: [],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText('預覽無可匯入資料')).toBeInTheDocument();
+
+    await user.click(executeButton);
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
   });
 
   it('preview row ordering remains stable after per-row confirmation interaction', async () => {

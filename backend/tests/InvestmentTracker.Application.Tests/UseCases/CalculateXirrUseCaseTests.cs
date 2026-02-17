@@ -207,6 +207,113 @@ public class CalculateXirrUseCaseTests
         result.MissingExchangeRates![0].TransactionDate.Should().Be(txDate);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_TaiwanSellWithFloorAndFees_UsesNetProceedsSourceInCashFlow()
+    {
+        // Arrange
+        var portfolio = CreatePortfolio();
+        var buyDate = new DateTime(2024, 1, 15);
+        var sellDate = new DateTime(2024, 6, 15);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: buyDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1m,
+            pricePerShare: 100m,
+            exchangeRate: null,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        var sell = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: sellDate,
+            ticker: "2330",
+            transactionType: TransactionType.Sell,
+            shares: 1m,
+            pricePerShare: 100.9m,
+            exchangeRate: null,
+            fees: 1m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        SetupMocks(portfolio, [buy, sell]);
+
+        var request = new CalculateXirrRequest
+        {
+            CurrentPrices = null,
+            AsOfDate = new DateTime(2024, 12, 31)
+        };
+
+        // Act
+        var result = await _useCase.ExecuteAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        // buy: -100, sell: floor(100.9)-1 = +99
+        // If old formula was used, sell would be 99.9 and IRR would be notably different.
+        result.Xirr.Should().NotBeNull();
+        result.Xirr!.Value.Should().BeApproximately(-0.023845d, 0.000001d);
+        result.Xirr!.Value.Should().NotBeApproximately(-0.002412d, 0.000001d);
+        result.CashFlowCount.Should().Be(2);
+        result.MissingExchangeRates.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteForPositionAsync_TaiwanSellWithFloorAndFees_UsesNetProceedsSourceInCashFlow()
+    {
+        // Arrange
+        var portfolio = CreatePortfolio();
+        var buyDate = new DateTime(2024, 1, 15);
+        var sellDate = new DateTime(2024, 6, 15);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: buyDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1m,
+            pricePerShare: 100m,
+            exchangeRate: null,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        var sell = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: sellDate,
+            ticker: "2330",
+            transactionType: TransactionType.Sell,
+            shares: 1m,
+            pricePerShare: 100.9m,
+            exchangeRate: null,
+            fees: 1m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        SetupMocks(portfolio, [buy, sell]);
+
+        var request = new CalculatePositionXirrRequest
+        {
+            CurrentPrice = null,
+            CurrentExchangeRate = 1m,
+            AsOfDate = new DateTime(2024, 12, 31)
+        };
+
+        // Act
+        var result = await _useCase.ExecuteForPositionAsync(_portfolioId, "2330", request, CancellationToken.None);
+
+        // Assert
+        // buy: -100, sell: floor(100.9)-1 = +99
+        // If old formula was used, sell would be 99.9 and IRR would be notably different.
+        result.Xirr.Should().NotBeNull();
+        result.Xirr!.Value.Should().BeApproximately(-0.023845d, 0.000001d);
+        result.Xirr!.Value.Should().NotBeApproximately(-0.002412d, 0.000001d);
+        result.CashFlowCount.Should().Be(2);
+        result.MissingExchangeRates.Should().BeNull();
+    }
+
     #region Helper Methods
 
     private Portfolio CreatePortfolio()

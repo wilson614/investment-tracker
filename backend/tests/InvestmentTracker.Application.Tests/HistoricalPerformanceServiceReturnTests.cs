@@ -130,6 +130,20 @@ public class HistoricalPerformanceServiceReturnTests
 
         result.ModifiedDietzPercentageSource.Should().BeApproximately(10d, 0.0001d);
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(10d, 0.0001d);
+
+        _txSnapshotServiceMock.Verify(
+            x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _txSnapshotServiceMock.Verify(
+            x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndPriceAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<StockMarket?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -471,7 +485,7 @@ public class HistoricalPerformanceServiceReturnTests
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(expectedTwrPct, 0.0001d);
         result.TimeWeightedReturnPercentage.Should().BeApproximately(expectedTwrPct, 0.0001d);
 
-        var proceeds = 2m * 120m - 1m;
+        var proceeds = sell.NetProceedsSource;
         var sellCashFlow = -proceeds;
 
         var periodStart = yearStart;
@@ -485,6 +499,250 @@ public class HistoricalPerformanceServiceReturnTests
 
         result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
         result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_TaiwanSellWithFloorAndFees_ReflectsNetProceedsInHomeAndSource()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var priceReferenceDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        var sellDate = new DateTime(year, 6, 30, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "TW floor/fees sell cashflow test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: priceReferenceDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+        buyBeforeYear.CreatedAt = new DateTime(year - 1, 12, 31, 1, 0, 0, DateTimeKind.Utc);
+
+        var sell = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: sellDate,
+            ticker: "2330",
+            transactionType: TransactionType.Sell,
+            shares: 1m,
+            pricePerShare: 100.9m,
+            exchangeRate: 1m,
+            fees: 1m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+        sell.CreatedAt = new DateTime(year, 6, 30, 1, 0, 0, DateTimeKind.Utc);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear, sell]);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: sell.Id,
+                snapshotDate: sellDate,
+                beforeSource: 101m,
+                afterSource: 0m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 30, 2, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 101m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 0m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+        result.StartValueSource.Should().Be(101m);
+        result.EndValueSource.Should().BeNull();
+        result.StartValueHome.Should().Be(101m);
+        result.EndValueHome.Should().BeNull();
+
+        // floor(1 * 100.9)=100, then minus fee 1 => 99
+        sell.NetProceedsSource.Should().Be(99m);
+        result.NetContributionsSource.Should().Be(-99m);
+        result.NetContributionsHome.Should().Be(-99m);
+
+        // Without floor this would be -99.9; this assertion guards the floor+fees path in annual sell cashflow.
+        result.NetContributionsSource.Should().NotBe(-99.9m);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_AutoFetchSameTickerForYearStartAndYearEnd_DeduplicatesPriceAndFxCalls()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var previousYearEnd = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "USD",
+            homeCurrency: "TWD",
+            displayName: "Auto fetch dedup test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: previousYearEnd,
+            ticker: "VWRA",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 30m,
+            fees: 0m,
+            market: StockMarket.UK);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TransactionPortfolioSnapshot>());
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("VWRA", year, StockMarket.UK, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 110m,
+                Currency = "GBP",
+                ActualDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("VWRA", year - 1, StockMarket.UK, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 100m,
+                Currency = "GBP",
+                ActualDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndExchangeRateResult
+            {
+                Rate = 31m,
+                CurrencyPair = "USDTWD",
+                ActualDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Stooq",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndExchangeRateResult
+            {
+                Rate = 30m,
+                CurrencyPair = "USDTWD",
+                ActualDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Stooq",
+                FromCache = false
+            });
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year
+            // No YearStartPrices / YearEndPrices => force auto-fetch
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndPriceAsync("VWRA", year, StockMarket.UK, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndPriceAsync("VWRA", year - 1, StockMarket.UK, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _txSnapshotServiceMock.Verify(
+            x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _txSnapshotServiceMock.Verify(
+            x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

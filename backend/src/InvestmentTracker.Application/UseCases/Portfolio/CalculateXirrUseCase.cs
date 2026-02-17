@@ -78,8 +78,8 @@ public class CalculateXirrUseCase(
                 }
                 case TransactionType.Sell:
                 {
-                    // 使用本位幣賣出收入
-                    var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
+                    // 使用本位幣賣出收入（台股小計 floor + fees 由 NetProceedsSource 統一處理）
+                    var proceeds = tx.NetProceedsSource * fxRate.Value;
                     cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
                     break;
                 }
@@ -218,7 +218,7 @@ public class CalculateXirrUseCase(
                 }
                 case TransactionType.Sell:
                 {
-                    var proceeds = (tx.Shares * tx.PricePerShare - tx.Fees) * fxRate.Value;
+                    var proceeds = tx.NetProceedsSource * fxRate.Value;
                     cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
                     break;
                 }

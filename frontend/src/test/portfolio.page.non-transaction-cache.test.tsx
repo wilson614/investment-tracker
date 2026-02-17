@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PortfolioPage } from '../pages/Portfolio';
 import { usePortfolio } from '../contexts/PortfolioContext';
-import { portfolioApi, transactionApi } from '../services/api';
+import { portfolioApi, transactionApi, currencyLedgerApi, stockPriceApi } from '../services/api';
 import { invalidatePerformanceLocalStorageCache } from '../utils/cacheInvalidation';
 import { Currency, StockMarket, TransactionType } from '../types';
-import type { CreateStockTransactionRequest, Portfolio, PortfolioSummary, StockTransaction } from '../types';
+import type { CreateStockTransactionRequest, Portfolio, PortfolioSummary, StockTransaction, XirrResult } from '../types';
 
 vi.mock('../contexts/PortfolioContext', () => ({
   usePortfolio: vi.fn(),
@@ -26,6 +26,9 @@ vi.mock('../services/api', () => ({
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+  },
+  currencyLedgerApi: {
+    getAll: vi.fn(),
   },
   stockPriceApi: {
     getQuoteWithRate: vi.fn(),
@@ -132,7 +135,21 @@ vi.mock('../components/portfolio/CreatePortfolioForm', () => ({
 }));
 
 vi.mock('../components/import', () => ({
-  StockImportButton: () => null,
+  StockImportButton: ({
+    onImportComplete,
+  }: {
+    onImportComplete?: () => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="mock-stock-import-complete"
+      onClick={() => {
+        onImportComplete?.();
+      }}
+    >
+      mock-stock-import-complete
+    </button>
+  ),
 }));
 
 vi.mock('../components/common', () => ({
@@ -170,6 +187,8 @@ vi.mock('../services/csvExport', () => ({
 const mockedUsePortfolio = vi.mocked(usePortfolio);
 const mockedPortfolioApi = vi.mocked(portfolioApi, { deep: true });
 const mockedTransactionApi = vi.mocked(transactionApi, { deep: true });
+const mockedCurrencyLedgerApi = vi.mocked(currencyLedgerApi, { deep: true });
+const mockedStockPriceApi = vi.mocked(stockPriceApi, { deep: true });
 
 const nowIso = '2026-01-01T00:00:00.000Z';
 
@@ -202,6 +221,79 @@ const buildEmptySummary = (portfolio: Portfolio): PortfolioSummary => ({
   totalValueHome: 0,
   totalUnrealizedPnlHome: 0,
   totalUnrealizedPnlPercentage: 0,
+});
+
+const buildSummaryWithSinglePosition = (
+  portfolio: Portfolio,
+  ticker = 'AAPL',
+): PortfolioSummary => ({
+  portfolio,
+  positions: [
+    {
+      ticker,
+      market: StockMarket.US,
+      currency: 'USD',
+      totalShares: 10,
+      totalCostSource: 1000,
+      averageCostPerShareSource: 100,
+      totalCostHome: 30000,
+      averageCostPerShareHome: 3000,
+    },
+  ],
+  totalCostHome: 30000,
+  totalValueHome: 0,
+  totalUnrealizedPnlHome: 0,
+  totalUnrealizedPnlPercentage: 0,
+});
+
+const buildSummaryWithDuplicateTickerAcrossMarkets = (portfolio: Portfolio): PortfolioSummary => ({
+  portfolio,
+  positions: [
+    {
+      ticker: 'ABC',
+      market: StockMarket.US,
+      currency: 'USD',
+      totalShares: 10,
+      totalCostSource: 1000,
+      averageCostPerShareSource: 100,
+      totalCostHome: 30000,
+      averageCostPerShareHome: 3000,
+    },
+    {
+      ticker: 'ABC',
+      market: StockMarket.UK,
+      currency: 'USD',
+      totalShares: 5,
+      totalCostSource: 500,
+      averageCostPerShareSource: 100,
+      totalCostHome: 15000,
+      averageCostPerShareHome: 3000,
+    },
+  ],
+  totalCostHome: 45000,
+  totalValueHome: 0,
+  totalUnrealizedPnlHome: 0,
+  totalUnrealizedPnlPercentage: 0,
+});
+
+const emptyXirrResult: XirrResult = {
+  xirr: null,
+  xirrPercentage: null,
+  cashFlowCount: 0,
+  asOfDate: nowIso,
+  earliestTransactionDate: null,
+  missingExchangeRates: null,
+};
+
+const buildQuoteResponse = (symbol: string) => ({
+  symbol,
+  name: `${symbol} Name`,
+  price: 150,
+  market: StockMarket.US,
+  source: 'Yahoo',
+  fetchedAt: nowIso,
+  exchangeRate: 30,
+  exchangeRatePair: 'USD/TWD',
 });
 
 const buildStockTransaction = (id: string): StockTransaction => ({
@@ -243,12 +335,24 @@ const invalidateSharedCaches = vi.fn((options?: {
 const selectPortfolio = vi.fn();
 const refreshPortfolios = vi.fn(async () => undefined);
 
-function mockPortfolioContext(currentPortfolioId: string): void {
+function mockPortfolioContext(
+  currentPortfolioId: string | null,
+  options?: {
+    isAllPortfolios?: boolean;
+    portfolios?: Portfolio[];
+  },
+): void {
+  const portfolios = options?.portfolios ?? allPortfolios;
+  const isAllPortfolios = options?.isAllPortfolios ?? false;
+
   mockedUsePortfolio.mockReturnValue({
-    currentPortfolio: allPortfolios.find((portfolio) => portfolio.id === currentPortfolioId) ?? null,
+    currentPortfolio:
+      !currentPortfolioId || isAllPortfolios
+        ? null
+        : portfolios.find((portfolio) => portfolio.id === currentPortfolioId) ?? null,
     currentPortfolioId,
-    isAllPortfolios: false,
-    portfolios: allPortfolios,
+    isAllPortfolios,
+    portfolios,
     isLoading: false,
     selectPortfolio,
     refreshPortfolios,
@@ -276,17 +380,74 @@ function setupDefaultApiMocks(): void {
     }
     return buildEmptySummary(portfolioA);
   });
+  mockedPortfolioApi.calculateXirr.mockResolvedValue(emptyXirrResult);
 
   mockedTransactionApi.getByPortfolio.mockResolvedValue([] as StockTransaction[]);
   mockedTransactionApi.create.mockResolvedValue(buildStockTransaction('tx-created'));
   mockedTransactionApi.update.mockResolvedValue(buildStockTransaction('tx-updated'));
   mockedTransactionApi.delete.mockResolvedValue(undefined);
+  mockedStockPriceApi.getQuoteWithRate.mockImplementation(async (_market, ticker: string) =>
+    buildQuoteResponse(ticker),
+  );
+  mockedCurrencyLedgerApi.getAll.mockResolvedValue([
+    {
+      ledger: {
+        id: 'ledger-a',
+        currencyCode: 'USD',
+        name: 'USD Ledger',
+        homeCurrency: 'TWD',
+        isActive: true,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      balance: 0,
+      averageExchangeRate: 1,
+      totalExchanged: 0,
+      totalSpentOnStocks: 0,
+      totalInterest: 0,
+      totalCost: 0,
+      realizedPnl: 0,
+      recentTransactions: [],
+    },
+    {
+      ledger: {
+        id: 'ledger-b',
+        currencyCode: 'USD',
+        name: 'USD Ledger B',
+        homeCurrency: 'TWD',
+        isActive: true,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      balance: 0,
+      averageExchangeRate: 1,
+      totalExchanged: 0,
+      totalSpentOnStocks: 0,
+      totalInterest: 0,
+      totalCost: 0,
+      realizedPnl: 0,
+      recentTransactions: [],
+    },
+  ]);
 }
 
 function seedHistoricalPerformanceCache(): void {
   localStorage.setItem('perf_years_portfolio-a', JSON.stringify({ years: [2025] }));
   localStorage.setItem('perf_data_portfolio-a_2025', JSON.stringify({ year: 2025 }));
   localStorage.setItem('quote_cache_AAPL', JSON.stringify({ quote: { price: 100 } }));
+}
+
+function seedCompositeQuoteCacheForDuplicateTicker(): void {
+  localStorage.setItem('quote_cache_ABC_2', JSON.stringify({
+    quote: { price: 100, exchangeRate: 30 },
+    updatedAt: nowIso,
+    market: StockMarket.US,
+  }));
+  localStorage.setItem('quote_cache_ABC_3', JSON.stringify({
+    quote: { price: 110, exchangeRate: 40 },
+    updatedAt: nowIso,
+    market: StockMarket.UK,
+  }));
 }
 
 describe('PortfolioPage non-transaction performance cache behavior', () => {
@@ -323,6 +484,150 @@ describe('PortfolioPage non-transaction performance cache behavior', () => {
 
     expect(clearPerformanceState).not.toHaveBeenCalled();
     expect(invalidateSharedCaches).not.toHaveBeenCalled();
+  });
+});
+
+describe('PortfolioPage quote cache key consistency', () => {
+  it('re-fetches quote once after switching portfolio context', async () => {
+    setupDefaultApiMocks();
+    mockPortfolioContext(portfolioA.id);
+
+    mockedPortfolioApi.getSummary.mockImplementation(async (portfolioId: string) => {
+      if (portfolioId === portfolioA.id) {
+        return buildSummaryWithSinglePosition(portfolioA, 'AAPL');
+      }
+
+      if (portfolioId === portfolioB.id) {
+        return buildSummaryWithSinglePosition(portfolioB, 'MSFT');
+      }
+
+      return buildEmptySummary(portfolioA);
+    });
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById).toHaveBeenCalledWith(portfolioA.id);
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledWith(
+        StockMarket.US,
+        'AAPL',
+        portfolioA.homeCurrency,
+      );
+    });
+
+    const quoteCallsBeforeSwitch = mockedStockPriceApi.getQuoteWithRate.mock.calls.length;
+
+    mockPortfolioContext(portfolioB.id);
+    rerender(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById).toHaveBeenCalledWith(portfolioB.id);
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledWith(
+        StockMarket.US,
+        'MSFT',
+        portfolioB.homeCurrency,
+      );
+    });
+
+    expect(mockedStockPriceApi.getQuoteWithRate.mock.calls.length).toBeGreaterThan(quoteCallsBeforeSwitch);
+  });
+
+  it('import completion reloads currently selected portfolio in multi-portfolio scenario', async () => {
+    setupDefaultApiMocks();
+    mockPortfolioContext(portfolioB.id);
+
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById).toHaveBeenCalledWith(portfolioB.id);
+    });
+
+    const getByIdCallsBeforeImport = mockedPortfolioApi.getById.mock.calls.length;
+    const getAllCallsBeforeImport = mockedPortfolioApi.getAll.mock.calls.length;
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('mock-stock-import-complete'));
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById.mock.calls.length).toBeGreaterThan(getByIdCallsBeforeImport);
+    });
+
+    expect(mockedPortfolioApi.getById).toHaveBeenLastCalledWith(portfolioB.id);
+    expect(mockedPortfolioApi.getAll.mock.calls.length).toBe(getAllCallsBeforeImport);
+  });
+
+  it('import completion keeps fallback load flow when portfolio context is all-portfolios', async () => {
+    setupDefaultApiMocks();
+    mockPortfolioContext('all', { isAllPortfolios: true, portfolios: [] });
+
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(selectPortfolio).toHaveBeenCalledWith(portfolioA.id);
+    });
+
+    const getByIdCallsBeforeImport = mockedPortfolioApi.getById.mock.calls.length;
+    const getAllCallsBeforeImport = mockedPortfolioApi.getAll.mock.calls.length;
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('mock-stock-import-complete'));
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAll.mock.calls.length).toBeGreaterThan(getAllCallsBeforeImport);
+    });
+
+    expect(mockedPortfolioApi.getById.mock.calls.length).toBe(getByIdCallsBeforeImport);
+  });
+
+  it('keeps composite-key prices internally and avoids ambiguous ticker payload to API', async () => {
+    setupDefaultApiMocks();
+    mockPortfolioContext(portfolioA.id);
+    seedCompositeQuoteCacheForDuplicateTicker();
+
+    mockedPortfolioApi.getSummary.mockImplementation(async (portfolioId: string, currentPrices?: Record<string, { price: number; exchangeRate: number }>) => {
+      if (currentPrices && Object.keys(currentPrices).length > 0) {
+        return buildSummaryWithDuplicateTickerAcrossMarkets(portfolioA);
+      }
+      if (portfolioId === portfolioB.id) {
+        return buildEmptySummary(portfolioB);
+      }
+      return buildSummaryWithDuplicateTickerAcrossMarkets(portfolioA);
+    });
+
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById).toHaveBeenCalledWith(portfolioA.id);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getSummary).toHaveBeenCalledWith(portfolioA.id);
+    });
+
+    expect(mockedPortfolioApi.calculateXirr).not.toHaveBeenCalled();
+
+    const payloadCalls = mockedPortfolioApi.getSummary.mock.calls.filter(([, currentPrices]) => Boolean(currentPrices));
+    expect(payloadCalls.length).toBe(0);
   });
 });
 
@@ -425,5 +730,33 @@ describe('PortfolioPage transaction cache invalidation', () => {
     });
 
     expect(localStorage.getItem('quote_cache_AAPL')).not.toBeNull();
+  });
+
+  it('keeps market-scoped quote cache key untouched after transaction mutation', async () => {
+    seedHistoricalPerformanceCache();
+    localStorage.setItem('quote_cache_ABC_2', JSON.stringify({ quote: { price: 100 } }));
+
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getById).toHaveBeenCalledWith(portfolioA.id);
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('portfolio-add-transaction'));
+    await user.click(screen.getByTestId('mock-transaction-form-submit'));
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.create).toHaveBeenCalledTimes(1);
+      expect(invalidateSharedCaches).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem('perf_years_portfolio-a')).toBeNull();
+      expect(localStorage.getItem('perf_data_portfolio-a_2025')).toBeNull();
+    });
+
+    expect(localStorage.getItem('quote_cache_ABC_2')).not.toBeNull();
   });
 });

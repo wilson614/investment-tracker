@@ -210,17 +210,10 @@ public class PortfolioCalculator
         // 賣出股數對應的成本基礎（使用平均成本）
         var costBasis = sellTransaction.Shares * positionBeforeSell.AverageCostPerShareHome;
 
-        // 賣出金額小計（Shares × Price）
-        var subtotal = sellTransaction.Shares * sellTransaction.PricePerShare;
-
-        // 台股小計採無條件捨去
-        if (sellTransaction.IsTaiwanStock)
-            subtotal = Math.Floor(subtotal);
-
-        // 本位幣賣出入帳金額（扣除手續費）
+        // 本位幣賣出入帳金額（扣除手續費，台股小計採無條件捨去）
         // 若無匯率則使用 1.0（表示來源幣別 = 本位幣）
         var exchangeRate = sellTransaction.ExchangeRate ?? 1.0m;
-        var saleProceeds = (subtotal - sellTransaction.Fees) * exchangeRate;
+        var saleProceeds = sellTransaction.NetProceedsSource * exchangeRate;
 
         return saleProceeds - costBasis;
     }

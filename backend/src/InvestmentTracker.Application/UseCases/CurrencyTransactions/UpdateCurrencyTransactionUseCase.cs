@@ -42,7 +42,8 @@ public class UpdateCurrencyTransactionUseCase(
             request.TransactionType,
             new CurrencyTransactionAmountPresence(
                 HasAmount: request.ForeignAmount != default,
-                HasTargetAmount: request.HomeAmount.HasValue));
+                HasTargetAmount: request.HomeAmount.HasValue),
+            allowManualSpend: false);
 
         var wasExternalCashFlow = IsExternalCashFlowType(transaction.TransactionType);
 

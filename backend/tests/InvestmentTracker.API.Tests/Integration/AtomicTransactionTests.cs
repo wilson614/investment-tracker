@@ -43,6 +43,8 @@ public class AtomicTransactionTests : IDisposable
     private readonly Mock<ICurrentUserService> _currentUserServiceMock;
     private readonly Mock<ITransactionDateExchangeRateService> _txDateFxServiceMock;
     private readonly Mock<IMonthlySnapshotService> _monthlySnapshotServiceMock;
+    private const string ManualSpendDisallowedErrorMessage = "交易類型不符合手動交易規則 Spend 僅供股票交易連動使用，請改由股票交易建立或調整。";
+
     private readonly Mock<ITransactionPortfolioSnapshotService> _txSnapshotServiceMock;
     private readonly IAppDbTransactionManager _transactionManager;
     private readonly Guid _testUserId = Guid.NewGuid();
@@ -376,8 +378,8 @@ public class AtomicTransactionTests : IDisposable
 
         // Assert
         var ex = await act.Should().ThrowAsync<BusinessRuleException>();
-        ex.Which.Message.Should().Contain("交易類型不符合此帳本規則");
-        ex.Which.Message.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+        ex.Which.Message.Should().Contain("補足餘額的交易類型必須為入帳類型");
+        ex.Which.Message.Should().Contain("Deposit / InitialBalance / Interest / OtherIncome");
     }
 
     [Fact]
@@ -727,6 +729,55 @@ public class AtomicTransactionTests : IDisposable
     }
 
     [Fact]
+    public void CreateCurrencyTransactionRequest_Spend_ShouldFailValidation()
+    {
+        // Arrange
+        var validator = new CreateCurrencyTransactionRequestValidator();
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = Guid.NewGuid(),
+            TransactionDate = DateTime.UtcNow,
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 1000m,
+            HomeAmount = 31500m,
+            ExchangeRate = 31.5m
+        };
+
+        // Act
+        var result = validator.Validate(request);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == nameof(CreateCurrencyTransactionRequest.TransactionType) &&
+            e.ErrorMessage == ManualSpendDisallowedErrorMessage);
+    }
+
+    [Fact]
+    public void UpdateCurrencyTransactionRequest_Spend_ShouldFailValidation()
+    {
+        // Arrange
+        var validator = new UpdateCurrencyTransactionRequestValidator();
+        var request = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = DateTime.UtcNow,
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 1000m,
+            HomeAmount = 31500m,
+            ExchangeRate = 31.5m
+        };
+
+        // Act
+        var result = validator.Validate(request);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == nameof(UpdateCurrencyTransactionRequest.TransactionType) &&
+            e.ErrorMessage == ManualSpendDisallowedErrorMessage);
+    }
+
+    [Fact]
     public async Task CurrencyTransactions_CreateApi_OnTwdLedger_WithExchangeBuy_ShouldReturnBadRequest()
     {
         var apiUserId = _testUserId;
@@ -761,6 +812,49 @@ public class AtomicTransactionTests : IDisposable
             var error = json.RootElement.GetProperty("error").GetString();
             error.Should().Contain("交易類型不符合此帳本規則");
             error.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+        }
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_CreateApi_OnUsdLedger_WithManualSpend_ShouldReturnBadRequest()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "USD Manual Spend Validation");
+
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 100m,
+            HomeAmount = 3100m,
+            ExchangeRate = 31m,
+            Notes = "manual spend should fail"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/currencytransactions", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(body))
+        {
+            var error = json.RootElement.GetProperty("error").GetString();
+            error.Should().Be(ManualSpendDisallowedErrorMessage);
         }
 
         var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
@@ -882,6 +976,62 @@ public class AtomicTransactionTests : IDisposable
         updated.ForeignAmount.Should().Be(777m);
         updated.HomeAmount.Should().Be(777m);
         updated.ExchangeRate.Should().Be(1.0m);
+    }
+
+    [Fact]
+    public async Task CurrencyTransactions_UpdateApi_OnUsdLedger_WithManualSpend_ShouldReturnBadRequest()
+    {
+        var apiUserId = _testUserId;
+        await EnsureApiUserExistsAsync(apiUserId);
+
+        await using var factory = new CustomWebApplicationFactory
+        {
+            TestUserId = apiUserId
+        };
+
+        using var client = CreateAuthorizedApiClient(factory);
+
+        var portfolio = await CreateTestPortfolioViaApiAsync(client, "USD", "USD Update Manual Spend Validation");
+
+        var createRequest = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = portfolio.BoundCurrencyLedgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-2),
+            TransactionType = CurrencyTransactionType.Deposit,
+            ForeignAmount = 300m,
+            Notes = "seed"
+        };
+
+        var createResponse = await client.PostAsJsonAsync("/api/currencytransactions", createRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await ReadApiJsonAsync<CurrencyTransactionDto>(createResponse.Content);
+        created.Should().NotBeNull();
+
+        var invalidUpdate = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 10m,
+            HomeAmount = 310m,
+            ExchangeRate = 31m,
+            Notes = "manual spend should fail"
+        };
+
+        var invalidResponse = await client.PutAsJsonAsync($"/api/currencytransactions/{created.Id}", invalidUpdate);
+
+        invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var invalidBody = await invalidResponse.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(invalidBody))
+        {
+            var error = json.RootElement.GetProperty("error").GetString();
+            error.Should().Be(ManualSpendDisallowedErrorMessage);
+        }
+
+        var listResponse = await client.GetAsync($"/api/currencytransactions/ledger/{portfolio.BoundCurrencyLedgerId}");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var transactions = await ReadApiJsonAsync<List<CurrencyTransactionDto>>(listResponse.Content);
+        transactions.Should().NotBeNull();
+        transactions.Should().ContainSingle(tx => tx.Id == created.Id && tx.TransactionType == CurrencyTransactionType.Deposit);
     }
 
     [Theory]

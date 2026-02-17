@@ -20,14 +20,14 @@ import type {
   Currency,
   Portfolio,
   ExchangeRatePreviewResponse,
-  CurrencyTransactionType,
+  StockTransactionTopUpType,
   BalanceAction as BalanceActionType,
 } from '../../types';
 import {
   StockMarket as StockMarketEnum,
   Currency as CurrencyEnum,
   BalanceAction,
-  CurrencyTransactionType as CurrencyTransactionTypeEnum,
+  StockTransactionTopUpType as StockTransactionTopUpTypeEnum,
 } from '../../types';
 
 /**
@@ -75,7 +75,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
   // Modal state
   const [showBalanceModal, setShowBalanceModal] = useState(false);
-  const [selectedTopUpType, setSelectedTopUpType] = useState<CurrencyTransactionType | null>(null);
+  const [selectedTopUpType, setSelectedTopUpType] = useState<StockTransactionTopUpType | null>(null);
   const [showTopUpOptions, setShowTopUpOptions] = useState(false);
   const [insufficientAmount, setInsufficientAmount] = useState<number>(0);
 
@@ -83,16 +83,13 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
 
-  const isBaseCurrencyTwd = (portfolio?.baseCurrency ?? '').toUpperCase() === 'TWD';
   const isBoundLedgerTwd = (boundLedger?.ledger.currencyCode ?? '').toUpperCase() === 'TWD';
-  const isTwdPortfolio = isBoundLedgerTwd || isBaseCurrencyTwd;
+  const boundCurrencyLedgerId = portfolio?.boundCurrencyLedgerId;
 
   const [formData, setFormData] = useState(() => {
     const initialMarket = initialData?.market ?? guessMarketFromTicker(initialData?.ticker ?? '');
-    const normalizedMarket = isBaseCurrencyTwd ? StockMarketEnum.TW : initialMarket;
-    const normalizedCurrency = isBaseCurrencyTwd
-      ? CurrencyEnum.TWD
-      : (initialData?.currency ?? guessCurrencyFromMarket(initialMarket));
+    const normalizedMarket = initialMarket;
+    const normalizedCurrency = initialData?.currency ?? guessCurrencyFromMarket(initialMarket);
 
     return {
       ticker: initialData?.ticker ?? '',
@@ -110,17 +107,24 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   // Load bound ledger info
   useEffect(() => {
     const loadBoundLedger = async () => {
-      if (!portfolio?.boundCurrencyLedgerId) return;
+      setBoundLedger(null);
+
+      if (!boundCurrencyLedgerId) {
+        return;
+      }
+
       try {
         const ledgers = await currencyLedgerApi.getAll();
-        const bound = ledgers.find(l => l.ledger.id === portfolio.boundCurrencyLedgerId);
+        const bound = ledgers.find(l => l.ledger.id === boundCurrencyLedgerId);
         setBoundLedger(bound || null);
       } catch {
         console.error('Failed to load bound ledger');
       }
     };
     loadBoundLedger();
-  }, [portfolio?.boundCurrencyLedgerId]);
+  }, [boundCurrencyLedgerId]);
+
+  const isTwdPortfolio = isBoundLedgerTwd;
 
   useEffect(() => {
     if (!isTwdPortfolio) return;
@@ -144,22 +148,13 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const tickerTitle = isTwdPortfolio ? '台股代號需為數字開頭（例如 2330）' : undefined;
 
   const topUpTransactionOptions = useMemo(() => {
-    const options: Array<{ value: CurrencyTransactionType; label: string }> = [
-      { value: CurrencyTransactionTypeEnum.Deposit, label: '存入' },
-      { value: CurrencyTransactionTypeEnum.InitialBalance, label: '轉入餘額' },
-      { value: CurrencyTransactionTypeEnum.Interest, label: '利息收入' },
-      { value: CurrencyTransactionTypeEnum.OtherIncome, label: '其他收入' },
-    ];
-
-    if (!isTwdPortfolio) {
-      return [
-        { value: CurrencyTransactionTypeEnum.ExchangeBuy, label: '換匯買入' },
-        ...options,
-      ];
-    }
-
-    return options;
-  }, [isTwdPortfolio]);
+    return [
+      { value: StockTransactionTopUpTypeEnum.Deposit, label: '存入' },
+      { value: StockTransactionTopUpTypeEnum.InitialBalance, label: '轉入餘額' },
+      { value: StockTransactionTopUpTypeEnum.Interest, label: '利息收入' },
+      { value: StockTransactionTopUpTypeEnum.OtherIncome, label: '其他收入' },
+    ] satisfies Array<{ value: StockTransactionTopUpType; label: string }>;
+  }, []);
 
   /**
    * Auto-detect market from ticker
@@ -229,7 +224,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   useEffect(() => {
     const isBuy = Number(formData.transactionType) === 1;
     const isNonTwdCurrency = Number(formData.currency) !== CurrencyEnum.TWD;
-    const hasBoundLedger = Boolean(portfolio?.boundCurrencyLedgerId);
+    const hasBoundLedger = Boolean(boundCurrencyLedgerId);
     const shares = parseFloat(formData.shares);
     const pricePerShare = parseFloat(formData.pricePerShare);
     const hasValidAmountInputs = Number.isFinite(shares) && shares > 0 && Number.isFinite(pricePerShare) && pricePerShare > 0;
@@ -243,7 +238,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
 
     const fees = parseFloat(formData.fees) || 0;
     const amount = shares * pricePerShare + fees;
-    const ledgerId = portfolio!.boundCurrencyLedgerId;
+    const ledgerId = boundCurrencyLedgerId!;
 
     let isCancelled = false;
     const timer = setTimeout(() => {
@@ -277,7 +272,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     formData.market,
     formData.fees,
     isTwdPortfolio,
-    portfolio?.boundCurrencyLedgerId,
+    boundCurrencyLedgerId,
   ]);
 
   const handleChange = (
@@ -315,7 +310,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     }
   };
 
-  const executeSubmit = async (balanceAction?: number, topUpTransactionType?: number) => {
+  const executeSubmit = async (balanceAction?: number, topUpTransactionType?: StockTransactionTopUpType) => {
     setError(null);
     setIsSubmitting(true);
 
@@ -333,7 +328,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
         market: isTwdPortfolio ? (StockMarketEnum.TW as StockMarket) : formData.market,
         currency: isTwdPortfolio ? (CurrencyEnum.TWD as Currency) : formData.currency,
         ...(topUpTransactionType !== undefined
-          ? { topUpTransactionType: topUpTransactionType as CurrencyTransactionType }
+          ? { topUpTransactionType }
           : {}),
       };
 
@@ -360,7 +355,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const requiredAmount = (() => {
@@ -664,7 +659,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
                         setSelectedTopUpType(
                           value === ''
                             ? null
-                            : (Number(value) as CurrencyTransactionType)
+                            : (Number(value) as StockTransactionTopUpType)
                         );
                       }}
                     >

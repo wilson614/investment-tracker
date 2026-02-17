@@ -81,19 +81,27 @@ public class MonthlySnapshotService(
         }
 
         var months = EnumerateMonths(resolvedFromMonth, resolvedToMonth).ToList();
+        var valuationDatesByMonth = months
+            .ToDictionary(month => month, month => GetValuationDate(month, today));
+
+        var historicalLookup = new HistoricalPriceLookupContext(
+            enableRangeLookup: months.Count > 1,
+            rangeStart: valuationDatesByMonth.Values.Min().AddDays(-10),
+            rangeEnd: valuationDatesByMonth.Values.Max().AddDays(1));
+
+        var cachedSnapshotsByMonth = await dbContext.MonthlyNetWorthSnapshots
+            .AsNoTracking()
+            .Where(s => s.PortfolioId == portfolioId && s.Month >= resolvedFromMonth && s.Month <= resolvedToMonth)
+            .ToDictionaryAsync(s => s.Month, cancellationToken);
 
         var results = new List<MonthlyNetWorthDto>(months.Count);
         var sourcesUsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var month in months)
         {
-            var valuationDate = GetValuationDate(month, today);
+            var valuationDate = valuationDatesByMonth[month];
 
-            var cached = await dbContext.MonthlyNetWorthSnapshots
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.PortfolioId == portfolioId && s.Month == month, cancellationToken);
-
-            if (cached != null)
+            if (cachedSnapshotsByMonth.TryGetValue(month, out var cached))
             {
                 results.Add(new MonthlyNetWorthDto
                 {
@@ -159,6 +167,7 @@ public class MonthlySnapshotService(
                     ticker,
                     market,
                     valuationDate,
+                    historicalLookup,
                     cancellationToken);
 
                 if (priceResult == null)
@@ -354,8 +363,7 @@ public class MonthlySnapshotService(
                 continue;
             }
 
-            var proceedsSource = tx.Shares * tx.PricePerShare - tx.Fees;
-            totalSells += proceedsSource * fx.Value;
+            totalSells += tx.NetProceedsSource * fx.Value;
         }
 
         return Math.Round(totalBuys - totalSells, 4);
@@ -398,37 +406,30 @@ public class MonthlySnapshotService(
         }
 
         var result = await yahooService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
-        return result?.Rate;
+        if (result != null)
+        {
+            return result.Rate;
+        }
+
+        var stooqResult = await stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
+        return stooqResult?.Rate;
     }
 
     private async Task<HistoricalPriceInfo?> GetHistoricalPriceAsync(
         string ticker,
         StockMarket? market,
         DateOnly date,
+        HistoricalPriceLookupContext lookup,
         CancellationToken cancellationToken)
     {
-        // Taiwan stocks: use TWSE
-        if (market == StockMarket.TW || IsTaiwanTicker(ticker))
+        foreach (var yahooSymbol in GetYahooSymbolsForHistoricalLookup(ticker, market))
         {
-            var stockNo = ticker.Split('.')[0];
-            var twse = await twseStockService.GetStockPriceAsync(stockNo, date, cancellationToken);
-            if (twse == null)
+            var yahoo = await GetYahooHistoricalPriceAsync(yahooSymbol, date, lookup, cancellationToken);
+            if (yahoo == null)
             {
-                return null;
+                continue;
             }
 
-            return new HistoricalPriceInfo(
-                Price: twse.Price,
-                Currency: "TWD",
-                ActualDate: twse.ActualDate,
-                Source: "TWSE");
-        }
-
-        // Non-TW: Yahoo primary
-        var yahooSymbol = YahooSymbolHelper.ConvertToYahooSymbol(ticker, market);
-        var yahoo = await yahooService.GetHistoricalPriceAsync(yahooSymbol, date, cancellationToken);
-        if (yahoo != null)
-        {
             return new HistoricalPriceInfo(
                 Price: yahoo.Price,
                 Currency: yahoo.Currency,
@@ -436,7 +437,22 @@ public class MonthlySnapshotService(
                 Source: "Yahoo");
         }
 
-        // Fallback: Stooq (skip EU market where Yahoo is expected to handle)
+        if (market == StockMarket.TW || IsTaiwanTicker(ticker))
+        {
+            var stockNo = ticker.Split('.')[0];
+            var twse = await twseStockService.GetStockPriceAsync(stockNo, date, cancellationToken);
+            if (twse != null)
+            {
+                return new HistoricalPriceInfo(
+                    Price: twse.Price,
+                    Currency: "TWD",
+                    ActualDate: twse.ActualDate,
+                    Source: twse.Source is "TWSE" or "TPEx" ? twse.Source : "TWSE");
+            }
+
+            return null;
+        }
+
         if (market != StockMarket.EU)
         {
             var stooq = await stooqService.GetStockPriceAsync(ticker, date, cancellationToken);
@@ -453,8 +469,104 @@ public class MonthlySnapshotService(
         return null;
     }
 
+    private async Task<YahooHistoricalPriceResult?> GetYahooHistoricalPriceAsync(
+        string yahooSymbol,
+        DateOnly targetDate,
+        HistoricalPriceLookupContext lookup,
+        CancellationToken cancellationToken)
+    {
+        if (!lookup.EnableRangeLookup)
+        {
+            return await yahooService.GetHistoricalPriceAsync(yahooSymbol, targetDate, cancellationToken);
+        }
+
+        if (lookup.RangeCache.TryGetValue(yahooSymbol, out var cachedSeries))
+        {
+            return ResolveHistoricalPriceFromSeries(cachedSeries, targetDate);
+        }
+
+        var series = await yahooService.GetHistoricalPriceSeriesAsync(
+            yahooSymbol,
+            lookup.RangeStart,
+            lookup.RangeEnd,
+            cancellationToken);
+
+        lookup.RangeCache[yahooSymbol] = series;
+        return ResolveHistoricalPriceFromSeries(series, targetDate);
+    }
+
+    private static YahooHistoricalPriceResult? ResolveHistoricalPriceFromSeries(
+        IReadOnlyList<YahooHistoricalPricePoint> series,
+        DateOnly targetDate)
+    {
+        if (series.Count == 0)
+        {
+            return null;
+        }
+
+        YahooHistoricalPricePoint? bestPoint = null;
+
+        foreach (var point in series)
+        {
+            if (point.Date > targetDate)
+            {
+                continue;
+            }
+
+            if (bestPoint == null || point.Date > bestPoint.Date)
+            {
+                bestPoint = point;
+            }
+        }
+
+        bestPoint ??= series[0];
+
+        return new YahooHistoricalPriceResult
+        {
+            Price = bestPoint.Price,
+            ActualDate = bestPoint.Date,
+            Currency = bestPoint.Currency
+        };
+    }
+
+    private static IEnumerable<string> GetYahooSymbolsForHistoricalLookup(string ticker, StockMarket? market)
+    {
+        var isTaiwanStock = market == StockMarket.TW || IsTaiwanTicker(ticker);
+        if (isTaiwanStock)
+        {
+            var baseTicker = ticker.Split('.')[0];
+            var explicitSuffix = ticker.Contains('.') ? ticker[(ticker.LastIndexOf('.') + 1)..] : null;
+
+            if (string.Equals(explicitSuffix, "TW", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TW";
+                yield return $"{baseTicker}.TWO";
+                yield break;
+            }
+
+            if (string.Equals(explicitSuffix, "TWO", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TWO";
+                yield return $"{baseTicker}.TW";
+                yield break;
+            }
+
+            yield return $"{baseTicker}.TW";
+            yield return $"{baseTicker}.TWO";
+            yield break;
+        }
+
+        yield return YahooSymbolHelper.ConvertToYahooSymbol(ticker, market);
+    }
+
     private static bool IsTaiwanTicker(string ticker) =>
         !string.IsNullOrEmpty(ticker) && char.IsDigit(ticker[0]);
+
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        return ex.InnerException?.Message.Contains("23505", StringComparison.Ordinal) == true ||
+               ex.InnerException?.Message.Contains("UNIQUE constraint failed", StringComparison.Ordinal) == true;
+    }
 
     private async Task SaveSnapshotAsync(
         Guid portfolioId,
@@ -481,9 +593,18 @@ public class MonthlySnapshotService(
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            // Likely unique constraint conflict (race). Ignore.
+            // Unique constraint conflict (race). Ignore after detaching failed tracked entries.
+            foreach (var entry in ex.Entries)
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            if (dbContext.Entry(entity).State != EntityState.Detached)
+            {
+                dbContext.Entry(entity).State = EntityState.Detached;
+            }
         }
     }
 
@@ -492,4 +613,15 @@ public class MonthlySnapshotService(
         string Currency,
         DateOnly ActualDate,
         string Source);
+
+    private sealed class HistoricalPriceLookupContext(
+        bool enableRangeLookup,
+        DateOnly rangeStart,
+        DateOnly rangeEnd)
+    {
+        public bool EnableRangeLookup { get; } = enableRangeLookup;
+        public DateOnly RangeStart { get; } = rangeStart;
+        public DateOnly RangeEnd { get; } = rangeEnd;
+        public Dictionary<string, IReadOnlyList<YahooHistoricalPricePoint>> RangeCache { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
 }

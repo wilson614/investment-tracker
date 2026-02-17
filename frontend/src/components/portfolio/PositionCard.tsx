@@ -9,7 +9,7 @@ interface PositionCardProps {
   position: StockPosition;
   baseCurrency?: string;
   homeCurrency?: string;
-  onPriceUpdate?: (ticker: string, price: number, exchangeRate: number) => void;
+  onPriceUpdate?: (ticker: string, market: StockMarketType, price: number, exchangeRate: number) => void;
   autoFetch?: boolean;
   refreshTrigger?: number;
 }
@@ -191,7 +191,7 @@ export function PositionCard({
           saveToCache(syntheticQuote, EURONEXT_MARKET, euronextQuote.fromCache);
 
           if (onPriceUpdate && euronextQuote.exchangeRate) {
-            onPriceUpdate(position.ticker, euronextQuote.price, euronextQuote.exchangeRate);
+            onPriceUpdate(position.ticker, EURONEXT_MARKET, euronextQuote.price, euronextQuote.exchangeRate);
           }
           return;
         }
@@ -208,7 +208,7 @@ export function PositionCard({
 
         // Notify parent with the fetched price and exchange rate
         if (onPriceUpdate && quote.exchangeRate) {
-          onPriceUpdate(position.ticker, quote.price, quote.exchangeRate);
+          onPriceUpdate(position.ticker, targetMarket, quote.price, quote.exchangeRate);
         }
       } else {
         setFetchStatus('error');
@@ -250,9 +250,10 @@ export function PositionCard({
 
     // Also notify parent with cached data immediately if available
     if (lastQuote && onPriceUpdate && lastQuote.exchangeRate) {
-      onPriceUpdate(position.ticker, lastQuote.price, lastQuote.exchangeRate);
+      const positionMarket = position.market ?? guessMarket(position.ticker);
+      onPriceUpdate(position.ticker, positionMarket, lastQuote.price, lastQuote.exchangeRate);
     }
-  }, [autoFetch, handleFetchQuote, lastQuote, onPriceUpdate, position.ticker]);
+  }, [autoFetch, handleFetchQuote, lastQuote, onPriceUpdate, position.market, position.ticker]);
 
   const hasValuation = position.currentValueHome != null;
 

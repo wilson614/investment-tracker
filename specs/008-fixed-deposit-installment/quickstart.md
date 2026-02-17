@@ -78,8 +78,7 @@ public DbSet<Installment> Installments => Set<Installment>();
 ### 4. Run Backend
 
 ```bash
-cd backend/src/InvestmentTracker.API
-dotnet run
+dotnet run --project backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 ```
 
 API available at `http://localhost:5000`

@@ -15,8 +15,19 @@ public class TwseSymbolMappingService(
     ITwSecurityMappingRepository mappingRepository,
     ILogger<TwseSymbolMappingService> logger)
 {
-    private const string TwseIsinUrl = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2";
+    private const string TwseListedIsinUrl = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2";
+    private const string TwseOtcIsinUrl = "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4";
+
+    private const string SourceKeyListed = "TWSE_LISTED";
+    private const string SourceKeyOtc = "TPEX_OTC";
+
     private const string DefaultCurrency = "TWD";
+
+    private static readonly TwseIsinSource[] IsinSources =
+    [
+        new(SourceKeyListed, TwseListedIsinUrl, null),
+        new(SourceKeyOtc, TwseOtcIsinUrl, "TPEX")
+    ];
 
     private static readonly Regex TableRowRegex = new(
         "<tr[^>]*>(?<row>.*?)</tr>",
@@ -57,10 +68,10 @@ public class TwseSymbolMappingService(
             return new TwseSymbolSyncResult(0, 0, 0, [], []);
         }
 
-        var records = await FetchTwseRecordsAsync(cancellationToken);
-        if (records is null)
+        var fetchResult = await FetchTwseRecordsAsync(cancellationToken);
+        if (fetchResult is null)
         {
-            logger.LogWarning("TWSE ISIN synchronization failed because source is unavailable");
+            logger.LogWarning("TWSE ISIN synchronization failed because all sources are unavailable");
 
             var upstreamErrors = requestedNames
                 .Select(name => new TwseSymbolSyncError(
@@ -77,7 +88,7 @@ public class TwseSymbolMappingService(
                 upstreamErrors);
         }
 
-        var bySecurityName = records
+        var bySecurityName = fetchResult.Records
             .GroupBy(record => record.SecurityName, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
 
@@ -92,7 +103,7 @@ public class TwseSymbolMappingService(
                 errors.Add(new TwseSymbolSyncError(
                     securityName,
                     "NOT_FOUND",
-                    "No mapping found after synchronization"));
+                    BuildNotFoundMessage(fetchResult)));
                 continue;
             }
 
@@ -142,31 +153,84 @@ public class TwseSymbolMappingService(
         await mappingRepository.UpsertAsync(mapping, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<TwseIsinRecord>?> FetchTwseRecordsAsync(CancellationToken cancellationToken)
+    private async Task<TwseFetchResult?> FetchTwseRecordsAsync(CancellationToken cancellationToken)
+    {
+        Dictionary<string, TwseIsinRecord> mergedRecords = new(StringComparer.Ordinal);
+
+        var listedSourceAvailable = false;
+        var otcSourceAvailable = false;
+
+        foreach (var source in IsinSources)
+        {
+            var sourceRecords = await FetchTwseRecordsBySourceAsync(source, cancellationToken);
+            if (sourceRecords is null)
+            {
+                continue;
+            }
+
+            if (source.Key == SourceKeyListed)
+            {
+                listedSourceAvailable = true;
+            }
+            else if (source.Key == SourceKeyOtc)
+            {
+                otcSourceAvailable = true;
+            }
+
+            MergeRecords(mergedRecords, sourceRecords);
+        }
+
+        if (!listedSourceAvailable && !otcSourceAvailable)
+        {
+            return null;
+        }
+
+        logger.LogInformation(
+            "Fetched {Count} merged records from TWSE ISIN sources. ListedAvailable={ListedAvailable}, OtcAvailable={OtcAvailable}",
+            mergedRecords.Count,
+            listedSourceAvailable,
+            otcSourceAvailable);
+
+        return new TwseFetchResult(
+            mergedRecords.Values.ToList(),
+            listedSourceAvailable,
+            otcSourceAvailable);
+    }
+
+    private async Task<IReadOnlyList<TwseIsinRecord>?> FetchTwseRecordsBySourceAsync(
+        TwseIsinSource source,
+        CancellationToken cancellationToken)
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, TwseIsinUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, source.Url);
             request.Headers.Add("Accept", "text/html");
             request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
             var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("TWSE ISIN source returned status code {StatusCode}", response.StatusCode);
+                logger.LogWarning(
+                    "TWSE ISIN source {SourceKey} returned status code {StatusCode}",
+                    source.Key,
+                    response.StatusCode);
                 return null;
             }
 
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             var html = DecodeTwseHtml(bytes);
-            var records = ParseTwseRecords(html);
+            var records = ParseTwseRecords(html, source.DefaultMarket);
 
-            logger.LogInformation("Fetched {Count} records from TWSE ISIN source", records.Count);
+            logger.LogInformation(
+                "Fetched {Count} records from TWSE ISIN source {SourceKey}",
+                records.Count,
+                source.Key);
+
             return records;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to synchronize mappings from TWSE ISIN source");
+            logger.LogWarning(ex, "Failed to fetch TWSE ISIN source {SourceKey}", source.Key);
             return null;
         }
     }
@@ -185,7 +249,7 @@ public class TwseSymbolMappingService(
         return big5.GetString(bytes);
     }
 
-    private static IReadOnlyList<TwseIsinRecord> ParseTwseRecords(string html)
+    private static IReadOnlyList<TwseIsinRecord> ParseTwseRecords(string html, string? defaultMarket)
     {
         Dictionary<string, TwseIsinRecord> records = new(StringComparer.Ordinal);
 
@@ -215,7 +279,7 @@ public class TwseSymbolMappingService(
                 continue;
             }
 
-            var market = MapMarket(listingType);
+            var market = MapMarket(listingType, defaultMarket);
             records[ticker] = new TwseIsinRecord(ticker, securityName, isin, market);
         }
 
@@ -280,7 +344,7 @@ public class TwseSymbolMappingService(
         return value.Trim().ToUpperInvariant();
     }
 
-    private static string? MapMarket(string listingType)
+    private static string? MapMarket(string listingType, string? defaultMarket)
     {
         if (listingType.Contains("上市", StringComparison.Ordinal))
         {
@@ -292,13 +356,55 @@ public class TwseSymbolMappingService(
             return "TPEX";
         }
 
-        return null;
+        return NormalizeOptionalUpper(defaultMarket);
+    }
+
+    private static string BuildNotFoundMessage(TwseFetchResult fetchResult)
+    {
+        if (!fetchResult.OtcSourceAvailable && fetchResult.ListedSourceAvailable)
+        {
+            return "No mapping found after synchronization (TPEX source unavailable)";
+        }
+
+        if (!fetchResult.ListedSourceAvailable && fetchResult.OtcSourceAvailable)
+        {
+            return "No mapping found after synchronization (TWSE listed source unavailable)";
+        }
+
+        return "No mapping found after synchronization";
+    }
+
+    private static void MergeRecords(
+        IDictionary<string, TwseIsinRecord> mergedRecords,
+        IReadOnlyList<TwseIsinRecord> sourceRecords)
+    {
+        foreach (var sourceRecord in sourceRecords)
+        {
+            if (!mergedRecords.TryGetValue(sourceRecord.Ticker, out var existing))
+            {
+                mergedRecords[sourceRecord.Ticker] = sourceRecord;
+                continue;
+            }
+
+            // Preserve existing (strMode=2) precedence, but allow enrichment when market is missing.
+            if (existing.Market is null && sourceRecord.Market is not null)
+            {
+                mergedRecords[sourceRecord.Ticker] = sourceRecord;
+            }
+        }
     }
 
     private static string CollapseSpaces(string value)
     {
         return string.Join(' ', value.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
+
+    private sealed record TwseIsinSource(string Key, string Url, string? DefaultMarket);
+
+    private sealed record TwseFetchResult(
+        IReadOnlyList<TwseIsinRecord> Records,
+        bool ListedSourceAvailable,
+        bool OtcSourceAvailable);
 
     private sealed record TwseIsinRecord(string Ticker, string SecurityName, string Isin, string? Market);
 }

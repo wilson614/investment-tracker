@@ -42,7 +42,8 @@ public class CreateCurrencyTransactionUseCase(
             request.TransactionType,
             new CurrencyTransactionAmountPresence(
                 HasAmount: request.ForeignAmount != default,
-                HasTargetAmount: request.HomeAmount.HasValue));
+                HasTargetAmount: request.HomeAmount.HasValue),
+            allowManualSpend: false);
 
         // 備註：Spend 與 ExchangeSell 可能導致帳本餘額為負
         // IB 等券商支援融資/槓桿交易

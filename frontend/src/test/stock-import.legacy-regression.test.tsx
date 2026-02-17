@@ -168,7 +168,7 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
 }
 
 function findFormatSelector(): HTMLSelectElement | null {
-  const labeled = screen.queryByLabelText(/格式|format/i);
+  const labeled = screen.queryByLabelText(/類型|格式|format/i);
   if (labeled instanceof HTMLSelectElement) {
     return labeled;
   }
@@ -182,8 +182,8 @@ function findFormatSelector(): HTMLSelectElement | null {
       `${option.value} ${option.textContent ?? ''}`.toLowerCase(),
     );
 
-    const hasLegacy = optionTexts.some((text) => /legacy|舊/.test(text));
-    const hasBroker = optionTexts.some((text) => /broker|對帳|證券/.test(text));
+    const hasLegacy = optionTexts.some((text) => /legacy_csv|legacy|一般|舊/.test(text));
+    const hasBroker = optionTexts.some((text) => /broker_statement|broker|券商|對帳|證券/.test(text));
 
     return hasLegacy && hasBroker;
   }) ?? null;
@@ -199,13 +199,7 @@ async function selectImportFormat(
     return control as HTMLSelectElement;
   });
 
-  const matcher = targetFormat === 'legacy_csv'
-    ? /legacy|舊/
-    : /broker|對帳|證券/;
-
-  const option = Array.from(selector.options).find((candidate) =>
-    matcher.test(`${candidate.value} ${candidate.textContent ?? ''}`.toLowerCase()),
-  );
+  const option = Array.from(selector.options).find((candidate) => candidate.value === targetFormat);
 
   if (!option) {
     throw new Error(`找不到格式選項: ${targetFormat}`);
@@ -296,7 +290,7 @@ describe('Stock import legacy regression flow', () => {
       }),
     );
     expect(previewRequest.csvContent).toContain('transactionDate');
-    expect(screen.getByText('系統偵測：舊版 CSV')).toBeInTheDocument();
+    expect(screen.getByText('系統偵測：一般')).toBeInTheDocument();
 
     await executeImport(user);
 
@@ -325,6 +319,34 @@ describe('Stock import legacy regression flow', () => {
 
     expect(onImportComplete).toHaveBeenCalledTimes(1);
     expect(onImportSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('unknown detected format should follow local detection when csv clearly matches legacy sample', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-legacy-unknown-fallback',
+        detectedFormat: 'unknown',
+        selectedFormat: 'legacy_csv',
+        rows: [buildPreviewRow({ rowNumber: 3, rawSecurityName: 'LEGACY-UNKNOWN-ROW' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildLegacyCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    expect(screen.getByText('系統偵測：一般')).toBeInTheDocument();
+    expect(screen.queryByText('系統偵測：未知格式')).not.toBeInTheDocument();
   });
 
   it('manual broker override on detected legacy CSV surfaces header error and allows switching back to legacy format', async () => {
@@ -373,7 +395,7 @@ describe('Stock import legacy regression flow', () => {
 
     const firstPreviewRequest = getLatestPreviewRequest();
     expect(firstPreviewRequest.selectedFormat).toBe('broker_statement');
-    expect(screen.getByText('系統偵測：舊版 CSV')).toBeInTheDocument();
+    expect(screen.getByText('系統偵測：一般')).toBeInTheDocument();
     expect(await screen.findByText('STALE-PREVIEW-ROW')).toBeInTheDocument();
 
     const brokerOverrideError = await screen.findByText(/CSV_HEADER_MISSING/i);
@@ -383,7 +405,8 @@ describe('Stock import legacy regression flow', () => {
     const executeButtonBeforeFormatChange = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
     });
-    expect(executeButtonBeforeFormatChange).toBeEnabled();
+    expect(executeButtonBeforeFormatChange).toBeDisabled();
+    expect(screen.getByText('預覽有錯誤，請先修正')).toBeInTheDocument();
 
     await selectImportFormat(user, 'legacy_csv');
 

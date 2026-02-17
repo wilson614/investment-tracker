@@ -42,6 +42,8 @@ export interface CSVImportSummaryItem {
   value: number | string;
 }
 
+type TopUpTransactionType = 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+
 export interface CSVImportRemediationRow {
   rowNumber: number;
   rawSecurityName: string | null;
@@ -56,7 +58,7 @@ export interface CSVImportRemediationRow {
   requiresBalanceAction?: boolean;
   balanceActionSelection?: 'default' | 'Margin' | 'TopUp';
   effectiveBalanceAction?: 'Margin' | 'TopUp' | null;
-  topUpTransactionType?: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null;
+  topUpTransactionType?: TopUpTransactionType | null;
   shortfall?: number | null;
   availableBalance?: number | null;
   requiredAmount?: number | null;
@@ -84,21 +86,23 @@ export interface CSVImportPreviewExtensions {
   globalBalanceActionLabel?: string;
   globalBalanceAction?: 'Margin' | 'TopUp' | null;
   onChangeGlobalBalanceAction?: (value: 'Margin' | 'TopUp' | null) => void;
-  globalTopUpTransactionType?: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null;
-  onChangeGlobalTopUpTransactionType?: (value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null) => void;
+  globalTopUpTransactionType?: TopUpTransactionType | null;
+  onChangeGlobalTopUpTransactionType?: (value: TopUpTransactionType | null) => void;
 
   rowBalanceActionLabel?: string;
   rowTopUpTransactionTypeLabel?: string;
   onChangeRowBalanceActionSelection?: (rowNumber: number, value: 'default' | 'Margin' | 'TopUp') => void;
   onChangeRowTopUpTransactionType?: (
     rowNumber: number,
-    value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome' | null,
+    value: TopUpTransactionType | null,
   ) => void;
 
   topUpTransactionTypeOptions?: Array<{
-    value: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+    value: TopUpTransactionType;
     label: string;
   }>;
+  hideTopUpTransactionTypeSelector?: boolean;
+  topUpTransactionTypeFixedNotice?: string;
 
   executeDisabled?: boolean;
   executeDisabledReason?: string | null;
@@ -137,6 +141,12 @@ interface CSVImportModalProps {
   ) => Promise<CSVImportActionResult>;
   /** 可選：預覽步驟擴充內容（format selector / unresolved rows / diagnostics） */
   previewExtensions?: CSVImportPreviewExtensions;
+  /** CSV 解析後通知外層（可用於格式偵測等流程控制） */
+  onCsvParsed?: (data: ParsedCSV) => void;
+  /** 是否隱藏 mapping 步驟的欄位對應下拉 */
+  hideMappingSelectors?: boolean;
+  /** mapping 步驟需隱藏的欄位名稱 */
+  hiddenMappingFieldNames?: string[];
 }
 
 function getTradeSideLabel(side: 'buy' | 'sell' | 'ambiguous' | null | undefined): string {
@@ -155,7 +165,7 @@ function getStatusLabel(status: CSVImportRemediationRow['status']): string {
 function getBalanceActionLabel(action: 'Margin' | 'TopUp' | null | undefined): string {
   if (action === 'Margin') return '融資';
   if (action === 'TopUp') return '補足餘額';
-  return '未設定';
+  return '逐筆決定';
 }
 
 export function CSVImportModal({
@@ -167,6 +177,9 @@ export function CSVImportModal({
   onRequestPreview,
   onExecute,
   previewExtensions,
+  onCsvParsed,
+  hideMappingSelectors = false,
+  hiddenMappingFieldNames = [],
 }: CSVImportModalProps) {
   const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'result'>('upload');
   const [csvData, setCsvData] = useState<ParsedCSV | null>(null);
@@ -178,6 +191,8 @@ export function CSVImportModal({
     successCount: number;
   } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  const visibleMappingFields = fields.filter((field) => !hiddenMappingFieldNames.includes(field.name));
 
   /**
    * 上傳檔案後：讀取文字 → parse CSV → 自動欄位對應 → 進入 mapping step。
@@ -191,6 +206,7 @@ export function CSVImportModal({
         const content = await file.text();
         const parsed = parseCSV(content);
         setCsvData(parsed);
+        onCsvParsed?.(parsed);
 
         // Auto-map columns
         const autoMapping = autoMapColumns(parsed.headers, fields);
@@ -200,7 +216,7 @@ export function CSVImportModal({
         alert('讀取檔案失敗，請確認檔案格式正確。');
       }
     },
-    [fields]
+    [fields, onCsvParsed]
   );
 
   /**
@@ -219,7 +235,11 @@ export function CSVImportModal({
    * 驗證必填欄位是否都有完成對應。
    */
   const validateMapping = (): boolean => {
-    const requiredFields = fields.filter((f) => f.required);
+    if (hideMappingSelectors) {
+      return true;
+    }
+
+    const requiredFields = visibleMappingFields.filter((f) => f.required);
     const missingFields = requiredFields.filter((f) => !mapping[f.name]);
 
     if (missingFields.length > 0) {
@@ -349,46 +369,48 @@ export function CSVImportModal({
                 </span>
               </div>
 
-              <div>
-                <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">
-                  欄位對應
-                </h3>
-                <div className="space-y-3">
-                  {fields.map((field) => (
-                    <div
-                      key={field.name}
-                      className="flex items-center gap-4"
-                    >
-                      <div className="w-40 flex-shrink-0">
-                        <span className="text-[var(--text-secondary)] font-medium">
-                          {field.label}
-                        </span>
-                        {field.required && (
-                          <span className="text-[var(--color-danger)] ml-1">*</span>
-                        )}
-                      </div>
-                      <select
-                        value={mapping[field.name] || ''}
-                        onChange={(e) =>
-                          handleMappingChange(field.name, e.target.value)
-                        }
-                        className={`flex-1 input-dark ${
-                          !onRequestPreview && field.required && !mapping[field.name]
-                            ? 'border-[var(--color-danger)]'
-                            : ''
-                        }`}
+              {!hideMappingSelectors && (
+                <div>
+                  <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">
+                    欄位對應
+                  </h3>
+                  <div className="space-y-3">
+                    {visibleMappingFields.map((field) => (
+                      <div
+                        key={field.name}
+                        className="flex items-center gap-4"
                       >
-                        <option value="">-- 選擇欄位 --</option>
-                        {csvData.headers.map((header) => (
-                          <option key={header} value={header}>
-                            {header}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                        <div className="w-40 flex-shrink-0">
+                          <span className="text-[var(--text-secondary)] font-medium">
+                            {field.label}
+                          </span>
+                          {field.required && (
+                            <span className="text-[var(--color-danger)] ml-1">*</span>
+                          )}
+                        </div>
+                        <select
+                          value={mapping[field.name] || ''}
+                          onChange={(e) =>
+                            handleMappingChange(field.name, e.target.value)
+                          }
+                          className={`flex-1 input-dark ${
+                            !onRequestPreview && field.required && !mapping[field.name]
+                              ? 'border-[var(--color-danger)]'
+                              : ''
+                          }`}
+                        >
+                          <option value="">-- 選擇欄位 --</option>
+                          {csvData.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="bg-[var(--bg-secondary)] p-4 rounded-lg">
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">資料預覽（前 3 筆）</h4>
@@ -489,64 +511,74 @@ export function CSVImportModal({
                     }}
                     className="input-dark w-full"
                   >
-                    <option value="">無（沿用後端預設）</option>
-                    <option value="Margin">融資（Margin）</option>
-                    <option value="TopUp">補足餘額（Top-up）</option>
+                    <option value="">逐筆決定</option>
+                    <option value="Margin">融資</option>
+                    <option value="TopUp">補足餘額</option>
                   </select>
 
                   {previewExtensions.globalBalanceAction === 'TopUp' && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-topup-transaction-type-selector">
-                        補足交易類型
-                      </label>
-                      <select
-                        id="global-topup-transaction-type-selector"
-                        aria-label="補足交易類型"
-                        value={previewExtensions.globalTopUpTransactionType ?? ''}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          if (value === '') {
-                            previewExtensions.onChangeGlobalTopUpTransactionType?.(null);
-                            return;
-                          }
+                    previewExtensions.hideTopUpTransactionTypeSelector ? (
+                      <p className="text-xs text-[var(--text-muted)]">
+                        {previewExtensions.topUpTransactionTypeFixedNotice ?? '台幣投組匯入補足一律使用存入（Deposit）。'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-topup-transaction-type-selector">
+                          補足交易類型
+                        </label>
+                        <select
+                          id="global-topup-transaction-type-selector"
+                          aria-label="補足交易類型"
+                          value={previewExtensions.globalTopUpTransactionType ?? ''}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value === '') {
+                              previewExtensions.onChangeGlobalTopUpTransactionType?.(null);
+                              return;
+                            }
 
-                          if (
-                            value === 'ExchangeBuy'
-                            || value === 'Deposit'
-                            || value === 'InitialBalance'
-                            || value === 'Interest'
-                            || value === 'OtherIncome'
-                          ) {
-                            previewExtensions.onChangeGlobalTopUpTransactionType?.(value);
-                          }
-                        }}
-                        className="input-dark w-full"
-                      >
-                        <option value="">請選擇補足交易類型</option>
-                        {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
+                            if (
+                              value === 'Deposit'
+                              || value === 'InitialBalance'
+                              || value === 'Interest'
+                              || value === 'OtherIncome'
+                            ) {
+                              previewExtensions.onChangeGlobalTopUpTransactionType?.(value);
+                            }
+                          }}
+                          className="input-dark w-full"
+                        >
+                          <option value="">請選擇補足交易類型</option>
+                          {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          補足餘額建立的資金交易不包含「換匯買入」，請改用存入、轉入餘額、利息收入或其他收入。
+                        </p>
+                      </div>
+                    )
                   )}
                 </div>
               )}
 
-              <div>
-                <h4 className="font-medium text-[var(--text-primary)] mb-2">欄位對應摘要</h4>
-                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
-                  {fields.map((field) => (
-                    <div key={field.name} className="flex justify-between text-sm">
-                      <span className="text-[var(--text-muted)]">{field.label}</span>
-                      <span className="font-medium text-[var(--text-primary)]">
-                        {mapping[field.name] || (
-                          <span className="text-[var(--text-muted)]">未對應</span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
+              {!hideMappingSelectors && (
+                <div>
+                  <h4 className="font-medium text-[var(--text-primary)] mb-2">欄位對應摘要</h4>
+                  <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-2">
+                    {visibleMappingFields.map((field) => (
+                      <div key={field.name} className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">{field.label}</span>
+                        <span className="font-medium text-[var(--text-primary)]">
+                          {mapping[field.name] || (
+                            <span className="text-[var(--text-muted)]">未對應</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {previewExtensions?.previewErrors && previewExtensions.previewErrors.length > 0 && (
                 <div className="bg-[var(--color-danger-soft)] p-4 rounded-lg max-h-60 overflow-y-auto">
@@ -641,38 +673,43 @@ export function CSVImportModal({
                                     className="input-dark w-full"
                                   >
                                     <option value="default">套用預設（{getBalanceActionLabel(row.effectiveBalanceAction)})</option>
-                                    <option value="Margin">融資（Margin）</option>
-                                    <option value="TopUp">補足餘額（Top-up）</option>
+                                    <option value="Margin">融資</option>
+                                    <option value="TopUp">補足餘額</option>
                                   </select>
 
                                   {(row.effectiveBalanceAction === 'TopUp' || row.balanceActionSelection === 'TopUp') && (
-                                    <select
-                                      value={row.topUpTransactionType ?? ''}
-                                      onChange={(event) => {
-                                        const value = event.target.value;
-                                        if (value === '') {
-                                          previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, null);
-                                          return;
-                                        }
+                                    previewExtensions.hideTopUpTransactionTypeSelector ? (
+                                      <p className="text-xs text-[var(--text-muted)]">
+                                        {previewExtensions.topUpTransactionTypeFixedNotice ?? '台幣投組匯入補足一律使用存入（Deposit）。'}
+                                      </p>
+                                    ) : (
+                                      <select
+                                        value={row.topUpTransactionType ?? ''}
+                                        onChange={(event) => {
+                                          const value = event.target.value;
+                                          if (value === '') {
+                                            previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, null);
+                                            return;
+                                          }
 
-                                        if (
-                                          value === 'ExchangeBuy'
-                                          || value === 'Deposit'
-                                          || value === 'InitialBalance'
-                                          || value === 'Interest'
-                                          || value === 'OtherIncome'
-                                        ) {
-                                          previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, value);
-                                        }
-                                      }}
-                                      aria-label={previewExtensions.rowTopUpTransactionTypeLabel ?? `第 ${row.rowNumber} 行補足交易類型`}
-                                      className="input-dark w-full"
-                                    >
-                                      <option value="">請選擇補足交易類型</option>
-                                      {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                      ))}
-                                    </select>
+                                          if (
+                                            value === 'Deposit'
+                                            || value === 'InitialBalance'
+                                            || value === 'Interest'
+                                            || value === 'OtherIncome'
+                                          ) {
+                                            previewExtensions.onChangeRowTopUpTransactionType?.(row.rowNumber, value);
+                                          }
+                                        }}
+                                        aria-label={previewExtensions.rowTopUpTransactionTypeLabel ?? `第 ${row.rowNumber} 行補足交易類型`}
+                                        className="input-dark w-full"
+                                      >
+                                        <option value="">請選擇補足交易類型</option>
+                                        {(previewExtensions.topUpTransactionTypeOptions ?? []).map((option) => (
+                                          <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                      </select>
+                                    )
                                   )}
 
                                   {typeof row.shortfall === 'number' && (

@@ -19,6 +19,20 @@ public interface IYahooHistoricalPriceService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 取得指定區間內的日收盤價序列。
+    /// </summary>
+    /// <param name="symbol">Yahoo Finance 股票代號（如 AGAC.AS）</param>
+    /// <param name="fromDate">起始日期（含）</param>
+    /// <param name="toDate">結束日期（含）</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>日資料序列；若查無資料則回傳空集合。</returns>
+    Task<IReadOnlyList<YahooHistoricalPricePoint>> GetHistoricalPriceSeriesAsync(
+        string symbol,
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 取得指定年度的年度 Total Return（含股息）。
     /// </summary>
     /// <param name="symbol">Yahoo Finance 股票代號（如 VWRA.L）</param>
@@ -59,6 +73,27 @@ public record YahooHistoricalPriceResult
     /// 實際交易日期（可能與請求日期不同，例如遇到假日）。
     /// </summary>
     public required DateOnly ActualDate { get; init; }
+
+    /// <summary>
+    /// 幣別代碼（如 USD、EUR）。
+    /// </summary>
+    public required string Currency { get; init; }
+}
+
+/// <summary>
+/// Yahoo Finance 日歷史價格點位。
+/// </summary>
+public record YahooHistoricalPricePoint
+{
+    /// <summary>
+    /// 交易日期。
+    /// </summary>
+    public required DateOnly Date { get; init; }
+
+    /// <summary>
+    /// 收盤價。
+    /// </summary>
+    public required decimal Price { get; init; }
 
     /// <summary>
     /// 幣別代碼（如 USD、EUR）。

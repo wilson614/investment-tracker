@@ -196,7 +196,7 @@ function findGlobalTopUpTypeSelector(): HTMLSelectElement | null {
 
 async function selectGlobalBalanceAction(
   user: ReturnType<typeof userEvent.setup>,
-  action: 'Margin' | 'TopUp',
+  action: 'Margin' | 'TopUp' | null,
 ) {
   const selector = await waitFor(() => {
     const control = findGlobalBalanceActionSelector();
@@ -204,9 +204,10 @@ async function selectGlobalBalanceAction(
     return control as HTMLSelectElement;
   });
 
-  const option = Array.from(selector.options).find((candidate) => candidate.value === action);
+  const targetValue = action ?? '';
+  const option = Array.from(selector.options).find((candidate) => candidate.value === targetValue);
   if (!option) {
-    throw new Error(`找不到全域餘額處理方式選項: ${action}`);
+    throw new Error(`找不到全域餘額處理方式選項: ${String(action)}`);
   }
 
   await user.selectOptions(selector, option.value);
@@ -214,7 +215,7 @@ async function selectGlobalBalanceAction(
 
 async function selectGlobalTopUpTransactionType(
   user: ReturnType<typeof userEvent.setup>,
-  transactionType: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome',
+  transactionType: 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome',
 ) {
   const selector = await waitFor(() => {
     const control = findGlobalTopUpTypeSelector();
@@ -268,7 +269,7 @@ function findRowTopUpTypeSelector(rowMarker: string): HTMLSelectElement {
     .filter((node): node is HTMLSelectElement => node instanceof HTMLSelectElement);
 
   const selector = selectors.find((select) =>
-    Array.from(select.options).some((option) => option.value === 'ExchangeBuy'),
+    Array.from(select.options).some((option) => option.value === 'Deposit'),
   );
 
   if (!selector) {
@@ -276,6 +277,18 @@ function findRowTopUpTypeSelector(rowMarker: string): HTMLSelectElement {
   }
 
   return selector;
+}
+
+function queryRowTopUpTypeSelector(rowMarker: string): HTMLSelectElement | null {
+  const rowContainer = getRowContainer(rowMarker);
+
+  const selectors = within(rowContainer)
+    .queryAllByRole('combobox')
+    .filter((node): node is HTMLSelectElement => node instanceof HTMLSelectElement);
+
+  return selectors.find((select) =>
+    Array.from(select.options).some((option) => option.value === 'Deposit'),
+  ) ?? null;
 }
 
 async function selectRowBalanceActionSelection(
@@ -296,7 +309,7 @@ async function selectRowBalanceActionSelection(
 async function selectRowTopUpTransactionType(
   user: ReturnType<typeof userEvent.setup>,
   rowMarker: string,
-  transactionType: 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome',
+  transactionType: 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome',
 ) {
   const selector = await waitFor(() => findRowTopUpTypeSelector(rowMarker));
   const option = Array.from(selector.options).find((candidate) => candidate.value === transactionType);
@@ -320,6 +333,9 @@ describe('Stock import balance action flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('alert', vi.fn());
+
+    mockedTransactionApi.previewImport.mockResolvedValue(buildPreviewResponse());
+    mockedTransactionApi.executeImport.mockResolvedValue(buildExecuteResponse());
   });
 
   afterEach(() => {
@@ -363,6 +379,7 @@ describe('Stock import balance action flow', () => {
     render(
       <StockImportButton
         portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
         onImportComplete={vi.fn()}
         onImportSuccess={vi.fn()}
       />,
@@ -459,6 +476,7 @@ describe('Stock import balance action flow', () => {
     render(
       <StockImportButton
         portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
         onImportComplete={vi.fn()}
         onImportSuccess={vi.fn()}
       />,
@@ -505,7 +523,79 @@ describe('Stock import balance action flow', () => {
     );
   });
 
-  it('blocks execute when TopUp lacks topUpTransactionType and enables after selection', async () => {
+  it('hides topup type selector when bound ledger currency is TWD and allows execute without selecting type', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-twd-topup',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 23,
+            rawSecurityName: 'ROW-TWD-TOPUP',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 500,
+              availableBalance: 100,
+              shortfall: 400,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(buildExecuteResponse());
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="TWD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    await selectGlobalBalanceAction(user, 'TopUp');
+
+    expect(findGlobalTopUpTypeSelector()).toBeNull();
+    expect(queryRowTopUpTypeSelector('ROW-TWD-TOPUP')).toBeNull();
+    expect(screen.getAllByText('台幣投組匯入補足一律使用存入（Deposit）。').length).toBeGreaterThan(0);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeEnabled();
+
+    await user.click(executeButton);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest.defaultBalanceAction).toEqual({
+      action: 'TopUp',
+    });
+
+    const row = executeRequest.rows.find((candidate) => candidate.rowNumber === 23);
+    expect(row).toEqual(
+      expect.objectContaining({
+        rowNumber: 23,
+        balanceAction: 'TopUp',
+      }),
+    );
+    expect(row).not.toHaveProperty('topUpTransactionType');
+  });
+
+  it('TopUp type selector excludes ExchangeBuy and prevents forcing it via raw select event', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-topup-validation',
@@ -533,6 +623,7 @@ describe('Stock import balance action flow', () => {
     render(
       <StockImportButton
         portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
         onImportComplete={vi.fn()}
         onImportSuccess={vi.fn()}
       />,
@@ -551,9 +642,24 @@ describe('Stock import balance action flow', () => {
     });
 
     expect(executeButtonBeforeType).toBeDisabled();
-    expect(screen.getByText('補足餘額（Top-up）需選擇交易類型')).toBeInTheDocument();
+    expect(screen.getByText('補足餘額需選擇交易類型')).toBeInTheDocument();
 
-    await selectGlobalTopUpTransactionType(user, 'ExchangeBuy');
+    const globalTopUpSelector = await waitFor(() => {
+      const control = findGlobalTopUpTypeSelector();
+      expect(control).not.toBeNull();
+      return control as HTMLSelectElement;
+    });
+
+    expect(Array.from(globalTopUpSelector.options).some((option) => option.value === 'ExchangeBuy')).toBe(false);
+
+    fireEvent.change(globalTopUpSelector, { target: { value: 'ExchangeBuy' } });
+
+    const executeButtonAfterForcedExchangeBuy = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonAfterForcedExchangeBuy).toBeDisabled();
+
+    await selectGlobalTopUpTransactionType(user, 'Deposit');
 
     const executeButtonAfterType = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
@@ -570,7 +676,7 @@ describe('Stock import balance action flow', () => {
     const executeRequest = getLatestExecuteRequest();
     expect(executeRequest.defaultBalanceAction).toEqual({
       action: 'TopUp',
-      topUpTransactionType: 'ExchangeBuy',
+      topUpTransactionType: 'Deposit',
     });
 
     expect(executeRequest.rows).toEqual(
@@ -578,9 +684,188 @@ describe('Stock import balance action flow', () => {
         expect.objectContaining({
           rowNumber: 31,
           balanceAction: 'TopUp',
-          topUpTransactionType: 'ExchangeBuy',
+          topUpTransactionType: 'Deposit',
         }),
       ]),
     );
+  });
+
+  it('shows clear none-option semantics and blocks execute until every shortage row is decided', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-none-semantics',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 41,
+            rawSecurityName: 'ROW-NONE-1',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 300,
+              availableBalance: 150,
+              shortfall: 150,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+          buildPreviewRow({
+            rowNumber: 42,
+            rawSecurityName: 'ROW-NONE-2',
+            ticker: '2603',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 200,
+              availableBalance: 50,
+              shortfall: 150,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const globalSelector = await waitFor(() => {
+      const control = findGlobalBalanceActionSelector();
+      expect(control).not.toBeNull();
+      return control as HTMLSelectElement;
+    });
+
+    expect(
+      within(globalSelector).getByRole('option', { name: '逐筆決定' }),
+    ).toHaveValue('');
+
+    await selectGlobalBalanceAction(user, null);
+
+    const executeButtonBeforeRowDecisions = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonBeforeRowDecisions).toBeDisabled();
+    expect(
+      screen.getByText('已選擇「逐筆決定」，請先完成所有短缺列的餘額不足處理方式'),
+    ).toBeInTheDocument();
+
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
+
+    await selectRowBalanceActionSelection(user, 'ROW-NONE-1', 'Margin');
+    await selectRowBalanceActionSelection(user, 'ROW-NONE-2', 'TopUp');
+    await selectRowTopUpTransactionType(user, 'ROW-NONE-2', 'Deposit');
+
+    const executeButtonAfterRowDecisions = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButtonAfterRowDecisions).toBeEnabled();
+
+    await user.click(executeButtonAfterRowDecisions);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest.defaultBalanceAction).toBeUndefined();
+
+    const row1 = executeRequest.rows.find((row) => row.rowNumber === 41);
+    const row2 = executeRequest.rows.find((row) => row.rowNumber === 42);
+
+    expect(row1).toEqual(
+      expect.objectContaining({
+        rowNumber: 41,
+        balanceAction: 'Margin',
+      }),
+    );
+
+    expect(row2).toEqual(
+      expect.objectContaining({
+        rowNumber: 42,
+        balanceAction: 'TopUp',
+        topUpTransactionType: 'Deposit',
+      }),
+    );
+  });
+
+  it('shows updated Chinese-only balance action copy and removes tax-alias hint text', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-copy-update',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 51,
+            rawSecurityName: 'ROW-COPY-CHECK',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 300,
+              availableBalance: 100,
+              shortfall: 200,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    expect(screen.getByText('餘額不足預設處理方式')).toBeInTheDocument();
+    expect(
+      screen.queryByText('餘額不足預設處理方式（選「逐筆決定」時需逐筆設定）'),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.queryByText(
+        '交易稅多欄別名（交易稅／稅款／證交稅）會先加總；執行匯入時會再與手續費合併，統一計入交易費用（StockTransaction.Fees）。',
+      ),
+    ).not.toBeInTheDocument();
+
+    const globalSelector = await waitFor(() => {
+      const control = findGlobalBalanceActionSelector();
+      expect(control).not.toBeNull();
+      return control as HTMLSelectElement;
+    });
+
+    expect(within(globalSelector).getByRole('option', { name: '融資' })).toHaveValue('Margin');
+    expect(within(globalSelector).getByRole('option', { name: '補足餘額' })).toHaveValue('TopUp');
+    expect(within(globalSelector).queryByRole('option', { name: '融資（Margin）' })).not.toBeInTheDocument();
+    expect(within(globalSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
+
+    const rowSelector = findRowBalanceActionSelector('ROW-COPY-CHECK');
+    expect(within(rowSelector).getByRole('option', { name: '融資' })).toHaveValue('Margin');
+    expect(within(rowSelector).getByRole('option', { name: '補足餘額' })).toHaveValue('TopUp');
+    expect(within(rowSelector).queryByRole('option', { name: '融資（Margin）' })).not.toBeInTheDocument();
+    expect(within(rowSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
   });
 });

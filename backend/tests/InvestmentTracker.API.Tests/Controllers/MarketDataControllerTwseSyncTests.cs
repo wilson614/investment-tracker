@@ -206,4 +206,53 @@ public class MarketDataControllerTwseSyncTests(CustomWebApplicationFactory facto
                 $"{canonicalName} should not appear in both mappings and errors");
         }
     }
+
+    [Fact]
+    public async Task SyncOnDemand_ResolvesListedAndOtcMappings_WhenNamesExist()
+    {
+        // Arrange
+        var request = new
+        {
+            SecurityNames = new[]
+            {
+                "台積電", // Listed (TWSE)
+                "環球晶"  // OTC (TPEX)
+            }
+        };
+
+        // Act
+        var response = await Client.PostAsJsonAsync(Endpoint, request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+
+        var requested = json.RootElement.GetProperty("requested").GetInt32();
+        var resolved = json.RootElement.GetProperty("resolved").GetInt32();
+        var unresolved = json.RootElement.GetProperty("unresolved").GetInt32();
+
+        requested.Should().Be(2);
+        unresolved.Should().Be(0, "listed and OTC canonical names should be resolvable after sync");
+        resolved.Should().Be(2);
+
+        var mappingsByName = json.RootElement
+            .GetProperty("mappings")
+            .EnumerateArray()
+            .ToDictionary(
+                x => x.GetProperty("securityName").GetString()!,
+                x => x,
+                StringComparer.Ordinal);
+
+        mappingsByName.Should().ContainKey("台積電");
+        mappingsByName["台積電"].GetProperty("ticker").GetString().Should().Be("2330");
+        mappingsByName["台積電"].GetProperty("market").GetString().Should().Be("TWSE");
+
+        mappingsByName.Should().ContainKey("環球晶");
+        mappingsByName["環球晶"].GetProperty("ticker").GetString().Should().Be("6488");
+        mappingsByName["環球晶"].GetProperty("market").GetString().Should().Be("TPEX");
+
+        json.RootElement.GetProperty("errors").GetArrayLength().Should().Be(0);
+    }
 }

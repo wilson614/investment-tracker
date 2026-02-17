@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Infrastructure.StockPrices;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Infrastructure.MarketData;
@@ -14,15 +17,70 @@ namespace InvestmentTracker.Infrastructure.MarketData;
 public class TwseStockHistoricalPriceService(
     HttpClient httpClient,
     ITwseRateLimiter rateLimiter,
+    IYahooHistoricalPriceService yahooHistoricalPriceService,
+    IMemoryCache memoryCache,
     ILogger<TwseStockHistoricalPriceService> logger) : ITwseStockHistoricalPriceService
 {
-    // TWSE 個股日資料 API
+    // TWSE 個股日資料 API（上市）
     private const string StockDayUrl = "https://www.twse.com.tw/exchangeReport/STOCK_DAY";
+
+    // TPEx 每日收盤行情 API（上櫃）
+    private const string TpexDailyQuotesUrl = "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes";
+
+    // 上櫃 fallback 最多往前回溯天數，涵蓋跨月與長假情境。
+    private const int TpexMaxLookbackDays = 45;
+
+    private static readonly TimeSpan HotCacheDuration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromMinutes(3);
+
+    // key: stockNo + yyyyMMdd，避免同一個價格查詢被併發重複打外部 API
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> InFlightLocks = new(StringComparer.Ordinal);
 
     public async Task<TwseStockPriceResult?> GetStockPriceAsync(
         string stockNo,
         DateOnly date,
         CancellationToken cancellationToken = default)
+    {
+        var normalizedStockNo = NormalizeStockNo(stockNo);
+        if (normalizedStockNo is null)
+        {
+            return null;
+        }
+
+        var cacheKey = BuildCacheKey(normalizedStockNo, date);
+        if (memoryCache.TryGetValue<TwseStockPriceResult?>(cacheKey, out var cachedResult))
+        {
+            return cachedResult;
+        }
+
+        var gate = InFlightLocks.GetOrAdd(cacheKey, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (memoryCache.TryGetValue<TwseStockPriceResult?>(cacheKey, out cachedResult))
+            {
+                return cachedResult;
+            }
+
+            var fetched = await FetchStockPriceCoreAsync(normalizedStockNo, date, cancellationToken);
+            memoryCache.Set(
+                cacheKey,
+                fetched,
+                fetched is null ? NegativeCacheDuration : HotCacheDuration);
+            return fetched;
+        }
+        finally
+        {
+            gate.Release();
+            InFlightLocks.TryRemove(cacheKey, out _);
+        }
+    }
+
+    private async Task<TwseStockPriceResult?> FetchStockPriceCoreAsync(
+        string stockNo,
+        DateOnly date,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -42,15 +100,19 @@ public class TwseStockHistoricalPriceService(
                 var fallbackDate = new DateOnly(previousMonth.Year, previousMonth.Month, DateTime.DaysInMonth(previousMonth.Year, previousMonth.Month));
 
                 logger.LogDebug(
-                    "No TWSE price found for {StockNo} on {Date} (early-month). Falling back to previous month {FallbackDate}",
+                    "No TWSE/TPEx price found for {StockNo} on {Date} (early-month). Falling back to previous month {FallbackDate}",
                     stockNo,
                     date,
                     fallbackDate);
 
-                return await TryGetStockPriceInMonthAsync(stockNo, fallbackDate, cancellationToken);
+                result = await TryGetStockPriceInMonthAsync(stockNo, fallbackDate, cancellationToken);
+                if (result != null)
+                {
+                    return result;
+                }
             }
 
-            return null;
+            return await TryGetStockPriceFromYahooFallbackAsync(stockNo, date, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -70,10 +132,10 @@ public class TwseStockHistoricalPriceService(
         var dateParam = $"{date.Year}{date.Month:D2}01";
         var url = $"{StockDayUrl}?response=json&date={dateParam}&stockNo={stockNo}";
 
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-        var response = await httpClient.SendAsync(request, cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("TWSE STOCK_DAY returned {Status} for {StockNo}", response.StatusCode, stockNo);
@@ -81,7 +143,116 @@ public class TwseStockHistoricalPriceService(
         }
 
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ParseStockDayResponse(content, stockNo, date);
+        var twseResult = ParseTwseStockDayResponse(content, stockNo, date);
+
+        if (twseResult.Result != null)
+        {
+            return twseResult.Result;
+        }
+
+        // 只有 TWSE 明確回應「查無資料」時，才改走上櫃日行情 fallback。
+        // 這可避免影響上市在月中查無 <= target 交易日時的既有流程。
+        if (!twseResult.ShouldTryTpexFallback)
+        {
+            return null;
+        }
+
+        logger.LogDebug(
+            "TWSE has no stock-day data for {StockNo} on {Date}, trying TPEx daily quotes fallback",
+            stockNo,
+            date);
+
+        return await TryGetStockPriceFromTpexAsync(stockNo, date, cancellationToken);
+    }
+
+    private async Task<TwseStockPriceResult?> TryGetStockPriceFromTpexAsync(
+        string stockNo,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        for (var offset = 0; offset <= TpexMaxLookbackDays; offset++)
+        {
+            var lookupDate = date.AddDays(-offset);
+            var result = await TryGetTpexDailyPriceAsync(stockNo, lookupDate, cancellationToken);
+            if (result != null)
+            {
+                return result;
+            }
+        }
+
+        logger.LogDebug(
+            "No TPEx data found for {StockNo} within lookback window ({LookbackDays} days) from {Date}",
+            stockNo,
+            TpexMaxLookbackDays,
+            date);
+
+        return null;
+    }
+
+    private async Task<TwseStockPriceResult?> TryGetStockPriceFromYahooFallbackAsync(
+        string stockNo,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        // 先嘗試上市符號（.TW），失敗再嘗試上櫃符號（.TWO）。
+        // 使用既有 Yahoo 服務作為跨來源 fallback，優先確保可用性與速度。
+        foreach (var suffix in new[] { ".TW", ".TWO" })
+        {
+            var symbol = $"{stockNo}{suffix}";
+
+            try
+            {
+                var yahoo = await yahooHistoricalPriceService.GetHistoricalPriceAsync(symbol, date, cancellationToken);
+                if (yahoo == null)
+                {
+                    continue;
+                }
+
+                logger.LogDebug(
+                    "Yahoo fallback hit for {StockNo}: {Symbol} => {Price} on {Date}",
+                    stockNo,
+                    symbol,
+                    yahoo.Price,
+                    yahoo.ActualDate);
+
+                return new TwseStockPriceResult(
+                    yahoo.Price,
+                    yahoo.ActualDate,
+                    stockNo,
+                    Source: $"Yahoo:{symbol}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Yahoo fallback failed for {StockNo} with symbol {Symbol}", stockNo, symbol);
+            }
+        }
+
+        logger.LogWarning("No historical price found for {StockNo} from TWSE/TPEx/Yahoo fallback on {Date}", stockNo, date);
+        return null;
+    }
+
+    private async Task<TwseStockPriceResult?> TryGetTpexDailyPriceAsync(
+        string stockNo,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        await rateLimiter.WaitForSlotAsync(cancellationToken);
+
+        var dateParam = date.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture);
+        var url = $"{TpexDailyQuotesUrl}?date={Uri.EscapeDataString(dateParam)}&id={stockNo}&response=json";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogDebug("TPEx dailyQuotes returned {Status} for {StockNo} on {Date}", response.StatusCode, stockNo, date);
+            return null;
+        }
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseTpexDailyQuotesResponse(content, stockNo, date);
     }
 
     public async Task<TwseStockPriceResult?> GetYearEndPriceAsync(
@@ -101,7 +272,7 @@ public class TwseStockHistoricalPriceService(
         return await GetStockPriceAsync(stockNo, new DateOnly(year, 11, 30), cancellationToken);
     }
 
-    private TwseStockPriceResult? ParseStockDayResponse(string content, string stockNo, DateOnly targetDate)
+    private TwseStockDayParseResult ParseTwseStockDayResponse(string content, string stockNo, DateOnly targetDate)
     {
         try
         {
@@ -113,13 +284,16 @@ public class TwseStockHistoricalPriceService(
             {
                 var statValue = stat.ValueKind == JsonValueKind.String ? stat.GetString() : "unknown";
                 logger.LogDebug("TWSE response stat: {Stat} for {StockNo}", statValue, stockNo);
-                return null;
+
+                return new TwseStockDayParseResult(
+                    Result: null,
+                    ShouldTryTpexFallback: IsTwseNoDataStat(statValue));
             }
 
             if (!root.TryGetProperty("data", out var data) || data.GetArrayLength() == 0)
             {
                 logger.LogDebug("No data in TWSE response for {StockNo}", stockNo);
-                return null;
+                return new TwseStockDayParseResult(Result: null, ShouldTryTpexFallback: false);
             }
 
             // 資料格式：[日期, 成交股數, 成交金額, 開盤價, 最高價, 最低價, 收盤價, 漲跌價差, 成交筆數]
@@ -164,7 +338,7 @@ public class TwseStockHistoricalPriceService(
                 // 保留最後一筆 <= target 的日期
                 if (bestResult == null || rowDate > bestResult.ActualDate)
                 {
-                    bestResult = new TwseStockPriceResult(price, rowDate, stockNo);
+                    bestResult = new TwseStockPriceResult(price, rowDate, stockNo, Source: "TWSE");
                 }
             }
 
@@ -174,12 +348,122 @@ public class TwseStockHistoricalPriceService(
                     stockNo, bestResult.Price, bestResult.ActualDate);
             }
 
-            return bestResult;
+            return new TwseStockDayParseResult(Result: bestResult, ShouldTryTpexFallback: false);
         }
         catch (JsonException ex)
         {
             logger.LogError(ex, "Failed to parse TWSE response for {StockNo}", stockNo);
+            return new TwseStockDayParseResult(Result: null, ShouldTryTpexFallback: false);
+        }
+    }
+
+    private TwseStockPriceResult? ParseTpexDailyQuotesResponse(string content, string stockNo, DateOnly targetDate)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("stat", out var stat) &&
+                !string.Equals(stat.GetString(), "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogDebug("TPEx response stat: {Stat} for {StockNo} on {Date}", stat.GetString(), stockNo, targetDate);
+                return null;
+            }
+
+            // API 可能在日期格式錯誤時回傳最新資料，需驗證日期一致性。
+            if (root.TryGetProperty("date", out var dateElement))
+            {
+                var dateString = dateElement.GetString();
+                if (!string.IsNullOrWhiteSpace(dateString) &&
+                    DateOnly.TryParseExact(dateString, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var responseDate) &&
+                    responseDate != targetDate)
+                {
+                    logger.LogDebug(
+                        "TPEx response date mismatch for {StockNo}: requested {RequestedDate}, got {ResponseDate}",
+                        stockNo,
+                        targetDate,
+                        responseDate);
+                    return null;
+                }
+            }
+
+            if (!root.TryGetProperty("tables", out var tables) || tables.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var table in tables.EnumerateArray())
+            {
+                if (!table.TryGetProperty("data", out var rows) || rows.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+
+                foreach (var row in rows.EnumerateArray())
+                {
+                    if (row.ValueKind != JsonValueKind.Array || row.GetArrayLength() < 3)
+                    {
+                        continue;
+                    }
+
+                    var rowStockNo = row[0].GetString();
+                    if (!string.Equals(rowStockNo, stockNo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var closePriceStr = row[2].GetString();
+                    if (string.IsNullOrWhiteSpace(closePriceStr))
+                    {
+                        return null;
+                    }
+
+                    var normalizedPrice = closePriceStr.Replace(",", string.Empty).Trim();
+                    if (!decimal.TryParse(normalizedPrice, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
+                    {
+                        return null;
+                    }
+
+                    logger.LogDebug("Found TPEx price for {StockNo}: {Price} on {Date}", stockNo, price, targetDate);
+                    return new TwseStockPriceResult(price, targetDate, stockNo, Source: "TPEx");
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to parse TPEx response for {StockNo} on {Date}", stockNo, targetDate);
             return null;
         }
     }
+
+    private static string? NormalizeStockNo(string? stockNo)
+    {
+        if (string.IsNullOrWhiteSpace(stockNo))
+        {
+            return null;
+        }
+
+        return stockNo.Trim().ToUpperInvariant();
+    }
+
+    private static string BuildCacheKey(string stockNo, DateOnly date)
+        => $"twse-stock-price:{stockNo}:{date:yyyyMMdd}";
+
+    private static bool IsTwseNoDataStat(string? statValue)
+    {
+        if (string.IsNullOrWhiteSpace(statValue))
+        {
+            return false;
+        }
+
+        return statValue.Contains("沒有符合條件", StringComparison.Ordinal) ||
+               statValue.Contains("no data", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record TwseStockDayParseResult(
+        TwseStockPriceResult? Result,
+        bool ShouldTryTpexFallback);
 }

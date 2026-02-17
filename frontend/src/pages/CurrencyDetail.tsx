@@ -86,6 +86,10 @@ const redesignedTransactionTypeNameToValue: Record<string, CurrencyTransactionTy
   TransferInBalance: CurrencyTransactionType.InitialBalance,
   OtherIncome: CurrencyTransactionType.OtherIncome,
   OtherExpense: CurrencyTransactionType.OtherExpense,
+  StockBuy: CurrencyTransactionType.Spend,
+  StockBuyLinked: CurrencyTransactionType.Spend,
+  StockSell: CurrencyTransactionType.OtherIncome,
+  StockSellLinked: CurrencyTransactionType.OtherIncome,
 };
 
 const resolveTransactionType = (
@@ -109,8 +113,22 @@ const resolveTransactionType = (
   return null;
 };
 
-const getTransactionTypeLabel = (type: CurrencyTransaction['transactionType'] | string): string => {
+const getTransactionTypeLabel = (
+  type: CurrencyTransaction['transactionType'] | string,
+  relatedStockTransactionId?: string
+): string => {
   const resolvedType = resolveTransactionType(type);
+
+  if (relatedStockTransactionId && resolvedType !== null) {
+    if (resolvedType === CurrencyTransactionType.Spend) {
+      return '股票買入';
+    }
+
+    if (resolvedType === CurrencyTransactionType.OtherIncome) {
+      return '股票賣出';
+    }
+  }
+
   if (resolvedType === null) {
     return String(type);
   }
@@ -791,7 +809,7 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
                         <td className="whitespace-nowrap">{formatDate(tx.transactionDate)}</td>
                         <td className="whitespace-nowrap">
                           <span className={`badge ${getTransactionTypeBadgeClass(tx.transactionType)}`}>
-                            {getTransactionTypeLabel(tx.transactionType)}
+                            {getTransactionTypeLabel(tx.transactionType, tx.relatedStockTransactionId)}
                           </span>
                         </td>
                         <td className="text-right number-display whitespace-nowrap">
@@ -815,7 +833,7 @@ export default function CurrencyDetail({ ledgerId }: CurrencyDetailProps = {}) {
                         </td>
                         <td className="text-center">
                           {tx.relatedStockTransactionId ? (
-                            <span className="text-xs text-[var(--text-muted)]" title="此交易由股票買入自動產生，無法直接編輯或刪除">
+                            <span className="text-xs text-[var(--text-muted)]" title="此交易由股票交易自動產生，無法直接編輯或刪除">
                               🔒
                             </span>
                           ) : (

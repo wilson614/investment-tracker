@@ -34,20 +34,30 @@ public class StockTransaction : BaseEntity
     public bool IsTaiwanStock => !string.IsNullOrEmpty(Ticker) && char.IsDigit(Ticker[0]);
 
     /// <summary>
-    /// 原幣總成本：(股數 × 單價) + 手續費
+    /// 交易原幣小計：(股數 × 單價)
     /// 台股依市場慣例使用無條件捨去計算
     /// </summary>
-    public decimal TotalCostSource
+    private decimal SubtotalSource
     {
         get
         {
             var subtotal = Shares * PricePerShare;
-            // 台股交易小計採無條件捨去
             if (IsTaiwanStock)
                 subtotal = Math.Floor(subtotal);
-            return subtotal + Fees;
+
+            return subtotal;
         }
     }
+
+    /// <summary>
+    /// 原幣總成本：(交易小計) + 手續費
+    /// </summary>
+    public decimal TotalCostSource => SubtotalSource + Fees;
+
+    /// <summary>
+    /// 原幣賣出淨額：(交易小計) - 手續費
+    /// </summary>
+    public decimal NetProceedsSource => SubtotalSource - Fees;
 
     /// <summary>
     /// 本國幣總成本：原幣總成本 × 匯率

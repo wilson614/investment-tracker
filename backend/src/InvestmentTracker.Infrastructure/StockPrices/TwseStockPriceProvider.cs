@@ -28,13 +28,26 @@ public class TwseStockPriceProvider(
 
         var normalizedSymbol = symbol.Trim();
 
-        // Try TSE (上市) first, then OTC (上櫃)
-        var quote = await TryFetchQuoteAsync(normalizedSymbol, "tse", cancellationToken) ?? await TryFetchQuoteAsync(normalizedSymbol, "otc", cancellationToken);
+        var tseResult = await TryFetchQuoteAsync(normalizedSymbol, "tse", cancellationToken);
+        if (tseResult.Status == QuoteFetchStatus.Success)
+        {
+            return tseResult.Quote;
+        }
 
-        return quote;
+        if (tseResult.Status == QuoteFetchStatus.UpstreamError)
+        {
+            logger.LogWarning(
+                "Skip OTC fallback because TSE upstream error occurred for {Symbol}",
+                normalizedSymbol);
+            return null;
+        }
+
+        // Only fallback to OTC when TSE explicitly indicates no data.
+        var otcResult = await TryFetchQuoteAsync(normalizedSymbol, "otc", cancellationToken);
+        return otcResult.Status == QuoteFetchStatus.Success ? otcResult.Quote : null;
     }
 
-    private async Task<StockQuoteResponse?> TryFetchQuoteAsync(string symbol, string exchange, CancellationToken cancellationToken)
+    private async Task<QuoteFetchResult> TryFetchQuoteAsync(string symbol, string exchange, CancellationToken cancellationToken)
     {
         var exCh = $"{exchange}_{symbol}.tw";
         var url = $"{BaseUrl}?ex_ch={exCh}&json=1&delay=0";
@@ -48,7 +61,15 @@ public class TwseStockPriceProvider(
             request.Headers.Add("User-Agent", "Mozilla/5.0");
 
             var response = await httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "TWSE quote upstream returned non-success status {StatusCode} for {Exchange}:{Symbol}",
+                    response.StatusCode,
+                    exchange,
+                    symbol);
+                return QuoteFetchResult.UpstreamError();
+            }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             return ParseTwseResponse(content, symbol, exchange);
@@ -56,11 +77,11 @@ public class TwseStockPriceProvider(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to fetch stock price from TWSE for {Exchange}:{Symbol}", exchange, symbol);
-            return null;
+            return QuoteFetchResult.UpstreamError();
         }
     }
 
-    private StockQuoteResponse? ParseTwseResponse(string content, string symbol, string exchange)
+    private QuoteFetchResult ParseTwseResponse(string content, string symbol, string exchange)
     {
         try
         {
@@ -70,10 +91,16 @@ public class TwseStockPriceProvider(
             if (!root.TryGetProperty("msgArray", out var msgArray) || msgArray.GetArrayLength() == 0)
             {
                 logger.LogDebug("No data found for {Exchange}:{Symbol}", exchange, symbol);
-                return null;
+                return QuoteFetchResult.NoData();
             }
 
             var stock = msgArray[0];
+
+            if (!HasValidQuotePayload(stock))
+            {
+                logger.LogDebug("No valid quote payload for {Exchange}:{Symbol}", exchange, symbol);
+                return QuoteFetchResult.NoData();
+            }
 
             // 欄位解析
             // z：最新成交價、n：名稱、y：昨收
@@ -96,43 +123,35 @@ public class TwseStockPriceProvider(
             {
                 if (yesterdayClose is null or <= 0)
                 {
-                    logger.LogDebug("No trade price available for {Symbol}", symbol);
-                    return null;
+                    logger.LogDebug("No trade price available for {Exchange}:{Symbol}", exchange, symbol);
+                    return QuoteFetchResult.NoData();
                 }
 
                 price = yesterdayClose.Value;
                 logger.LogDebug(
-                    "No trade price available for {Symbol}, using previous close {Price} as fallback",
+                    "No trade price available for {Exchange}:{Symbol}, using previous close {Price} as fallback",
+                    exchange,
                     symbol,
                     price);
             }
             else if (!decimal.TryParse(priceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out price))
             {
-                logger.LogWarning("Invalid price format for {Symbol}: {Price}", symbol, priceStr);
-                return null;
+                logger.LogWarning("Invalid price format for {Exchange}:{Symbol}: {Price}", exchange, symbol, priceStr);
+                return QuoteFetchResult.UpstreamError();
             }
 
             decimal? change = null;
             string? changePercent = null;
 
-            if (yesterdayClose is null || !(yesterdayClose > 0))
-                return new StockQuoteResponse
-                {
-                    Symbol = symbol.ToUpperInvariant(),
-                    Name = name ?? symbol,
-                    Price = price,
-                    Change = change,
-                    ChangePercent = changePercent,
-                    Market = StockMarket.TW,
-                    Source = exchange == "tse" ? "TWSE" : "TPEx",
-                    FetchedAt = DateTime.UtcNow
-                };
-            change = price - yesterdayClose;
-            var pctValue = change.Value / yesterdayClose.Value * 100;
-            var sign = pctValue >= 0 ? "+" : "";
-            changePercent = $"{sign}{pctValue:F2}%";
+            if (yesterdayClose is not null && yesterdayClose > 0)
+            {
+                change = price - yesterdayClose;
+                var pctValue = change.Value / yesterdayClose.Value * 100;
+                var sign = pctValue >= 0 ? "+" : "";
+                changePercent = $"{sign}{pctValue:F2}%";
+            }
 
-            return new StockQuoteResponse
+            return QuoteFetchResult.Success(new StockQuoteResponse
             {
                 Symbol = symbol.ToUpperInvariant(),
                 Name = name ?? symbol,
@@ -140,14 +159,55 @@ public class TwseStockPriceProvider(
                 Change = change,
                 ChangePercent = changePercent,
                 Market = StockMarket.TW,
-                Source = exchange == "tse" ? "TWSE" : "TPEx",
+                Source = GetSourceName(exchange),
                 FetchedAt = DateTime.UtcNow
-            };
+            });
         }
         catch (JsonException ex)
         {
-            logger.LogError(ex, "Failed to parse TWSE response for {Symbol}", symbol);
-            return null;
+            logger.LogError(ex, "Failed to parse TWSE response for {Exchange}:{Symbol}", exchange, symbol);
+            return QuoteFetchResult.UpstreamError();
         }
+    }
+
+    private static bool HasValidQuotePayload(JsonElement stock)
+    {
+        // 當查無標的時，TWSE 會回傳精簡資料：{"tv":"-","s":"-","c":"","z":"-"}
+        // 這類 payload 沒有關鍵欄位（n/y），應視為無資料，交由 fallback 來源處理。
+
+        var hasName = stock.TryGetProperty("n", out var nameProp) &&
+                      !string.IsNullOrWhiteSpace(nameProp.GetString());
+
+        var hasPreviousClose = stock.TryGetProperty("y", out var prevCloseProp) &&
+                               !string.IsNullOrWhiteSpace(prevCloseProp.GetString()) &&
+                               !string.Equals(prevCloseProp.GetString(), "-", StringComparison.Ordinal);
+
+        var hasTradePrice = stock.TryGetProperty("z", out var tradePriceProp) &&
+                            !string.IsNullOrWhiteSpace(tradePriceProp.GetString()) &&
+                            !string.Equals(tradePriceProp.GetString(), "-", StringComparison.Ordinal);
+
+        return hasName || hasPreviousClose || hasTradePrice;
+    }
+
+    private static string GetSourceName(string exchange)
+        => string.Equals(exchange, "tse", StringComparison.OrdinalIgnoreCase) ? "TWSE" : "TPEx";
+
+    private enum QuoteFetchStatus
+    {
+        Success,
+        NoData,
+        UpstreamError
+    }
+
+    private sealed record QuoteFetchResult(QuoteFetchStatus Status, StockQuoteResponse? Quote)
+    {
+        public static QuoteFetchResult Success(StockQuoteResponse quote)
+            => new(QuoteFetchStatus.Success, quote);
+
+        public static QuoteFetchResult NoData()
+            => new(QuoteFetchStatus.NoData, null);
+
+        public static QuoteFetchResult UpstreamError()
+            => new(QuoteFetchStatus.UpstreamError, null);
     }
 }

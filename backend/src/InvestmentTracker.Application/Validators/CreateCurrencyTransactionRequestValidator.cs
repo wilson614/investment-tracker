@@ -1,5 +1,6 @@
 using FluentValidation;
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.UseCases.CurrencyTransactions;
 using InvestmentTracker.Domain.Enums;
 
 namespace InvestmentTracker.Application.Validators;
@@ -15,7 +16,9 @@ public class CreateCurrencyTransactionRequestValidator : AbstractValidator<Creat
             .NotEmpty().WithMessage("Currency ledger ID is required");
 
         RuleFor(x => x.TransactionType)
-            .IsInEnum().WithMessage("Invalid transaction type");
+            .IsInEnum().WithMessage("Invalid transaction type")
+            .Must(type => type != CurrencyTransactionType.Spend)
+            .WithMessage(CurrencyTransactionTypePolicy.GetManualSpendDisallowedErrorMessage());
 
         RuleFor(x => x.ForeignAmount)
             .GreaterThan(0).WithMessage("Foreign amount must be greater than zero");

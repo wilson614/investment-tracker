@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using FluentAssertions;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -72,10 +74,11 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VT";
+        var stockCacheTicker = ticker;
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         _stooqServiceMock
@@ -93,7 +96,7 @@ public class HistoricalYearEndDataServiceTests
         // Verify cache was updated
         _repositoryMock.Verify(
             x => x.AddAsync(It.Is<HistoricalYearEndData>(d =>
-                d.Ticker == ticker && d.Year == year && d.Value == 105.25m),
+                d.Ticker == stockCacheTicker && d.Year == year && d.Value == 105.25m),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -103,20 +106,20 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VT";
+        var stockCacheTicker = ticker;
         var year = 2023;
-        var callCount = 0;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
-                callCount++;
-                if (callCount == 1)
-                    return null; // First call: cache miss
-                return HistoricalYearEndData.CreateStockPrice(
-                    ticker, year, 105.25m, "USD",
-                    new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc), "Stooq");
-            });
+            .SetupSequence(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null) // first call pre-lock
+            .ReturnsAsync((HistoricalYearEndData?)null) // first call in-lock
+            .ReturnsAsync(HistoricalYearEndData.CreateStockPrice(
+                stockCacheTicker,
+                year,
+                105.25m,
+                "USD",
+                new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+                "Stooq")); // second call pre-lock cache hit
 
         _stooqServiceMock
             .Setup(x => x.GetStockPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -130,7 +133,6 @@ public class HistoricalYearEndDataServiceTests
         // Assert
         result1.Should().NotBeNull();
         result2.Should().NotBeNull();
-        result1.FromCache.Should().BeFalse();
         result2.FromCache.Should().BeTrue();
 
         // Stooq should only be called ONCE
@@ -170,7 +172,7 @@ public class HistoricalYearEndDataServiceTests
     }
 
     [Fact]
-    public async Task GetOrFetchYearEndPriceAsync_TaiwanStock_UsesTwseService()
+    public async Task GetOrFetchYearEndPriceAsync_TaiwanStock_YahooHit_AvoidsTwseFallback()
     {
         // Arrange
         var ticker = "2330";
@@ -180,22 +182,79 @@ public class HistoricalYearEndDataServiceTests
             .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
-        _twseServiceMock
-            .Setup(x => x.GetYearEndPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TwseStockPriceResult(580.00m, new DateOnly(2023, 12, 29), ticker));
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("2330.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 590.00m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "TWD"
+            });
 
         // Act
         var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
-        result.Price.Should().Be(580.00m);
+        result!.Price.Should().Be(590.00m);
         result.Currency.Should().Be("TWD");
-        result.Source.Should().Be("TWSE");
+        result.Source.Should().Be("Yahoo");
 
-        // Verify TWSE was called, not Stooq
+        // Verify Yahoo hit short-circuits TWSE fallback
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync("2330.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync("2330.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         _twseServiceMock.Verify(
-            x => x.GetYearEndPriceAsync(ticker, year, It.IsAny<CancellationToken>()),
+            x => x.GetYearEndPriceAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_TaiwanStock_YahooMiss_FallsBackToTwseOrTpex()
+    {
+        // Arrange
+        var ticker = "2330";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("2330.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("2330.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        _twseServiceMock
+            .Setup(x => x.GetYearEndPriceAsync("2330", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TwseStockPriceResult(580.00m, new DateOnly(2023, 12, 29), "2330", "TPEx"));
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(580.00m);
+        result.Currency.Should().Be("TWD");
+        result.Source.Should().Be("TPEx");
+
+        // Verify Yahoo first, then TWSE/TPEx fallback, no Stooq
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync("2330.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync("2330.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _twseServiceMock.Verify(
+            x => x.GetYearEndPriceAsync("2330", year, It.IsAny<CancellationToken>()),
             Times.Once);
         _stooqServiceMock.Verify(
             x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
@@ -212,7 +271,7 @@ public class HistoricalYearEndDataServiceTests
         // Arrange
         var fromCurrency = "USD";
         var toCurrency = "TWD";
-        var currencyPair = "USDTWD";
+        var currencyPair = "USD:TWD";
         var year = 2023;
         var cachedEntry = HistoricalYearEndData.CreateExchangeRate(
             currencyPair, year, 30.75m,
@@ -244,7 +303,7 @@ public class HistoricalYearEndDataServiceTests
         // Arrange
         var fromCurrency = "USD";
         var toCurrency = "TWD";
-        var currencyPair = "USDTWD";
+        var currencyPair = "USD:TWD";
         var year = 2023;
 
         _repositoryMock
@@ -252,7 +311,7 @@ public class HistoricalYearEndDataServiceTests
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         _stooqServiceMock
-            .Setup(x => x.GetExchangeRateAsync(fromCurrency, toCurrency, 
+            .Setup(x => x.GetExchangeRateAsync(fromCurrency, toCurrency,
                 It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StooqExchangeRateResult(31.25m, new DateOnly(2023, 12, 29), fromCurrency, toCurrency));
 
@@ -273,6 +332,50 @@ public class HistoricalYearEndDataServiceTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task GetOrFetchYearEndExchangeRateAsync_ConcurrentCacheMiss_DeduplicatesFetchAndCacheWrite()
+    {
+        // Arrange
+        var fromCurrency = "USD";
+        var toCurrency = "TWD";
+        var currencyPair = "USD:TWD";
+        var year = 2023;
+
+        _repositoryMock
+            .SetupSequence(x => x.GetExchangeRateAsync(currencyPair, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 1: task A pre-lock
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 2: task B pre-lock (or task A in-lock)
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 3: first in-lock miss
+            .ReturnsAsync(HistoricalYearEndData.CreateExchangeRate(
+                currencyPair,
+                year,
+                31.25m,
+                new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+                "Stooq")); // call 4: second in-lock hit
+
+        _stooqServiceMock
+            .Setup(x => x.GetExchangeRateAsync(fromCurrency, toCurrency,
+                It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StooqExchangeRateResult(31.25m, new DateOnly(2023, 12, 29), fromCurrency, toCurrency));
+
+        // Act
+        var tasks = Enumerable.Range(0, 2)
+            .Select(_ => _service.GetOrFetchYearEndExchangeRateAsync(fromCurrency, toCurrency, year, CancellationToken.None));
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert
+        results.Should().NotContainNulls();
+        _stooqServiceMock.Verify(
+            x => x.GetExchangeRateAsync(fromCurrency, toCurrency,
+                It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     #endregion
 
     #region Yahoo-Stooq Fallback Tests (T114)
@@ -282,10 +385,11 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VT";
+        var stockCacheTicker = $"{ticker}|US";
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         _yahooServiceMock
@@ -321,10 +425,11 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VT";
+        var stockCacheTicker = $"{ticker}|US";
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         // Yahoo fails
@@ -359,10 +464,11 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VT";
+        var stockCacheTicker = $"{ticker}|US";
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         // Both sources fail
@@ -394,10 +500,11 @@ public class HistoricalYearEndDataServiceTests
     {
         // Arrange
         var ticker = "VWRL";
+        var stockCacheTicker = $"{ticker}|UK";
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         _yahooServiceMock
@@ -425,14 +532,200 @@ public class HistoricalYearEndDataServiceTests
     }
 
     [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_ConcurrentCacheMiss_DeduplicatesFetch()
+    {
+        // Arrange
+        var ticker = "VT";
+        var stockCacheTicker = $"{ticker}|US";
+        var year = 2023;
+
+        _repositoryMock
+            .SetupSequence(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 1: task A pre-lock
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 2: task B pre-lock
+            .ReturnsAsync((HistoricalYearEndData?)null) // call 3: task A inside lock
+            .ReturnsAsync(HistoricalYearEndData.CreateStockPrice(
+                stockCacheTicker,
+                year,
+                105.25m,
+                "USD",
+                new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+                "Yahoo")); // call 4: task B inside lock should hit cache
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 105.25m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "USD"
+            });
+
+        // Act
+        var tasks = Enumerable.Range(0, 2)
+            .Select(_ => _service.GetOrFetchYearEndPriceAsync(ticker, year, Domain.Enums.StockMarket.US, CancellationToken.None));
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert
+        results.Should().NotContainNulls();
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveManualPriceAsync_NormalizesTicker_ForExistsCheckAndSave()
+    {
+        // Arrange
+        var rawTicker = "  vt  ";
+        var normalizedTicker = "VT";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.ExistsAsync(HistoricalDataType.StockPrice, It.IsAny<string>(), year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        _repositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData d, CancellationToken _) => d);
+
+        // Act
+        var result = await _service.SaveManualPriceAsync(
+            rawTicker,
+            year,
+            100.50m,
+            "USD",
+            new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+            CancellationToken.None);
+
+        // Assert
+        result.Source.Should().Be("Manual");
+
+        _repositoryMock.Verify(
+            x => x.ExistsAsync(HistoricalDataType.StockPrice, normalizedTicker, year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _repositoryMock.Verify(
+            x => x.ExistsAsync(HistoricalDataType.StockPrice, "VT|TW", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _repositoryMock.Verify(
+            x => x.ExistsAsync(HistoricalDataType.StockPrice, "VT|US", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _repositoryMock.Verify(
+            x => x.ExistsAsync(HistoricalDataType.StockPrice, "VT|UK", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _repositoryMock.Verify(
+            x => x.ExistsAsync(HistoricalDataType.StockPrice, "VT|EU", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.Is<HistoricalYearEndData>(d => d.Ticker == normalizedTicker && d.Year == year), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveManualPriceAsync_WhenMarketScopedEntryExists_ThrowsConflictAndDoesNotInsert()
+    {
+        // Arrange
+        var ticker = "vt";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.ExistsAsync(HistoricalDataType.StockPrice, It.IsAny<string>(), year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        _repositoryMock
+            .Setup(x => x.ExistsAsync(HistoricalDataType.StockPrice, "VT|US", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        Func<Task> act = async () => await _service.SaveManualPriceAsync(
+            ticker,
+            year,
+            100.50m,
+            "USD",
+            new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+            CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage($"*VT|US/{year}*");
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SaveManualPriceAsync_SavedLegacyKey_IsRetrievableViaMarketScopedReadPath()
+    {
+        // Arrange
+        var year = 2023;
+        var store = new Dictionary<string, HistoricalYearEndData>(StringComparer.Ordinal);
+
+        _repositoryMock
+            .Setup(x => x.ExistsAsync(HistoricalDataType.StockPrice, It.IsAny<string>(), year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalDataType _, string key, int _, CancellationToken _) => store.ContainsKey(key));
+
+        _repositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<HistoricalYearEndData>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData d, CancellationToken _) =>
+            {
+                store[d.Ticker] = d;
+                return d;
+            });
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(It.IsAny<string>(), year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string key, int _, CancellationToken _) =>
+                store.TryGetValue(key.Trim().ToUpperInvariant(), out var entry) ? entry : null);
+
+        // Act
+        await _service.SaveManualPriceAsync(
+            " vt ",
+            year,
+            100.50m,
+            "USD",
+            new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+            CancellationToken.None);
+
+        var result = await _service.GetOrFetchYearEndPriceAsync("VT", year, StockMarket.US, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(100.50m);
+        result.Source.Should().Be("Manual");
+        result.FromCache.Should().BeTrue();
+
+        _repositoryMock.Verify(
+            x => x.GetStockPriceAsync("VT|US", year, It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        _repositoryMock.Verify(
+            x => x.GetStockPriceAsync("VT", year, It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task GetOrFetchYearEndPriceAsync_EUStock_NoStooqFallback()
     {
         // Arrange - EU stocks should only use Yahoo, no Stooq fallback
         var ticker = "AGAC";
+        var stockCacheTicker = $"{ticker}|EU";
         var year = 2023;
 
         _repositoryMock
-            .Setup(x => x.GetStockPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HistoricalYearEndData?)null);
 
         // Yahoo fails
@@ -450,6 +743,210 @@ public class HistoricalYearEndDataServiceTests
         _stooqServiceMock.Verify(
             x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_UsAndTwMarkets_UseDifferentCacheKeys()
+    {
+        // Arrange
+        var ticker = "ABC";
+        var usCacheTicker = "ABC|US";
+        var twCacheTicker = "ABC|TW";
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(usCacheTicker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(twCacheTicker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 10.50m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "USD"
+            });
+
+        _twseServiceMock
+            .Setup(x => x.GetYearEndPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TwseStockPriceResult(300m, new DateOnly(2023, 12, 29), ticker));
+
+        // Act
+        var usResult = await _service.GetOrFetchYearEndPriceAsync(ticker, year, StockMarket.US, CancellationToken.None);
+        var twResult = await _service.GetOrFetchYearEndPriceAsync(ticker, year, StockMarket.TW, CancellationToken.None);
+
+        // Assert
+        usResult.Should().NotBeNull();
+        twResult.Should().NotBeNull();
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.Is<HistoricalYearEndData>(d => d.Ticker == usCacheTicker && d.Year == year), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.Is<HistoricalYearEndData>(d => d.Ticker == twCacheTicker && d.Year == year), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_MarketScopedCacheMiss_FallsBackToLegacyTickerCache()
+    {
+        // Arrange
+        var ticker = "VT";
+        var year = 2023;
+        var legacyEntry = HistoricalYearEndData.CreateStockPrice(
+            ticker,
+            year,
+            123.45m,
+            "USD",
+            new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+            "Legacy");
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync("VT|US", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync("VT", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(legacyEntry);
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, StockMarket.US, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(123.45m);
+        result.FromCache.Should().BeTrue();
+
+        _yahooServiceMock.Verify(
+            x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndExchangeRateAsync_NormalizesCurrencies_UsesDelimitedKey()
+    {
+        // Arrange
+        var year = 2023;
+        var normalizedPair = "USD:TWD";
+        var cachedEntry = HistoricalYearEndData.CreateExchangeRate(
+            normalizedPair,
+            year,
+            30.75m,
+            new DateTime(2023, 12, 29, 0, 0, 0, DateTimeKind.Utc),
+            "Stooq");
+
+        _repositoryMock
+            .Setup(x => x.GetExchangeRateAsync(normalizedPair, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedEntry);
+
+        // Act
+        var result = await _service.GetOrFetchYearEndExchangeRateAsync(" usd ", " twd ", year, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.CurrencyPair.Should().Be(normalizedPair);
+        result.FromCache.Should().BeTrue();
+
+        _repositoryMock.Verify(
+            x => x.GetExchangeRateAsync(normalizedPair, year, It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_NumericPrefixTicker_TreatedAsTaiwanStock()
+    {
+        // Arrange
+        var ticker = "00632R";
+        var stockCacheTicker = ticker;
+        var year = 2023;
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(stockCacheTicker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((HistoricalYearEndData?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("00632R.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync("00632R.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        _twseServiceMock
+            .Setup(x => x.GetYearEndPriceAsync("00632R", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TwseStockPriceResult(18.88m, new DateOnly(2023, 12, 29), "00632R", "TPEx"));
+
+        // Act
+        var result = await _service.GetOrFetchYearEndPriceAsync(ticker, year, market: null, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Price.Should().Be(18.88m);
+        result.Source.Should().Be("TPEx");
+
+        _twseServiceMock.Verify(
+            x => x.GetYearEndPriceAsync("00632R", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _stooqServiceMock.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrFetchYearEndPriceAsync_ConcurrentSameTickerDifferentMarkets_DoNotBlockEachOther()
+    {
+        // Arrange
+        var ticker = "ABC";
+        var year = 2023;
+        var usCacheTicker = "ABC|US";
+        var twCacheTicker = "ABC|TW";
+        var hitCounter = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+
+        _repositoryMock
+            .Setup(x => x.GetStockPriceAsync(It.IsAny<string>(), year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string cacheKey, int _, CancellationToken _) =>
+            {
+                hitCounter.AddOrUpdate(cacheKey, 1, (_, current) => current + 1);
+                return null;
+            });
+
+        _yahooServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(ticker, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 11m,
+                ActualDate = new DateOnly(2023, 12, 29),
+                Currency = "USD"
+            });
+
+        _twseServiceMock
+            .Setup(x => x.GetYearEndPriceAsync(ticker, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TwseStockPriceResult(22m, new DateOnly(2023, 12, 29), ticker));
+
+        // Act
+        await Task.WhenAll(
+            _service.GetOrFetchYearEndPriceAsync(ticker, year, StockMarket.US, CancellationToken.None),
+            _service.GetOrFetchYearEndPriceAsync(ticker, year, StockMarket.TW, CancellationToken.None));
+
+        // Assert
+        hitCounter.ContainsKey(usCacheTicker).Should().BeTrue();
+        hitCounter.ContainsKey(twCacheTicker).Should().BeTrue();
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.Is<HistoricalYearEndData>(d => d.Ticker == usCacheTicker && d.Year == year), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _repositoryMock.Verify(
+            x => x.AddAsync(It.Is<HistoricalYearEndData>(d => d.Ticker == twCacheTicker && d.Year == year), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     #endregion

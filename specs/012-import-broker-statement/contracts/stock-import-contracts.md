@@ -78,12 +78,12 @@
       "confirmedTradeSide": "buy|sell",
       "exclude": false,
       "balanceAction": "None|Margin|TopUp",
-      "topUpTransactionType": "ExchangeBuy|Deposit|InitialBalance|Interest|OtherIncome"
+      "topUpTransactionType": "Deposit|InitialBalance|Interest|OtherIncome"
     }
   ],
   "defaultBalanceAction": {
     "action": "Margin|TopUp",
-    "topUpTransactionType": "ExchangeBuy|Deposit|InitialBalance|Interest|OtherIncome"
+    "topUpTransactionType": "Deposit|InitialBalance|Interest|OtherIncome"
   }
 }
 ```

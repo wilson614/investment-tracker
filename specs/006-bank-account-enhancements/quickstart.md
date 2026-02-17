@@ -62,8 +62,7 @@ pnpm test
 
 ```bash
 # Terminal 1: Backend
-cd backend/src/InvestmentTracker.API
-dotnet run
+dotnet run --project backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 
 # Terminal 2: Frontend
 cd frontend

@@ -82,6 +82,7 @@ export function CurrencyTransactionForm({
   const [notes, setNotes] = useState(initialData?.notes ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const showLegacySpendOption = Boolean(initialData) && transactionType === CurrencyTxType.Spend;
 
   // Exchange types need both home amount and exchange rate
   // For TWD ledger, exchange types usually don't make sense or are 1:1, so we treat them differently
@@ -189,7 +190,9 @@ export function CurrencyTransactionForm({
                <option value={CurrencyTxType.Deposit}>存入</option>
                <option value={CurrencyTxType.Withdraw}>提領</option>
                <option value={CurrencyTxType.Interest}>利息收入</option>
-               <option value={CurrencyTxType.Spend}>消費支出</option>
+               {showLegacySpendOption && (
+                 <option value={CurrencyTxType.Spend}>消費支出（舊資料）</option>
+               )}
                <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
                <option value={CurrencyTxType.OtherIncome}>其他收入</option>
                <option value={CurrencyTxType.OtherExpense}>其他支出</option>
@@ -202,7 +205,9 @@ export function CurrencyTransactionForm({
               <option value={CurrencyTxType.Deposit}>存入</option>
               <option value={CurrencyTxType.Withdraw}>提領</option>
               <option value={CurrencyTxType.Interest}>利息收入</option>
-              <option value={CurrencyTxType.Spend}>消費支出</option>
+              {showLegacySpendOption && (
+                <option value={CurrencyTxType.Spend}>消費支出（舊資料）</option>
+              )}
               <option value={CurrencyTxType.InitialBalance}>轉入餘額</option>
               <option value={CurrencyTxType.OtherIncome}>其他收入</option>
               <option value={CurrencyTxType.OtherExpense}>其他支出</option>
@@ -210,6 +215,12 @@ export function CurrencyTransactionForm({
           )}
         </select>
       </div>
+
+      {!initialData && (
+        <p className="text-sm text-[var(--text-muted)]">
+          提示：股票買入的帳本支出會由投組交易自動建立，無需手動新增「消費支出」。
+        </p>
+      )}
 
       <div>
         <label className="block text-base font-medium text-[var(--text-secondary)] mb-2">

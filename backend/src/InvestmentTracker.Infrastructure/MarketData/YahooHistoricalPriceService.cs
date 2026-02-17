@@ -238,41 +238,22 @@ public class YahooHistoricalPriceService(
     {
         try
         {
-            // 直接使用傳入的符號（調用者應已完成轉換）
-            var yahooSymbol = symbol;
+            var series = await GetHistoricalPriceSeriesAsync(
+                symbol,
+                date.AddDays(-7),
+                date,
+                cancellationToken);
 
-            // 計算時間範圍：目標日期前後各 7 天，確保能找到交易日
-            var startDate = date.AddDays(-7);
-            var endDate = date.AddDays(1);
-
-            var period1 = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
-            var period2 = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
-
-            var url = $"https://query2.finance.yahoo.com/v8/finance/chart/{yahooSymbol}?period1={period1}&period2={period2}&interval=1d";
-
-            logger.LogDebug("Fetching Yahoo Finance historical price from {Url}", url);
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-
-            var response = await httpClient.SendAsync(request, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            var matched = ResolveHistoricalPriceForDate(series, date);
+            if (matched == null)
             {
-                logger.LogWarning("Yahoo Finance API returned {StatusCode} for {Symbol}", response.StatusCode, yahooSymbol);
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = ParseYahooResponse(json, date, yahooSymbol);
+            logger.LogInformation("Yahoo Finance: {Symbol} on {Date} = {Price} {Currency}",
+                symbol, matched.ActualDate, matched.Price, matched.Currency);
 
-            if (result != null)
-            {
-                logger.LogInformation("Yahoo Finance: {Symbol} on {Date} = {Price} {Currency}",
-                    yahooSymbol, result.ActualDate, result.Price, result.Currency);
-            }
-
-            return result;
+            return matched;
         }
         catch (Exception ex)
         {
@@ -281,14 +262,72 @@ public class YahooHistoricalPriceService(
         }
     }
 
-    private YahooHistoricalPriceResult? ParseYahooResponse(string json, DateOnly targetDate, string symbol)
+    public async Task<IReadOnlyList<YahooHistoricalPricePoint>> GetHistoricalPriceSeriesAsync(
+        string symbol,
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (fromDate > toDate)
+            {
+                (fromDate, toDate) = (toDate, fromDate);
+            }
+
+            var chart = await FetchHistoricalChartAsync(symbol, fromDate, toDate, cancellationToken);
+            if (chart == null)
+            {
+                return [];
+            }
+
+            return chart.Points
+                .Where(point => point.Date >= fromDate && point.Date <= toDate)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error fetching Yahoo Finance historical series for {Symbol}/{From}/{To}",
+                symbol, fromDate, toDate);
+            return [];
+        }
+    }
+
+    private async Task<YahooHistoricalChartData?> FetchHistoricalChartAsync(
+        string symbol,
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken)
+    {
+        // period2 is exclusive for Yahoo chart API, so add one day to include toDate.
+        var period1 = new DateTimeOffset(fromDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+        var period2 = new DateTimeOffset(toDate.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+        var url = $"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1d";
+
+        logger.LogDebug("Fetching Yahoo Finance historical chart from {Url}", url);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Yahoo Finance API returned {StatusCode} for {Symbol}", response.StatusCode, symbol);
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseYahooHistoricalChartResponse(json, symbol);
+    }
+
+    private YahooHistoricalChartData? ParseYahooHistoricalChartResponse(string json, string symbol)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Check for errors
             if (root.TryGetProperty("chart", out var chart) &&
                 chart.TryGetProperty("error", out var error) &&
                 error.ValueKind != JsonValueKind.Null)
@@ -297,8 +336,7 @@ public class YahooHistoricalPriceService(
                 return null;
             }
 
-            if (!chart.TryGetProperty("result", out var results) ||
-                results.GetArrayLength() == 0)
+            if (!chart.TryGetProperty("result", out var results) || results.GetArrayLength() == 0)
             {
                 logger.LogWarning("Yahoo Finance: No results for {Symbol}", symbol);
                 return null;
@@ -306,7 +344,6 @@ public class YahooHistoricalPriceService(
 
             var firstResult = results[0];
 
-            // Get currency from meta
             var currency = "USD";
             if (firstResult.TryGetProperty("meta", out var meta) &&
                 meta.TryGetProperty("currency", out var currencyElement))
@@ -314,7 +351,6 @@ public class YahooHistoricalPriceService(
                 currency = currencyElement.GetString() ?? "USD";
             }
 
-            // Get timestamps and close prices
             if (!firstResult.TryGetProperty("timestamp", out var timestamps) ||
                 !firstResult.TryGetProperty("indicators", out var indicators) ||
                 !indicators.TryGetProperty("quote", out var quotes) ||
@@ -331,73 +367,72 @@ public class YahooHistoricalPriceService(
                 return null;
             }
 
-            // Find the price closest to target date (prefer same day or earlier)
             var timestampArray = timestamps.EnumerateArray().ToList();
             var closeArray = closes.EnumerateArray().ToList();
+            var length = Math.Min(timestampArray.Count, closeArray.Count);
+            var points = new List<YahooHistoricalPricePoint>(length);
 
-            if (timestampArray.Count == 0 || closeArray.Count == 0)
+            for (var i = 0; i < length; i++)
             {
-                return null;
-            }
-
-            // Convert target date to Unix timestamp for comparison
-            var targetTimestamp = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
-
-            // Find the last trading day on or before target date
-            int? bestIndex = null;
-            long bestTimestamp = 0;
-
-            for (int i = 0; i < timestampArray.Count && i < closeArray.Count; i++)
-            {
-                var ts = timestampArray[i].GetInt64();
                 var closeValue = closeArray[i];
-
-                // Skip null values
                 if (closeValue.ValueKind == JsonValueKind.Null)
+                {
                     continue;
-
-                // Find latest date on or before target
-                if (ts <= targetTimestamp && ts > bestTimestamp)
-                {
-                    bestIndex = i;
-                    bestTimestamp = ts;
                 }
-            }
 
-            if (bestIndex == null)
-            {
-                // If no date before target, use the first available
-                for (int i = 0; i < timestampArray.Count && i < closeArray.Count; i++)
+                var ts = timestampArray[i].GetInt64();
+                var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(ts).DateTime);
+                var price = closeValue.GetDecimal();
+
+                points.Add(new YahooHistoricalPricePoint
                 {
-                    if (closeArray[i].ValueKind != JsonValueKind.Null)
-                    {
-                        bestIndex = i;
-                        bestTimestamp = timestampArray[i].GetInt64();
-                        break;
-                    }
-                }
+                    Date = date,
+                    Price = Math.Round(price, 4),
+                    Currency = currency
+                });
             }
 
-            if (bestIndex == null)
-            {
-                return null;
-            }
-
-            var price = closeArray[bestIndex.Value].GetDecimal();
-            var actualDate = DateTimeOffset.FromUnixTimeSeconds(bestTimestamp).DateTime;
-
-            return new YahooHistoricalPriceResult
-            {
-                Price = Math.Round(price, 4),
-                ActualDate = DateOnly.FromDateTime(actualDate),
-                Currency = currency
-            };
+            return new YahooHistoricalChartData(points);
         }
         catch (JsonException ex)
         {
             logger.LogWarning(ex, "Failed to parse Yahoo Finance response for {Symbol}", symbol);
             return null;
         }
+    }
+
+    private static YahooHistoricalPriceResult? ResolveHistoricalPriceForDate(
+        IReadOnlyList<YahooHistoricalPricePoint> series,
+        DateOnly targetDate)
+    {
+        if (series.Count == 0)
+        {
+            return null;
+        }
+
+        YahooHistoricalPricePoint? bestPoint = null;
+
+        foreach (var point in series)
+        {
+            if (point.Date > targetDate)
+            {
+                continue;
+            }
+
+            if (bestPoint == null || point.Date > bestPoint.Date)
+            {
+                bestPoint = point;
+            }
+        }
+
+        bestPoint ??= series[0];
+
+        return new YahooHistoricalPriceResult
+        {
+            Price = bestPoint.Price,
+            ActualDate = bestPoint.Date,
+            Currency = bestPoint.Currency
+        };
     }
 
     public async Task<YahooExchangeRateResult?> GetExchangeRateAsync(
@@ -563,4 +598,7 @@ public class YahooHistoricalPriceService(
             return null;
         }
     }
+
+    private sealed record YahooHistoricalChartData(
+        IReadOnlyList<YahooHistoricalPricePoint> Points);
 }

@@ -118,7 +118,7 @@
 
 - [x] T037 [US4] Create `IMonthlySnapshotService` interface in backend/src/InvestmentTracker.Application/Interfaces/IMonthlySnapshotService.cs
 - [x] T038 [US4] Implement `MonthlySnapshotService` with historical price fetching (Yahoo primary; Stooq/TWSE fallback) in backend/src/InvestmentTracker.Infrastructure/Services/MonthlySnapshotService.cs
-- [ ] T039 [US4] Implement range-based price strategy (fetch full daily series per ticker for requested range and derive month-end points server-side) *(尚未做 range-based 批次抓取；目前逐月逐 ticker 查價)*
+- [x] T039 [US4] Implement range-based price strategy (fetch full daily series per ticker for requested range and derive month-end points server-side) *(已完成：MonthlySnapshotService 改為 ticker+market 區間序列查價並在服務端推導月末估值點，降低逐月重複外部呼叫)*
 - [x] T040 [US4] Implement cache invalidation on transaction create/update/delete (delete snapshots from affected month onwards) *(StockTransaction create/update/delete 已做 InvalidateFromMonthAsync)*
 - [x] T041 [P] [US4] Write tests in backend/tests/InvestmentTracker.Infrastructure.Tests/Services/MonthlySnapshotServiceTests.cs
 - [x] T042 [US4] Add `GetMonthlyNetWorth` endpoint with fromMonth/toMonth params in backend/src/InvestmentTracker.API/Controllers/PerformanceController.cs (include current month as-of today)

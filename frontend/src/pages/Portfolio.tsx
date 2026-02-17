@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2 } from 'lucide-react';
-import { portfolioApi, stockPriceApi, marketDataApi } from '../services/api';
+import { portfolioApi, stockPriceApi, marketDataApi, currencyLedgerApi } from '../services/api';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { PositionCard } from '../components/portfolio/PositionCard';
@@ -65,6 +65,12 @@ interface CachedQuote {
   market: StockMarketType;
 }
 
+type PositionPriceKey = `${string}::${number | 'default'}`;
+type PositionPriceMap = Record<PositionPriceKey, CurrentPriceInfo>;
+
+const buildPositionPriceKey = (ticker: string, market?: StockMarketType): PositionPriceKey =>
+  `${ticker}::${market ?? 'default'}`;
+
 /**
  * 依 ticker 格式推測市場別。
  */
@@ -79,14 +85,47 @@ const guessMarketForCache = (ticker: string): StockMarketType => {
 };
 
 /**
+ * 將內部 composite key 價格 map 轉為 API 需要的 ticker key。
+ *
+ * 注意：後端目前僅接受 ticker key，若同 ticker 跨市場同時存在會造成語意衝突。
+ * 我們在前端內部維持 composite key，僅在呼叫 API 前做降維，且對重複 ticker 採保守策略：
+ * 發現衝突時不送該 ticker，避免把某市場價格錯套到另一市場。
+ */
+const toApiCurrentPrices = (prices: PositionPriceMap): Record<string, CurrentPriceInfo> => {
+  const payload: Record<string, CurrentPriceInfo> = {};
+  const duplicateTickers = new Set<string>();
+
+  Object.entries(prices).forEach(([compositeKey, priceInfo]) => {
+    const [ticker] = compositeKey.split('::');
+    if (!ticker) {
+      return;
+    }
+
+    if (duplicateTickers.has(ticker)) {
+      return;
+    }
+
+    if (payload[ticker]) {
+      duplicateTickers.add(ticker);
+      delete payload[ticker];
+      return;
+    }
+
+    payload[ticker] = priceInfo;
+  });
+
+  return payload;
+};
+
+/**
  * 從 localStorage 載入報價快取（依 ticker + market）。
  *
  * 設計重點：
  * - 不限制快取時效：進頁面時先用快取快速 render。
  * - 僅在快取包含 exchangeRate 時回填，避免本位幣換算資料不完整。
  */
-const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType }[]): Record<string, CurrentPriceInfo> => {
-  const prices: Record<string, CurrentPriceInfo> = {};
+const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType }[]): PositionPriceMap => {
+  const prices: PositionPriceMap = {};
 
   for (const pos of positions) {
     try {
@@ -95,7 +134,7 @@ const loadCachedPrices = (positions: { ticker: string; market?: StockMarketType 
       if (cached) {
         const data: CachedQuote = JSON.parse(cached);
         if (data.quote.exchangeRate) {
-          prices[pos.ticker] = {
+          prices[buildPositionPriceKey(pos.ticker, market)] = {
             price: data.quote.price,
             exchangeRate: data.quote.exchangeRate,
           };
@@ -136,12 +175,13 @@ export function PortfolioPage() {
   const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  const [boundLedgerCurrencyCode, setBoundLedgerCurrencyCode] = useState<string | null>(null);
 
   // Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null);
 
-  const currentPricesRef = useRef<Record<string, CurrentPriceInfo>>({});
+  const currentPricesRef = useRef<PositionPriceMap>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
 
   /**
@@ -159,14 +199,18 @@ export function PortfolioPage() {
       setSummary(null);
       setXirrResult(null);
       setTransactions([]);
+      setBoundLedgerCurrencyCode(null);
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);
 
-      const [basicSummary, txData] = await Promise.all([
+      const [basicSummary, txData, ledgers] = await Promise.all([
         portfolioApi.getSummary(portfolioId),
         transactionApi.getByPortfolio(portfolioId),
+        currencyLedgerApi.getAll().catch(() => []),
       ]);
+      const boundLedger = ledgers.find((ledger) => ledger.ledger.id === currentPortfolio.boundCurrencyLedgerId);
+      setBoundLedgerCurrencyCode(boundLedger?.ledger.currencyCode ?? null);
       setTransactions(txData);
 
       // Load cached prices for all positions (using position with market info)
@@ -175,12 +219,18 @@ export function PortfolioPage() {
 
       // If we have cached prices, calculate with them immediately
       if (Object.keys(cachedPrices).length > 0) {
-        const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(portfolioId, cachedPrices),
-          portfolioApi.calculateXirr(portfolioId, { currentPrices: cachedPrices }),
-        ]);
-        setSummary(summaryWithPrices);
-        setXirrResult(xirr);
+        const apiCurrentPrices = toApiCurrentPrices(cachedPrices);
+
+        if (Object.keys(apiCurrentPrices).length > 0) {
+          const [summaryWithPrices, xirr] = await Promise.all([
+            portfolioApi.getSummary(portfolioId, apiCurrentPrices),
+            portfolioApi.calculateXirr(portfolioId, { currentPrices: apiCurrentPrices }),
+          ]);
+          setSummary(summaryWithPrices);
+          setXirrResult(xirr);
+        } else {
+          setSummary(basicSummary);
+        }
       } else {
         setSummary(basicSummary);
       }
@@ -200,6 +250,7 @@ export function PortfolioPage() {
     try {
       setIsLoading(true);
       setError(null);
+      setBoundLedgerCurrencyCode(null);
 
       // Get or create user's portfolio
       const portfolios = await portfolioApi.getAll();
@@ -222,10 +273,13 @@ export function PortfolioPage() {
       setPortfolio(currentPortfolio);
       const portfolioId = currentPortfolio.id;
 
-      const [basicSummary, txData] = await Promise.all([
+      const [basicSummary, txData, ledgers] = await Promise.all([
         portfolioApi.getSummary(portfolioId),
         transactionApi.getByPortfolio(portfolioId),
+        currencyLedgerApi.getAll().catch(() => []),
       ]);
+      const boundLedger = ledgers.find((ledger) => ledger.ledger.id === currentPortfolio.boundCurrencyLedgerId);
+      setBoundLedgerCurrencyCode(boundLedger?.ledger.currencyCode ?? null);
       setTransactions(txData);
 
       // Load cached prices for all positions (using position with market info)
@@ -234,12 +288,18 @@ export function PortfolioPage() {
 
       // If we have cached prices, calculate with them immediately
       if (Object.keys(cachedPrices).length > 0) {
-        const [summaryWithPrices, xirr] = await Promise.all([
-          portfolioApi.getSummary(portfolioId, cachedPrices),
-          portfolioApi.calculateXirr(portfolioId, { currentPrices: cachedPrices }),
-        ]);
-        setSummary(summaryWithPrices);
-        setXirrResult(xirr);
+        const apiCurrentPrices = toApiCurrentPrices(cachedPrices);
+
+        if (Object.keys(apiCurrentPrices).length > 0) {
+          const [summaryWithPrices, xirr] = await Promise.all([
+            portfolioApi.getSummary(portfolioId, apiCurrentPrices),
+            portfolioApi.calculateXirr(portfolioId, { currentPrices: apiCurrentPrices }),
+          ]);
+          setSummary(summaryWithPrices);
+          setXirrResult(xirr);
+        } else {
+          setSummary(basicSummary);
+        }
       } else {
         setSummary(basicSummary);
       }
@@ -252,6 +312,10 @@ export function PortfolioPage() {
 
   const hasFetchedOnLoad = useRef(false);
   const firstPortfolioId = contextPortfolios[0]?.id;
+
+  useEffect(() => {
+    hasFetchedOnLoad.current = false;
+  }, [currentPortfolioId, isAllPortfolios, firstPortfolioId]);
 
   useEffect(() => {
     if (isAllPortfolios && firstPortfolioId) {
@@ -314,7 +378,8 @@ export function PortfolioPage() {
             market: 4 as StockMarketType,
           };
           localStorage.setItem(getQuoteCacheKey(ticker, 4 as StockMarketType), JSON.stringify(cacheData));
-          currentPricesRef.current[ticker] = { price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
+          const positionKey = buildPositionPriceKey(ticker, 4 as StockMarketType);
+          currentPricesRef.current[positionKey] = { price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
           await updateSummaryWithPrices({ ...currentPricesRef.current });
           setRefreshTrigger(Date.now());
         }
@@ -332,7 +397,8 @@ export function PortfolioPage() {
           market: targetMarket,
         };
         localStorage.setItem(getQuoteCacheKey(ticker, targetMarket), JSON.stringify(cacheData));
-        currentPricesRef.current[ticker] = { price: quote.price, exchangeRate: quote.exchangeRate };
+        const positionKey = buildPositionPriceKey(ticker, targetMarket);
+        currentPricesRef.current[positionKey] = { price: quote.price, exchangeRate: quote.exchangeRate };
         await updateSummaryWithPrices({ ...currentPricesRef.current });
         setRefreshTrigger(Date.now());
       }
@@ -427,15 +493,20 @@ export function PortfolioPage() {
    *
    * 注意：如果 prices 為空，或還沒有 portfolio 物件，則不會進行任何計算。
    */
-  const updateSummaryWithPrices = async (prices: Record<string, CurrentPriceInfo>) => {
+  const updateSummaryWithPrices = async (prices: PositionPriceMap) => {
     if (!portfolio || Object.keys(prices).length === 0) return;
+
+    const apiCurrentPrices = toApiCurrentPrices(prices);
+    if (Object.keys(apiCurrentPrices).length === 0) {
+      return;
+    }
 
     setIsCalculating(true);
 
     try {
       const [summaryData, xirrData] = await Promise.all([
-        portfolioApi.getSummary(portfolio.id, prices),
-        portfolioApi.calculateXirr(portfolio.id, { currentPrices: prices }),
+        portfolioApi.getSummary(portfolio.id, apiCurrentPrices),
+        portfolioApi.calculateXirr(portfolio.id, { currentPrices: apiCurrentPrices }),
       ]);
       setSummary(summaryData);
       setXirrResult(xirrData);
@@ -463,8 +534,14 @@ export function PortfolioPage() {
   /**
    * 由子元件（例如 PositionCard）回傳單一持倉的最新價格/匯率時，用來更新整體 summary。
    */
-  const handlePositionPriceUpdate = useCallback((ticker: string, price: number, exchangeRate: number) => {
-    currentPricesRef.current[ticker] = { price, exchangeRate };
+  const handlePositionPriceUpdate = useCallback((
+    ticker: string,
+    market: StockMarketType,
+    price: number,
+    exchangeRate: number,
+  ) => {
+    const positionKey = buildPositionPriceKey(ticker, market);
+    currentPricesRef.current[positionKey] = { price, exchangeRate };
     updateSummaryWithPrices({ ...currentPricesRef.current });
   }, [portfolio]);
 
@@ -511,7 +588,12 @@ export function PortfolioPage() {
                 market: 4 as StockMarketType,
               };
               localStorage.setItem(getQuoteCacheKey(position.ticker, 4 as StockMarketType), JSON.stringify(cacheData));
-              return { ticker: position.ticker, price: euronextQuote.price, exchangeRate: euronextQuote.exchangeRate };
+              return {
+                ticker: position.ticker,
+                market: 4 as StockMarketType,
+                price: euronextQuote.price,
+                exchangeRate: euronextQuote.exchangeRate,
+              };
             }
             return null;
           }
@@ -528,7 +610,12 @@ export function PortfolioPage() {
               market,
             };
             localStorage.setItem(getQuoteCacheKey(position.ticker, market), JSON.stringify(cacheData));
-            return { ticker: position.ticker, price: quote.price, exchangeRate: quote.exchangeRate };
+            return {
+              ticker: position.ticker,
+              market,
+              price: quote.price,
+              exchangeRate: quote.exchangeRate,
+            };
           }
           return null;
         } catch {
@@ -538,11 +625,12 @@ export function PortfolioPage() {
       });
 
       const results = await Promise.all(fetchPromises);
-      const newPrices: Record<string, CurrentPriceInfo> = {};
+      const newPrices: PositionPriceMap = {};
 
       results.forEach((result) => {
         if (result) {
-          newPrices[result.ticker] = { price: result.price, exchangeRate: result.exchangeRate };
+          const positionKey = buildPositionPriceKey(result.ticker, result.market);
+          newPrices[positionKey] = { price: result.price, exchangeRate: result.exchangeRate };
         }
       });
 
@@ -700,7 +788,15 @@ export function PortfolioPage() {
               </button>
               <StockImportButton
                 portfolioId={portfolio?.id ?? ''}
-                onImportComplete={loadData}
+                boundLedgerCurrencyCode={boundLedgerCurrencyCode}
+                onImportComplete={() => {
+                  if (currentPortfolioId && !isAllPortfolios) {
+                    void loadDataForPortfolio(currentPortfolioId);
+                    return;
+                  }
+
+                  void loadData();
+                }}
                 onImportSuccess={invalidateSharedCaches}
                 renderTrigger={(onClick) => {
                   importTriggerRef.current = onClick;

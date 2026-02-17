@@ -15,9 +15,8 @@
 ### 1. Start Backend
 
 ```bash
-cd backend
-dotnet restore
-dotnet run --project src/InvestmentTracker.Api
+dotnet restore backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
+dotnet run --project backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 # API available at http://localhost:5000
 ```
 

@@ -46,6 +46,7 @@ import type {
   StockImportPreviewRequest,
   StockImportPreviewResponse,
   StockImportPreviewRow,
+  StockImportDiagnostic,
   StockImportSelectedFormat,
   StockImportTopUpTransactionType,
   StockImportTradeSide,
@@ -55,6 +56,8 @@ import type {
 interface StockImportButtonProps {
   /** 目標 portfolio ID */
   portfolioId: string;
+  /** 綁定帳本幣別（source of truth for TWD-specific UX） */
+  boundLedgerCurrencyCode?: string | null;
   /** 匯入完成後 callback（通常用於重新載入頁面資料） */
   onImportComplete: () => void;
   /** 匯入成功後執行 shared cache invalidation */
@@ -153,12 +156,11 @@ const stockFields: FieldDefinition[] = [
 ];
 
 const formatOptions: Array<{ value: StockImportSelectedFormat; label: string }> = [
-  { value: 'broker_statement', label: '券商對帳單（Broker Statement）' },
-  { value: 'legacy_csv', label: '舊版 CSV（Legacy CSV）' },
+  { value: 'broker_statement', label: '券商' },
+  { value: 'legacy_csv', label: '一般' },
 ];
 
 const topUpTransactionTypeValues: StockImportTopUpTransactionType[] = [
-  'ExchangeBuy',
   'Deposit',
   'InitialBalance',
   'Interest',
@@ -166,10 +168,6 @@ const topUpTransactionTypeValues: StockImportTopUpTransactionType[] = [
 ];
 
 const topUpTransactionTypeOptions: Array<{ value: StockImportTopUpTransactionType; label: string }> = [
-  {
-    value: 'ExchangeBuy',
-    label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.ExchangeBuy],
-  },
   {
     value: 'Deposit',
     label: CurrencyTransactionTypeLabels[CurrencyTransactionTypeEnum.Deposit],
@@ -302,11 +300,36 @@ function parseTradeSideFromRow(row: StockImportPreviewRow): StockImportTradeSide
   return null;
 }
 
+function formatImportDiagnosticMessage(error: StockImportDiagnostic): string {
+  const escapedErrorCode = error.errorCode
+    ? error.errorCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    : '';
+  const messageWithoutCodePrefix = escapedErrorCode
+    ? error.message.replace(new RegExp(`^${escapedErrorCode}\\s*:\\s*`, 'i'), '').trim()
+    : error.message.trim();
+
+  const parts = [messageWithoutCodePrefix || error.message];
+
+  if (error.correctionGuidance) {
+    parts.push(`建議：${error.correctionGuidance}`);
+  }
+
+  if (error.errorCode) {
+    parts.push(`代碼：${error.errorCode}`);
+  }
+
+  if (error.invalidValue && error.invalidValue.trim() !== '') {
+    parts.push(`輸入值：${error.invalidValue}`);
+  }
+
+  return parts.join('；');
+}
+
 function mapPreviewErrorsToParseErrors(preview: StockImportPreviewResponse): ParseError[] {
   return preview.errors.map((error) => ({
     row: error.rowNumber,
     column: error.fieldName,
-    message: [error.message, error.correctionGuidance].filter(Boolean).join('；'),
+    message: formatImportDiagnosticMessage(error),
   }));
 }
 
@@ -328,6 +351,22 @@ function hasBalanceDecisionRequirement(
   }
 
   return Boolean(row.balanceDecision?.shortfall && row.balanceDecision.shortfall > 0);
+}
+
+function hasResolvedBalanceAction(
+  rowSelection: 'default' | 'Margin' | 'TopUp' | undefined,
+  rowContext: StockImportBalanceDecisionContext | null | undefined,
+  globalDefault: 'Margin' | 'TopUp' | null,
+): boolean {
+  if (rowSelection === 'Margin' || rowSelection === 'TopUp') {
+    return true;
+  }
+
+  if (rowContext?.action === 'Margin' || rowContext?.action === 'TopUp') {
+    return true;
+  }
+
+  return globalDefault === 'Margin' || globalDefault === 'TopUp';
 }
 
 function deriveRowBalanceAction(
@@ -400,6 +439,7 @@ function deriveTopUpTransactionType(
 
 export function StockImportButton({
   portfolioId,
+  boundLedgerCurrencyCode,
   onImportComplete,
   onImportSuccess,
   compact = false,
@@ -414,6 +454,7 @@ export function StockImportButton({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [latestPreview, setLatestPreview] = useState<StockImportPreviewResponse | null>(null);
   const [previewErrors, setPreviewErrors] = useState<ParseError[]>([]);
+  const [lastLocalDetectedFormat, setLastLocalDetectedFormat] = useState<'legacy_csv' | 'broker_statement' | 'unknown'>('unknown');
 
   const [manualTickerByRow, setManualTickerByRow] = useState<Record<number, string>>({});
   const [confirmedTradeSideByRow, setConfirmedTradeSideByRow] = useState<Record<number, StockImportTradeSide>>({});
@@ -421,6 +462,11 @@ export function StockImportButton({
   const [globalTopUpTransactionType, setGlobalTopUpTransactionType] = useState<StockImportTopUpTransactionType | null>(null);
   const [rowBalanceActionSelectionByRow, setRowBalanceActionSelectionByRow] = useState<Record<number, 'default' | 'Margin' | 'TopUp'>>({});
   const [rowTopUpTransactionTypeByRow, setRowTopUpTransactionTypeByRow] = useState<Record<number, StockImportTopUpTransactionType | null>>({});
+
+  const isTwdPortfolio = useMemo(() => {
+    const normalized = boundLedgerCurrencyCode?.trim().toUpperCase();
+    return normalized === 'TWD';
+  }, [boundLedgerCurrencyCode]);
 
   /**
    * 開啟匯入 modal。
@@ -444,6 +490,7 @@ export function StockImportButton({
     setCsvContent('');
     setSelectedFormat('broker_statement');
     setDetectedFormat('unknown');
+    setLastLocalDetectedFormat('unknown');
     clearPreviewSessionState();
     setIsPreviewing(false);
   };
@@ -474,6 +521,7 @@ export function StockImportButton({
 
     const detected = detectStockImportFormat(csvData.headers);
     setDetectedFormat(detected);
+    setLastLocalDetectedFormat(detected);
 
     const request: StockImportPreviewRequest = {
       portfolioId,
@@ -542,6 +590,26 @@ export function StockImportButton({
     }
   };
 
+  const shouldHideMappingSelectors = useMemo(() => {
+    if (selectedFormat !== 'broker_statement') {
+      return false;
+    }
+
+    return lastLocalDetectedFormat === 'broker_statement' || detectedFormat === 'broker_statement';
+  }, [selectedFormat, lastLocalDetectedFormat, detectedFormat]);
+
+  const detectedFormatLabel = useMemo(() => {
+    if (detectedFormat === 'broker_statement' || (detectedFormat === 'unknown' && lastLocalDetectedFormat === 'broker_statement')) {
+      return '系統偵測：券商';
+    }
+
+    if (detectedFormat === 'legacy_csv' || (detectedFormat === 'unknown' && lastLocalDetectedFormat === 'legacy_csv')) {
+      return '系統偵測：一般';
+    }
+
+    return '系統偵測：未知格式';
+  }, [detectedFormat, lastLocalDetectedFormat]);
+
   const hasUnresolvedTicker = useMemo(() => {
     if (!latestPreview) return false;
 
@@ -567,8 +635,21 @@ export function StockImportButton({
     });
   }, [latestPreview, confirmedTradeSideByRow]);
 
-  const hasMissingTopUpTransactionType = useMemo(() => {
+  const hasUndecidedBalanceActionRows = useMemo(() => {
     if (!latestPreview) return false;
+
+    return latestPreview.rows.some((row) => {
+      if (!hasBalanceDecisionRequirement(row)) {
+        return false;
+      }
+
+      const rowSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
+      return !hasResolvedBalanceAction(rowSelection, row.balanceDecision, globalBalanceAction);
+    });
+  }, [latestPreview, rowBalanceActionSelectionByRow, globalBalanceAction]);
+
+  const hasMissingTopUpTransactionType = useMemo(() => {
+    if (!latestPreview || isTwdPortfolio) return false;
 
     if (globalBalanceAction === 'TopUp' && !globalTopUpTransactionType) {
       return true;
@@ -602,6 +683,7 @@ export function StockImportButton({
     });
   }, [
     latestPreview,
+    isTwdPortfolio,
     rowBalanceActionSelectionByRow,
     rowTopUpTransactionTypeByRow,
     globalBalanceAction,
@@ -613,6 +695,14 @@ export function StockImportButton({
       return '請先產生預覽';
     }
 
+    if (previewErrors.length > 0) {
+      return '預覽有錯誤，請先修正';
+    }
+
+    if (latestPreview.rows.length === 0) {
+      return '預覽無可匯入資料';
+    }
+
     if (hasUnresolvedTicker) {
       return '仍有列需要手動輸入股票代號';
     }
@@ -621,15 +711,21 @@ export function StockImportButton({
       return '仍有列缺少買賣方向，請先逐列確認';
     }
 
+    if (hasUndecidedBalanceActionRows) {
+      return '已選擇「逐筆決定」，請先完成所有短缺列的餘額不足處理方式';
+    }
+
     if (hasMissingTopUpTransactionType) {
-      return '補足餘額（Top-up）需選擇交易類型';
+      return '補足餘額需選擇交易類型';
     }
 
     return null;
   }, [
     latestPreview,
+    previewErrors,
     hasUnresolvedTicker,
     hasUnconfirmedTradeSide,
+    hasUndecidedBalanceActionRows,
     hasMissingTopUpTransactionType,
   ]);
 
@@ -742,7 +838,16 @@ export function StockImportButton({
         globalTopUpTransactionType,
       );
 
-      if (requiresBalanceAction && effectiveBalanceAction === 'TopUp' && !effectiveTopUpTransactionType) {
+      if (requiresBalanceAction && effectiveBalanceAction === 'None') {
+        unresolvedExecuteErrors.push({
+          row: row.rowNumber,
+          column: '餘額不足處理方式',
+          message: '此列尚未決定餘額不足處理方式，請先逐列指定',
+        });
+        continue;
+      }
+
+      if (requiresBalanceAction && effectiveBalanceAction === 'TopUp' && !isTwdPortfolio && !effectiveTopUpTransactionType) {
         unresolvedExecuteErrors.push({
           row: row.rowNumber,
           column: '補足交易類型',
@@ -756,10 +861,10 @@ export function StockImportButton({
         ticker,
         confirmedTradeSide,
         exclude: false,
-        ...(requiresBalanceAction
+        ...(requiresBalanceAction && effectiveBalanceAction !== 'None'
           ? {
               balanceAction: effectiveBalanceAction,
-              ...(effectiveBalanceAction === 'TopUp' && effectiveTopUpTransactionType
+              ...(effectiveBalanceAction === 'TopUp' && effectiveTopUpTransactionType && !isTwdPortfolio
                 ? { topUpTransactionType: effectiveTopUpTransactionType }
                 : {}),
             }
@@ -777,7 +882,7 @@ export function StockImportButton({
     const defaultBalanceAction: StockImportDefaultBalanceAction | undefined = globalBalanceAction
       ? {
           action: globalBalanceAction,
-          ...(globalBalanceAction === 'TopUp'
+          ...(globalBalanceAction === 'TopUp' && !isTwdPortfolio
             ? { topUpTransactionType: globalTopUpTransactionType ?? undefined }
             : {}),
         }
@@ -795,7 +900,7 @@ export function StockImportButton({
     const errors: ParseError[] = response.errors.map((error) => ({
       row: error.rowNumber,
       column: error.fieldName,
-      message: [error.message, error.correctionGuidance].filter(Boolean).join('；'),
+      message: formatImportDiagnosticMessage(error),
     }));
 
     if (response.summary.insertedRows > 0) {
@@ -976,14 +1081,9 @@ export function StockImportButton({
   };
 
   const previewExtensions: CSVImportPreviewExtensions = {
-    formatLabel: '匯入格式',
+    formatLabel: '匯入類型',
     selectedFormat,
-    detectedFormatLabel:
-      detectedFormat === 'unknown'
-        ? '系統偵測：未知格式'
-        : detectedFormat === 'broker_statement'
-          ? '系統偵測：券商對帳單'
-          : '系統偵測：舊版 CSV',
+    detectedFormatLabel,
     formatOptions,
     onChangeFormat: (nextValue) => {
       if (nextValue === 'legacy_csv' || nextValue === 'broker_statement') {
@@ -1030,6 +1130,8 @@ export function StockImportButton({
     onChangeGlobalTopUpTransactionType: (value) => {
       setGlobalTopUpTransactionType(value);
     },
+    hideTopUpTransactionTypeSelector: isTwdPortfolio,
+    topUpTransactionTypeFixedNotice: '台幣投組匯入補足一律使用存入（Deposit）。',
     rowBalanceActionLabel: '逐列餘額不足處理方式',
     rowTopUpTransactionTypeLabel: '逐列補足交易類型',
     onChangeRowBalanceActionSelection: (rowNumber, value) => {
@@ -1081,6 +1183,11 @@ export function StockImportButton({
         }}
         title="匯入股票交易"
         fields={stockFields}
+        onCsvParsed={(csvData) => {
+          setLastLocalDetectedFormat(detectStockImportFormat(csvData.headers));
+        }}
+        hideMappingSelectors={shouldHideMappingSelectors}
+        hiddenMappingFieldNames={['market', 'currency', 'exchangeRate']}
         onRequestPreview={(csvData) => {
           const content = [
             csvData.headers.join(','),

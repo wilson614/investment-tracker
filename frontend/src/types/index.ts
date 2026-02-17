@@ -100,7 +100,7 @@ export interface CreateStockTransactionRequest {
   pricePerShare: number;
   fees: number;
   balanceAction?: BalanceAction;
-  topUpTransactionType?: CurrencyTransactionType;
+  topUpTransactionType?: StockTransactionTopUpType;
   notes?: string;
   market?: StockMarket;
   currency?: Currency;
@@ -186,7 +186,7 @@ export interface StockImportPreviewResponse {
 }
 
 export type StockImportExecuteBalanceAction = 'None' | 'Margin' | 'TopUp';
-export type StockImportTopUpTransactionType = 'ExchangeBuy' | 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+export type StockImportTopUpTransactionType = 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
 
 export interface StockImportExecuteRowRequest {
   rowNumber: number;
@@ -305,6 +305,19 @@ export const CurrencyTransactionTypeLabels: Record<CurrencyTransactionType, stri
   [CurrencyTransactionType.Deposit]: '存入',
   [CurrencyTransactionType.Withdraw]: '提領',
 };
+
+/**
+ * Allowed top-up currency transaction types for stock shortfall handling.
+ * Must stay aligned with backend StockBalanceActionRules.ValidateShortfallDecision.
+ */
+export const StockTransactionTopUpType = {
+  Deposit: CurrencyTransactionType.Deposit,
+  InitialBalance: CurrencyTransactionType.InitialBalance,
+  Interest: CurrencyTransactionType.Interest,
+  OtherIncome: CurrencyTransactionType.OtherIncome,
+} as const;
+export type StockTransactionTopUpType =
+  (typeof StockTransactionTopUpType)[keyof typeof StockTransactionTopUpType];
 
 export interface CurrencyLedger {
   id: string;

@@ -12,7 +12,14 @@ internal static class CurrencyTransactionTypePolicy
     private const string TwdCurrencyCode = "TWD";
 
     internal const string InvalidTransactionTypeForLedgerErrorCode = "INVALID_TRANSACTION_TYPE_FOR_LEDGER";
+    internal const string InvalidManualTransactionTypeErrorCode = "INVALID_MANUAL_TRANSACTION_TYPE";
     internal const string RequiredFieldMissingErrorCode = "REQUIRED_FIELD_MISSING";
+
+    internal const string ManualSpendDisallowedMessage = "交易類型不符合手動交易規則";
+    internal const string ManualSpendDisallowedCorrectionGuidance = "Spend 僅供股票交易連動使用，請改由股票交易建立或調整。";
+
+    internal static string GetManualSpendDisallowedErrorMessage()
+        => $"{ManualSpendDisallowedMessage} {ManualSpendDisallowedCorrectionGuidance}".Trim();
 
     /// <summary>
     /// 驗證帳本幣別與交易類型是否符合政策。
@@ -21,7 +28,8 @@ internal static class CurrencyTransactionTypePolicy
     internal static CurrencyTransactionTypePolicyValidationResult Validate(
         string ledgerCurrencyCode,
         CurrencyTransactionType transactionType,
-        CurrencyTransactionAmountPresence? amountPresence = null)
+        CurrencyTransactionAmountPresence? amountPresence = null,
+        bool allowManualSpend = true)
     {
         var diagnostics = new List<CurrencyTransactionTypePolicyDiagnostic>();
 
@@ -34,6 +42,11 @@ internal static class CurrencyTransactionTypePolicy
         if (!IsAllowedForLedgerCurrency(ledgerCurrencyCode, transactionType))
         {
             diagnostics.Add(BuildTransactionTypeDiagnostic(ledgerCurrencyCode, transactionType));
+        }
+
+        if (!allowManualSpend && transactionType == CurrencyTransactionType.Spend)
+        {
+            diagnostics.Add(BuildManualSpendDisallowedDiagnostic());
         }
 
         if (amountPresence is not null)
@@ -73,9 +86,10 @@ internal static class CurrencyTransactionTypePolicy
     internal static void EnsureValidOrThrow(
         string ledgerCurrencyCode,
         CurrencyTransactionType transactionType,
-        CurrencyTransactionAmountPresence? amountPresence = null)
+        CurrencyTransactionAmountPresence? amountPresence = null,
+        bool allowManualSpend = true)
     {
-        var result = Validate(ledgerCurrencyCode, transactionType, amountPresence);
+        var result = Validate(ledgerCurrencyCode, transactionType, amountPresence, allowManualSpend);
 
         if (result.IsValid)
             return;
@@ -148,6 +162,16 @@ internal static class CurrencyTransactionTypePolicy
             "交易類型不符合此帳本規則",
             "請確認帳本幣別與交易類型組合是否符合政策。",
             transactionType.ToString());
+    }
+
+    private static CurrencyTransactionTypePolicyDiagnostic BuildManualSpendDisallowedDiagnostic()
+    {
+        return new CurrencyTransactionTypePolicyDiagnostic(
+            InvalidManualTransactionTypeErrorCode,
+            FieldNames.TransactionType,
+            ManualSpendDisallowedMessage,
+            ManualSpendDisallowedCorrectionGuidance,
+            CurrencyTransactionType.Spend.ToString());
     }
 
     private static class FieldNames

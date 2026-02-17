@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Infrastructure.MarketData;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Infrastructure.Services;
@@ -19,6 +21,14 @@ public class HistoricalYearEndDataService(
     IYahooHistoricalPriceService yahooService,
     ILogger<HistoricalYearEndDataService> logger) : IHistoricalYearEndDataService
 {
+    // key: stock cache ticker + year，避免同一個年末價 cache miss 時被併發重複抓取
+    private static readonly ConcurrentDictionary<string, RefCountedSemaphore> YearEndPriceInFlightLocks = new(StringComparer.Ordinal);
+    private static readonly object YearEndPriceInFlightLocksSync = new();
+
+    // key: currencyPair + year，避免同一個年末匯率 cache miss 時被併發重複抓取
+    private static readonly ConcurrentDictionary<string, RefCountedSemaphore> YearEndExchangeRateInFlightLocks = new(StringComparer.Ordinal);
+    private static readonly object YearEndExchangeRateInFlightLocksSync = new();
+
     /// <summary>
     /// Gets year-end stock price from cache, or fetches from API and caches it.
     /// Returns null if price cannot be obtained (requires manual entry).
@@ -37,11 +47,20 @@ public class HistoricalYearEndDataService(
             return null;
         }
 
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+        var stockCacheTicker = BuildStockCacheTickerKey(normalizedTicker, market);
+        var legacyStockCacheTicker = normalizedTicker;
+
         // 先查快取
-        var cached = await repository.GetStockPriceAsync(ticker, year, cancellationToken);
+        var cached = await repository.GetStockPriceAsync(stockCacheTicker, year, cancellationToken);
+        if (cached == null && !string.Equals(stockCacheTicker, legacyStockCacheTicker, StringComparison.Ordinal))
+        {
+            cached = await repository.GetStockPriceAsync(legacyStockCacheTicker, year, cancellationToken);
+        }
+
         if (cached != null)
         {
-            logger.LogDebug("Cache hit for {Ticker}/{Year}: {Value}", ticker, year, cached.Value);
+            logger.LogDebug("Cache hit for {Ticker}/{Year}: {Value}", stockCacheTicker, year, cached.Value);
             return new YearEndPriceResult
             {
                 Price = cached.Value,
@@ -52,36 +71,80 @@ public class HistoricalYearEndDataService(
             };
         }
 
-        // 從 API 抓取
-        logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", ticker, year);
-        var apiResult = await FetchPriceFromApiAsync(ticker, year, market, cancellationToken);
+        var lockKey = $"{stockCacheTicker}:{year}";
+        var lease = AcquireLock(YearEndPriceInFlightLocks, YearEndPriceInFlightLocksSync, lockKey);
+        var entered = false;
 
-        if (apiResult != null)
+        try
         {
-            // 寫入快取
-            try
-            {
-                var cacheEntry = HistoricalYearEndData.CreateStockPrice(
-                    ticker,
-                    year,
-                    apiResult.Price,
-                    apiResult.Currency,
-                    apiResult.ActualDate,
-                    apiResult.Source);
+            await lease.Gate.WaitAsync(cancellationToken);
+            entered = true;
 
-                await repository.AddAsync(cacheEntry, cancellationToken);
-                apiResult.FromCache = false;
-                logger.LogInformation("Cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
-                    ticker, year, apiResult.Price, apiResult.Currency);
-            }
-            catch (InvalidOperationException ex)
+            // double-check cache after entering gate
+            cached = await repository.GetStockPriceAsync(stockCacheTicker, year, cancellationToken);
+            if (cached == null && !string.Equals(stockCacheTicker, legacyStockCacheTicker, StringComparison.Ordinal))
             {
-                // 可能已被其他並發請求寫入；可忽略
-                logger.LogDebug(ex, "Cache entry already exists for {Ticker}/{Year}", ticker, year);
+                cached = await repository.GetStockPriceAsync(legacyStockCacheTicker, year, cancellationToken);
             }
+
+            if (cached != null)
+            {
+                logger.LogDebug("Cache hit (after wait) for {Ticker}/{Year}: {Value}", stockCacheTicker, year, cached.Value);
+                return new YearEndPriceResult
+                {
+                    Price = cached.Value,
+                    Currency = cached.Currency,
+                    ActualDate = cached.ActualDate,
+                    Source = cached.Source,
+                    FromCache = true
+                };
+            }
+
+            // 從 API 抓取
+            logger.LogInformation("Cache miss for {Ticker}/{Year}, fetching from API...", stockCacheTicker, year);
+            var apiResult = await FetchPriceFromApiAsync(normalizedTicker, year, market, cancellationToken);
+
+            if (apiResult != null)
+            {
+                // 寫入快取
+                try
+                {
+                    var cacheEntry = HistoricalYearEndData.CreateStockPrice(
+                        stockCacheTicker,
+                        year,
+                        apiResult.Price,
+                        apiResult.Currency,
+                        apiResult.ActualDate,
+                        apiResult.Source);
+
+                    await repository.AddAsync(cacheEntry, cancellationToken);
+                    apiResult.FromCache = false;
+                    logger.LogInformation("Cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
+                        stockCacheTicker, year, apiResult.Price, apiResult.Currency);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // 可能已被其他並發請求寫入；可忽略
+                    logger.LogDebug(ex, "Cache entry already exists for {Ticker}/{Year}", stockCacheTicker, year);
+                }
+                catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+                {
+                    // 可能已被其他並發請求寫入；可忽略
+                    logger.LogDebug(ex, "Duplicate cache entry ignored for {Ticker}/{Year}", stockCacheTicker, year);
+                }
+            }
+
+            return apiResult;
         }
+        finally
+        {
+            if (entered)
+            {
+                lease.Gate.Release();
+            }
 
-        return apiResult;
+            ReleaseLock(YearEndPriceInFlightLocks, YearEndPriceInFlightLocksSync, lockKey, lease);
+        }
     }
 
     /// <summary>
@@ -94,7 +157,10 @@ public class HistoricalYearEndDataService(
         int year,
         CancellationToken cancellationToken = default)
     {
-        var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
+        var normalizedFromCurrency = NormalizeCurrencyCode(fromCurrency);
+        var normalizedToCurrency = NormalizeCurrencyCode(toCurrency);
+        var currencyPair = BuildCurrencyPairKey(normalizedFromCurrency, normalizedToCurrency);
+        var legacyCurrencyPair = $"{normalizedFromCurrency}{normalizedToCurrency}";
 
         // 不快取當年度 - 直接回傳 null，讓前端用即時匯率
         var currentYear = DateTime.UtcNow.Year;
@@ -106,6 +172,11 @@ public class HistoricalYearEndDataService(
 
         // 先查快取
         var cached = await repository.GetExchangeRateAsync(currencyPair, year, cancellationToken);
+        if (cached == null && !string.Equals(currencyPair, legacyCurrencyPair, StringComparison.Ordinal))
+        {
+            cached = await repository.GetExchangeRateAsync(legacyCurrencyPair, year, cancellationToken);
+        }
+
         if (cached != null)
         {
             logger.LogDebug("Cache hit for exchange rate {CurrencyPair}/{Year}: {Value}", currencyPair, year, cached.Value);
@@ -119,34 +190,80 @@ public class HistoricalYearEndDataService(
             };
         }
 
-        // 從 API 抓取
-        logger.LogInformation("Cache miss for exchange rate {CurrencyPair}/{Year}, fetching from API...", currencyPair, year);
-        var apiResult = await FetchExchangeRateFromApiAsync(fromCurrency, toCurrency, year, cancellationToken);
+        var lockKey = $"{currencyPair}:{year}";
+        var lease = AcquireLock(YearEndExchangeRateInFlightLocks, YearEndExchangeRateInFlightLocksSync, lockKey);
+        var entered = false;
 
-        if (apiResult != null)
+        try
         {
-            // 寫入快取
-            try
-            {
-                var cacheEntry = HistoricalYearEndData.CreateExchangeRate(
-                    currencyPair,
-                    year,
-                    apiResult.Rate,
-                    apiResult.ActualDate,
-                    apiResult.Source);
+            await lease.Gate.WaitAsync(cancellationToken);
+            entered = true;
 
-                await repository.AddAsync(cacheEntry, cancellationToken);
-                apiResult.FromCache = false;
-                logger.LogInformation("Cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
-                    currencyPair, year, apiResult.Rate);
-            }
-            catch (InvalidOperationException ex)
+            // double-check cache after entering gate
+            cached = await repository.GetExchangeRateAsync(currencyPair, year, cancellationToken);
+            if (cached == null && !string.Equals(currencyPair, legacyCurrencyPair, StringComparison.Ordinal))
             {
-                logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Year}", currencyPair, year);
+                cached = await repository.GetExchangeRateAsync(legacyCurrencyPair, year, cancellationToken);
             }
+
+            if (cached != null)
+            {
+                logger.LogDebug("Cache hit (after wait) for exchange rate {CurrencyPair}/{Year}: {Value}",
+                    currencyPair, year, cached.Value);
+                return new YearEndExchangeRateResult
+                {
+                    Rate = cached.Value,
+                    CurrencyPair = currencyPair,
+                    ActualDate = cached.ActualDate,
+                    Source = cached.Source,
+                    FromCache = true
+                };
+            }
+
+            // 從 API 抓取
+            logger.LogInformation("Cache miss for exchange rate {CurrencyPair}/{Year}, fetching from API...", currencyPair, year);
+            var apiResult = await FetchExchangeRateFromApiAsync(normalizedFromCurrency, normalizedToCurrency, year, cancellationToken);
+
+            if (apiResult != null)
+            {
+                // 寫入快取
+                try
+                {
+                    var cacheEntry = HistoricalYearEndData.CreateExchangeRate(
+                        currencyPair,
+                        year,
+                        apiResult.Rate,
+                        apiResult.ActualDate,
+                        apiResult.Source);
+
+                    await repository.AddAsync(cacheEntry, cancellationToken);
+                    apiResult.FromCache = false;
+                    logger.LogInformation("Cached year-end exchange rate for {CurrencyPair}/{Year}: {Rate}",
+                        currencyPair, year, apiResult.Rate);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // 可能已被其他並發請求寫入；可忽略
+                    logger.LogDebug(ex, "Cache entry already exists for {CurrencyPair}/{Year}", currencyPair, year);
+                }
+                catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+                {
+                    // 可能已被其他並發請求寫入；可忽略
+                    logger.LogDebug(ex, "Duplicate cache entry ignored for {CurrencyPair}/{Year}", currencyPair, year);
+                }
+            }
+
+            return apiResult;
         }
+        finally
+        {
+            if (entered)
+            {
+                lease.Gate.Release();
+            }
 
-        return apiResult;
+            ReleaseLock(YearEndExchangeRateInFlightLocks, YearEndExchangeRateInFlightLocksSync, lockKey, lease);
+        }
     }
 
     /// <summary>
@@ -160,15 +277,21 @@ public class HistoricalYearEndDataService(
         DateTime actualDate,
         CancellationToken cancellationToken = default)
     {
-        // Check if entry already exists
-        if (await repository.ExistsAsync(HistoricalDataType.StockPrice, ticker, year, cancellationToken))
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+
+        // Keep manual-save conflict detection coherent with market-scoped stock cache keys.
+        foreach (var cacheTicker in GetManualStockCacheTickersToCheck(normalizedTicker))
         {
-            throw new InvalidOperationException(
-                $"Cache entry already exists for {ticker}/{year}. Manual entry only allowed for empty cache entries.");
+            if (await repository.ExistsAsync(HistoricalDataType.StockPrice, cacheTicker, year, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"Cache entry already exists for {cacheTicker}/{year}. Manual entry only allowed for empty cache entries.");
+            }
         }
 
+        // Keep persisted key backward compatible: manual entries are still stored under legacy ticker.
         var cacheEntry = HistoricalYearEndData.CreateStockPrice(
-            ticker,
+            normalizedTicker,
             year,
             price,
             currency,
@@ -177,7 +300,7 @@ public class HistoricalYearEndDataService(
 
         await repository.AddAsync(cacheEntry, cancellationToken);
         logger.LogInformation("Manually cached year-end price for {Ticker}/{Year}: {Price} {Currency}",
-            ticker, year, price, currency);
+            normalizedTicker, year, price, currency);
 
         return new YearEndPriceResult
         {
@@ -200,7 +323,9 @@ public class HistoricalYearEndDataService(
         DateTime actualDate,
         CancellationToken cancellationToken = default)
     {
-        var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
+        var normalizedFromCurrency = NormalizeCurrencyCode(fromCurrency);
+        var normalizedToCurrency = NormalizeCurrencyCode(toCurrency);
+        var currencyPair = BuildCurrencyPairKey(normalizedFromCurrency, normalizedToCurrency);
 
         if (await repository.ExistsAsync(HistoricalDataType.ExchangeRate, currencyPair, year, cancellationToken))
         {
@@ -229,6 +354,47 @@ public class HistoricalYearEndDataService(
         };
     }
 
+    private static RefCountedSemaphore AcquireLock(
+        ConcurrentDictionary<string, RefCountedSemaphore> locks,
+        object syncRoot,
+        string lockKey)
+    {
+        lock (syncRoot)
+        {
+            var entry = locks.GetOrAdd(lockKey, static _ => new RefCountedSemaphore());
+            entry.RefCount++;
+            return entry;
+        }
+    }
+
+    private static void ReleaseLock(
+        ConcurrentDictionary<string, RefCountedSemaphore> locks,
+        object syncRoot,
+        string lockKey,
+        RefCountedSemaphore entry)
+    {
+        lock (syncRoot)
+        {
+            entry.RefCount--;
+            if (entry.RefCount == 0)
+            {
+                locks.TryRemove(new KeyValuePair<string, RefCountedSemaphore>(lockKey, entry));
+            }
+        }
+    }
+
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        return ex.InnerException?.Message.Contains("23505", StringComparison.Ordinal) == true ||
+               ex.InnerException?.Message.Contains("UNIQUE constraint failed", StringComparison.Ordinal) == true;
+    }
+
+    private sealed class RefCountedSemaphore
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+        public int RefCount;
+    }
+
     private async Task<YearEndPriceResult?> FetchPriceFromApiAsync(
         string ticker,
         int year,
@@ -237,18 +403,11 @@ public class HistoricalYearEndDataService(
     {
         try
         {
-            // 根據 market 參數判斷資料來源
-            // 台股：使用 TWSE API
-            if (market == StockMarket.TW || (market == null && IsTaiwanStock(ticker)))
-            {
-                return await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
-            }
-
-            // 歐股、美股、英股：使用 Yahoo Finance 為 primary，Stooq 為 fallback
             var targetDate = new DateOnly(year, 12, 31);
+            var isTaiwanStock = market == StockMarket.TW || (market == null && IsTaiwanStock(ticker));
 
-            // Try Yahoo first (primary source)
-            var yahooResult = await TryFetchFromYahooAsync(ticker, targetDate, market, cancellationToken);
+            // 歷史年末價格統一採 Yahoo 為 primary（含台股）
+            var yahooResult = await TryFetchFromYahooAsync(ticker, targetDate, market, isTaiwanStock, cancellationToken);
             if (yahooResult != null)
             {
                 logger.LogInformation("Fetched {Ticker}/{Year} from Yahoo (primary): {Price} {Currency}",
@@ -256,7 +415,22 @@ public class HistoricalYearEndDataService(
                 return yahooResult;
             }
 
-            // Fallback to Stooq (except for EU market which Yahoo should handle)
+            if (isTaiwanStock)
+            {
+                var taiwanResult = await FetchTaiwanStockPriceAsync(ticker, year, cancellationToken);
+                if (taiwanResult != null)
+                {
+                    logger.LogInformation("Fetched {Ticker}/{Year} from {Source} (fallback): {Price} {Currency}",
+                        ticker, year, taiwanResult.Source, taiwanResult.Price, taiwanResult.Currency);
+                    return taiwanResult;
+                }
+
+                logger.LogWarning("Could not fetch year-end price for Taiwan stock {Ticker}/{Year} from any source (Yahoo and TWSE/TPEx both failed)",
+                    ticker, year);
+                return null;
+            }
+
+            // 非台股維持 Stooq fallback（EU 仍只走 Yahoo）
             if (market != StockMarket.EU)
             {
                 var stooqResult = await TryFetchFromStooqAsync(ticker, targetDate, cancellationToken);
@@ -290,34 +464,37 @@ public class HistoricalYearEndDataService(
         string ticker,
         DateOnly targetDate,
         StockMarket? market,
+        bool isTaiwanStock,
         CancellationToken cancellationToken)
     {
-        try
+        foreach (var yahooSymbol in GetYahooSymbolsForHistoricalLookup(ticker, market, isTaiwanStock))
         {
-            // Convert ticker to Yahoo format if needed
-            var yahooSymbol = ConvertToYahooSymbol(ticker, market);
-            var result = await yahooService.GetHistoricalPriceAsync(yahooSymbol, targetDate, cancellationToken);
-
-            if (result == null)
+            try
             {
-                logger.LogDebug("Yahoo returned no data for {Ticker} on {Date}", yahooSymbol, targetDate);
-                return null;
+                var result = await yahooService.GetHistoricalPriceAsync(yahooSymbol, targetDate, cancellationToken);
+
+                if (result == null)
+                {
+                    logger.LogDebug("Yahoo returned no data for {Ticker} on {Date}", yahooSymbol, targetDate);
+                    continue;
+                }
+
+                return new YearEndPriceResult
+                {
+                    Price = result.Price,
+                    Currency = result.Currency,
+                    ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                    Source = "Yahoo",
+                    FromCache = false
+                };
             }
-
-            return new YearEndPriceResult
+            catch (Exception ex)
             {
-                Price = result.Price,
-                Currency = result.Currency,
-                ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-                Source = "Yahoo",
-                FromCache = false
-            };
+                logger.LogDebug(ex, "Yahoo fetch failed for {Ticker}, will try fallback", yahooSymbol);
+            }
         }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Yahoo fetch failed for {Ticker}, will try fallback", ticker);
-            return null;
-        }
+
+        return null;
     }
 
     /// <summary>
@@ -359,22 +536,60 @@ public class HistoricalYearEndDataService(
     }
 
     /// <summary>
-    /// Convert ticker to Yahoo Finance symbol format based on market.
+    /// Build Yahoo Finance symbols for historical lookup.
+    /// Taiwan historical lookup should try both listed (.TW) and OTC (.TWO) suffixes.
     /// </summary>
-    private static string ConvertToYahooSymbol(string ticker, StockMarket? market)
+    private static IEnumerable<string> GetYahooSymbolsForHistoricalLookup(
+        string ticker,
+        StockMarket? market,
+        bool isTaiwanStock)
     {
-        return YahooSymbolHelper.ConvertToYahooSymbol(ticker, market);
+        if (isTaiwanStock)
+        {
+            var baseTicker = ticker.Split('.')[0];
+            var explicitSuffix = ticker.Contains('.') ? ticker[(ticker.LastIndexOf('.') + 1)..] : null;
+
+            if (string.Equals(explicitSuffix, "TW", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TW";
+                yield return $"{baseTicker}.TWO";
+                yield break;
+            }
+
+            if (string.Equals(explicitSuffix, "TWO", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TWO";
+                yield return $"{baseTicker}.TW";
+                yield break;
+            }
+
+            yield return $"{baseTicker}.TW";
+            yield return $"{baseTicker}.TWO";
+            yield break;
+        }
+
+        yield return YahooSymbolHelper.ConvertToYahooSymbol(ticker, market);
     }
 
     /// <summary>
-    /// 判斷 ticker 是否為台股代號（例如 2330、0050 等純數字格式）。
+    /// 判斷 ticker 是否為台股代號（包含數字開頭且可能帶字尾，例如 00632R）。
     /// </summary>
     private static bool IsTaiwanStock(string ticker)
     {
-        // 台股通常是 4 位數（例如 2330、0050、2454）
-        // 可能帶有 ".TW" 等後綴，這裡會先去除
-        var baseTicker = ticker.Split('.')[0];
-        return baseTicker.Length is >= 4 and <= 6 && baseTicker.All(char.IsDigit);
+        var normalizedTicker = ticker.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(normalizedTicker))
+        {
+            return false;
+        }
+
+        var baseTicker = normalizedTicker.Split('.')[0];
+        if (baseTicker.Length == 0)
+        {
+            return false;
+        }
+
+        // 與其他路徑一致：以數字開頭視為台股（例如 2330、0050、00632R）
+        return char.IsDigit(baseTicker[0]);
     }
 
     /// <summary>
@@ -399,7 +614,7 @@ public class HistoricalYearEndDataService(
             Price = result.Price,
             Currency = "TWD", // 台股皆以 TWD 計價
             ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            Source = "TWSE",
+            Source = result.Source,
             FromCache = false
         };
     }
@@ -425,7 +640,7 @@ public class HistoricalYearEndDataService(
             return new YearEndExchangeRateResult
             {
                 Rate = result.Rate,
-                CurrencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}",
+                CurrencyPair = BuildCurrencyPairKey(fromCurrency, toCurrency),
                 ActualDate = result.ActualDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 Source = "Stooq",
                 FromCache = false
@@ -441,5 +656,35 @@ public class HistoricalYearEndDataService(
                 fromCurrency, toCurrency, year);
             return null;
         }
+    }
+
+    private static string BuildStockCacheTickerKey(string normalizedTicker, StockMarket? market)
+    {
+        if (market == null)
+        {
+            return normalizedTicker;
+        }
+
+        return $"{normalizedTicker}|{market.Value}";
+    }
+
+    private static IEnumerable<string> GetManualStockCacheTickersToCheck(string normalizedTicker)
+    {
+        yield return normalizedTicker;
+
+        foreach (var market in Enum.GetValues<StockMarket>())
+        {
+            yield return BuildStockCacheTickerKey(normalizedTicker, market);
+        }
+    }
+
+    private static string NormalizeCurrencyCode(string currency)
+    {
+        return currency.Trim().ToUpperInvariant();
+    }
+
+    private static string BuildCurrencyPairKey(string fromCurrency, string toCurrency)
+    {
+        return $"{NormalizeCurrencyCode(fromCurrency)}:{NormalizeCurrencyCode(toCurrency)}";
     }
 }

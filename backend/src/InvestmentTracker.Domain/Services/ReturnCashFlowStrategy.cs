@@ -83,7 +83,7 @@ public class StockTransactionCashFlowStrategy : IReturnCashFlowStrategy
             {
                 var amount = t.TransactionType == TransactionType.Buy
                     ? t.TotalCostSource
-                    : -(t.Shares * t.PricePerShare - t.Fees);
+                    : -t.NetProceedsSource;
 
                 return new ReturnCashFlowEvent(
                     PortfolioId: t.PortfolioId,

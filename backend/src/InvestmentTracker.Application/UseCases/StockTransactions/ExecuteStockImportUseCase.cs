@@ -33,6 +33,11 @@ public interface IExecuteStockImportUseCase
         CancellationToken cancellationToken = default);
 }
 
+internal readonly record struct ImportedStockTransactionCreationResult(
+    StockTransaction Transaction,
+    IReadOnlyList<CurrencyTransaction> CreatedCurrencyTransactions,
+    bool UsesPartialHistoryAssumption);
+
 public sealed class ExecuteStockImportUseCase(
     IPortfolioRepository portfolioRepository,
     ICurrentUserService currentUserService,
@@ -57,18 +62,26 @@ public sealed class ExecuteStockImportUseCase(
     private const string ErrorCodeTradeSideConfirmationRequired = "TRADE_SIDE_CONFIRMATION_REQUIRED";
     private const string ErrorCodeBalanceActionRequired = "BALANCE_ACTION_REQUIRED";
     private const string ErrorCodeBusinessRuleViolation = "BUSINESS_RULE_VIOLATION";
+    private const string ErrorCodeMarketResolutionRequired = "MARKET_RESOLUTION_REQUIRED";
+
+    private const string WarningCodePartialPeriodAssumption = "PARTIAL_PERIOD_ASSUMPTION";
 
     private const string FieldTicker = "ticker";
     private const string FieldRowNumber = "rowNumber";
     private const string FieldConfirmedTradeSide = "confirmedTradeSide";
     private const string FieldRow = "row";
+    private const string FieldPosition = "position";
+    private const string FieldMarket = "market";
     private const string FieldBalanceAction = StockBalanceActionRules.FieldBalanceAction;
 
     private const string MessageExcluded = "此列已由使用者排除。";
     private const string MessageCreated = "Created";
+    private const string WarningMessagePartialPeriodAssumption = "偵測到匯入可能是部分期間；已以交易日可見資料作為起始基準。完整歷史可得到更準確結果。";
+    private const string WarningCorrectionGuidancePartialPeriodAssumption = "若要提升帳本成本與績效精準度，建議補匯入更早交易紀錄或補登期初餘額/成本基準。";
 
     private const string TradeSideBuy = "buy";
     private const string TradeSideSell = "sell";
+    private const string TwdCurrencyCode = "TWD";
 
     public async Task<StockImportExecuteResponseDto> ExecuteAsync(
         ExecuteStockImportRequest request,
@@ -116,6 +129,9 @@ public sealed class ExecuteStockImportUseCase(
 
         try
         {
+            var importedTransactionsInBatch = new List<StockTransaction>();
+            var importedCurrencyTransactionsInBatch = new List<CurrencyTransaction>();
+
             foreach (var row in request.Rows.OrderBy(r => r.RowNumber))
             {
                 if (!sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRow))
@@ -222,7 +238,7 @@ public sealed class ExecuteStockImportUseCase(
 
                 try
                 {
-                    var createdTransaction = await CreateImportedTransactionAsync(
+                    var creationResult = await CreateImportedTransactionAsync(
                         portfolio,
                         boundLedger,
                         sessionRow,
@@ -230,9 +246,28 @@ public sealed class ExecuteStockImportUseCase(
                         normalizedTradeSide,
                         row,
                         request.DefaultBalanceAction,
+                        importedTransactionsInBatch,
+                        importedCurrencyTransactionsInBatch,
                         cancellationToken);
 
+                    var createdTransaction = creationResult.Transaction;
+
                     insertedRows++;
+                    importedTransactionsInBatch.Add(createdTransaction);
+                    importedCurrencyTransactionsInBatch.AddRange(creationResult.CreatedCurrencyTransactions);
+
+                    if (creationResult.UsesPartialHistoryAssumption)
+                    {
+                        diagnostics.Add(new StockImportDiagnosticDto
+                        {
+                            RowNumber = row.RowNumber,
+                            FieldName = FieldPosition,
+                            InvalidValue = normalizedTradeSide,
+                            ErrorCode = WarningCodePartialPeriodAssumption,
+                            Message = WarningMessagePartialPeriodAssumption,
+                            CorrectionGuidance = WarningCorrectionGuidancePartialPeriodAssumption
+                        });
+                    }
 
                     results.Add(new StockImportExecuteRowResultDto
                     {
@@ -261,15 +296,18 @@ public sealed class ExecuteStockImportUseCase(
                 }
                 catch (BusinessRuleException ex)
                 {
+                    var (fieldName, invalidValue, message, correctionGuidance) =
+                        BuildBusinessRuleFailureDetail(ex.Message, row, normalizedTradeSide);
+
                     AddFailure(
                         row,
                         results,
                         diagnostics,
                         errorCode: ErrorCodeBusinessRuleViolation,
-                        fieldName: FieldRow,
-                        invalidValue: row.RowNumber.ToString(),
-                        message: ex.Message,
-                        correctionGuidance: "請檢查該列交易資料與持倉/匯率條件後重試，必要時調整或排除此列。",
+                        fieldName: fieldName,
+                        invalidValue: invalidValue,
+                        message: message,
+                        correctionGuidance: correctionGuidance,
                         confirmedTradeSide: normalizedTradeSide,
                         balanceDecision: BuildBalanceDecisionContext(request.DefaultBalanceAction, row),
                         logger: logger);
@@ -325,7 +363,7 @@ public sealed class ExecuteStockImportUseCase(
         }
     }
 
-    private async Task<StockTransaction> CreateImportedTransactionAsync(
+    private async Task<ImportedStockTransactionCreationResult> CreateImportedTransactionAsync(
         Domain.Entities.Portfolio portfolio,
         Domain.Entities.CurrencyLedger boundLedger,
         StockImportSessionRowSnapshotDto sessionRow,
@@ -333,22 +371,50 @@ public sealed class ExecuteStockImportUseCase(
         string normalizedTradeSide,
         ExecuteStockImportRowRequest requestRow,
         StockImportDefaultBalanceDecisionRequest? defaultBalanceDecision,
+        IReadOnlyList<StockTransaction> importedTransactionsInBatch,
+        IReadOnlyList<CurrencyTransaction> importedCurrencyTransactionsInBatch,
         CancellationToken cancellationToken)
     {
         var transactionType = ResolveTransactionType(normalizedTradeSide);
-        var balanceDecision = ResolveBalanceDecision(requestRow, defaultBalanceDecision);
+        var balanceDecision = ResolveBalanceDecision(requestRow, defaultBalanceDecision, boundLedger);
 
-        var market = StockTransaction.GuessMarketFromTicker(normalizedTicker);
-        var currency = ParseCurrency(sessionRow.Currency) ?? StockTransaction.GuessCurrencyFromMarket(market);
+        var persistedTransactions = await stockTransactionRepository.GetByPortfolioIdAsync(
+            portfolio.Id,
+            cancellationToken);
+
+        var transactionsForPosition = persistedTransactions
+            .Concat(importedTransactionsInBatch)
+            .GroupBy(transaction => transaction.Id)
+            .Select(group => group.First())
+            .OrderByDescending(transaction => transaction.TransactionDate)
+            .ThenByDescending(transaction => transaction.CreatedAt)
+            .ToList();
+
+        var parsedSessionCurrency = ParseCurrency(sessionRow.Currency);
+        var marketResolution = ResolveImportMarket(
+            normalizedTicker,
+            parsedSessionCurrency,
+            transactionsForPosition);
+
+        if (!marketResolution.HasValue)
+        {
+            throw new StockImportRowFailureException(
+                errorCode: ErrorCodeMarketResolutionRequired,
+                fieldName: FieldMarket,
+                message: "無法唯一判斷市場，請先分開匯入或補上可識別市場的資訊。",
+                correctionGuidance: "當同一 ticker 存在多市場持股時，請提供可辨識市場資訊（例如對應幣別）或分批匯入。",
+                invalidValue: normalizedTicker);
+        }
+
+        var market = marketResolution.Value;
+        var currency = parsedSessionCurrency ?? StockTransaction.GuessCurrencyFromMarket(market);
 
         StockTransactionLinking.ValidateCurrencyMatchesBoundLedger(currency, boundLedger);
 
         var tradeDate = DateTime.SpecifyKind(sessionRow.TradeDate!.Value.Date, DateTimeKind.Utc);
         var shares = sessionRow.Quantity!.Value;
         var pricePerShare = sessionRow.UnitPrice!.Value;
-        var fees = transactionType == TransactionType.Buy
-            ? sessionRow.Fees + sessionRow.Taxes
-            : sessionRow.Fees;
+        var fees = sessionRow.Fees + sessionRow.Taxes;
 
         var subtotal = shares * pricePerShare;
         if (market == StockMarket.TW)
@@ -366,9 +432,13 @@ public sealed class ExecuteStockImportUseCase(
         }
         else
         {
-            ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+            var persistedLedgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                 boundLedger.Id,
                 cancellationToken);
+
+            ledgerTransactions = MergeCurrencyTransactions(
+                persistedLedgerTransactions,
+                importedCurrencyTransactionsInBatch);
 
             var lifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
                 ledgerTransactions,
@@ -387,7 +457,7 @@ public sealed class ExecuteStockImportUseCase(
                     tradeDate,
                     cancellationToken);
 
-                if (fxResult == null)
+                if (fxResult is null)
                     throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
                 marketRate = fxResult.Rate;
@@ -395,34 +465,48 @@ public sealed class ExecuteStockImportUseCase(
             }
         }
 
+        var usesPartialHistoryAssumption = false;
+
         decimal? realizedPnlHome = null;
         if (transactionType == TransactionType.Sell)
         {
-            var existingTransactions = await stockTransactionRepository.GetByPortfolioIdAsync(
-                portfolio.Id,
-                cancellationToken);
-
-            var currentPosition = portfolioCalculator.CalculatePosition(normalizedTicker, existingTransactions);
-            if (currentPosition.TotalShares < shares)
-                throw new BusinessRuleException($"持股不足。可賣出: {currentPosition.TotalShares:F4}，欲賣出: {shares:F4}");
-
-            var tempSellTransaction = new StockTransaction(
-                portfolio.Id,
-                tradeDate,
+            var currentPosition = portfolioCalculator.CalculatePositionByMarket(
                 normalizedTicker,
-                transactionType,
-                shares,
-                pricePerShare,
-                exchangeRate,
-                fees,
-                boundLedger.Id,
-                notes: null,
                 market,
-                currency);
+                transactionsForPosition);
 
-            realizedPnlHome = portfolioCalculator.CalculateRealizedPnl(
-                currentPosition,
-                tempSellTransaction);
+            if (currentPosition.TotalShares < shares)
+            {
+                if (currentPosition.TotalShares <= 0m)
+                {
+                    usesPartialHistoryAssumption = true;
+                }
+                else
+                {
+                    throw new BusinessRuleException($"持股不足。可賣出: {currentPosition.TotalShares:F4}，欲賣出: {shares:F4}");
+                }
+            }
+
+            if (currentPosition.TotalShares >= shares)
+            {
+                var tempSellTransaction = new StockTransaction(
+                    portfolio.Id,
+                    tradeDate,
+                    normalizedTicker,
+                    transactionType,
+                    shares,
+                    pricePerShare,
+                    exchangeRate,
+                    fees,
+                    boundLedger.Id,
+                    notes: null,
+                    market,
+                    currency);
+
+                realizedPnlHome = portfolioCalculator.CalculateRealizedPnl(
+                    currentPosition,
+                    tempSellTransaction);
+            }
         }
 
         var transaction = new StockTransaction(
@@ -454,11 +538,25 @@ public sealed class ExecuteStockImportUseCase(
         {
             if (transactionType == TransactionType.Buy)
             {
-                ledgerTransactions ??= await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
-                    boundLedger.Id,
-                    cancellationToken);
+                if (ledgerTransactions is null)
+                {
+                    var persistedLedgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+                        boundLedger.Id,
+                        cancellationToken);
 
-                var currentBalance = currencyLedgerService.CalculateBalance(ledgerTransactions);
+                    ledgerTransactions = MergeCurrencyTransactions(
+                        persistedLedgerTransactions,
+                        importedCurrencyTransactionsInBatch);
+                }
+
+                var effectiveLedgerTransactions = ledgerTransactions
+                    .Concat(pendingCurrencyTransactions)
+                    .ToList();
+
+                var currentBalance = CalculateBalanceAsOfDate(
+                    currencyLedgerService,
+                    effectiveLedgerTransactions,
+                    tradeDate);
                 var shortfall = linkedSpec.Amount - currentBalance;
 
                 if (shortfall > 0)
@@ -503,7 +601,7 @@ public sealed class ExecuteStockImportUseCase(
                             }
 
                             var marginMarketRate = marketRate ?? exchangeRate;
-                            if (marginMarketRate == null)
+                            if (!marginMarketRate.HasValue)
                             {
                                 throw CreateBalanceActionFailure(
                                     message: "無法計算匯率，請先在帳本中建立換匯紀錄",
@@ -559,48 +657,26 @@ public sealed class ExecuteStockImportUseCase(
                                     invalidValue: topUpTransactionType.ToString());
                             }
 
+                            var topUpAmount = shortfall;
+                            if (topUpAmount <= 0m)
+                            {
+                                break;
+                            }
+
                             decimal? topUpExchangeRate = null;
                             decimal? topUpHomeAmount = null;
 
                             if (boundLedger.CurrencyCode == boundLedger.HomeCurrency)
                             {
                                 topUpExchangeRate = 1.0m;
-                                topUpHomeAmount = shortfall;
-                            }
-
-                            if (topUpTransactionType == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
-                            {
-                                if (marketRate == null)
-                                {
-                                    var fxResult = await txDateFxService.GetOrFetchAsync(
-                                        portfolio.BaseCurrency,
-                                        portfolio.HomeCurrency,
-                                        tradeDate,
-                                        cancellationToken);
-                                    marketRate = fxResult?.Rate;
-                                }
-
-                                if (marketRate == null)
-                                {
-                                    throw CreateBalanceActionFailure(
-                                        message: "無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄",
-                                        action: balanceDecision.Action,
-                                        topUpTransactionType: balanceDecision.TopUpTransactionType,
-                                        requiredAmount: linkedSpec.Amount,
-                                        availableBalance: currentBalance,
-                                        shortfall: shortfall,
-                                        decisionScope: balanceDecisionContext?.DecisionScope);
-                                }
-
-                                topUpExchangeRate = marketRate;
-                                topUpHomeAmount = Math.Round(shortfall * marketRate.Value, 2);
+                                topUpHomeAmount = topUpAmount;
                             }
 
                             var topUpTransaction = new CurrencyTransaction(
                                 boundLedger.Id,
                                 tradeDate,
                                 topUpTransactionType,
-                                shortfall,
+                                topUpAmount,
                                 homeAmount: topUpHomeAmount,
                                 exchangeRate: topUpExchangeRate,
                                 relatedStockTransactionId: transaction.Id,
@@ -609,12 +685,12 @@ public sealed class ExecuteStockImportUseCase(
                             pendingCurrencyTransactions.Add(topUpTransaction);
                             pendingTopUpTransactions.Add(topUpTransaction);
 
-                            var effectiveLedgerTransactions = ledgerTransactions
+                            var postTopUpLedgerTransactions = ledgerTransactions
                                 .Concat(pendingCurrencyTransactions)
                                 .ToList();
 
                             var newLifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
-                                effectiveLedgerTransactions,
+                                postTopUpLedgerTransactions,
                                 tradeDate,
                                 grossAmount);
 
@@ -687,22 +763,70 @@ public sealed class ExecuteStockImportUseCase(
             transaction.TransactionDate,
             cancellationToken);
 
-        return transaction;
+        var usesPartialHistoryAssumptionForWarning = usesPartialHistoryAssumption &&
+            transactionType is TransactionType.Buy or TransactionType.Sell;
+
+        return new ImportedStockTransactionCreationResult(
+            Transaction: transaction,
+            CreatedCurrencyTransactions: pendingCurrencyTransactions,
+            UsesPartialHistoryAssumption: usesPartialHistoryAssumptionForWarning);
     }
 
     private static (BalanceAction Action, CurrencyTransactionType? TopUpTransactionType) ResolveBalanceDecision(
         ExecuteStockImportRowRequest row,
-        StockImportDefaultBalanceDecisionRequest? defaultDecision)
+        StockImportDefaultBalanceDecisionRequest? defaultDecision,
+        Domain.Entities.CurrencyLedger boundLedger)
     {
         var action = row.BalanceAction
             ?? defaultDecision?.Action
             ?? BalanceAction.None;
 
+        if (action == BalanceAction.None)
+        {
+            return (BalanceAction.None, null);
+        }
+
         var topUpType = action == BalanceAction.TopUp
             ? row.TopUpTransactionType ?? defaultDecision?.TopUpTransactionType
             : null;
 
+        if (action == BalanceAction.TopUp
+            && !topUpType.HasValue
+            && IsTwdLedger(boundLedger))
+        {
+            topUpType = CurrencyTransactionType.Deposit;
+        }
+
         return (action, topUpType);
+    }
+
+    private static bool IsTwdLedger(Domain.Entities.CurrencyLedger boundLedger)
+        => string.Equals(boundLedger.CurrencyCode, TwdCurrencyCode, StringComparison.OrdinalIgnoreCase);
+
+    private static decimal CalculateBalanceAsOfDate(
+        CurrencyLedgerService currencyLedgerService,
+        IEnumerable<CurrencyTransaction> ledgerTransactions,
+        DateTime asOfDate)
+    {
+        var asOfDateOnly = asOfDate.Date;
+        var transactionsUpToDate = ledgerTransactions
+            .Where(transaction => transaction.TransactionDate.Date <= asOfDateOnly)
+            .ToList();
+
+        return currencyLedgerService.CalculateBalance(transactionsUpToDate);
+    }
+
+    private static List<CurrencyTransaction> MergeCurrencyTransactions(
+        IEnumerable<CurrencyTransaction> persisted,
+        IEnumerable<CurrencyTransaction> importedInBatch)
+    {
+        return persisted
+            .Concat(importedInBatch)
+            .GroupBy(transaction => transaction.Id)
+            .Select(group => group.First())
+            .OrderBy(transaction => transaction.TransactionDate)
+            .ThenBy(transaction => transaction.CreatedAt)
+            .ToList();
     }
 
     private static StockImportBalanceDecisionContextDto? BuildBalanceDecisionContext(
@@ -759,13 +883,9 @@ public sealed class ExecuteStockImportUseCase(
         string fieldName = FieldBalanceAction,
         string? invalidValue = null)
     {
-        var resolvedInvalidValue = invalidValue;
-        if (resolvedInvalidValue is null)
-        {
-            resolvedInvalidValue = action == BalanceAction.TopUp
-                ? topUpTransactionType?.ToString() ?? action.ToString()
-                : action.ToString();
-        }
+        var resolvedInvalidValue = invalidValue ?? (action == BalanceAction.TopUp
+            ? topUpTransactionType?.ToString() ?? action.ToString()
+            : action.ToString());
 
         return new StockImportRowFailureException(
             errorCode: ErrorCodeBalanceActionRequired,
@@ -784,6 +904,49 @@ public sealed class ExecuteStockImportUseCase(
             });
     }
 
+    private static (string FieldName, string? InvalidValue, string Message, string CorrectionGuidance) BuildBusinessRuleFailureDetail(
+        string errorMessage,
+        ExecuteStockImportRowRequest row,
+        string? normalizedTradeSide)
+    {
+        if (errorMessage.Contains("持股不足", StringComparison.Ordinal))
+        {
+            return (
+                FieldName: FieldPosition,
+                InvalidValue: normalizedTradeSide,
+                Message: errorMessage,
+                CorrectionGuidance: "此列為賣出且可賣股數不足，請調整賣出股數、確認排序，或先匯入對應買入交易後重試。"
+            );
+        }
+
+        if (errorMessage.Contains("尚未確認買賣方向", StringComparison.Ordinal))
+        {
+            return (
+                FieldName: FieldConfirmedTradeSide,
+                InvalidValue: row.ConfirmedTradeSide,
+                Message: errorMessage,
+                CorrectionGuidance: "請先確認此列為 buy 或 sell，或將此列排除後再執行。"
+            );
+        }
+
+        if (errorMessage.Contains("匯率", StringComparison.Ordinal))
+        {
+            return (
+                FieldName: FieldBalanceAction,
+                InvalidValue: row.BalanceAction?.ToString(),
+                Message: errorMessage,
+                CorrectionGuidance: "查無可用匯率；請先補齊帳本換匯資料，或改用可執行的餘額處理方式後重試。"
+            );
+        }
+
+        return (
+            FieldName: FieldRow,
+            InvalidValue: row.RowNumber.ToString(),
+            Message: errorMessage,
+            CorrectionGuidance: "請檢查該列交易資料與持倉/匯率條件後重試，必要時調整或排除此列。"
+        );
+    }
+
     private static string? ResolveInvalidValueForField(
         string fieldName,
         string? normalizedTradeSide,
@@ -794,7 +957,8 @@ public sealed class ExecuteStockImportUseCase(
             FieldBalanceAction => row.BalanceAction?.ToString(),
             StockBalanceActionRules.FieldTopUpTransactionType => row.TopUpTransactionType?.ToString(),
             FieldTicker => row.Ticker,
-            FieldConfirmedTradeSide => normalizedTradeSide,
+            FieldConfirmedTradeSide => row.ConfirmedTradeSide,
+            FieldPosition => normalizedTradeSide,
             _ => normalizedTradeSide
         };
     }
@@ -818,6 +982,46 @@ public sealed class ExecuteStockImportUseCase(
         return null;
     }
 
+    private static StockMarket? ResolveImportMarket(
+        string normalizedTicker,
+        Currency? sessionCurrency,
+        IReadOnlyList<StockTransaction> transactionsForPosition)
+    {
+        var candidateMarkets = GetCandidateMarketsFromExistingTransactions(
+            normalizedTicker,
+            transactionsForPosition);
+
+        if (candidateMarkets.Count == 1)
+            return candidateMarkets[0];
+
+        var inferredMarketFromCurrency = TryInferMarketFromCurrency(sessionCurrency);
+        if (inferredMarketFromCurrency is StockMarket marketFromCurrency)
+            return marketFromCurrency;
+
+        if (candidateMarkets.Count > 1)
+            return null;
+
+        return StockTransaction.GuessMarketFromTicker(normalizedTicker);
+    }
+
+    private static List<StockMarket> GetCandidateMarketsFromExistingTransactions(
+        string normalizedTicker,
+        IReadOnlyList<StockTransaction> transactionsForPosition)
+        => transactionsForPosition
+            .Where(transaction => string.Equals(transaction.Ticker, normalizedTicker, StringComparison.OrdinalIgnoreCase))
+            .Select(transaction => transaction.Market)
+            .Distinct()
+            .ToList();
+
+    private static StockMarket? TryInferMarketFromCurrency(Currency? currency)
+        => currency switch
+        {
+            Currency.TWD => StockMarket.TW,
+            Currency.GBP => StockMarket.UK,
+            Currency.EUR => StockMarket.EU,
+            _ => null
+        };
+
     private static string ResolveStatus(int insertedRows, int failedRows)
     {
         if (failedRows == 0)
@@ -830,8 +1034,8 @@ public sealed class ExecuteStockImportUseCase(
 
     private static void AddFailure(
         ExecuteStockImportRowRequest row,
-        ICollection<StockImportExecuteRowResultDto> results,
-        ICollection<StockImportDiagnosticDto> diagnostics,
+        List<StockImportExecuteRowResultDto> results,
+        List<StockImportDiagnosticDto> diagnostics,
         string errorCode,
         string fieldName,
         string? invalidValue,

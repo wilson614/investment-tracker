@@ -51,10 +51,10 @@ public sealed class StockImportParser : IStockImportParser
             [FieldNames.Ticker] = ["ticker", "symbol", "股票代號", "證券代號", "代號"],
             [FieldNames.TradeDate] = ["日期", "成交日期", "交易日期", "tradeDate"],
             [FieldNames.Quantity] = ["成交股數", "股數", "成交數量", "數量", "quantity"],
-            [FieldNames.NetSettlement] = ["淨收付", "淨收付金額", "netSettlement"],
-            [FieldNames.UnitPrice] = ["成交單價", "單價", "price", "unitPrice"],
+            [FieldNames.NetSettlement] = ["淨收付", "淨收付金額", "淨收付額", "netSettlement"],
+            [FieldNames.UnitPrice] = ["成交單價", "成交均價", "單價", "price", "unitPrice"],
             [FieldNames.Fees] = ["手續費", "fee", "fees", "commission"],
-            [FieldNames.Taxes] = ["交易稅", "稅款", "tax", "taxes"],
+            [FieldNames.Taxes] = ["交易稅", "稅款", "證交稅", "tax", "taxes"],
             [FieldNames.Currency] = ["幣別", "貨幣", "currency", "currencyCode"]
         };
 
@@ -243,7 +243,9 @@ public sealed class StockImportParser : IStockImportParser
         var rawUnitPrice = GetColumnValue(csvRow.Columns, mapping.UnitPriceIndex);
         var rawNetSettlement = GetColumnValue(csvRow.Columns, mapping.NetSettlementIndex);
         var rawFees = GetColumnValue(csvRow.Columns, mapping.FeesIndex);
-        var rawTaxes = GetColumnValue(csvRow.Columns, mapping.TaxesIndex);
+        var rawTaxesValues = mapping.TaxesIndexes
+            .Select(index => GetColumnValue(csvRow.Columns, index))
+            .ToList();
         var rawCurrency = GetColumnValue(csvRow.Columns, mapping.CurrencyIndex);
 
         if (string.IsNullOrWhiteSpace(rawSecurityName) && string.IsNullOrWhiteSpace(ticker))
@@ -349,28 +351,34 @@ public sealed class StockImportParser : IStockImportParser
             fees = 0m;
         }
 
-        var taxes = ParseDecimal(
-            rowNumber,
-            FieldNames.Taxes,
-            rawTaxes,
-            diagnostics,
-            ref blockingError,
-            required: false,
-            allowNegative: false) ?? 0m;
-
-        if (taxes < 0)
+        var taxes = 0m;
+        foreach (var rawTaxes in rawTaxesValues)
         {
-            AddDiagnostic(
-                diagnostics,
+            var parsedTaxes = ParseDecimal(
                 rowNumber,
                 FieldNames.Taxes,
                 rawTaxes,
-                ErrorCodeValueOutOfRange,
-                "稅款不可為負數",
-                "請提供大於或等於 0 的稅款。",
+                diagnostics,
                 ref blockingError,
-                isBlocking: true);
-            taxes = 0m;
+                required: false,
+                allowNegative: false) ?? 0m;
+
+            if (parsedTaxes < 0)
+            {
+                AddDiagnostic(
+                    diagnostics,
+                    rowNumber,
+                    FieldNames.Taxes,
+                    rawTaxes,
+                    ErrorCodeValueOutOfRange,
+                    "稅款不可為負數",
+                    "請提供大於或等於 0 的稅款。",
+                    ref blockingError,
+                    isBlocking: true);
+                continue;
+            }
+
+            taxes += parsedTaxes;
         }
 
         var currency = ParseCurrency(
@@ -587,7 +595,7 @@ public sealed class StockImportParser : IStockImportParser
         var netSettlementIndex = FindHeaderIndex(header.Columns, BrokerHeaderAliases[FieldNames.NetSettlement]);
         var unitPriceIndex = FindHeaderIndex(header.Columns, BrokerHeaderAliases[FieldNames.UnitPrice]);
         var feesIndex = FindHeaderIndex(header.Columns, BrokerHeaderAliases[FieldNames.Fees]);
-        var taxesIndex = FindHeaderIndex(header.Columns, BrokerHeaderAliases[FieldNames.Taxes]);
+        var taxesIndexes = FindHeaderIndexes(header.Columns, BrokerHeaderAliases[FieldNames.Taxes]);
         var currencyIndex = FindHeaderIndex(header.Columns, BrokerHeaderAliases[FieldNames.Currency]);
 
         // 只要有 securityName 或 ticker 其一即可。
@@ -620,7 +628,7 @@ public sealed class StockImportParser : IStockImportParser
             NetSettlementIndex: netSettlementIndex!.Value,
             UnitPriceIndex: unitPriceIndex!.Value,
             FeesIndex: feesIndex,
-            TaxesIndex: taxesIndex,
+            TaxesIndexes: taxesIndexes,
             CurrencyIndex: currencyIndex);
 
         return true;
@@ -951,20 +959,27 @@ public sealed class StockImportParser : IStockImportParser
 
     private static int? FindHeaderIndex(IReadOnlyList<string> headers, IReadOnlyList<string> aliases)
     {
+        var indexes = FindHeaderIndexes(headers, aliases);
+        return indexes.Count > 0 ? indexes[0] : null;
+    }
+
+    private static IReadOnlyList<int> FindHeaderIndexes(IReadOnlyList<string> headers, IReadOnlyList<string> aliases)
+    {
         var aliasSet = aliases
             .Select(NormalizeHeader)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        var indexes = new List<int>();
         for (var index = 0; index < headers.Count; index++)
         {
             var normalizedHeader = NormalizeHeader(headers[index]);
             if (aliasSet.Contains(normalizedHeader))
             {
-                return index;
+                indexes.Add(index);
             }
         }
 
-        return null;
+        return indexes;
     }
 
     private static string NormalizeHeader(string value)
@@ -1138,7 +1153,7 @@ public sealed class StockImportParser : IStockImportParser
         int NetSettlementIndex,
         int UnitPriceIndex,
         int? FeesIndex,
-        int? TaxesIndex,
+        IReadOnlyList<int> TaxesIndexes,
         int? CurrencyIndex);
 
     private sealed record LegacyColumnMapping(

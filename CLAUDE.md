@@ -22,6 +22,36 @@ specs/          # Speckit specification files
 - Backend dev server: port `5000`
 - If ports occupied, allowed to stop occupying processes
 
+### Windows Port Recovery (3000/5000)
+
+When frontend/backend fails to start due to occupied ports, run this minimal recovery flow in PowerShell:
+
+```powershell
+# 1) Check which process is listening on 3000/5000
+Get-NetTCPConnection -LocalPort 3000,5000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object LocalPort, OwningProcess, State
+
+# 2) Stop only the occupying processes by PID
+$pids = Get-NetTCPConnection -LocalPort 3000,5000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique
+if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force } }
+
+# 3) Verify ports are released
+Get-NetTCPConnection -LocalPort 3000,5000 -State Listen -ErrorAction SilentlyContinue
+
+# 4) Start services again
+npm --prefix .\frontend run dev
+# in another terminal
+dotnet run --project .\backend\src\InvestmentTracker.API\InvestmentTracker.API.csproj
+```
+
+Fast fallback cleanup (if you do not need PID-level precision):
+
+```powershell
+taskkill /F /IM node.exe
+taskkill /F /IM dotnet.exe
+```
+
 ## Git Commit Preferences
 
 - **No** `🤖 Generated with [Claude Code]` or `Co-Authored-By: Claude` suffix

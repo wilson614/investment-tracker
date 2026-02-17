@@ -12,7 +12,7 @@ namespace InvestmentTracker.Application.Tests.UseCases.CurrencyLedger;
 
 /// <summary>
 /// Unit tests for TWD (home currency) ledger transaction types.
-/// Verifies FR-003: TWD ledger supports Deposit, Withdraw, Interest, Spend, OtherIncome, OtherExpense.
+/// Verifies FR-003 matrix and manual-create/update transaction type policy behavior.
 /// </summary>
 public class TwdLedgerTransactionTypesTests
 {
@@ -80,7 +80,7 @@ public class TwdLedgerTransactionTypesTests
     }
 
     [Fact]
-    public void CurrencyTransaction_Spend_ShouldWorkWithTwdLedger()
+    public void CurrencyTransaction_Spend_DomainEntity_ShouldRemainValidForStockLinkedFlow()
     {
         // Arrange & Act
         var transaction = new CurrencyTransaction(
@@ -170,7 +170,7 @@ public class TwdLedgerTransactionTypesTests
     [InlineData(CurrencyTransactionType.Deposit, true)]
     [InlineData(CurrencyTransactionType.Withdraw, true)]
     [InlineData(CurrencyTransactionType.Interest, true)]
-    [InlineData(CurrencyTransactionType.Spend, true)]
+    [InlineData(CurrencyTransactionType.Spend, false)]
     [InlineData(CurrencyTransactionType.InitialBalance, true)]
     [InlineData(CurrencyTransactionType.OtherIncome, true)]
     [InlineData(CurrencyTransactionType.OtherExpense, true)]
@@ -184,7 +184,8 @@ public class TwdLedgerTransactionTypesTests
             transactionType,
             amountPresence: new CurrencyTransactionAmountPresence(
                 HasAmount: true,
-                HasTargetAmount: true));
+                HasTargetAmount: true),
+            allowManualSpend: false);
 
         // Assert
         result.IsValid.Should().Be(expectedValid);
@@ -196,6 +197,17 @@ public class TwdLedgerTransactionTypesTests
         }
 
         result.Diagnostics.Should().ContainSingle();
+
+        if (transactionType == CurrencyTransactionType.Spend)
+        {
+            result.Diagnostics[0].ErrorCode.Should().Be(CurrencyTransactionTypePolicy.InvalidManualTransactionTypeErrorCode);
+            result.Diagnostics[0].FieldName.Should().Be("transactionType");
+            result.Diagnostics[0].InvalidValue.Should().Be(transactionType.ToString());
+            result.Diagnostics[0].Message.Should().Be(CurrencyTransactionTypePolicy.ManualSpendDisallowedMessage);
+            result.Diagnostics[0].CorrectionGuidance.Should().Be(CurrencyTransactionTypePolicy.ManualSpendDisallowedCorrectionGuidance);
+            return;
+        }
+
         result.Diagnostics[0].ErrorCode.Should().Be(CurrencyTransactionTypePolicy.InvalidTransactionTypeForLedgerErrorCode);
         result.Diagnostics[0].FieldName.Should().Be("transactionType");
         result.Diagnostics[0].InvalidValue.Should().Be(transactionType.ToString());
@@ -208,11 +220,10 @@ public class TwdLedgerTransactionTypesTests
     [InlineData(CurrencyTransactionType.Deposit)]
     [InlineData(CurrencyTransactionType.Withdraw)]
     [InlineData(CurrencyTransactionType.Interest)]
-    [InlineData(CurrencyTransactionType.Spend)]
     [InlineData(CurrencyTransactionType.InitialBalance)]
     [InlineData(CurrencyTransactionType.OtherIncome)]
     [InlineData(CurrencyTransactionType.OtherExpense)]
-    public void CurrencyTransactionTypePolicy_Validate_NonTwdLedger_ShouldAllowAllCurrentTypes(
+    public void CurrencyTransactionTypePolicy_Validate_NonTwdLedger_WhenManualSpendAllowed_ShouldAllowAllCurrentManualTypes(
         CurrencyTransactionType transactionType)
     {
         // Act
@@ -221,7 +232,47 @@ public class TwdLedgerTransactionTypesTests
             transactionType,
             amountPresence: new CurrencyTransactionAmountPresence(
                 HasAmount: true,
-                HasTargetAmount: true));
+                HasTargetAmount: true),
+            allowManualSpend: true);
+
+        // Assert
+        result.IsValid.Should().BeTrue();
+        result.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void CurrencyTransactionTypePolicy_Validate_NonTwdLedger_WithManualSpend_ShouldFailWhenManualSpendDisabled()
+    {
+        // Act
+        var result = CurrencyTransactionTypePolicy.Validate(
+            ledgerCurrencyCode: "USD",
+            transactionType: CurrencyTransactionType.Spend,
+            amountPresence: new CurrencyTransactionAmountPresence(
+                HasAmount: true,
+                HasTargetAmount: true),
+            allowManualSpend: false);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Diagnostics.Should().ContainSingle();
+        result.Diagnostics[0].ErrorCode.Should().Be(CurrencyTransactionTypePolicy.InvalidManualTransactionTypeErrorCode);
+        result.Diagnostics[0].FieldName.Should().Be("transactionType");
+        result.Diagnostics[0].InvalidValue.Should().Be(CurrencyTransactionType.Spend.ToString());
+        result.Diagnostics[0].Message.Should().Be(CurrencyTransactionTypePolicy.ManualSpendDisallowedMessage);
+        result.Diagnostics[0].CorrectionGuidance.Should().Be(CurrencyTransactionTypePolicy.ManualSpendDisallowedCorrectionGuidance);
+    }
+
+    [Fact]
+    public void CurrencyTransactionTypePolicy_Validate_NonTwdLedger_WithManualSpend_ShouldPassWhenManualSpendEnabled()
+    {
+        // Act
+        var result = CurrencyTransactionTypePolicy.Validate(
+            ledgerCurrencyCode: "USD",
+            transactionType: CurrencyTransactionType.Spend,
+            amountPresence: new CurrencyTransactionAmountPresence(
+                HasAmount: true,
+                HasTargetAmount: true),
+            allowManualSpend: true);
 
         // Assert
         result.IsValid.Should().BeTrue();
@@ -296,6 +347,56 @@ public class TwdLedgerTransactionTypesTests
         var ex = await act.Should().ThrowAsync<BusinessRuleException>();
         ex.Which.Message.Should().Contain("交易類型不符合此帳本規則");
         ex.Which.Message.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+
+        transactionRepository.Verify(x => x.AddAsync(It.IsAny<CurrencyTransaction>(), It.IsAny<CancellationToken>()), Times.Never);
+        transactionManager.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateCurrencyTransactionUseCase_CreateOnUsdLedger_WithManualSpend_ShouldThrowBusinessRuleException()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var ledgerId = Guid.NewGuid();
+        var ledger = new global::InvestmentTracker.Domain.Entities.CurrencyLedger(userId, "USD", "USD Ledger", "TWD");
+        typeof(global::InvestmentTracker.Domain.Entities.CurrencyLedger).GetProperty("Id")!.SetValue(ledger, ledgerId);
+
+        var transactionRepository = new Mock<ICurrencyTransactionRepository>();
+        var ledgerRepository = new Mock<ICurrencyLedgerRepository>();
+        var portfolioRepository = new Mock<IPortfolioRepository>();
+        var txSnapshotService = new Mock<ITransactionPortfolioSnapshotService>();
+        var currentUserService = new Mock<ICurrentUserService>();
+        var transactionManager = new Mock<IAppDbTransactionManager>();
+
+        ledgerRepository
+            .Setup(x => x.GetByIdAsync(ledgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ledger);
+        currentUserService.Setup(x => x.UserId).Returns(userId);
+
+        var useCase = new CreateCurrencyTransactionUseCase(
+            transactionRepository.Object,
+            ledgerRepository.Object,
+            portfolioRepository.Object,
+            txSnapshotService.Object,
+            currentUserService.Object,
+            transactionManager.Object);
+
+        var request = new CreateCurrencyTransactionRequest
+        {
+            CurrencyLedgerId = ledgerId,
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 100m,
+            HomeAmount = 3100m,
+            ExchangeRate = 31m
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(request);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<BusinessRuleException>();
+        ex.Which.Message.Should().Be(CurrencyTransactionTypePolicy.GetManualSpendDisallowedErrorMessage());
 
         transactionRepository.Verify(x => x.AddAsync(It.IsAny<CurrencyTransaction>(), It.IsAny<CancellationToken>()), Times.Never);
         transactionManager.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -433,6 +534,71 @@ public class TwdLedgerTransactionTypesTests
         var ex = await act.Should().ThrowAsync<BusinessRuleException>();
         ex.Which.Message.Should().Contain("交易類型不符合此帳本規則");
         ex.Which.Message.Should().Contain("TWD 帳本不可使用 ExchangeBuy/ExchangeSell");
+
+        transactionRepository.Verify(x => x.UpdateAsync(It.IsAny<CurrencyTransaction>(), It.IsAny<CancellationToken>()), Times.Never);
+        transactionManager.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateCurrencyTransactionUseCase_UpdateOnUsdLedger_WithManualSpend_ShouldThrowBusinessRuleException()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var ledgerId = Guid.NewGuid();
+        var transactionId = Guid.NewGuid();
+
+        var ledger = new global::InvestmentTracker.Domain.Entities.CurrencyLedger(userId, "USD", "USD Ledger", "TWD");
+        typeof(global::InvestmentTracker.Domain.Entities.CurrencyLedger).GetProperty("Id")!.SetValue(ledger, ledgerId);
+
+        var existing = new CurrencyTransaction(
+            ledgerId,
+            DateTime.UtcNow.AddDays(-2),
+            CurrencyTransactionType.Deposit,
+            foreignAmount: 500m,
+            homeAmount: 15500m,
+            exchangeRate: 31m,
+            notes: "before update");
+        typeof(CurrencyTransaction).GetProperty("Id")!.SetValue(existing, transactionId);
+
+        var transactionRepository = new Mock<ICurrencyTransactionRepository>();
+        var ledgerRepository = new Mock<ICurrencyLedgerRepository>();
+        var portfolioRepository = new Mock<IPortfolioRepository>();
+        var txSnapshotService = new Mock<ITransactionPortfolioSnapshotService>();
+        var currentUserService = new Mock<ICurrentUserService>();
+        var transactionManager = new Mock<IAppDbTransactionManager>();
+
+        transactionRepository
+            .Setup(x => x.GetByIdAsync(transactionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        ledgerRepository
+            .Setup(x => x.GetByIdAsync(ledgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ledger);
+        currentUserService.Setup(x => x.UserId).Returns(userId);
+
+        var useCase = new UpdateCurrencyTransactionUseCase(
+            transactionRepository.Object,
+            ledgerRepository.Object,
+            portfolioRepository.Object,
+            txSnapshotService.Object,
+            currentUserService.Object,
+            transactionManager.Object);
+
+        var request = new UpdateCurrencyTransactionRequest
+        {
+            TransactionDate = DateTime.UtcNow.AddDays(-1),
+            TransactionType = CurrencyTransactionType.Spend,
+            ForeignAmount = 10m,
+            HomeAmount = 300m,
+            ExchangeRate = 30m,
+            Notes = "manual spend should fail"
+        };
+
+        // Act
+        var act = async () => await useCase.ExecuteAsync(transactionId, request);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<BusinessRuleException>();
+        ex.Which.Message.Should().Be(CurrencyTransactionTypePolicy.GetManualSpendDisallowedErrorMessage());
 
         transactionRepository.Verify(x => x.UpdateAsync(It.IsAny<CurrencyTransaction>(), It.IsAny<CancellationToken>()), Times.Never);
         transactionManager.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);

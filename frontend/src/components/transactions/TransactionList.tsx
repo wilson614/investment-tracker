@@ -63,6 +63,13 @@ const currencyLabels: Record<Currency, string> = {
 };
 
 export function TransactionList({ transactions, onDelete, onEdit }: TransactionListProps) {
+  const shouldHideExchangeRateColumn = transactions.every(
+    (tx) =>
+      tx.market === StockMarketEnum.TW
+      && tx.currency === CurrencyEnum.TWD
+      && (tx.exchangeRate == null || tx.exchangeRate === 1)
+  );
+
   const formatNumber = (value: number, decimals = 2) => {
     return value.toLocaleString('zh-TW', {
       minimumFractionDigits: decimals,
@@ -133,7 +140,7 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
             <th>類型</th>
             <th className="text-right">股數</th>
             <th className="text-right">價格</th>
-            <th className="text-right">匯率</th>
+            {!shouldHideExchangeRateColumn && <th className="text-right">匯率</th>}
             <th className="text-right">手續費</th>
             <th className="text-right">總成本</th>
             <th className="text-right">已實現損益</th>
@@ -173,9 +180,11 @@ export function TransactionList({ transactions, onDelete, onEdit }: TransactionL
                 <td className="text-right number-display whitespace-nowrap">
                   {renderPrice(tx)}
                 </td>
-                <td className="text-right number-display whitespace-nowrap">
-                  {tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : '-'}
-                </td>
+                {!shouldHideExchangeRateColumn && (
+                  <td className="text-right number-display whitespace-nowrap">
+                    {tx.exchangeRate != null ? formatNumber(tx.exchangeRate, 4) : '-'}
+                  </td>
+                )}
                 <td className="text-right number-display whitespace-nowrap">
                   {formatNumber(tx.fees)}
                 </td>

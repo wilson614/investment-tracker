@@ -17,16 +17,14 @@
 ### 1. Backend
 
 ```bash
-cd backend
-
 # Restore dependencies
-dotnet restore
+dotnet restore backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 
 # Apply migrations (if any new ones added)
-dotnet ef database update -p src/InvestmentTracker.Infrastructure -s src/InvestmentTracker.API
+dotnet ef database update -p backend/src/InvestmentTracker.Infrastructure/InvestmentTracker.Infrastructure.csproj -s backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 
 # Run backend
-dotnet run --project src/InvestmentTracker.API
+dotnet run --project backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 ```
 
 Backend runs on `http://localhost:5000`
@@ -99,6 +97,34 @@ Key test files to create:
 - `SimpleReturnCalculatorTests.cs` - Unit tests for calculation
 - `MonthlySnapshotServiceTests.cs` - Integration tests for snapshot generation
 - `YahooAnnualReturnServiceTests.cs` - Tests for Yahoo scraping
+
+### Optimization Evidence (Group C Final Batch / C3)
+
+- Yearly path (`HistoricalPerformanceServiceReturnTests.CalculateYearPerformanceAsync_SingleBuyOnYearStart_ModifiedDietzEqualsTwr`):
+  - `txSnapshotService.BackfillSnapshotsAsync(...)` asserted `Times.Once`
+  - `txSnapshotService.GetSnapshotsAsync(...)` asserted `Times.Once`
+  - `historicalYearEndDataService.GetOrFetchYearEndPriceAsync(...)` asserted `Times.Never` when caller already provides year-end prices
+  - `historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync(...)` asserted `Times.Never` when caller already provides year-end prices
+
+- Yearly auto-fetch path (`HistoricalPerformanceServiceReturnTests.CalculateYearPerformanceAsync_AutoFetchSameTickerForYearStartAndYearEnd_DeduplicatesPriceAndFxCalls`):
+  - `historicalYearEndDataService.GetOrFetchYearEndPriceAsync("VWRA", year, ...)` asserted `Times.Once`
+  - `historicalYearEndDataService.GetOrFetchYearEndPriceAsync("VWRA", year - 1, ...)` asserted `Times.Once`
+  - `historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, ...)` asserted `Times.Once`
+  - `historicalYearEndDataService.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, ...)` asserted `Times.Once`
+  - Snapshot service calls (`BackfillSnapshotsAsync`/`GetSnapshotsAsync`) each asserted `Times.Once`
+
+- Monthly path (`MonthlySnapshotServiceTests`):
+  - `GetMonthlyNetWorthAsync_TaiwanTicker_UsesYahooPrice_WhenYahooHasData`: Yahoo historical price `Times.Once`, TWSE `Times.Never`
+  - `GetMonthlyNetWorthAsync_TaiwanTicker_YahooMiss_FallsBackToTwse_AndSkipsFxCall`: Yahoo `Times.Once`, TWSE `Times.Once`
+  - `GetMonthlyNetWorthAsync_SameTickerAcrossMonths_UsesYahooRangeSeriesCache`: same ticker over 3 months uses `GetHistoricalPriceSeriesAsync(...)` `Times.Once` and `GetHistoricalPriceAsync(...)` `Times.Never` (range cache hit across months)
+
+- Transaction snapshot path (`TransactionPortfolioSnapshotServiceTests`):
+  - `UpsertSnapshotAsync_YahooFirstForTaiwanTicker_AndCachesHistoricalLookupWithinRun`: Yahoo historical price `Times.Once`, TWSE `Times.Never`
+  - `UpsertSnapshotAsync_TaiwanTicker_YahooMiss_FallsBackToTwse`: Yahoo `Times.Once`, TWSE `Times.Once`
+
+Before/After proof points:
+- Before optimization: TWSE/TPEx could be hit as primary source in historical Taiwan pricing paths.
+- After optimization (C1+C2+C3): Yahoo is primary across yearly/monthly/transaction paths; TWSE/TPEx is fallback-only and call-count assertions verify the reduced dependency.
 
 ### Frontend Tests
 

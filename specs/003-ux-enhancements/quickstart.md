@@ -29,9 +29,8 @@ dotnet ef database update -s ../InvestmentTracker.API
 ### 2. Backend - Build and Run
 
 ```bash
-cd backend
-dotnet build
-dotnet run --project src/InvestmentTracker.API
+dotnet build backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
+dotnet run --project backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj
 ```
 
 ### 3. Frontend - Install and Run

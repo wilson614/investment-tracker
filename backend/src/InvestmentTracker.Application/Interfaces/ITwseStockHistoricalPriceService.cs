@@ -35,5 +35,6 @@ public interface ITwseStockHistoricalPriceService
 public record TwseStockPriceResult(
     decimal Price,
     DateOnly ActualDate,
-    string StockNo
+    string StockNo,
+    string Source = "TWSE"
 );

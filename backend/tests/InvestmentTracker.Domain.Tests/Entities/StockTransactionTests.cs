@@ -489,5 +489,41 @@ public class StockTransactionTests
         Assert.Equal(81.75m, transaction.TotalCostSource);
     }
 
+    [Fact]
+    public void NetProceedsSource_TaiwanStock_FloorThenSubtractFees()
+    {
+        // Arrange: 3 × 27.25 = 81.75 -> floor to 81, then 81 - 20 = 61
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "2330",
+            TransactionType.Sell,
+            3m,
+            27.25m,
+            1m,
+            20m);
+
+        // Act & Assert
+        Assert.Equal(61m, transaction.NetProceedsSource);
+    }
+
+    [Fact]
+    public void NetProceedsSource_USStock_DoesNotUseFloor()
+    {
+        // Arrange: 3 × 27.25 = 81.75, then 81.75 - 20 = 61.75
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VOO",
+            TransactionType.Sell,
+            3m,
+            27.25m,
+            1m,
+            20m);
+
+        // Act & Assert
+        Assert.Equal(61.75m, transaction.NetProceedsSource);
+    }
+
     #endregion
 }

@@ -58,11 +58,7 @@ internal static class StockTransactionLinking
 
         if (stockTransactionType == TransactionType.Sell)
         {
-            var subtotal = stockTransaction.Shares * stockTransaction.PricePerShare;
-            if (stockTransaction.IsTaiwanStock)
-                subtotal = Math.Floor(subtotal);
-
-            var netProceeds = subtotal - stockTransaction.Fees;
+            var netProceeds = stockTransaction.NetProceedsSource;
             if (netProceeds > 0)
             {
                 return new LinkedCurrencyTransactionSpec(
