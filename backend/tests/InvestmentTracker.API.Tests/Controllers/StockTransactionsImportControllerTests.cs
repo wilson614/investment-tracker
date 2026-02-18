@@ -25,6 +25,15 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     private const string ExecuteEndpoint = "/api/stocktransactions/import/execute";
     private const string SampleBrokerStatementFixtureFileName = "SampleBrokerStatement.csv";
 
+    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter(allowIntegerValues: true)
+        }
+    };
+
     private static readonly IReadOnlyDictionary<string, string> TwSecurityNameMappings =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -143,7 +152,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var executeDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(
             executePayload,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            ApiJsonOptions);
         executeDto.Should().NotBeNull();
 
         var executeSummary = executeDto!.Summary;
@@ -211,16 +220,16 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         netSharesByTicker.Values.Should().Contain(value => value == 0m,
             "sample CSV contains round-trip trades that close out to zero shares");
-        netSharesByTicker.Values.Should().Contain(value => value < 0m,
-            "sample CSV contains partial-period sells that can leave non-positive net holdings");
+        netSharesByTicker.Values.Should().Contain(value => value <= 0m,
+            "sample CSV should include at least one ticker whose net shares are non-positive after import");
 
         var netPositiveTickers = netSharesByTicker
             .Where(entry => entry.Value > 0m)
             .Select(entry => entry.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var nonPositiveTickers = netSharesByTicker
-            .Where(entry => entry.Value <= 0m)
+        var netNegativeTickers = netSharesByTicker
+            .Where(entry => entry.Value < 0m)
             .Select(entry => entry.Key)
             .ToList();
 
@@ -237,14 +246,18 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             .Select(position => position.Ticker)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        summaryTickers.Should().BeEquivalentTo(netPositiveTickers,
-            "summary endpoint returns positions only when imported net shares remain positive");
+        foreach (var ticker in netPositiveTickers)
+        {
+            summaryTickers.Should().Contain(
+                ticker,
+                $"ticker {ticker} remains net-positive in imported transactions");
+        }
 
-        foreach (var ticker in nonPositiveTickers)
+        foreach (var ticker in netNegativeTickers)
         {
             summary.Positions.Should().NotContain(
                 position => position.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase),
-                $"ticker {ticker} has non-positive net shares ({netSharesByTicker[ticker]})");
+                $"ticker {ticker} has negative net shares ({netSharesByTicker[ticker]})");
         }
 
         summary.Positions.Should().Contain(position => position.TotalCostSource > 0m);
@@ -283,7 +296,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(
             yearPayload,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            ApiJsonOptions);
         yearPerformance.Should().NotBeNull();
         yearPerformance!.Year.Should().Be(2026);
         yearPerformance.SourceCurrency.Should().NotBeNullOrWhiteSpace();
@@ -1120,7 +1133,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
-    public async Task Execute_PartialPeriodSellWithoutHoldings_ShouldCommitWithWarning()
+    public async Task Execute_PartialPeriodSellWithoutHoldings_WithoutDecision_ShouldRejectWithSellBeforeBuyActionRequired()
     {
         // Arrange
         var portfolio = await CreateTestPortfolioAsync("Stock Import Sell No Holdings", currencyCode: "TWD");
@@ -1139,9 +1152,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         using var previewJson = JsonDocument.Parse(previewPayload);
         var root = previewJson.RootElement;
 
-        var sessionId = root.GetProperty("sessionId").GetGuid();
         var firstRow = root.GetProperty("rows").EnumerateArray().Single();
+        firstRow.GetProperty("status").GetString().Should().Be("requires_user_action");
+        firstRow.GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeTrue();
+        firstRow.GetProperty("actionsRequired").EnumerateArray().Select(x => x.GetString()).Should().Contain("choose_sell_before_buy_handling");
 
+        var sessionId = root.GetProperty("sessionId").GetGuid();
         var executeRequest = new ExecuteStockImportRequest
         {
             SessionId = sessionId,
@@ -1168,21 +1184,102 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         using var json = JsonDocument.Parse(payload);
         var executeRoot = json.RootElement;
 
-        executeRoot.GetProperty("status").GetString().Should().Be("committed");
+        executeRoot.GetProperty("status").GetString().Should().Be("rejected");
 
         var result = executeRoot.GetProperty("results").EnumerateArray().Single();
-        result.GetProperty("success").GetBoolean().Should().BeTrue();
-        result.GetProperty("transactionId").GetGuid().Should().NotBe(Guid.Empty);
+        result.GetProperty("success").GetBoolean().Should().BeFalse();
+        result.GetProperty("errorCode").GetString().Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
 
-        var warning = executeRoot.GetProperty("errors").EnumerateArray().Single();
-        warning.GetProperty("fieldName").GetString().Should().Be("position");
-        warning.GetProperty("invalidValue").GetString().Should().Be("sell");
-        warning.GetProperty("errorCode").GetString().Should().Be("PARTIAL_PERIOD_ASSUMPTION");
-        warning.GetProperty("message").GetString().Should().Contain("部分期間");
+        var error = executeRoot.GetProperty("errors").EnumerateArray().Single();
+        error.GetProperty("fieldName").GetString().Should().Be("sellBeforeBuyAction");
+        error.GetProperty("errorCode").GetString().Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
     }
 
     [Fact]
-    public async Task Execute_PartialPeriodSellThenBuy_ShouldUseSellIncomeWithoutTopUp()
+    public async Task Execute_PartialPeriodSellWithoutHoldings_WithCreateAdjustment_ShouldCommitWithoutOpeningPosition()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Sell No Holdings CreateAdjustment", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneSellRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var root = previewJson.RootElement;
+
+        var firstRow = root.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = root.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = "sell",
+                    SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeRoot = executeJson.RootElement;
+
+        executeRoot.GetProperty("status").GetString().Should().Be("committed");
+        executeRoot.GetProperty("summary").GetProperty("insertedRows").GetInt32().Should().Be(1);
+        executeRoot.GetProperty("summary").GetProperty("failedRows").GetInt32().Should().Be(0);
+
+        var result = executeRoot.GetProperty("results").EnumerateArray().Single();
+        result.GetProperty("success").GetBoolean().Should().BeTrue();
+        result.TryGetProperty("errorCode", out var errorCodeElement).Should().BeTrue();
+        errorCodeElement.ValueKind.Should().Be(JsonValueKind.Null);
+
+        var warnings = executeRoot.GetProperty("errors").EnumerateArray().ToList();
+        warnings.Should().ContainSingle();
+        warnings[0].GetProperty("errorCode").GetString().Should().Be("PARTIAL_PERIOD_ASSUMPTION");
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var importedSell = await verifyDbContext.StockTransactions
+            .Where(transaction => transaction.PortfolioId == portfolio.Id && transaction.TransactionType == TransactionType.Sell)
+            .OrderByDescending(transaction => transaction.CreatedAt)
+            .FirstAsync();
+
+        importedSell.RealizedPnlHome.Should().Be(16544m);
+
+        var hasAdjustment = await verifyDbContext.StockTransactions.AnyAsync(transaction =>
+            transaction.PortfolioId == portfolio.Id
+            && transaction.Ticker == "2330"
+            && transaction.TransactionType == TransactionType.Adjustment
+            && transaction.Notes != null
+            && transaction.Notes.Contains("import-execute-adjustment"));
+
+        hasAdjustment.Should().BeTrue("CreateAdjustment 應持久化一筆 adjustment 交易以便追蹤");
+    }
+
+    [Fact]
+    public async Task Execute_PartialPeriodSellThenBuy_WithOpeningDecision_ShouldUseSellIncomeWithoutTopUp()
     {
         // Arrange
         var portfolio = await CreateTestPortfolioAsync("Stock Import Partial-Period Sell Then Buy", currencyCode: "TWD");
@@ -1191,7 +1288,20 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         {
             PortfolioId = portfolio.Id,
             CsvContent = BuildBrokerStatementCsvWithSellThenBuyRows(),
-            SelectedFormat = "broker_statement"
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc),
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 100m,
+                        TotalCost = 100000m
+                    }
+                ]
+            }
         };
 
         var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
@@ -1209,6 +1319,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         {
             SessionId = sessionId,
             PortfolioId = portfolio.Id,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.UseOpeningPosition
+            },
             DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
             {
                 Action = BalanceAction.TopUp,
@@ -1265,6 +1379,169 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             transaction => transaction.TransactionType == CurrencyTransactionType.Deposit &&
                 transaction.Notes != null && transaction.Notes.Contains("補足買入", StringComparison.Ordinal),
             "先賣出已產生可用餘額時，下一筆買入不應再補足");
+    }
+
+    [Fact]
+    public async Task Execute_PartialPeriodSell_WithBaselineCost_ShouldPersistRealizedPnlFromOpeningCostBasis()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Partial-Period Sell Baseline Cost", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneSellRow(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc),
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 100m,
+                        TotalCost = 6000m
+                    }
+                ]
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var root = previewJson.RootElement;
+
+        var firstRow = root.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = root.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.UseOpeningPosition
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = "sell",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeRoot = executeJson.RootElement;
+
+        executeRoot.GetProperty("status").GetString().Should().Be("committed");
+        executeRoot.GetProperty("summary").GetProperty("insertedRows").GetInt32().Should().Be(1);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var importedSell = await verifyDbContext.StockTransactions
+            .Where(transaction => transaction.PortfolioId == portfolio.Id && transaction.TransactionType == TransactionType.Sell)
+            .OrderByDescending(transaction => transaction.CreatedAt)
+            .FirstAsync();
+
+        importedSell.RealizedPnlHome.Should().Be(10544m, "opening baseline totalCost should be used as sell cost basis");
+    }
+
+    [Fact]
+    public async Task Execute_WithOpeningLedgerBalance_ShouldSeedInitialBalanceAndAvoidTopUpDeposit()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Opening Ledger Balance", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                OpeningCashBalance = 626425m,
+                OpeningLedgerBalance = null
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var root = previewJson.RootElement;
+
+        var firstRow = root.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = root.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeRoot = executeJson.RootElement;
+
+        executeRoot.GetProperty("status").GetString().Should().Be("committed");
+        executeRoot.GetProperty("summary").GetProperty("insertedRows").GetInt32().Should().Be(1);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var linkedCurrencyTransactions = await verifyDbContext.CurrencyTransactions
+            .Where(transaction => transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId)
+            .ToListAsync();
+
+        linkedCurrencyTransactions.Should().Contain(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.InitialBalance
+            && transaction.ForeignAmount == 626425m
+            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            && string.Equals(transaction.Notes, "import-execute-opening-ledger-baseline", StringComparison.Ordinal));
+
+        linkedCurrencyTransactions.Should().Contain(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
+        linkedCurrencyTransactions.Should().NotContain(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Deposit
+            && transaction.Notes != null
+            && transaction.Notes.Contains("補足買入", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1,10 +1,12 @@
 using System.Collections.Generic;
-using Microsoft.Extensions.Configuration;
 using InvestmentTracker.Application.Interfaces;
+using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -79,6 +81,111 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             {
                 var mock = new Mock<ICurrentUserService>();
                 mock.Setup(x => x.UserId).Returns(() => _testUserId);
+                return mock.Object;
+            });
+
+            // Avoid external network dependency in integration tests.
+            services.RemoveAll<IYahooHistoricalPriceService>();
+            services.AddScoped<IYahooHistoricalPriceService>(_ =>
+            {
+                var mock = new Mock<IYahooHistoricalPriceService>();
+                mock.Setup(x => x.GetExchangeRateAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<string>(),
+                        It.IsAny<DateOnly>(),
+                        It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string from, string to, DateOnly date, CancellationToken _) =>
+                    {
+                        var fromNormalized = from.ToUpperInvariant();
+                        var toNormalized = to.ToUpperInvariant();
+
+                        if (string.Equals(fromNormalized, toNormalized, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new YahooExchangeRateResult
+                            {
+                                CurrencyPair = $"{fromNormalized}{toNormalized}",
+                                Rate = 1m,
+                                ActualDate = date
+                            };
+                        }
+
+                        if (fromNormalized == "USD" && toNormalized == "TWD")
+                        {
+                            return new YahooExchangeRateResult
+                            {
+                                CurrencyPair = "USDTWD",
+                                Rate = 32m,
+                                ActualDate = date
+                            };
+                        }
+
+                        if (fromNormalized == "TWD" && toNormalized == "USD")
+                        {
+                            return new YahooExchangeRateResult
+                            {
+                                CurrencyPair = "TWDUSD",
+                                Rate = 0.03125m,
+                                ActualDate = date
+                            };
+                        }
+
+                        return new YahooExchangeRateResult
+                        {
+                            CurrencyPair = $"{fromNormalized}{toNormalized}",
+                            Rate = 1m,
+                            ActualDate = date
+                        };
+                    });
+
+                mock.Setup(x => x.GetHistoricalPriceAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<DateOnly>(),
+                        It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string symbol, DateOnly date, CancellationToken _) =>
+                    {
+                        var currency = symbol.EndsWith(".TW", StringComparison.OrdinalIgnoreCase)
+                            || symbol.EndsWith(".TWO", StringComparison.OrdinalIgnoreCase)
+                            ? "TWD"
+                            : "USD";
+
+                        return new YahooHistoricalPriceResult
+                        {
+                            Price = 100m,
+                            ActualDate = date,
+                            Currency = currency
+                        };
+                    });
+
+                mock.Setup(x => x.GetHistoricalPriceSeriesAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<DateOnly>(),
+                        It.IsAny<DateOnly>(),
+                        It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string symbol, DateOnly fromDate, DateOnly toDate, CancellationToken _) =>
+                    {
+                        var currency = symbol.EndsWith(".TW", StringComparison.OrdinalIgnoreCase)
+                            || symbol.EndsWith(".TWO", StringComparison.OrdinalIgnoreCase)
+                            ? "TWD"
+                            : "USD";
+
+                        var series = new List<YahooHistoricalPricePoint>
+                        {
+                            new() { Date = fromDate, Price = 100m, Currency = currency }
+                        };
+
+                        if (toDate != fromDate)
+                        {
+                            series.Add(new YahooHistoricalPricePoint
+                            {
+                                Date = toDate,
+                                Price = 100m,
+                                Currency = currency
+                            });
+                        }
+
+                        return (IReadOnlyList<YahooHistoricalPricePoint>)series;
+                    });
+
                 return mock.Object;
             });
         });

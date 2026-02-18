@@ -125,6 +125,7 @@ public record StockImportPreviewRowDto
     /// </summary>
     public string Status { get; init; } = string.Empty;
 
+    public bool UsesPartialHistoryAssumption { get; init; }
     public IReadOnlyList<string> ActionsRequired { get; init; } = [];
 
     /// <summary>

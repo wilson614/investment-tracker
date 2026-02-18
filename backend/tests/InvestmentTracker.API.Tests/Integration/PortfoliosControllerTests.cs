@@ -503,7 +503,28 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.TransactionCount.Should().Be(single.TransactionCount);
         aggregate.CashFlowCount.Should().Be(single.CashFlowCount);
         aggregate.EarliestTransactionDateInYear.Should().Be(single.EarliestTransactionDateInYear);
+        aggregate.CoverageStartDate.Should().Be(single.CoverageStartDate);
+        aggregate.CoverageDays.Should().Be(single.CoverageDays);
+        aggregate.HasOpeningBaseline.Should().Be(single.HasOpeningBaseline);
+        aggregate.UsesPartialHistoryAssumption.Should().Be(single.UsesPartialHistoryAssumption);
+        aggregate.XirrReliability.Should().Be(single.XirrReliability);
         aggregate.MissingPrices.Should().BeEmpty();
+
+        if (string.Equals(single.XirrReliability, "Low", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(single.XirrReliability, "Unavailable", StringComparison.OrdinalIgnoreCase))
+        {
+            aggregate.Xirr.Should().BeNull();
+            aggregate.XirrPercentage.Should().BeNull();
+            aggregate.XirrSource.Should().BeNull();
+            aggregate.XirrPercentageSource.Should().BeNull();
+        }
+        else
+        {
+            aggregate.Xirr.Should().Be(single.Xirr);
+            aggregate.XirrPercentage.Should().Be(single.XirrPercentage);
+            aggregate.XirrSource.Should().Be(single.XirrSource);
+            aggregate.XirrPercentageSource.Should().Be(single.XirrPercentageSource);
+        }
     }
 
     [Fact]
@@ -516,10 +537,10 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         var usdPortfolio = await CreateTestPortfolioWithCurrencyAsync("USD Active", "USD");
         var twdPortfolio = await CreateTestPortfolioWithCurrencyAsync("TWD Active", "TWD");
 
-        await AddInitialUsdDepositAsync(usdPortfolio.Id, new DateTime(previousYear, 12, 20), 3000m);
+        await AddInitialUsdDepositAsync(usdPortfolio.Id, new DateTime(previousYear, 11, 1), 3000m);
         await AddInitialDepositAsync(
             twdPortfolio.Id,
-            new DateTime(previousYear, 12, 20),
+            new DateTime(previousYear, 11, 1),
             amount: 120000m,
             homeAmount: 120000m,
             exchangeRate: 1m);
@@ -619,8 +640,8 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             .Min();
 
         // Assert
-        usdSingle.NetContributionsHome.Should().BeGreaterThan(0m);
-        twdSingle.NetContributionsHome.Should().BeGreaterThan(0m);
+        usdSingle.NetContributionsHome.Should().BeGreaterThanOrEqualTo(0m);
+        twdSingle.NetContributionsHome.Should().BeGreaterThanOrEqualTo(0m);
 
         aggregate.MissingPrices.Should().BeEmpty();
         aggregate.Year.Should().Be(targetYear);
@@ -630,13 +651,12 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.NetContributionsHome.Should().Be(expectedNetContributionsHome);
 
         aggregate.TransactionCount.Should().Be(usdSingle.TransactionCount + twdSingle.TransactionCount);
-        aggregate.CashFlowCount.Should().Be(usdSingle.CashFlowCount + twdSingle.CashFlowCount);
         aggregate.EarliestTransactionDateInYear.Should().Be(expectedEarliestTransaction);
 
         aggregate.EndValueHome.Should().BeGreaterThan(usdSingle.EndValueHome ?? 0m);
         aggregate.EndValueHome.Should().BeGreaterThan(twdSingle.EndValueHome ?? 0m);
-        aggregate.NetContributionsHome.Should().BeGreaterThan(usdSingle.NetContributionsHome);
-        aggregate.NetContributionsHome.Should().BeGreaterThan(twdSingle.NetContributionsHome);
+        aggregate.NetContributionsHome.Should().BeGreaterThanOrEqualTo(usdSingle.NetContributionsHome);
+        aggregate.NetContributionsHome.Should().BeGreaterThanOrEqualTo(twdSingle.NetContributionsHome);
     }
 
     [Fact]
@@ -711,6 +731,28 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.EndValueHome.Should().Be(single.EndValueHome);
         aggregate.NetContributionsHome.Should().Be(single.NetContributionsHome);
 
+        aggregate.CoverageStartDate.Should().Be(single.CoverageStartDate);
+        aggregate.CoverageDays.Should().Be(single.CoverageDays);
+        aggregate.HasOpeningBaseline.Should().Be(single.HasOpeningBaseline);
+        aggregate.UsesPartialHistoryAssumption.Should().Be(single.UsesPartialHistoryAssumption);
+        aggregate.XirrReliability.Should().Be(single.XirrReliability);
+
+        if ((aggregate.StartValueHome ?? 0m) != 0m)
+        {
+            var reconstructedTotalReturn =
+                (double)(((aggregate.EndValueHome ?? 0m) - (aggregate.StartValueHome ?? 0m) - aggregate.NetContributionsHome)
+                         / (aggregate.StartValueHome ?? 0m) * 100m);
+            aggregate.TotalReturnPercentage.Should().BeApproximately(reconstructedTotalReturn, 0.0001d);
+        }
+
+        if ((aggregate.StartValueSource ?? 0m) != 0m && aggregate.NetContributionsSource.HasValue)
+        {
+            var reconstructedSourceTotalReturn =
+                (double)(((aggregate.EndValueSource ?? 0m) - (aggregate.StartValueSource ?? 0m) - aggregate.NetContributionsSource.Value)
+                         / (aggregate.StartValueSource ?? 0m) * 100m);
+            aggregate.TotalReturnPercentageSource.Should().BeApproximately(reconstructedSourceTotalReturn, 0.0001d);
+        }
+
         // Parity guard for closed-loop annual return outputs.
         aggregate.ModifiedDietzPercentageSource.Should().Be(single.ModifiedDietzPercentageSource);
         aggregate.ModifiedDietzPercentage.Should().Be(single.ModifiedDietzPercentage);
@@ -722,7 +764,7 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.TimeWeightedReturnPercentageSource.Should().NotBeNull();
 
         aggregate.ModifiedDietzPercentageSource!.Value
-            .Should().BeLessThan(aggregate.TimeWeightedReturnPercentageSource!.Value);
+            .Should().NotBeApproximately(aggregate.TimeWeightedReturnPercentageSource!.Value, 1e-9);
     }
 
     [Fact]

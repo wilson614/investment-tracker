@@ -46,7 +46,10 @@ public class CalculateAggregateYearPerformanceUseCase(
             relevantPortfolioResults = portfolioResults;
 
         if (relevantPortfolioResults.Count == 1)
-            return relevantPortfolioResults[0] with { Year = request.Year };
+        {
+            var single = relevantPortfolioResults[0] with { Year = request.Year };
+            return ApplyAggregateXirrSuppression(single);
+        }
 
         var earliestTransactionDateInYear = relevantPortfolioResults
             .Where(r => r.EarliestTransactionDateInYear.HasValue)
@@ -61,41 +64,66 @@ public class CalculateAggregateYearPerformanceUseCase(
                 Date: p.Date.Date))
             .ToList();
 
-        if (missingPrices.Count > 0)
-        {
-            return new YearPerformanceDto
-            {
-                Year = request.Year,
-                SourceCurrency = ResolveSourceCurrency(portfolioResults),
-                MissingPrices = missingPrices,
-                CashFlowCount = 0,
-                TransactionCount = portfolioResults.Sum(r => r.TransactionCount),
-                EarliestTransactionDateInYear = earliestTransactionDateInYear
-            };
-        }
-
-        var startValueHome = portfolioResults.Sum(r => r.StartValueHome ?? 0m);
-        var endValueHome = portfolioResults.Sum(r => r.EndValueHome ?? 0m);
-        var netContributionsHome = portfolioResults.Sum(r => r.NetContributionsHome);
-
-        var startValueSource = portfolioResults.Sum(r => r.StartValueSource ?? 0m);
-        var endValueSource = portfolioResults.Sum(r => r.EndValueSource ?? 0m);
-        var netContributionsSource = portfolioResults.Sum(r => r.NetContributionsSource ?? 0m);
-
         var year = request.Year;
         var currentYear = DateTime.UtcNow.Year;
         var isYtd = year == currentYear;
         var yearStart = new DateTime(year, 1, 1);
         var yearEnd = isYtd ? DateTime.UtcNow.Date : new DateTime(year, 12, 31);
 
+        var resolvedCoverageStartDate = relevantPortfolioResults
+            .Where(r => r.CoverageStartDate.HasValue)
+            .Select(r => (DateTime?)r.CoverageStartDate!.Value.Date)
+            .Min();
+
+        int? coverageDays = resolvedCoverageStartDate.HasValue
+            ? Math.Max(0, (yearEnd.Date - resolvedCoverageStartDate.Value.Date).Days + 1)
+            : null;
+
+        var hasOpeningBaseline = relevantPortfolioResults
+            .Where(r => r.HasOpeningBaseline.HasValue)
+            .Select(r => r.HasOpeningBaseline!.Value)
+            .DefaultIfEmpty(false)
+            .All(x => x);
+
+        var usesPartialHistoryAssumption = relevantPortfolioResults
+            .Any(r => r.UsesPartialHistoryAssumption == true);
+
+        var rawXirrReliability = ResolveAggregateXirrReliability(relevantPortfolioResults);
+
+        if (missingPrices.Count > 0)
+        {
+            return ApplyAggregateXirrSuppression(new YearPerformanceDto
+            {
+                Year = request.Year,
+                SourceCurrency = ResolveSourceCurrency(relevantPortfolioResults),
+                MissingPrices = missingPrices,
+                CashFlowCount = 0,
+                TransactionCount = relevantPortfolioResults.Sum(r => r.TransactionCount),
+                EarliestTransactionDateInYear = earliestTransactionDateInYear,
+                CoverageStartDate = resolvedCoverageStartDate,
+                CoverageDays = coverageDays,
+                HasOpeningBaseline = hasOpeningBaseline,
+                UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
+                XirrReliability = rawXirrReliability
+            });
+        }
+
+        var startValueHome = relevantPortfolioResults.Sum(r => r.StartValueHome ?? 0m);
+        var endValueHome = relevantPortfolioResults.Sum(r => r.EndValueHome ?? 0m);
+        var netContributionsHome = relevantPortfolioResults.Sum(r => r.NetContributionsHome);
+
+        var startValueSource = relevantPortfolioResults.Sum(r => r.StartValueSource ?? 0m);
+        var endValueSource = relevantPortfolioResults.Sum(r => r.EndValueSource ?? 0m);
+        var netContributionsSource = relevantPortfolioResults.Sum(r => r.NetContributionsSource ?? 0m);
+
         var aggregateCashFlowsHome = BuildDerivedCashFlows(
-            portfolioResults,
+            relevantPortfolioResults,
             yearStart,
             yearEnd,
             useSourceValues: false);
 
         var aggregateCashFlowsSource = BuildDerivedCashFlows(
-            portfolioResults,
+            relevantPortfolioResults,
             yearStart,
             yearEnd,
             useSourceValues: true);
@@ -107,12 +135,12 @@ public class CalculateAggregateYearPerformanceUseCase(
         var totalReturnSource = CalculateTotalReturnPercentage(startValueSource, endValueSource, netContributionsSource);
 
         var dietzCashFlowsHome = BuildDietzCashFlows(
-            portfolioResults,
+            relevantPortfolioResults,
             yearStart,
             useSourceValues: false);
 
         var dietzCashFlowsSource = BuildDietzCashFlows(
-            portfolioResults,
+            relevantPortfolioResults,
             yearStart,
             useSourceValues: true);
 
@@ -131,45 +159,53 @@ public class CalculateAggregateYearPerformanceUseCase(
             cashFlows: dietzCashFlowsSource);
 
         var twrHome = ComputeWeightedAverageReturnPercentage(
-            portfolioResults,
+            relevantPortfolioResults,
             returnSelector: r => r.TimeWeightedReturnPercentage,
             primaryWeightSelector: r => r.StartValueHome,
             fallbackWeightSelector: r => r.EndValueHome);
 
         var twrSource = ComputeWeightedAverageReturnPercentage(
-            portfolioResults,
+            relevantPortfolioResults,
             returnSelector: r => r.TimeWeightedReturnPercentageSource,
             primaryWeightSelector: r => r.StartValueSource,
             fallbackWeightSelector: r => r.EndValueSource);
 
-        return new YearPerformanceDto
+        var xirrPercentageHome = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
+        var xirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
+
+        return ApplyAggregateXirrSuppression(new YearPerformanceDto
         {
             Year = request.Year,
             // Home currency
             Xirr = xirrHome,
-            XirrPercentage = xirrHome * 100,
+            XirrPercentage = xirrPercentageHome,
             TotalReturnPercentage = totalReturnHome,
             ModifiedDietzPercentage = modifiedDietzHome.HasValue ? (double)(modifiedDietzHome.Value * 100m) : null,
             TimeWeightedReturnPercentage = twrHome,
-            StartValueHome = startValueHome > 0 ? startValueHome : null,
-            EndValueHome = endValueHome > 0 ? endValueHome : null,
+            StartValueHome = startValueHome,
+            EndValueHome = endValueHome,
             NetContributionsHome = netContributionsHome,
             // Source currency
-            SourceCurrency = ResolveSourceCurrency(portfolioResults),
+            SourceCurrency = ResolveSourceCurrency(relevantPortfolioResults),
             XirrSource = xirrSource,
-            XirrPercentageSource = xirrSource * 100,
+            XirrPercentageSource = xirrPercentageSource,
             TotalReturnPercentageSource = totalReturnSource,
             ModifiedDietzPercentageSource = modifiedDietzSource.HasValue ? (double)(modifiedDietzSource.Value * 100m) : null,
             TimeWeightedReturnPercentageSource = twrSource,
-            StartValueSource = startValueSource > 0 ? startValueSource : null,
-            EndValueSource = endValueSource > 0 ? endValueSource : null,
+            StartValueSource = startValueSource,
+            EndValueSource = endValueSource,
             NetContributionsSource = netContributionsSource,
             // Common
             CashFlowCount = aggregateCashFlowsSource.Count,
-            TransactionCount = portfolioResults.Sum(r => r.TransactionCount),
+            TransactionCount = relevantPortfolioResults.Sum(r => r.TransactionCount),
             EarliestTransactionDateInYear = earliestTransactionDateInYear,
+            CoverageStartDate = resolvedCoverageStartDate,
+            CoverageDays = coverageDays,
+            HasOpeningBaseline = hasOpeningBaseline,
+            UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
+            XirrReliability = rawXirrReliability,
             MissingPrices = []
-        };
+        });
     }
 
     private static List<CashFlow> BuildDerivedCashFlows(
@@ -276,14 +312,6 @@ public class CalculateAggregateYearPerformanceUseCase(
 
     private static string? ResolveSourceCurrency(IReadOnlyList<YearPerformanceDto> portfolioResults)
     {
-        var activeSourceCurrency = portfolioResults
-            .Where(HasPortfolioActivity)
-            .Select(r => r.SourceCurrency)
-            .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
-
-        if (!string.IsNullOrWhiteSpace(activeSourceCurrency))
-            return activeSourceCurrency;
-
         return portfolioResults
             .Select(r => r.SourceCurrency)
             .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
@@ -295,20 +323,66 @@ public class CalculateAggregateYearPerformanceUseCase(
                || result.CashFlowCount > 0
                || result.EarliestTransactionDateInYear.HasValue
                || result.MissingPrices.Count > 0
-               || (result.StartValueHome ?? 0m) > 0m
-               || (result.EndValueHome ?? 0m) > 0m
+               || (result.StartValueHome ?? 0m) != 0m
+               || (result.EndValueHome ?? 0m) != 0m
                || result.NetContributionsHome != 0m
-               || (result.StartValueSource ?? 0m) > 0m
-               || (result.EndValueSource ?? 0m) > 0m
+               || (result.StartValueSource ?? 0m) != 0m
+               || (result.EndValueSource ?? 0m) != 0m
                || (result.NetContributionsSource ?? 0m) != 0m;
+    }
+
+    private static YearPerformanceDto ApplyAggregateXirrSuppression(YearPerformanceDto dto)
+    {
+        var shouldSuppress = string.Equals(dto.XirrReliability, "Low", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(dto.XirrReliability, "Unavailable", StringComparison.OrdinalIgnoreCase);
+
+        if (shouldSuppress)
+        {
+            return dto with
+            {
+                Xirr = null,
+                XirrPercentage = null,
+                XirrSource = null,
+                XirrPercentageSource = null
+            };
+        }
+
+        var xirrPercentage = dto.Xirr.HasValue ? dto.Xirr.Value * 100 : (double?)null;
+        var xirrPercentageSource = dto.XirrSource.HasValue ? dto.XirrSource.Value * 100 : (double?)null;
+
+        return dto with
+        {
+            XirrPercentage = xirrPercentage,
+            XirrPercentageSource = xirrPercentageSource
+        };
+    }
+
+    private static string ResolveAggregateXirrReliability(IReadOnlyList<YearPerformanceDto> portfolioResults)
+    {
+        if (portfolioResults.Count == 0)
+            return "Unavailable";
+
+        if (portfolioResults.Any(r => string.Equals(r.XirrReliability, "Unavailable", StringComparison.OrdinalIgnoreCase)))
+            return "Unavailable";
+
+        if (portfolioResults.Any(r => string.Equals(r.XirrReliability, "Low", StringComparison.OrdinalIgnoreCase)))
+            return "Low";
+
+        if (portfolioResults.Any(r => string.Equals(r.XirrReliability, "Medium", StringComparison.OrdinalIgnoreCase)))
+            return "Medium";
+
+        if (portfolioResults.Any(r => string.Equals(r.XirrReliability, "High", StringComparison.OrdinalIgnoreCase)))
+            return "High";
+
+        return "Unavailable";
     }
 
     private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)
     {
-        if (startValue > 0)
+        if (startValue != 0)
             return (double)((endValue - startValue - netContributions) / startValue) * 100;
 
-        if (netContributions > 0)
+        if (netContributions != 0)
             return (double)((endValue - netContributions) / netContributions) * 100;
 
         return null;

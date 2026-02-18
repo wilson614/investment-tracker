@@ -211,6 +211,11 @@ public record ExecuteStockImportRequest : IValidatableObject
     public IReadOnlyList<ExecuteStockImportRowRequest> Rows { get; init; } = [];
 
     /// <summary>
+    /// 匯入基準與部分期間覆寫決策（Group B）。
+    /// </summary>
+    public StockImportBaselineExecutionDecisionRequest? BaselineDecision { get; init; }
+
+    /// <summary>
     /// 預設餘額處理決策（套用到餘額不足列，可被逐列覆寫）。
     /// </summary>
     public StockImportDefaultBalanceDecisionRequest? DefaultBalanceAction { get; init; }
@@ -224,6 +229,15 @@ public record ExecuteStockImportRequest : IValidatableObject
                 [nameof(Rows)]);
         }
 
+        if (BaselineDecision is not null
+            && BaselineDecision.SellBeforeBuyAction.HasValue
+            && !Enum.IsDefined(BaselineDecision.SellBeforeBuyAction.Value))
+        {
+            yield return new ValidationResult(
+                "BaselineDecision.SellBeforeBuyAction is invalid.",
+                [nameof(BaselineDecision)]);
+        }
+
         if (DefaultBalanceAction is not null)
         {
             if (!DefaultBalanceAction.Action.HasValue)
@@ -234,7 +248,13 @@ public record ExecuteStockImportRequest : IValidatableObject
             }
             else
             {
-                if (!StockBalanceActionRules.IsExecutableDefaultAction(DefaultBalanceAction.Action))
+                if (DefaultBalanceAction.Action == BalanceAction.None)
+                {
+                    yield return new ValidationResult(
+                        "DefaultBalanceAction.Action must be Margin or TopUp when DefaultBalanceAction is provided.",
+                        [nameof(DefaultBalanceAction)]);
+                }
+                else if (!StockBalanceActionRules.IsExecutableDefaultAction(DefaultBalanceAction.Action))
                 {
                     yield return new ValidationResult(
                         "DefaultBalanceAction.Action must be None, Margin, or TopUp when DefaultBalanceAction is provided.",
@@ -287,6 +307,18 @@ public record ExecuteStockImportRequest : IValidatableObject
                 ? row.TopUpTransactionType ?? DefaultBalanceAction?.TopUpTransactionType
                 : null;
 
+            var resolvedSellBeforeBuyAction = row.SellBeforeBuyAction
+                ?? BaselineDecision?.SellBeforeBuyAction
+                ?? SellBeforeBuyAction.None;
+
+            if (row.SellBeforeBuyAction.HasValue && !Enum.IsDefined(row.SellBeforeBuyAction.Value))
+            {
+                yield return new ValidationResult(
+                    $"Rows[{i}].SellBeforeBuyAction is invalid.",
+                    [rowMember]);
+                continue;
+            }
+
             if (resolvedAction != BalanceAction.TopUp && row.TopUpTransactionType.HasValue)
             {
                 yield return new ValidationResult(
@@ -300,6 +332,13 @@ public record ExecuteStockImportRequest : IValidatableObject
             {
                 yield return new ValidationResult(
                     $"Rows[{i}].TopUpTransactionType must be one of Deposit, InitialBalance, Interest, or OtherIncome when resolved BalanceAction is TopUp.",
+                    [rowMember]);
+            }
+
+            if (!Enum.IsDefined(resolvedSellBeforeBuyAction))
+            {
+                yield return new ValidationResult(
+                    $"Rows[{i}].SellBeforeBuyAction is invalid.",
                     [rowMember]);
             }
         }
@@ -327,6 +366,11 @@ public record ExecuteStockImportRowRequest
     public bool Exclude { get; init; }
 
     /// <summary>
+    /// 逐列覆寫 sell-before-buy / zero-holding 決策。
+    /// </summary>
+    public SellBeforeBuyAction? SellBeforeBuyAction { get; init; }
+
+    /// <summary>
     /// 逐列餘額不足決策（None / Margin / TopUp）。
     /// </summary>
     public BalanceAction? BalanceAction { get; init; }
@@ -351,6 +395,27 @@ public record StockImportDefaultBalanceDecisionRequest
     /// 僅當 Action=TopUp 時需要。
     /// </summary>
     public CurrencyTransactionType? TopUpTransactionType { get; init; }
+}
+
+/// <summary>
+/// 匯入基準的執行決策（Group B）。
+/// </summary>
+public record StockImportBaselineExecutionDecisionRequest
+{
+    /// <summary>
+    /// 全域 sell-before-buy / zero-holding 決策。
+    /// </summary>
+    public SellBeforeBuyAction? SellBeforeBuyAction { get; init; }
+}
+
+/// <summary>
+/// Sell-before-buy / zero-holding 的顯式決策。
+/// </summary>
+public enum SellBeforeBuyAction
+{
+    None = 0,
+    UseOpeningPosition = 1,
+    CreateAdjustment = 2
 }
 
 internal readonly record struct StockBalanceDecisionValidationError(

@@ -87,7 +87,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_SellWithoutHoldings_ShouldCommitWithPartialPeriodWarning()
+    public async Task ExecuteAsync_SellWithoutHoldings_WithoutDecision_ShouldReturnSellBeforeBuyActionRequired()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -117,30 +117,90 @@ public class ExecuteStockImportBalanceActionTests
         var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
+        result.Status.Should().Be("rejected");
+        result.Summary.InsertedRows.Should().Be(0);
+        result.Summary.FailedRows.Should().Be(1);
+
+        var rowResult = result.Results.Should().ContainSingle().Subject;
+        rowResult.RowNumber.Should().Be(42);
+        rowResult.Success.Should().BeFalse();
+        rowResult.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+
+        var diagnostic = result.Errors.Should().ContainSingle().Subject;
+        diagnostic.RowNumber.Should().Be(42);
+        diagnostic.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+        diagnostic.FieldName.Should().Be("sellBeforeBuyAction");
+        diagnostic.Message.Should().Contain("sell-before-buy");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SellWithoutHoldings_WithCreateAdjustmentAndNoOpeningPosition_ShouldCommit()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var sessionRows = new List<StockImportSessionRowSnapshotDto>
+        {
+            Fixture.BuildSessionRow(
+                rowNumber: 51,
+                ticker: "2330",
+                unitPrice: 165.5m,
+                tradeDate: tradeDate,
+                quantity: 100m,
+                fees: 6m,
+                taxes: 0m,
+                tradeSide: "sell")
+        };
+
+        var fixture = new Fixture(sessionRows: sessionRows);
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 51,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.CreateAdjustment);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
         result.Status.Should().Be("committed");
         result.Summary.InsertedRows.Should().Be(1);
         result.Summary.FailedRows.Should().Be(0);
 
         var rowResult = result.Results.Should().ContainSingle().Subject;
-        rowResult.RowNumber.Should().Be(42);
         rowResult.Success.Should().BeTrue();
         rowResult.ErrorCode.Should().BeNull();
 
-        var diagnostic = result.Errors.Should().ContainSingle().Subject;
-        diagnostic.RowNumber.Should().Be(42);
-        diagnostic.ErrorCode.Should().Be("PARTIAL_PERIOD_ASSUMPTION");
-        diagnostic.FieldName.Should().Be("position");
-        diagnostic.InvalidValue.Should().Be("sell");
-        diagnostic.Message.Should().Contain("部分期間");
+        result.Errors.Should().ContainSingle();
+        result.Errors.Single().ErrorCode.Should().Be("PARTIAL_PERIOD_ASSUMPTION");
 
-        var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
-            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+        var addedStockTransactions = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
             .Select(invocation => invocation.Arguments[0])
-            .OfType<CurrencyTransaction>()
+            .OfType<StockTransaction>()
             .ToList();
 
-        addedCurrencyTransactions.Should().ContainSingle(tx => tx.TransactionType == CurrencyTransactionType.OtherIncome);
-        addedCurrencyTransactions.Should().NotContain(tx => tx.TransactionType == CurrencyTransactionType.Deposit);
+        var createdSellTransaction = addedStockTransactions
+            .Should().ContainSingle(transaction => transaction.TransactionType == TransactionType.Sell)
+            .Subject;
+
+        createdSellTransaction.RealizedPnlHome.Should().Be(16544m);
+
+        addedStockTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == TransactionType.Adjustment
+            && transaction.Notes != null
+            && transaction.Notes.Contains("import-execute-adjustment", StringComparison.Ordinal));
+
+        fixture.CurrencyTransactionRepositoryMock.Verify(
+            x => x.AddAsync(
+                It.Is<CurrencyTransaction>(tx =>
+                    tx.TransactionType == CurrencyTransactionType.OtherIncome
+                    && tx.Notes != null
+                    && tx.Notes.Contains("賣出 2330", StringComparison.Ordinal)),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -672,7 +732,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_PartialPeriodSellThenBuy_ShouldUseSellIncomeWithoutTopUp()
+    public async Task ExecuteAsync_PartialPeriodSellThenBuy_WithOpeningDecision_ShouldUseSellIncomeWithoutTopUp()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -698,12 +758,25 @@ public class ExecuteStockImportBalanceActionTests
                     fees: 0m,
                     taxes: 0m,
                     tradeSide: "buy")
+            ],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 100000m
+                }
             ]);
 
         var request = new ExecuteStockImportRequest
         {
             SessionId = fixture.SessionId,
             PortfolioId = fixture.PortfolioId,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.UseOpeningPosition
+            },
             DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
             {
                 Action = BalanceAction.TopUp,
@@ -751,6 +824,169 @@ public class ExecuteStockImportBalanceActionTests
         addedCurrencyTransactions.Should().NotContain(
             transaction => transaction.TransactionType == CurrencyTransactionType.Deposit,
             "先賣後買且可用餘額足夠時，不應再建立補足交易");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PartialPeriodSell_OpeningPositionWithTotalCost_ShouldUseBaselineCostForRealizedPnl()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 81,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 6000m
+                }
+            ],
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 81,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.UseOpeningPosition);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var createdTransactions = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .ToList();
+
+        createdTransactions.Should().ContainSingle(transaction => transaction.TransactionType == TransactionType.Sell);
+        var createdSellTransaction = createdTransactions.Single(transaction => transaction.TransactionType == TransactionType.Sell);
+
+        createdSellTransaction.RealizedPnlHome.Should().Be(10544m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithOpeningLedgerBalance_ShouldSeedInitialBalanceBeforeBuyAndAvoidTopUp()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 82,
+                    ticker: "2330",
+                    unitPrice: 625m,
+                    tradeDate: tradeDate,
+                    quantity: 1000m,
+                    fees: 1425m,
+                    taxes: 0m,
+                    tradeSide: "buy")
+            ],
+            baselineOpeningLedgerBalance: 626425m,
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: BalanceAction.TopUp,
+            rowTopUpType: CurrencyTransactionType.Deposit,
+            defaultDecision: null,
+            rowNumber: 82,
+            ticker: "2330");
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<CurrencyTransaction>()
+            .ToList();
+
+        addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.InitialBalance
+            && transaction.ForeignAmount == 626425m
+            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
+        addedCurrencyTransactions.Should().NotContain(transaction => transaction.TransactionType == CurrencyTransactionType.Deposit);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MultipleRows_ShouldPreloadPersistedRepositoriesOnce()
+    {
+        // Arrange
+        var fixture = new Fixture(
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(rowNumber: 91, ticker: "2330", unitPrice: 10m, quantity: 10m),
+                Fixture.BuildSessionRow(rowNumber: 92, ticker: "2330", unitPrice: 10m, quantity: 10m)
+            ]);
+
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 91,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 92,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+
+        fixture.StockTransactionRepositoryMock.Verify(
+            repository => repository.GetByPortfolioIdAsync(fixture.PortfolioId, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        fixture.CurrencyTransactionRepositoryMock.Verify(
+            repository => repository.GetByLedgerIdOrderedAsync(fixture.BoundLedgerId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -1011,7 +1247,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public void ExecuteAsync_DefaultNone_RequestValidationShouldAllow()
+    public void ExecuteAsync_DefaultNone_RequestValidationShouldBlock()
     {
         // Arrange
         var request = new ExecuteStockImportRequest
@@ -1036,9 +1272,8 @@ public class ExecuteStockImportBalanceActionTests
         var validation = Validate(request);
 
         // Assert
-        validation.Should().NotContain(v =>
-            v.ErrorMessage == "DefaultBalanceAction.Action must be None, Margin, or TopUp when DefaultBalanceAction is provided.");
-        validation.Should().BeEmpty();
+        validation.Should().Contain(v =>
+            v.ErrorMessage == "DefaultBalanceAction.Action must be Margin or TopUp when DefaultBalanceAction is provided.");
     }
 
     [Fact]
@@ -1198,6 +1433,10 @@ public class ExecuteStockImportBalanceActionTests
             IReadOnlyList<CurrencyTransaction>? seedLedgerTransactions = null,
             IReadOnlyList<StockImportSessionRowSnapshotDto>? sessionRows = null,
             IReadOnlyList<StockTransaction>? seedStockTransactions = null,
+            IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto>? baselineOpeningPositions = null,
+            DateTime? baselineDate = null,
+            decimal? baselineOpeningCashBalance = null,
+            decimal? baselineOpeningLedgerBalance = null,
             string boundLedgerCurrencyCode = "TWD",
             string boundLedgerHomeCurrency = "TWD")
         {
@@ -1240,6 +1479,14 @@ public class ExecuteStockImportBalanceActionTests
                     PortfolioId = PortfolioId,
                     SelectedFormat = "broker_statement",
                     DetectedFormat = "broker_statement",
+                    Baseline = new StockImportSessionBaselineSnapshotDto
+                    {
+                        BaselineDate = baselineDate,
+                        OpeningPositions = baselineOpeningPositions?.ToList()
+                            ?? [],
+                        OpeningCashBalance = baselineOpeningCashBalance,
+                        OpeningLedgerBalance = baselineOpeningLedgerBalance
+                    },
                     Rows = _sessionRows
                 });
 
@@ -1252,6 +1499,14 @@ public class ExecuteStockImportBalanceActionTests
                     PortfolioId = PortfolioId,
                     SelectedFormat = "broker_statement",
                     DetectedFormat = "broker_statement",
+                    Baseline = new StockImportSessionBaselineSnapshotDto
+                    {
+                        BaselineDate = baselineDate,
+                        OpeningPositions = baselineOpeningPositions?.ToList()
+                            ?? [],
+                        OpeningCashBalance = baselineOpeningCashBalance,
+                        OpeningLedgerBalance = baselineOpeningLedgerBalance
+                    },
                     Rows = _sessionRows
                 });
 
@@ -1329,7 +1584,8 @@ public class ExecuteStockImportBalanceActionTests
             StockImportDefaultBalanceDecisionRequest? defaultDecision,
             int rowNumber,
             string ticker,
-            string confirmedTradeSide = "buy")
+            string confirmedTradeSide = "buy",
+            SellBeforeBuyAction? sellBeforeBuyAction = null)
         {
             return new ExecuteStockImportRequest
             {
@@ -1345,7 +1601,8 @@ public class ExecuteStockImportBalanceActionTests
                         ConfirmedTradeSide = confirmedTradeSide,
                         Exclude = false,
                         BalanceAction = rowAction,
-                        TopUpTransactionType = rowTopUpType
+                        TopUpTransactionType = rowTopUpType,
+                        SellBeforeBuyAction = sellBeforeBuyAction
                     }
                 ]
             };

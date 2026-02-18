@@ -7,6 +7,7 @@ using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.StockTransactions;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Domain.Services;
 using Moq;
 
 namespace InvestmentTracker.Application.Tests.UseCases.StockTransactions;
@@ -159,6 +160,8 @@ public class PreviewStockImportPerformanceTests
                 new StockImportParser(),
                 symbolResolver,
                 SessionStoreMock.Object,
+                Mock.Of<IStockTransactionRepository>(),
+                new PortfolioCalculator(),
                 Mock.Of<Microsoft.Extensions.Logging.ILogger<PreviewStockImportUseCase>>());
         }
     }

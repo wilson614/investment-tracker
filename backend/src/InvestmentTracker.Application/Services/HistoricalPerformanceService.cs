@@ -28,6 +28,11 @@ public class HistoricalPerformanceService(
     ILogger<HistoricalPerformanceService> logger)
     : IHistoricalPerformanceService
 {
+    private const int MinimumReliableCoverageDays = 90;
+    private const string XirrReliabilityHigh = "High";
+    private const string XirrReliabilityMedium = "Medium";
+    private const string XirrReliabilityLow = "Low";
+    private const string XirrReliabilityUnavailable = "Unavailable";
     /// <summary>
     /// 取得可計算績效的年份清單。
     /// </summary>
@@ -115,6 +120,10 @@ public class HistoricalPerformanceService(
             .OrderBy(t => t.TransactionDate)
             .ToList();
 
+        var earliestTransactionDateInYear = yearTransactions.Count > 0
+            ? yearTransactions.Min(t => t.TransactionDate.Date)
+            : (DateTime?)null;
+
         var sourceCurrency = portfolio.BaseCurrency.ToUpperInvariant();
         var homeCurrency = portfolio.HomeCurrency.ToUpperInvariant();
 
@@ -130,6 +139,16 @@ public class HistoricalPerformanceService(
             ledgers = [boundLedger];
             currencyTransactions = boundLedger.Transactions.ToList();
         }
+
+        var baselineReferenceDate = yearStart.AddDays(-1);
+        var hasLedgerBaseline = boundLedger is { IsActive: true }
+                                && boundLedger.UserId == portfolio.UserId
+                                && boundLedger.Transactions.Any(t => !t.IsDeleted && t.TransactionDate.Date <= baselineReferenceDate.Date);
+
+        var hasOpeningBaseline = transactionsUpToYearStart.Count > 0 || hasLedgerBaseline;
+        DateTime? coverageStartDate = hasOpeningBaseline ? yearStart : earliestTransactionDateInYear;
+        var coverageDays = CalculateCoverageDays(coverageStartDate, yearEnd);
+        var usesPartialHistoryAssumption = !hasOpeningBaseline && earliestTransactionDateInYear.HasValue;
 
         // Calculate positions at year end (NO split adjustment - use historical share counts)
         // Historical prices from APIs are already in their original (pre-split) values,
@@ -304,12 +323,25 @@ public class HistoricalPerformanceService(
         {
             logger.LogWarning("Missing {Count} prices for year {Year} performance calculation", missingPrices.Count, year);
 
+            var reliabilityOnMissingPrices = ResolveXirrReliability(
+                hasOpeningBaseline,
+                usesPartialHistoryAssumption,
+                coverageDays,
+                hasXirrValue: false);
+
             return new YearPerformanceDto
             {
                 Year = year,
                 SourceCurrency = sourceCurrency,
                 MissingPrices = missingPrices.DistinctBy(p => (p.Ticker, p.PriceType)).ToList(),
-                CashFlowCount = 0
+                CashFlowCount = 0,
+                TransactionCount = yearTransactions.Count,
+                EarliestTransactionDateInYear = earliestTransactionDateInYear,
+                CoverageStartDate = coverageStartDate,
+                CoverageDays = coverageDays,
+                HasOpeningBaseline = hasOpeningBaseline,
+                UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
+                XirrReliability = reliabilityOnMissingPrices
             };
         }
 
@@ -407,22 +439,22 @@ public class HistoricalPerformanceService(
             return 0m;
         }
 
-        logger.LogInformation("=== Year {Year} Performance Calculation Debug ===", year);
-        logger.LogInformation("{SourceCurrency}/{HomeCurrency} Rate Start: {RateStart}, End: {RateEnd}",
+        logger.LogDebug("=== Year {Year} Performance Calculation Debug ===", year);
+        logger.LogDebug("{SourceCurrency}/{HomeCurrency} Rate Start: {RateStart}, End: {RateEnd}",
             sourceCurrency, homeCurrency, sourceToHomeRateStart, sourceToHomeRateEnd);
-        logger.LogInformation("Year Start Positions: {Count}, Year End Positions: {Count2}", yearStartPositions.Count, yearEndPositions.Count);
+        logger.LogDebug("Year Start Positions: {Count}, Year End Positions: {Count2}", yearStartPositions.Count, yearEndPositions.Count);
 
         foreach (var pos in yearStartPositions)
         {
             var hasPrice = yearStartPrices.TryGetValue(pos.Ticker, out var priceInfo);
-            logger.LogInformation("  YearStart Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
+            logger.LogDebug("  YearStart Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
                 pos.Ticker, pos.TotalShares, priceInfo?.Price ?? 0, priceInfo?.ExchangeRate ?? 0, hasPrice);
         }
 
         foreach (var pos in yearEndPositions)
         {
             var hasPrice = yearEndPrices.TryGetValue(pos.Ticker, out var priceInfo);
-            logger.LogInformation("  YearEnd Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
+            logger.LogDebug("  YearEnd Position: {Ticker} x {Shares} shares, Price={Price}, ExRate={ExRate}, HasPrice={HasPrice}",
                 pos.Ticker, pos.TotalShares, priceInfo?.Price ?? 0, priceInfo?.ExchangeRate ?? 0, hasPrice);
         }
 
@@ -443,16 +475,16 @@ public class HistoricalPerformanceService(
             }
         }
 
-        logger.LogInformation("  Total startValueSource ({SourceCurrency}): {StartValue}", sourceCurrency, startValueSource);
+        logger.LogDebug("  Total startValueSource ({SourceCurrency}): {StartValue}", sourceCurrency, startValueSource);
 
         if (startValueSource > 0)
         {
             cashFlowsSource.Add(new CashFlow(-startValueSource, yearStart));
-            logger.LogInformation("  Added year-start cash flow: {Amount} on {Date}", -startValueSource, yearStart);
+            logger.LogDebug("  Added year-start cash flow: {Amount} on {Date}", -startValueSource, yearStart);
         }
 
         // Transactions in source currency
-        logger.LogInformation("  Processing {Count} transactions in year:", yearTransactions.Count);
+        logger.LogDebug("  Processing {Count} transactions in year:", yearTransactions.Count);
         foreach (var tx in yearTransactions)
         {
             var txCurrency = tx.Currency.ToString();
@@ -467,7 +499,7 @@ public class HistoricalPerformanceService(
                         tx.TransactionDate,
                         tx.ExchangeRate);
 
-                    logger.LogInformation(
+                    logger.LogDebug(
                         "    BUY {Ticker}: {Shares} shares @ {Price} {TxCurrency}, TotalCost={TotalCost}, CostInSource={CostInSource} {SourceCurrency}, Date={Date}",
                         tx.Ticker,
                         tx.Shares,
@@ -490,7 +522,7 @@ public class HistoricalPerformanceService(
                         tx.TransactionDate,
                         tx.ExchangeRate);
 
-                    logger.LogInformation(
+                    logger.LogDebug(
                         "    SELL {Ticker}: {Shares} shares @ {Price} {TxCurrency}, Proceeds={Proceeds}, ProceedsInSource={ProceedsInSource} {SourceCurrency}, Date={Date}",
                         tx.Ticker,
                         tx.Shares,
@@ -523,57 +555,26 @@ public class HistoricalPerformanceService(
             endValueSource += position.TotalShares * priceInSource;
         }
 
-        logger.LogInformation("  Total endValueSource ({SourceCurrency}): {EndValue}", sourceCurrency, endValueSource);
+        logger.LogDebug("  Total endValueSource ({SourceCurrency}): {EndValue}", sourceCurrency, endValueSource);
 
         if (endValueSource > 0)
         {
             cashFlowsSource.Add(new CashFlow(endValueSource, yearEnd));
-            logger.LogInformation("  Added year-end cash flow: {Amount} on {Date}", endValueSource, yearEnd);
+            logger.LogDebug("  Added year-end cash flow: {Amount} on {Date}", endValueSource, yearEnd);
         }
 
         // Log all cash flows before XIRR calculation
-        logger.LogInformation("  === All Source Currency Cash Flows ({Count} total) ===", cashFlowsSource.Count);
+        logger.LogDebug("  === All Source Currency Cash Flows ({Count} total) ===", cashFlowsSource.Count);
         foreach (var cf in cashFlowsSource.OrderBy(c => c.Date))
         {
-            logger.LogInformation("    {Date}: {Amount:N2} {SourceCurrency}", cf.Date.ToString("yyyy-MM-dd"), cf.Amount, sourceCurrency);
+            logger.LogDebug("    {Date}: {Amount:N2} {SourceCurrency}", cf.Date.ToString("yyyy-MM-dd"), cf.Amount, sourceCurrency);
         }
-
-        // Net contributions in source currency (using source/home conversion by transaction date)
-        var netContributionsSource = yearTransactions
-                                         .Where(t => t.TransactionType == TransactionType.Buy)
-                                         .Sum(t => ConvertAmountToSource(
-                                             t.TotalCostSource,
-                                             t.Currency.ToString(),
-                                             t.TransactionDate,
-                                             t.ExchangeRate))
-                                     - yearTransactions
-                                         .Where(t => t.TransactionType == TransactionType.Sell)
-                                         .Sum(t =>
-                                         {
-                                             var proceeds = t.NetProceedsSource;
-                                             return ConvertAmountToSource(
-                                                 proceeds,
-                                                 t.Currency.ToString(),
-                                                 t.TransactionDate,
-                                                 t.ExchangeRate);
-                                         });
 
         // Calculate source currency XIRR
-        double? xirrSource = null;
+        double? rawXirrSource = null;
         if (cashFlowsSource.Count >= 2)
         {
-            xirrSource = portfolioCalculator.CalculateXirr(cashFlowsSource);
-        }
-
-        // Calculate source currency total return
-        double? totalReturnSource = null;
-        if (startValueSource > 0)
-        {
-            totalReturnSource = (double)((endValueSource - startValueSource - netContributionsSource) / startValueSource) * 100;
-        }
-        else if (netContributionsSource > 0)
-        {
-            totalReturnSource = (double)((endValueSource - netContributionsSource) / netContributionsSource) * 100;
+            rawXirrSource = portfolioCalculator.CalculateXirr(cashFlowsSource);
         }
 
         // ===== US1: Cash Flow Strategy (StockTransaction vs CurrencyLedger) =====
@@ -763,7 +764,7 @@ public class HistoricalPerformanceService(
         // ===== Calculate Home Currency Performance =====
         var cashFlowsHome = new List<CashFlow>();
 
-        logger.LogInformation("  === Home Currency Calculation ({HomeCurrency}) ===", homeCurrency);
+        logger.LogDebug("  === Home Currency Calculation ({HomeCurrency}) ===", homeCurrency);
 
         // Year-start portfolio value in home currency
         var startValueHome = 0m;
@@ -772,12 +773,12 @@ public class HistoricalPerformanceService(
             if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
             {
                 var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
-                logger.LogInformation("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} {HomeCurrency}",
+                logger.LogDebug("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} {HomeCurrency}",
                     position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue, homeCurrency);
                 startValueHome += positionValue;
             }
         }
-        logger.LogInformation("  Total startValueHome ({HomeCurrency}): {Value}", homeCurrency, startValueHome);
+        logger.LogDebug("  Total startValueHome ({HomeCurrency}): {Value}", homeCurrency, startValueHome);
 
         if (startValueHome > 0)
         {
@@ -816,34 +817,24 @@ public class HistoricalPerformanceService(
             cashFlowsHome.Add(new CashFlow(endValueHome, yearEnd));
         }
 
-        // Net contributions in home currency
-        var netContributionsHome = yearTransactions
-                                       .Where(t => t.TransactionType == TransactionType.Buy)
-                                       .Sum(t => t.TotalCostHome ?? 0)
-                                   - yearTransactions
-                                       .Where(t => t.TransactionType == TransactionType.Sell)
-                                       .Sum(t => t.NetProceedsSource * (t.ExchangeRate ?? 1));
-
         // Calculate home currency XIRR
-        double? xirrHome = null;
+        double? rawXirrHome = null;
         if (cashFlowsHome.Count >= 2)
         {
-            xirrHome = portfolioCalculator.CalculateXirr(cashFlowsHome);
-        }
-
-        // Calculate home currency total return
-        double? totalReturnHome = null;
-        if (startValueHome > 0)
-        {
-            totalReturnHome = (double)((endValueHome - startValueHome - netContributionsHome) / startValueHome) * 100;
-        }
-        else if (netContributionsHome > 0)
-        {
-            totalReturnHome = (double)((endValueHome - netContributionsHome) / netContributionsHome) * 100;
+            rawXirrHome = portfolioCalculator.CalculateXirr(cashFlowsHome);
         }
 
         var closedLoopStartValueHome = startValueHome + ledgerStartValueHome;
         var closedLoopEndValueHome = endValueHome + ledgerEndValueHome;
+
+        // Net contributions aligned to closed-loop external cash-flow set
+        var netContributionsSource = dietzCashFlowsSource.Sum(cf => cf.Amount);
+        var netContributionsHome = dietzCashFlowsHome.Sum(cf => cf.Amount);
+
+        var totalReturnSource = CalculateTotalReturnPercentage(
+            closedLoopStartValueSource,
+            closedLoopEndValueSource,
+            netContributionsSource);
 
         // ===== US1: Modified Dietz + TWR (Home Currency) =====
         var closedLoopHomeSnapshots = cashFlowEventSnapshots
@@ -865,42 +856,126 @@ public class HistoricalPerformanceService(
             endValue: closedLoopEndValueHome,
             cashFlowSnapshots: closedLoopHomeSnapshots);
 
-        logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
-            year, xirrSource * 100, xirrHome * 100);
+        var totalReturnHome = CalculateTotalReturnPercentage(
+            closedLoopStartValueHome,
+            closedLoopEndValueHome,
+            netContributionsHome);
 
-        // Earliest transaction date in this year (for XIRR short-period warning)
-        var earliestTransactionDateInYear = yearTransactions.Count > 0
-            ? yearTransactions.Min(t => t.TransactionDate)
-            : (DateTime?)null;
+        var hasXirrValue = rawXirrHome.HasValue || rawXirrSource.HasValue;
+        var xirrReliability = ResolveXirrReliability(
+            hasOpeningBaseline,
+            usesPartialHistoryAssumption,
+            coverageDays,
+            hasXirrValue);
+
+        var xirrHome = rawXirrHome;
+        var xirrSource = rawXirrSource;
+
+        if (string.Equals(xirrReliability, XirrReliabilityUnavailable, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(xirrReliability, XirrReliabilityLow, StringComparison.OrdinalIgnoreCase))
+        {
+            xirrHome = null;
+            xirrSource = null;
+        }
+
+        var xirrPercentageHome = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
+        var xirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
+
+        logger.LogInformation(
+            "Year {Year} performance reliability={Reliability} coverageDays={CoverageDays} hasOpeningBaseline={HasOpeningBaseline} usesPartialHistoryAssumption={UsesPartialHistoryAssumption}",
+            year,
+            xirrReliability,
+            coverageDays,
+            hasOpeningBaseline,
+            usesPartialHistoryAssumption);
+
+        var sourceXirrPctForLog = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
+        var homeXirrPctForLog = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
+        logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
+            year, sourceXirrPctForLog, homeXirrPctForLog);
 
         return new YearPerformanceDto
         {
             Year = year,
             // Home currency (portfolio.HomeCurrency)
             Xirr = xirrHome,
-            XirrPercentage = xirrHome * 100,
+            XirrPercentage = xirrPercentageHome,
             TotalReturnPercentage = totalReturnHome,
             ModifiedDietzPercentage = modifiedDietzHome.HasValue ? (double)(modifiedDietzHome.Value * 100m) : null,
             TimeWeightedReturnPercentage = twrHome.HasValue ? (double)(twrHome.Value * 100m) : null,
-            StartValueHome = closedLoopStartValueHome > 0 ? closedLoopStartValueHome : null,
-            EndValueHome = closedLoopEndValueHome > 0 ? closedLoopEndValueHome : null,
+            StartValueHome = closedLoopStartValueHome,
+            EndValueHome = closedLoopEndValueHome,
             NetContributionsHome = netContributionsHome,
             // Source currency (portfolio.BaseCurrency)
             SourceCurrency = sourceCurrency,
             XirrSource = xirrSource,
-            XirrPercentageSource = xirrSource * 100,
+            XirrPercentageSource = xirrPercentageSource,
             TotalReturnPercentageSource = totalReturnSource,
             ModifiedDietzPercentageSource = modifiedDietzSource.HasValue ? (double)(modifiedDietzSource.Value * 100m) : null,
             TimeWeightedReturnPercentageSource = twrSource.HasValue ? (double)(twrSource.Value * 100m) : null,
-            StartValueSource = closedLoopStartValueSource > 0 ? closedLoopStartValueSource : null,
-            EndValueSource = closedLoopEndValueSource > 0 ? closedLoopEndValueSource : null,
+            StartValueSource = closedLoopStartValueSource,
+            EndValueSource = closedLoopEndValueSource,
             NetContributionsSource = netContributionsSource,
             // Common
             CashFlowCount = cashFlowsSource.Count,
             TransactionCount = yearTransactions.Count,
             EarliestTransactionDateInYear = earliestTransactionDateInYear,
+            CoverageStartDate = coverageStartDate,
+            CoverageDays = coverageDays,
+            HasOpeningBaseline = hasOpeningBaseline,
+            UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
+            XirrReliability = xirrReliability,
             MissingPrices = []
         };
+    }
+
+    private static int? CalculateCoverageDays(DateTime? coverageStartDate, DateTime yearEnd)
+    {
+        if (!coverageStartDate.HasValue)
+            return null;
+
+        var coverageStart = coverageStartDate.Value.Date;
+        var coverageEnd = yearEnd.Date;
+
+        if (coverageEnd < coverageStart)
+            return 0;
+
+        return (coverageEnd - coverageStart).Days + 1;
+    }
+
+    private static string ResolveXirrReliability(
+        bool hasOpeningBaseline,
+        bool usesPartialHistoryAssumption,
+        int? coverageDays,
+        bool hasXirrValue)
+    {
+        if (!hasXirrValue)
+            return XirrReliabilityUnavailable;
+
+        if (!hasOpeningBaseline)
+            return XirrReliabilityUnavailable;
+
+        if (!coverageDays.HasValue || coverageDays.Value <= 0)
+            return XirrReliabilityUnavailable;
+
+        if (coverageDays.Value < MinimumReliableCoverageDays)
+            return XirrReliabilityLow;
+
+        if (usesPartialHistoryAssumption)
+            return XirrReliabilityMedium;
+
+        return XirrReliabilityHigh;
+    }
+
+    private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)
+    {
+        if (startValue != 0m)
+            return (double)((endValue - startValue - netContributions) / startValue) * 100;
+
+        if (netContributions != 0m)
+            return (double)((endValue - netContributions) / netContributions) * 100;
+
+        return null;
     }
 
     /// <summary>

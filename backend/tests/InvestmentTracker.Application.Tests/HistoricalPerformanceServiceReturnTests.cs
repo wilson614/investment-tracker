@@ -358,9 +358,19 @@ public class HistoricalPerformanceServiceReturnTests
         result.MissingPrices.Should().BeEmpty();
         result.IsComplete.Should().BeTrue();
 
-        result.StartValueSource.Should().BeNull();
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeTrue();
+        result.CoverageStartDate.Should().Be(eventDate.Date);
+        result.CoverageDays.Should().BeGreaterThan(0);
+        result.XirrReliability.Should().Be("Unavailable");
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+
+        result.StartValueSource.Should().Be(0m);
         result.EndValueSource.Should().Be(2200m);
-        result.StartValueHome.Should().BeNull();
+        result.StartValueHome.Should().Be(0m);
         result.EndValueHome.Should().Be(66000m);
 
         var expectedTwr = (2200m / 2000m) - 1m;
@@ -475,10 +485,21 @@ public class HistoricalPerformanceServiceReturnTests
         result.MissingPrices.Should().BeEmpty();
         result.IsComplete.Should().BeTrue();
 
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().Be(yearStart.Date);
+        result.CoverageDays.Should().Be((new DateTime(year, 12, 31) - yearStart.Date).Days + 1);
+        result.XirrReliability.Should().Be("High");
+
         result.StartValueSource.Should().Be(1000m);
         result.EndValueSource.Should().Be(880m);
         result.StartValueHome.Should().Be(30000m);
         result.EndValueHome.Should().Be(26400m);
+
+        result.NetContributionsSource.Should().Be(-239m);
+        result.NetContributionsHome.Should().Be(-7170m);
+        result.TotalReturnPercentageSource.Should().BeApproximately(11.9d, 0.0001d);
+        result.TotalReturnPercentage.Should().BeApproximately(11.9d, 0.0001d);
 
         var expectedTwr = (1200m / 1000m) * (880m / 960m) - 1m;
         var expectedTwrPct = (double)(expectedTwr * 100m);
@@ -601,14 +622,16 @@ public class HistoricalPerformanceServiceReturnTests
         result.MissingPrices.Should().BeEmpty();
         result.IsComplete.Should().BeTrue();
         result.StartValueSource.Should().Be(101m);
-        result.EndValueSource.Should().BeNull();
+        result.EndValueSource.Should().Be(0m);
         result.StartValueHome.Should().Be(101m);
-        result.EndValueHome.Should().BeNull();
+        result.EndValueHome.Should().Be(0m);
 
         // floor(1 * 100.9)=100, then minus fee 1 => 99
         sell.NetProceedsSource.Should().Be(99m);
         result.NetContributionsSource.Should().Be(-99m);
         result.NetContributionsHome.Should().Be(-99m);
+        result.TotalReturnPercentageSource.Should().BeApproximately(-1.9801980198d, 0.0001d);
+        result.TotalReturnPercentage.Should().BeApproximately(-1.9801980198d, 0.0001d);
 
         // Without floor this would be -99.9; this assertion guards the floor+fees path in annual sell cashflow.
         result.NetContributionsSource.Should().NotBe(-99.9m);
@@ -861,6 +884,10 @@ public class HistoricalPerformanceServiceReturnTests
         result.EndValueSource.Should().Be(1700m);
         result.StartValueHome.Should().Be(1500m);
         result.EndValueHome.Should().Be(1700m);
+        result.NetContributionsSource.Should().Be(100m);
+        result.NetContributionsHome.Should().Be(100m);
+        result.TotalReturnPercentageSource.Should().BeApproximately(6.6666666667d, 0.0001d);
+        result.TotalReturnPercentage.Should().BeApproximately(6.6666666667d, 0.0001d);
 
         var expectedTwr = (1500m / 1500m) * (1700m / 1600m) - 1m;
         var expectedTwrPct = (double)(expectedTwr * 100m);

@@ -89,6 +89,12 @@ public class CalculateAggregateYearPerformanceUseCaseTests
             p.Ticker == "AAPL" &&
             p.PriceType == "YearEnd" &&
             p.Date == yearEndDate);
+
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().BeNull();
+        result.CoverageDays.Should().BeNull();
+        result.XirrReliability.Should().Be("Unavailable");
     }
 
     [Fact]
@@ -155,6 +161,92 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.MissingPrices.Single().Ticker.Should().Be("AAPL");
         result.MissingPrices.Single().PriceType.Should().Be("YearEnd");
         result.MissingPrices.Single().Date.Should().Be(duplicateDate);
+
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().BeNull();
+        result.CoverageDays.Should().BeNull();
+        result.XirrReliability.Should().Be("Unavailable");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithLowReliabilityResult_SuppressesAggregateXirr()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "USD");
+        var portfolioB = CreatePortfolio(userId, "USD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2024;
+        var yearStart = new DateTime(year, 1, 1);
+        var shortCoverageDate = new DateTime(year, 12, 15);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 100m,
+                EndValueSource = 110m,
+                StartValueHome = 3000m,
+                EndValueHome = 3300m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                XirrSource = 0.10d,
+                Xirr = 0.10d,
+                EarliestTransactionDateInYear = shortCoverageDate,
+                TransactionCount = 1,
+                CoverageStartDate = yearStart,
+                CoverageDays = 17,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "Low",
+                MissingPrices = []
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 0m,
+                EndValueSource = 0m,
+                StartValueHome = 0m,
+                EndValueHome = 0m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = shortCoverageDate,
+                TransactionCount = 1,
+                CoverageStartDate = yearStart,
+                CoverageDays = 17,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "Low",
+                MissingPrices = []
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.XirrReliability.Should().Be("Low");
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.CoverageStartDate.Should().Be(yearStart);
+        result.CoverageDays.Should().Be((new DateTime(year, 12, 31) - yearStart).Days + 1);
     }
 
     [Fact]
@@ -194,6 +286,11 @@ public class CalculateAggregateYearPerformanceUseCaseTests
                 TimeWeightedReturnPercentage = 10d,
                 EarliestTransactionDateInYear = midYear,
                 TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
                 MissingPrices = []
             });
 
@@ -215,6 +312,11 @@ public class CalculateAggregateYearPerformanceUseCaseTests
                 TimeWeightedReturnPercentage = null,
                 EarliestTransactionDateInYear = midYear,
                 TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
                 MissingPrices = []
             });
 
@@ -243,6 +345,12 @@ public class CalculateAggregateYearPerformanceUseCaseTests
 
         result.ModifiedDietzPercentageSource.Should().NotBeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.01d);
         result.ModifiedDietzPercentage.Should().NotBeApproximately(result.TimeWeightedReturnPercentage!.Value, 0.01d);
+
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().Be(new DateTime(year, 1, 1));
+        result.CoverageDays.Should().Be((periodEnd - periodStart).Days + 1);
+        result.XirrReliability.Should().Be("High");
     }
 
     private CalculateAggregateYearPerformanceUseCase CreateUseCase()
