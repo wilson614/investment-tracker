@@ -138,6 +138,14 @@
 - [x] T053 Persist baseline scaffold into preview session snapshot in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/PreviewStockImportUseCase.cs`
 - [x] T054 [P] Add performance coverage/baseline signal fields to yearly response DTO in `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`
 - [x] T059 [P] Add API contract assertions for baseline/coverage signal fields in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T060 Align import UI/API contract consistency (types + StockImportButton + CSVImportModal) in `frontend/src/types/index.ts`, `frontend/src/components/import/StockImportButton.tsx`, and `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T061 Align performance reliability/coverage behavior and metric-binding consistency in `frontend/src/pages/Performance.tsx`
+- [x] T062 Align import regression tests in `frontend/src/test/stock-import.broker-preview.test.tsx`, `frontend/src/test/stock-import.balance-action.test.tsx`, and `frontend/src/test/stock-import.legacy-regression.test.tsx`
+- [x] T063 Align performance regression tests in `frontend/src/test/performance.metrics-binding.test.tsx` and `frontend/src/test/useHistoricalPerformance.test.ts`
+- [x] T064 Record Group E QA verification execution log in `specs/012-import-broker-statement/quickstart.md`
+- [x] T065 Resolve Group E code-review findings (market-aware + legacy quote cache write and conditional TopUp gating) in `frontend/src/pages/Performance.tsx` and `frontend/src/components/import/StockImportButton.tsx`
+- [x] T066 Update Group E quickstart evidence and traceability in `specs/012-import-broker-statement/quickstart.md`
+- [x] T067 Update Speckit tasks checklist for Group E completion in `specs/012-import-broker-statement/tasks.md`
 
 ---
 

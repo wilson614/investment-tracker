@@ -56,6 +56,7 @@ function buildPreviewRow(overrides: Partial<StockImportPreviewRow> = {}): StockI
     netSettlement: -625010,
     currency: 'TWD',
     status: 'valid',
+    usesPartialHistoryAssumption: false,
     actionsRequired: [],
     ...overrides,
   };
@@ -166,6 +167,20 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
   return latestCall[0] as StockImportExecuteRequest;
 }
 
+function findGlobalSellBeforeBuyActionSelector(): HTMLSelectElement | null {
+  const labeled = screen.queryByLabelText(/賣先買後預設處理方式/i);
+  if (labeled instanceof HTMLSelectElement) {
+    return labeled;
+  }
+
+  const byId = document.getElementById('global-sell-before-buy-action-selector');
+  if (byId instanceof HTMLSelectElement) {
+    return byId;
+  }
+
+  return null;
+}
+
 function findGlobalBalanceActionSelector(): HTMLSelectElement | null {
   const labeled = screen.queryByLabelText(/餘額不足預設處理方式/i);
   if (labeled instanceof HTMLSelectElement) {
@@ -192,6 +207,25 @@ function findGlobalTopUpTypeSelector(): HTMLSelectElement | null {
   }
 
   return null;
+}
+
+async function selectGlobalSellBeforeBuyAction(
+  user: ReturnType<typeof userEvent.setup>,
+  action: 'UseOpeningPosition' | 'CreateAdjustment' | null,
+) {
+  const selector = await waitFor(() => {
+    const control = findGlobalSellBeforeBuyActionSelector();
+    expect(control).not.toBeNull();
+    return control as HTMLSelectElement;
+  });
+
+  const targetValue = action ?? '';
+  const option = Array.from(selector.options).find((candidate) => candidate.value === targetValue);
+  if (!option) {
+    throw new Error(`找不到全域賣先買後處理方式選項: ${String(action)}`);
+  }
+
+  await user.selectOptions(selector, option.value);
 }
 
 async function selectGlobalBalanceAction(
@@ -243,7 +277,7 @@ function getRowContainer(rowMarker: string): HTMLElement {
   );
 }
 
-function findRowBalanceActionSelector(rowMarker: string): HTMLSelectElement {
+function findRowSellBeforeBuyActionSelector(rowMarker: string): HTMLSelectElement {
   const rowContainer = getRowContainer(rowMarker);
 
   const selectors = within(rowContainer)
@@ -251,8 +285,27 @@ function findRowBalanceActionSelector(rowMarker: string): HTMLSelectElement {
     .filter((node): node is HTMLSelectElement => node instanceof HTMLSelectElement);
 
   const selector = selectors.find((select) =>
-    Array.from(select.options).some((option) => option.value === 'default'),
+    Array.from(select.options).some((option) => option.value === 'UseOpeningPosition'),
   );
+
+  if (!selector) {
+    throw new Error(`找不到列 ${rowMarker} 的賣先買後處理方式下拉`);
+  }
+
+  return selector;
+}
+
+function findRowBalanceActionSelector(rowMarker: string): HTMLSelectElement {
+  const rowContainer = getRowContainer(rowMarker);
+
+  const selectors = within(rowContainer)
+    .queryAllByRole('combobox')
+    .filter((node): node is HTMLSelectElement => node instanceof HTMLSelectElement);
+
+  const selector = selectors.find((select) => (
+    Array.from(select.options).some((option) => option.value === 'Margin')
+    || Array.from(select.options).some((option) => option.value === 'TopUp')
+  ));
 
   if (!selector) {
     throw new Error(`找不到列 ${rowMarker} 的餘額處理方式下拉`);
@@ -289,6 +342,21 @@ function queryRowTopUpTypeSelector(rowMarker: string): HTMLSelectElement | null 
   return selectors.find((select) =>
     Array.from(select.options).some((option) => option.value === 'Deposit'),
   ) ?? null;
+}
+
+async function selectRowSellBeforeBuyActionSelection(
+  user: ReturnType<typeof userEvent.setup>,
+  rowMarker: string,
+  value: 'default' | 'UseOpeningPosition' | 'CreateAdjustment',
+) {
+  const selector = findRowSellBeforeBuyActionSelector(rowMarker);
+  const option = Array.from(selector.options).find((candidate) => candidate.value === value);
+
+  if (!option) {
+    throw new Error(`找不到列 ${rowMarker} 的賣先買後處理方式選項: ${value}`);
+  }
+
+  await user.selectOptions(selector, option.value);
 }
 
 async function selectRowBalanceActionSelection(
@@ -798,6 +866,172 @@ describe('Stock import balance action flow', () => {
         rowNumber: 42,
         balanceAction: 'TopUp',
         topUpTransactionType: 'Deposit',
+      }),
+    );
+  });
+
+  it('blocks execute when row requires ticker input but ticker remains unresolved', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-missing-ticker',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 60,
+            rawSecurityName: 'ROW-MISSING-TICKER',
+            ticker: null,
+            status: 'requires_user_action',
+            actionsRequired: ['input_ticker'],
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText('仍有列需要手動輸入股票代號')).toBeInTheDocument();
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
+  });
+
+  it('blocks execute when sell-before-buy handling is required but no global or row action is selected', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-sbb-block',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 61,
+            rawSecurityName: 'ROW-SBB-BLOCK',
+            status: 'requires_user_action',
+            usesPartialHistoryAssumption: true,
+            actionsRequired: ['choose_sell_before_buy_handling'],
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeDisabled();
+    expect(
+      screen.getByText('仍有列需要指定賣先買後處理方式，請先選擇全域預設或逐列設定'),
+    ).toBeInTheDocument();
+
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
+  });
+
+  it('sends global baselineDecision and row override for sell-before-buy actions', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-sbb-global-row-override',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 71,
+            rawSecurityName: 'ROW-SBB-1',
+            ticker: '2330',
+            status: 'requires_user_action',
+            usesPartialHistoryAssumption: true,
+            actionsRequired: ['choose_sell_before_buy_handling'],
+          }),
+          buildPreviewRow({
+            rowNumber: 72,
+            rawSecurityName: 'ROW-SBB-2',
+            ticker: '2317',
+            status: 'requires_user_action',
+            usesPartialHistoryAssumption: true,
+            actionsRequired: ['choose_sell_before_buy_handling'],
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(
+      buildExecuteResponse({
+        summary: {
+          totalRows: 2,
+          insertedRows: 2,
+          failedRows: 0,
+          errorCount: 0,
+        },
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    await selectGlobalSellBeforeBuyAction(user, 'CreateAdjustment');
+    await selectRowSellBeforeBuyActionSelection(user, 'ROW-SBB-2', 'UseOpeningPosition');
+
+    await executeImport(user);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+
+    expect(executeRequest.baselineDecision).toEqual({
+      sellBeforeBuyAction: 'CreateAdjustment',
+    });
+
+    const row1 = executeRequest.rows.find((row) => row.rowNumber === 71);
+    const row2 = executeRequest.rows.find((row) => row.rowNumber === 72);
+
+    expect(row1).toEqual(
+      expect.objectContaining({
+        rowNumber: 71,
+      }),
+    );
+    expect(row1).not.toHaveProperty('sellBeforeBuyAction');
+
+    expect(row2).toEqual(
+      expect.objectContaining({
+        rowNumber: 72,
+        sellBeforeBuyAction: 'UseOpeningPosition',
       }),
     );
   });

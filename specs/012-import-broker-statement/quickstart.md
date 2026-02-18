@@ -278,3 +278,62 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/p
 - **(e) Scenario coverage without Playwright infra**:
   - Frontend integration: `frontend/src/test/stock-import.broker-preview.test.tsx` (broker import to performance binding flow)
   - Backend integration: `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+
+## Verification Notes (Group E Closure Update)
+
+- Updated for Group E Speckit closure with concrete frontend QA evidence (date: **2026-02-18**).
+- Root cause summary:
+  - **(A) Import UI/API contract alignment gap**: import payload/result field usage needed to stay synchronized across `types`, `StockImportButton`, and `CSVImportModal`.
+  - **(B) Performance reliability and metric-binding consistency gap**: current-year fallback and metric card binding behavior needed consistent handling in `Performance.tsx`.
+  - **(C) Import regression alignment gap**: import-focused regression tests needed to match the latest contract/gating behavior.
+  - **(D) Performance regression alignment gap**: performance-focused regression tests needed to match dedupe/cache compatibility and reliability behavior.
+- QA note:
+  - Expected fallback stderr emitted by fallback-path test scaffolding is non-blocking when all assertions pass.
+
+## Verification Evidence (Group E Execution Log)
+
+### Commands Executed
+
+```bash
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run build
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/stock-import.broker-preview.test.tsx src/test/stock-import.balance-action.test.tsx src/test/stock-import.legacy-regression.test.tsx src/test/performance.metrics-binding.test.tsx src/test/useHistoricalPerformance.test.ts
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Output Evidence |
+|---|---|---|
+| Frontend type-check | PASS | Type-check completed without errors |
+| Frontend production build | PASS | Build completed successfully |
+| Frontend import/performance regression suite | PASS | 5 test files passed, 60 tests passed, 0 failed |
+
+### Code-Review Resolution Notes
+
+- Market-aware quote cache handling is aligned to write market-aware cache entries while preserving legacy-key fallback compatibility.
+- Conditional TopUp gating is aligned: execute is blocked only when `balanceAction` is `TopUp` and `topUpTransactionType` is missing.
+
+### Group E Traceability (Frontend + Tests)
+
+- **A. Import UI/API contract alignment**
+  - `frontend/src/types/index.ts`
+  - `frontend/src/components/import/StockImportButton.tsx`
+  - `frontend/src/components/import/CSVImportModal.tsx`
+  - Tests:
+    - `frontend/src/test/stock-import.broker-preview.test.tsx`
+    - `frontend/src/test/stock-import.balance-action.test.tsx`
+    - `frontend/src/test/stock-import.legacy-regression.test.tsx`
+- **B. Performance reliability and metric-binding consistency**
+  - `frontend/src/pages/Performance.tsx`
+  - Tests:
+    - `frontend/src/test/performance.metrics-binding.test.tsx`
+    - `frontend/src/test/useHistoricalPerformance.test.ts`
+- **C. Import regression tests alignment scope**
+  - `frontend/src/test/stock-import.broker-preview.test.tsx`
+  - `frontend/src/test/stock-import.balance-action.test.tsx`
+  - `frontend/src/test/stock-import.legacy-regression.test.tsx`
+- **D. Performance regression tests alignment scope**
+  - `frontend/src/test/performance.metrics-binding.test.tsx`
+  - `frontend/src/test/useHistoricalPerformance.test.ts`

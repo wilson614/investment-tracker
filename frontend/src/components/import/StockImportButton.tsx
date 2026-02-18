@@ -5,10 +5,11 @@
  * - legacy csv：保留既有逐列 parse + transactionApi.create 流程
  * - broker / unified：改走 previewImport / executeImport 與 unresolved-row remediation
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import {
   CSVImportModal,
+  type CSVImportBaselineOpeningPositionInput,
   type CSVImportPreviewExtensions,
   type CSVImportRemediationRow,
   type FieldDefinition,
@@ -40,6 +41,7 @@ import type {
   StockMarket as StockMarketType,
   Currency as CurrencyType,
   StockImportBalanceDecisionContext,
+  StockImportBaselineRequest,
   StockImportDefaultBalanceAction,
   StockImportExecuteBalanceAction,
   StockImportExecuteRequest,
@@ -48,6 +50,8 @@ import type {
   StockImportPreviewRow,
   StockImportDiagnostic,
   StockImportSelectedFormat,
+  StockImportSelectedSellBeforeBuyAction,
+  StockImportSellBeforeBuyAction,
   StockImportTopUpTransactionType,
   StockImportTradeSide,
   StockImportExecuteRowRequest,
@@ -437,6 +441,140 @@ function deriveTopUpTransactionType(
   return undefined;
 }
 
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function serializeCsvData(csvData: ParsedCSV): string {
+  return [
+    csvData.headers.join(','),
+    ...csvData.rows.map((row) => row.map((cell) => {
+      if (/[",\n\r]/.test(cell)) {
+        return `"${cell.replace(/"/g, '""')}"`;
+      }
+
+      return cell;
+    }).join(',')),
+  ].join('\n');
+}
+
+function buildPreviewBaselineSignature(baseline: StockImportBaselineRequest | undefined): string {
+  return JSON.stringify(baseline ?? null);
+}
+
+function hasBaselineInput(
+  baselineDate: string,
+  openingCashBalance: string,
+  openingLedgerBalance: string,
+  openingPositions: CSVImportBaselineOpeningPositionInput[],
+): boolean {
+  if (baselineDate.trim() !== '') {
+    return true;
+  }
+
+  if (openingCashBalance.trim() !== '' || openingLedgerBalance.trim() !== '') {
+    return true;
+  }
+
+  return openingPositions.some((position) => (
+    position.ticker.trim() !== ''
+    || position.quantity.trim() !== ''
+    || position.totalCost.trim() !== ''
+  ));
+}
+
+function buildBaselineRequest(
+  baselineDate: string,
+  openingCashBalance: string,
+  openingLedgerBalance: string,
+  openingPositions: CSVImportBaselineOpeningPositionInput[],
+): StockImportBaselineRequest | undefined {
+  if (!hasBaselineInput(baselineDate, openingCashBalance, openingLedgerBalance, openingPositions)) {
+    return undefined;
+  }
+
+  const normalizedPositions = openingPositions
+    .map((position) => {
+      const ticker = normalizeTickerValue(position.ticker);
+      const quantity = parseOptionalNumber(position.quantity);
+      const totalCost = parseOptionalNumber(position.totalCost);
+
+      if (!ticker && quantity === undefined && totalCost === undefined) {
+        return null;
+      }
+
+      return {
+        ...(ticker ? { ticker } : {}),
+        ...(quantity !== undefined ? { quantity } : {}),
+        ...(totalCost !== undefined ? { totalCost } : {}),
+      };
+    })
+    .filter((position): position is NonNullable<typeof position> => position !== null);
+
+  const parsedOpeningCashBalance = parseOptionalNumber(openingCashBalance);
+  const parsedOpeningLedgerBalance = parseOptionalNumber(openingLedgerBalance);
+
+  const request: StockImportBaselineRequest = {
+    ...(baselineDate.trim() ? { baselineDate: baselineDate.trim() } : {}),
+    ...(parsedOpeningCashBalance !== undefined
+      ? { openingCashBalance: parsedOpeningCashBalance }
+      : {}),
+    ...(parsedOpeningLedgerBalance !== undefined
+      ? { openingLedgerBalance: parsedOpeningLedgerBalance }
+      : {}),
+    ...(normalizedPositions.length > 0 ? { openingPositions: normalizedPositions } : {}),
+  };
+
+  if (
+    !request.baselineDate
+    && request.openingCashBalance === undefined
+    && request.openingLedgerBalance === undefined
+    && (!request.openingPositions || request.openingPositions.length === 0)
+  ) {
+    return undefined;
+  }
+
+  return request;
+}
+
+function requiresSellBeforeBuyHandling(row: StockImportPreviewRow): boolean {
+  return row.actionsRequired.includes('choose_sell_before_buy_handling');
+}
+
+function deriveRowSellBeforeBuyAction(
+  rowSelection: 'default' | 'UseOpeningPosition' | 'CreateAdjustment' | undefined,
+  globalDefault: 'UseOpeningPosition' | 'CreateAdjustment' | null,
+): StockImportSellBeforeBuyAction {
+  if (rowSelection === 'UseOpeningPosition' || rowSelection === 'CreateAdjustment') {
+    return rowSelection;
+  }
+
+  return globalDefault ?? 'None';
+}
+
+function hasResolvedSellBeforeBuyAction(
+  rowSelection: 'default' | 'UseOpeningPosition' | 'CreateAdjustment' | undefined,
+  globalDefault: 'UseOpeningPosition' | 'CreateAdjustment' | null,
+): boolean {
+  return deriveRowSellBeforeBuyAction(rowSelection, globalDefault) !== 'None';
+}
+
+function toSellBeforeBuyBaselineAction(
+  action: 'UseOpeningPosition' | 'CreateAdjustment' | null,
+): StockImportSelectedSellBeforeBuyAction | undefined {
+  if (action === 'UseOpeningPosition' || action === 'CreateAdjustment') {
+    return action;
+  }
+
+  return undefined;
+}
+
 export function StockImportButton({
   portfolioId,
   boundLedgerCurrencyCode,
@@ -447,7 +585,6 @@ export function StockImportButton({
 }: StockImportButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [csvContent, setCsvContent] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<StockImportSelectedFormat>('broker_statement');
   const [detectedFormat, setDetectedFormat] = useState<'legacy_csv' | 'broker_statement' | 'unknown'>('unknown');
 
@@ -458,10 +595,20 @@ export function StockImportButton({
 
   const [manualTickerByRow, setManualTickerByRow] = useState<Record<number, string>>({});
   const [confirmedTradeSideByRow, setConfirmedTradeSideByRow] = useState<Record<number, StockImportTradeSide>>({});
+  const [globalSellBeforeBuyAction, setGlobalSellBeforeBuyAction] = useState<'UseOpeningPosition' | 'CreateAdjustment' | null>(null);
+  const [rowSellBeforeBuyActionSelectionByRow, setRowSellBeforeBuyActionSelectionByRow] = useState<Record<number, 'default' | 'UseOpeningPosition' | 'CreateAdjustment'>>({});
   const [globalBalanceAction, setGlobalBalanceAction] = useState<'Margin' | 'TopUp' | null>(null);
   const [globalTopUpTransactionType, setGlobalTopUpTransactionType] = useState<StockImportTopUpTransactionType | null>(null);
   const [rowBalanceActionSelectionByRow, setRowBalanceActionSelectionByRow] = useState<Record<number, 'default' | 'Margin' | 'TopUp'>>({});
   const [rowTopUpTransactionTypeByRow, setRowTopUpTransactionTypeByRow] = useState<Record<number, StockImportTopUpTransactionType | null>>({});
+
+  const [baselineDate, setBaselineDate] = useState('');
+  const [openingCashBalanceInput, setOpeningCashBalanceInput] = useState('');
+  const [openingLedgerBalanceInput, setOpeningLedgerBalanceInput] = useState('');
+  const [openingPositionsInput, setOpeningPositionsInput] = useState<CSVImportBaselineOpeningPositionInput[]>([]);
+  const [openingPositionSeed, setOpeningPositionSeed] = useState(1);
+
+  const lastPreviewInputSignatureRef = useRef<string | null>(null);
 
   const isTwdPortfolio = useMemo(() => {
     const normalized = boundLedgerCurrencyCode?.trim().toUpperCase();
@@ -480,53 +627,61 @@ export function StockImportButton({
     setPreviewErrors([]);
     setManualTickerByRow({});
     setConfirmedTradeSideByRow({});
+    setGlobalSellBeforeBuyAction(null);
+    setRowSellBeforeBuyActionSelectionByRow({});
     setGlobalBalanceAction(null);
     setGlobalTopUpTransactionType(null);
     setRowBalanceActionSelectionByRow({});
     setRowTopUpTransactionTypeByRow({});
+    lastPreviewInputSignatureRef.current = null;
+  };
+
+  const resetBaselineState = () => {
+    setBaselineDate('');
+    setOpeningCashBalanceInput('');
+    setOpeningLedgerBalanceInput('');
+    setOpeningPositionsInput([]);
+    setOpeningPositionSeed(1);
   };
 
   const resetImportState = () => {
-    setCsvContent('');
     setSelectedFormat('broker_statement');
     setDetectedFormat('unknown');
     setLastLocalDetectedFormat('unknown');
     clearPreviewSessionState();
+    resetBaselineState();
     setIsPreviewing(false);
   };
 
   const handleRequestPreview = async (csvData: ParsedCSV): Promise<void> => {
-    if (!csvContent) {
-      const reconstructed = [
-        csvData.headers.join(','),
-        ...csvData.rows.map((row) => row.map((cell) => {
-          if (/[",\n\r]/.test(cell)) {
-            return `"${cell.replace(/"/g, '""')}"`;
-          }
-          return cell;
-        }).join(',')),
-      ].join('\n');
-      setCsvContent(reconstructed);
-    }
-
-    const nextCsvContent = csvContent || [
-      csvData.headers.join(','),
-      ...csvData.rows.map((row) => row.map((cell) => {
-        if (/[",\n\r]/.test(cell)) {
-          return `"${cell.replace(/"/g, '""')}"`;
-        }
-        return cell;
-      }).join(',')),
-    ].join('\n');
+    const nextCsvContent = serializeCsvData(csvData);
 
     const detected = detectStockImportFormat(csvData.headers);
     setDetectedFormat(detected);
     setLastLocalDetectedFormat(detected);
 
+    const baseline = buildBaselineRequest(
+      baselineDate,
+      openingCashBalanceInput,
+      openingLedgerBalanceInput,
+      openingPositionsInput,
+    );
+
+    const nextPreviewInputSignature = [
+      selectedFormat,
+      nextCsvContent,
+      buildPreviewBaselineSignature(baseline),
+    ].join('|');
+
+    const shouldReuseRemediationState =
+      latestPreview !== null
+      && lastPreviewInputSignatureRef.current === nextPreviewInputSignature;
+
     const request: StockImportPreviewRequest = {
       portfolioId,
       csvContent: nextCsvContent,
       selectedFormat,
+      ...(baseline ? { baseline } : {}),
     };
 
     setIsPreviewing(true);
@@ -537,16 +692,20 @@ export function StockImportButton({
       setSelectedFormat(preview.selectedFormat);
       setDetectedFormat(preview.detectedFormat);
       setPreviewErrors(mapPreviewErrorsToParseErrors(preview));
+      lastPreviewInputSignatureRef.current = nextPreviewInputSignature;
 
-      // Build/refresh remediation state, keep previous manual edits
+      // Build/refresh remediation state. Keep previous manual edits only when preview inputs are unchanged.
       const nextManualTickerByRow: Record<number, string> = {};
       const nextConfirmedTradeSideByRow: Record<number, StockImportTradeSide> = {};
+      const nextRowSellBeforeBuyActionSelectionByRow: Record<number, 'default' | 'UseOpeningPosition' | 'CreateAdjustment'> = {};
       const nextRowBalanceActionSelectionByRow: Record<number, 'default' | 'Margin' | 'TopUp'> = {};
       const nextRowTopUpTransactionTypeByRow: Record<number, StockImportTopUpTransactionType | null> = {};
 
       for (const row of preview.rows) {
         const normalizedTicker = normalizeTickerValue(row.ticker);
-        const existingManual = normalizeTickerValue(manualTickerByRow[row.rowNumber]);
+        const existingManual = shouldReuseRemediationState
+          ? normalizeTickerValue(manualTickerByRow[row.rowNumber])
+          : null;
 
         if (existingManual) {
           nextManualTickerByRow[row.rowNumber] = existingManual;
@@ -554,7 +713,9 @@ export function StockImportButton({
           nextManualTickerByRow[row.rowNumber] = normalizedTicker;
         }
 
-        const existingSide = confirmedTradeSideByRow[row.rowNumber];
+        const existingSide = shouldReuseRemediationState
+          ? confirmedTradeSideByRow[row.rowNumber]
+          : undefined;
         if (existingSide) {
           nextConfirmedTradeSideByRow[row.rowNumber] = existingSide;
         } else {
@@ -564,14 +725,27 @@ export function StockImportButton({
           }
         }
 
-        const existingRowSelection = rowBalanceActionSelectionByRow[row.rowNumber];
+        const existingSellBeforeBuySelection = shouldReuseRemediationState
+          ? rowSellBeforeBuyActionSelectionByRow[row.rowNumber]
+          : undefined;
+        if (existingSellBeforeBuySelection) {
+          nextRowSellBeforeBuyActionSelectionByRow[row.rowNumber] = existingSellBeforeBuySelection;
+        } else {
+          nextRowSellBeforeBuyActionSelectionByRow[row.rowNumber] = 'default';
+        }
+
+        const existingRowSelection = shouldReuseRemediationState
+          ? rowBalanceActionSelectionByRow[row.rowNumber]
+          : undefined;
         if (existingRowSelection) {
           nextRowBalanceActionSelectionByRow[row.rowNumber] = existingRowSelection;
         } else {
           nextRowBalanceActionSelectionByRow[row.rowNumber] = 'default';
         }
 
-        const existingRowTopUp = rowTopUpTransactionTypeByRow[row.rowNumber];
+        const existingRowTopUp = shouldReuseRemediationState
+          ? rowTopUpTransactionTypeByRow[row.rowNumber]
+          : null;
         if (isTopUpTransactionType(existingRowTopUp)) {
           nextRowTopUpTransactionTypeByRow[row.rowNumber] = existingRowTopUp;
         } else if (isTopUpTransactionType(row.balanceDecision?.topUpTransactionType)) {
@@ -583,11 +757,48 @@ export function StockImportButton({
 
       setManualTickerByRow(nextManualTickerByRow);
       setConfirmedTradeSideByRow(nextConfirmedTradeSideByRow);
+      setRowSellBeforeBuyActionSelectionByRow(nextRowSellBeforeBuyActionSelectionByRow);
       setRowBalanceActionSelectionByRow(nextRowBalanceActionSelectionByRow);
       setRowTopUpTransactionTypeByRow(nextRowTopUpTransactionTypeByRow);
     } finally {
       setIsPreviewing(false);
     }
+  };
+
+  const handleAddOpeningPosition = () => {
+    const nextId = `opening-position-${openingPositionSeed}`;
+    setOpeningPositionSeed((prev) => prev + 1);
+    clearPreviewSessionState();
+    setOpeningPositionsInput((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        ticker: '',
+        quantity: '',
+        totalCost: '',
+      },
+    ]);
+  };
+
+  const handleRemoveOpeningPosition = (id: string) => {
+    clearPreviewSessionState();
+    setOpeningPositionsInput((prev) => prev.filter((position) => position.id !== id));
+  };
+
+  const handleChangeOpeningPosition = (
+    id: string,
+    field: 'ticker' | 'quantity' | 'totalCost',
+    value: string,
+  ) => {
+    clearPreviewSessionState();
+    setOpeningPositionsInput((prev) => prev.map((position) => (
+      position.id === id
+        ? {
+            ...position,
+            [field]: value,
+          }
+        : position
+    )));
   };
 
   const shouldHideMappingSelectors = useMemo(() => {
@@ -635,6 +846,19 @@ export function StockImportButton({
     });
   }, [latestPreview, confirmedTradeSideByRow]);
 
+  const hasUndecidedSellBeforeBuyRows = useMemo(() => {
+    if (!latestPreview) return false;
+
+    return latestPreview.rows.some((row) => {
+      if (!requiresSellBeforeBuyHandling(row)) {
+        return false;
+      }
+
+      const rowSelection = rowSellBeforeBuyActionSelectionByRow[row.rowNumber] ?? 'default';
+      return !hasResolvedSellBeforeBuyAction(rowSelection, globalSellBeforeBuyAction);
+    });
+  }, [latestPreview, rowSellBeforeBuyActionSelectionByRow, globalSellBeforeBuyAction]);
+
   const hasUndecidedBalanceActionRows = useMemo(() => {
     if (!latestPreview) return false;
 
@@ -650,10 +874,6 @@ export function StockImportButton({
 
   const hasMissingTopUpTransactionType = useMemo(() => {
     if (!latestPreview || isTwdPortfolio) return false;
-
-    if (globalBalanceAction === 'TopUp' && !globalTopUpTransactionType) {
-      return true;
-    }
 
     return latestPreview.rows.some((row) => {
       if (!hasBalanceDecisionRequirement(row)) {
@@ -711,6 +931,10 @@ export function StockImportButton({
       return '仍有列缺少買賣方向，請先逐列確認';
     }
 
+    if (hasUndecidedSellBeforeBuyRows) {
+      return '仍有列需要指定賣先買後處理方式，請先選擇全域預設或逐列設定';
+    }
+
     if (hasUndecidedBalanceActionRows) {
       return '已選擇「逐筆決定」，請先完成所有短缺列的餘額不足處理方式';
     }
@@ -725,6 +949,7 @@ export function StockImportButton({
     previewErrors,
     hasUnresolvedTicker,
     hasUnconfirmedTradeSide,
+    hasUndecidedSellBeforeBuyRows,
     hasUndecidedBalanceActionRows,
     hasMissingTopUpTransactionType,
   ]);
@@ -735,11 +960,18 @@ export function StockImportButton({
     return latestPreview.rows.map((row) => {
       const requiresTickerInput = row.actionsRequired.includes('input_ticker');
       const requiresTradeSideConfirmation = row.actionsRequired.includes('confirm_trade_side');
+      const requiresSellBeforeBuy = requiresSellBeforeBuyHandling(row);
       const requiresBalanceAction = hasBalanceDecisionRequirement(row);
 
       const manualTicker = normalizeTickerValue(manualTickerByRow[row.rowNumber]);
       const effectiveTicker = normalizeTickerValue(manualTicker ?? row.ticker);
       const side = confirmedTradeSideByRow[row.rowNumber] ?? parseTradeSideFromRow(row);
+
+      const rowSellBeforeBuySelection = rowSellBeforeBuyActionSelectionByRow[row.rowNumber] ?? 'default';
+      const effectiveSellBeforeBuyAction = deriveRowSellBeforeBuyAction(
+        rowSellBeforeBuySelection,
+        globalSellBeforeBuyAction,
+      );
 
       const rowSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
       const rowTopUpType = rowTopUpTransactionTypeByRow[row.rowNumber] ?? null;
@@ -767,6 +999,13 @@ export function StockImportButton({
         tradeSide: row.tradeSide,
         confirmedTradeSide: side,
         requiresTradeSideConfirmation,
+        requiresSellBeforeBuyHandling: requiresSellBeforeBuy,
+        sellBeforeBuyActionSelection: rowSellBeforeBuySelection,
+        effectiveSellBeforeBuyAction:
+          effectiveSellBeforeBuyAction === 'UseOpeningPosition' || effectiveSellBeforeBuyAction === 'CreateAdjustment'
+            ? effectiveSellBeforeBuyAction
+            : null,
+        usesPartialHistoryAssumption: row.usesPartialHistoryAssumption,
         requiresBalanceAction,
         balanceActionSelection: rowSelection,
         effectiveBalanceAction:
@@ -781,17 +1020,23 @@ export function StockImportButton({
           ? '此列需手動輸入 ticker'
           : requiresTradeSideConfirmation
             ? '此列需手動確認買賣方向'
-            : requiresBalanceAction
-              ? '此列需指定餘額不足處理方式'
-              : null,
+            : requiresSellBeforeBuy
+              ? '此列需指定賣先買後處理方式'
+              : requiresBalanceAction
+                ? '此列需指定餘額不足處理方式'
+                : row.usesPartialHistoryAssumption
+                  ? '此列套用節錄匯入假設，必要時可調整賣先買後處理方式'
+                  : null,
       };
     });
   }, [
     latestPreview,
     manualTickerByRow,
     confirmedTradeSideByRow,
+    rowSellBeforeBuyActionSelectionByRow,
     rowBalanceActionSelectionByRow,
     rowTopUpTransactionTypeByRow,
+    globalSellBeforeBuyAction,
     globalBalanceAction,
     globalTopUpTransactionType,
   ]);
@@ -811,6 +1056,15 @@ export function StockImportButton({
       const ticker = normalizeTickerValue(manualTickerByRow[row.rowNumber] ?? row.ticker) ?? '';
       const confirmedTradeSide = confirmedTradeSideByRow[row.rowNumber] ?? parseTradeSideFromRow(row);
 
+      if (!ticker) {
+        unresolvedExecuteErrors.push({
+          row: row.rowNumber,
+          column: '股票代號',
+          message: '此列尚未提供股票代號，請先於預覽區補齊',
+        });
+        continue;
+      }
+
       if (!confirmedTradeSide) {
         unresolvedExecuteErrors.push({
           row: row.rowNumber,
@@ -819,6 +1073,13 @@ export function StockImportButton({
         });
         continue;
       }
+
+      const rowSellBeforeBuySelection = rowSellBeforeBuyActionSelectionByRow[row.rowNumber] ?? 'default';
+      const needsSellBeforeBuyHandling = requiresSellBeforeBuyHandling(row);
+      const effectiveSellBeforeBuyAction = deriveRowSellBeforeBuyAction(
+        rowSellBeforeBuySelection,
+        globalSellBeforeBuyAction,
+      );
 
       const rowBalanceSelection = rowBalanceActionSelectionByRow[row.rowNumber] ?? 'default';
       const rowTopUpType = rowTopUpTransactionTypeByRow[row.rowNumber] ?? null;
@@ -837,6 +1098,15 @@ export function StockImportButton({
         globalBalanceAction,
         globalTopUpTransactionType,
       );
+
+      if (needsSellBeforeBuyHandling && effectiveSellBeforeBuyAction === 'None') {
+        unresolvedExecuteErrors.push({
+          row: row.rowNumber,
+          column: '賣先買後處理方式',
+          message: '此列尚未決定賣先買後處理方式，請先選擇「使用期初持倉」或「建立調整」',
+        });
+        continue;
+      }
 
       if (requiresBalanceAction && effectiveBalanceAction === 'None') {
         unresolvedExecuteErrors.push({
@@ -861,6 +1131,11 @@ export function StockImportButton({
         ticker,
         confirmedTradeSide,
         exclude: false,
+        ...(needsSellBeforeBuyHandling
+          && rowSellBeforeBuySelection !== 'default'
+          && (effectiveSellBeforeBuyAction === 'UseOpeningPosition' || effectiveSellBeforeBuyAction === 'CreateAdjustment')
+          ? { sellBeforeBuyAction: effectiveSellBeforeBuyAction }
+          : {}),
         ...(requiresBalanceAction && effectiveBalanceAction !== 'None'
           ? {
               balanceAction: effectiveBalanceAction,
@@ -888,10 +1163,18 @@ export function StockImportButton({
         }
       : undefined;
 
+    const baselineSellBeforeBuyAction = toSellBeforeBuyBaselineAction(globalSellBeforeBuyAction);
+    const baselineDecision = baselineSellBeforeBuyAction
+      ? {
+          sellBeforeBuyAction: baselineSellBeforeBuyAction,
+        }
+      : undefined;
+
     const request: StockImportExecuteRequest = {
       sessionId: latestPreview.sessionId,
       portfolioId,
       rows,
+      ...(baselineDecision ? { baselineDecision } : {}),
       ...(defaultBalanceAction ? { defaultBalanceAction } : {}),
     };
 
@@ -1090,6 +1373,7 @@ export function StockImportButton({
         if (nextValue !== selectedFormat) {
           setSelectedFormat(nextValue);
           clearPreviewSessionState();
+          resetBaselineState();
         }
       }
     },
@@ -1106,6 +1390,25 @@ export function StockImportButton({
       : [],
     remediationRows,
     previewErrors,
+    baselineDate,
+    openingCashBalance: openingCashBalanceInput,
+    openingLedgerBalance: openingLedgerBalanceInput,
+    openingPositions: openingPositionsInput,
+    onChangeBaselineDate: (value) => {
+      setBaselineDate(value);
+      clearPreviewSessionState();
+    },
+    onChangeOpeningCashBalance: (value) => {
+      setOpeningCashBalanceInput(value);
+      clearPreviewSessionState();
+    },
+    onChangeOpeningLedgerBalance: (value) => {
+      setOpeningLedgerBalanceInput(value);
+      clearPreviewSessionState();
+    },
+    onAddOpeningPosition: handleAddOpeningPosition,
+    onRemoveOpeningPosition: handleRemoveOpeningPosition,
+    onChangeOpeningPosition: handleChangeOpeningPosition,
     onManualTickerChange: (rowNumber, value) => {
       setManualTickerByRow((prev) => ({
         ...prev,
@@ -1116,6 +1419,18 @@ export function StockImportButton({
       setConfirmedTradeSideByRow((prev) => ({
         ...prev,
         [rowNumber]: side,
+      }));
+    },
+    globalSellBeforeBuyActionLabel: '賣先買後預設處理方式',
+    globalSellBeforeBuyAction,
+    onChangeGlobalSellBeforeBuyAction: (value) => {
+      setGlobalSellBeforeBuyAction(value);
+    },
+    rowSellBeforeBuyActionLabel: '逐列賣先買後處理方式',
+    onChangeRowSellBeforeBuyActionSelection: (rowNumber, value) => {
+      setRowSellBeforeBuyActionSelectionByRow((prev) => ({
+        ...prev,
+        [rowNumber]: value,
       }));
     },
     globalBalanceActionLabel: '餘額不足預設處理方式',
@@ -1184,23 +1499,15 @@ export function StockImportButton({
         title="匯入股票交易"
         fields={stockFields}
         onCsvParsed={(csvData) => {
-          setLastLocalDetectedFormat(detectStockImportFormat(csvData.headers));
+          const detectedFormat = detectStockImportFormat(csvData.headers);
+          setLastLocalDetectedFormat(detectedFormat);
+          setSelectedFormat('broker_statement');
+          clearPreviewSessionState();
+          resetBaselineState();
         }}
         hideMappingSelectors={shouldHideMappingSelectors}
         hiddenMappingFieldNames={['market', 'currency', 'exchangeRate']}
-        onRequestPreview={(csvData) => {
-          const content = [
-            csvData.headers.join(','),
-            ...csvData.rows.map((row) => row.map((cell) => {
-              if (/[",\n\r]/.test(cell)) {
-                return `"${cell.replace(/"/g, '""')}"`;
-              }
-              return cell;
-            }).join(',')),
-          ].join('\n');
-          setCsvContent(content);
-          return handleRequestPreview(csvData);
-        }}
+        onRequestPreview={(csvData) => handleRequestPreview(csvData)}
         onExecute={handleExecuteImport}
         onImport={handleLegacyImport}
         previewExtensions={previewExtensions}

@@ -55,7 +55,28 @@ vi.mock('../components/performance/YearSelector', () => ({
 }));
 
 vi.mock('../components/performance/CurrencyToggle', () => ({
-  CurrencyToggle: () => <div data-testid="currency-toggle" />,
+  CurrencyToggle: ({
+    onChange,
+  }: {
+    onChange: (mode: 'source' | 'home') => void;
+  }) => (
+    <div data-testid="currency-toggle">
+      <button
+        type="button"
+        data-testid="currency-toggle-home"
+        onClick={() => onChange('home')}
+      >
+        home
+      </button>
+      <button
+        type="button"
+        data-testid="currency-toggle-source"
+        onClick={() => onChange('source')}
+      >
+        source
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../components/modals/MissingPriceModal', () => ({
@@ -188,6 +209,11 @@ function createPerformanceMock(overrides: Partial<YearPerformance> = {}): YearPe
     cashFlowCount: 2,
     transactionCount: 2,
     earliestTransactionDateInYear: `${currentYear}-01-01`,
+    coverageStartDate: `${currentYear}-01-01`,
+    coverageDays: 365,
+    hasOpeningBaseline: false,
+    usesPartialHistoryAssumption: false,
+    xirrReliability: 'High',
     missingPrices: [],
     isComplete: true,
     ...overrides,
@@ -224,12 +250,15 @@ function setupPageMocks(
     setSelectedYear?: (year: number) => void;
     availableYears?: AvailableYears;
     calculatePerformance?: (...args: unknown[]) => Promise<void>;
+    isAllPortfolios?: boolean;
   }
 ): void {
+  const isAllPortfolios = options?.isAllPortfolios ?? false;
+
   mockedUsePortfolio.mockReturnValue({
-    currentPortfolio: mockPortfolio,
-    currentPortfolioId: mockPortfolio.id,
-    isAllPortfolios: false,
+    currentPortfolio: isAllPortfolios ? null : mockPortfolio,
+    currentPortfolioId: isAllPortfolios ? 'all' : mockPortfolio.id,
+    isAllPortfolios,
     portfolios: [mockPortfolio],
     isLoading: false,
     selectPortfolio: vi.fn(),
@@ -444,6 +473,61 @@ describe('PerformancePage metrics binding regression', () => {
 
     expect(within(modifiedDietzCard as HTMLElement).queryByText('+3.21%')).not.toBeInTheDocument();
     expect(within(twrCard as HTMLElement).queryByText('+21.43%')).not.toBeInTheDocument();
+  });
+
+  it('shows coverage and reliability signals for partial-history yearly data', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        coverageStartDate: `${currentYear}-11-01`,
+        coverageDays: 45,
+        hasOpeningBaseline: true,
+        usesPartialHistoryAssumption: true,
+        xirrReliability: 'Unavailable',
+      })
+    );
+
+    render(<PerformancePage />);
+
+    expect(await screen.findByText(/資料覆蓋有限/)).toBeInTheDocument();
+    expect(screen.getByText(/此年度含節錄匯入假設/)).toBeInTheDocument();
+    expect(screen.getByText(/已套用期初基準/)).toBeInTheDocument();
+    expect(screen.getByText(/年化報酬不提供/)).toBeInTheDocument();
+  });
+
+  it('binds total return to home/source fields when currency mode changes', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        totalReturnPercentage: 12.34,
+        totalReturnPercentageSource: 56.78,
+      })
+    );
+
+    render(<PerformancePage />);
+
+    const totalReturnLabel = await screen.findByText('總報酬率');
+    const totalReturnCell = totalReturnLabel.parentElement;
+    expect(totalReturnCell).not.toBeNull();
+
+    await waitFor(() => {
+      expect(within(totalReturnCell as HTMLElement).getByText('+12.34%')).toBeInTheDocument();
+      expect(within(totalReturnCell as HTMLElement).queryByText('+56.78%')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('currency-toggle-source'));
+
+    await waitFor(() => {
+      expect(within(totalReturnCell as HTMLElement).getByText('+56.78%')).toBeInTheDocument();
+      expect(within(totalReturnCell as HTMLElement).queryByText('+12.34%')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('currency-toggle-home'));
+
+    await waitFor(() => {
+      expect(within(totalReturnCell as HTMLElement).getByText('+12.34%')).toBeInTheDocument();
+      expect(within(totalReturnCell as HTMLElement).queryByText('+56.78%')).not.toBeInTheDocument();
+    });
   });
 
   it('does not show main loading gate or trigger recalculation when historical cache data is complete', async () => {
@@ -688,6 +772,46 @@ describe('PerformancePage metrics binding regression', () => {
     await waitFor(() => {
       expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('keeps YearStart and YearEnd missing entries for the same ticker in aggregate mode', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+
+    const aggregateMissingPrices: MissingPrice[] = [
+      createMissingPrice('AAPL', {
+        market: StockMarket.US,
+        priceType: 'YearStart',
+        date: `${previousYear}-12-31`,
+      }),
+      createMissingPrice('AAPL', {
+        market: StockMarket.US,
+        priceType: 'YearEnd',
+        date: `${currentYear}-12-31`,
+      }),
+    ];
+
+    setupPageMocks(
+      createPerformanceMock({
+        missingPrices: aggregateMissingPrices,
+      }),
+      {
+        selectedYear: currentYear,
+        isAllPortfolios: true,
+      },
+    );
+
+    render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledTimes(1);
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledWith(
+        StockMarket.US,
+        'AAPL',
+        'TWD',
+      );
+    });
+
+    expect(screen.getByRole('button', { name: '重新抓取' })).toBeInTheDocument();
   });
 
   it('uses market-aware quote cache key first for current-year missing prices', async () => {

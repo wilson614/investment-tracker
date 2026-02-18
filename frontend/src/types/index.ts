@@ -124,13 +124,31 @@ export type StockImportDetectedFormat = StockImportSelectedFormat | 'unknown';
 export type StockImportTradeSide = 'buy' | 'sell';
 export type StockImportPreviewTradeSide = StockImportTradeSide | 'ambiguous';
 export type StockImportRowStatus = 'valid' | 'requires_user_action' | 'invalid';
-export type StockImportActionRequired = 'confirm_trade_side' | 'input_ticker' | 'select_balance_action';
+export type StockImportActionRequired =
+  | 'confirm_trade_side'
+  | 'input_ticker'
+  | 'select_balance_action'
+  | 'choose_sell_before_buy_handling';
 export type StockImportBalanceDecisionScope = 'global_default' | 'row_override';
+
+export interface StockImportOpeningPositionRequest {
+  ticker?: string;
+  quantity?: number;
+  totalCost?: number;
+}
+
+export interface StockImportBaselineRequest {
+  baselineDate?: string;
+  openingPositions?: StockImportOpeningPositionRequest[];
+  openingCashBalance?: number;
+  openingLedgerBalance?: number;
+}
 
 export interface StockImportPreviewRequest {
   portfolioId: string;
   csvContent: string;
   selectedFormat: StockImportSelectedFormat;
+  baseline?: StockImportBaselineRequest;
 }
 
 export interface StockImportPreviewSummary {
@@ -163,6 +181,7 @@ export interface StockImportPreviewRow {
   netSettlement: number | null;
   currency: string | null;
   status: StockImportRowStatus;
+  usesPartialHistoryAssumption: boolean;
   actionsRequired: StockImportActionRequired[];
   balanceDecision?: StockImportBalanceDecisionContext | null;
 }
@@ -187,12 +206,15 @@ export interface StockImportPreviewResponse {
 
 export type StockImportExecuteBalanceAction = 'None' | 'Margin' | 'TopUp';
 export type StockImportTopUpTransactionType = 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+export type StockImportSellBeforeBuyAction = 'None' | 'UseOpeningPosition' | 'CreateAdjustment';
+export type StockImportSelectedSellBeforeBuyAction = Exclude<StockImportSellBeforeBuyAction, 'None'>;
 
 export interface StockImportExecuteRowRequest {
   rowNumber: number;
   ticker: string;
   confirmedTradeSide: StockImportTradeSide;
   exclude: boolean;
+  sellBeforeBuyAction?: StockImportSelectedSellBeforeBuyAction;
   balanceAction?: StockImportExecuteBalanceAction;
   topUpTransactionType?: StockImportTopUpTransactionType;
 }
@@ -202,10 +224,15 @@ export interface StockImportDefaultBalanceAction {
   topUpTransactionType?: StockImportTopUpTransactionType;
 }
 
+export interface StockImportBaselineExecutionDecision {
+  sellBeforeBuyAction?: StockImportSelectedSellBeforeBuyAction;
+}
+
 export interface StockImportExecuteRequest {
   sessionId: string;
   portfolioId: string;
   rows: StockImportExecuteRowRequest[];
+  baselineDecision?: StockImportBaselineExecutionDecision;
   defaultBalanceAction?: StockImportDefaultBalanceAction;
 }
 
@@ -553,6 +580,11 @@ export interface YearPerformance {
   cashFlowCount: number;
   transactionCount: number;
   earliestTransactionDateInYear: string | null;
+  coverageStartDate: string | null;
+  coverageDays: number | null;
+  hasOpeningBaseline: boolean | null;
+  usesPartialHistoryAssumption: boolean | null;
+  xirrReliability: 'High' | 'Medium' | 'Low' | 'Unavailable' | null;
   missingPrices: MissingPrice[];
   isComplete: boolean;
 }

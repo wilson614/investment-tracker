@@ -56,6 +56,7 @@ function buildPreviewRow(overrides: Partial<StockImportPreviewRow> = {}): StockI
     netSettlement: -625010,
     currency: 'TWD',
     status: 'valid',
+    usesPartialHistoryAssumption: false,
     actionsRequired: [],
     ...overrides,
   };

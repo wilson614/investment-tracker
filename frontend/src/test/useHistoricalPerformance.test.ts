@@ -65,6 +65,11 @@ const aggregatePerformanceMock: YearPerformance = {
   cashFlowCount: 0,
   transactionCount: 0,
   earliestTransactionDateInYear: null,
+  coverageStartDate: null,
+  coverageDays: null,
+  hasOpeningBaseline: null,
+  usesPartialHistoryAssumption: null,
+  xirrReliability: null,
   missingPrices: [],
   isComplete: true,
 };
@@ -624,6 +629,8 @@ describe('useHistoricalPerformance', () => {
       earliestYear: previousYear,
       currentYear,
     });
+
+    localStorage.setItem('perf_selected_year', String(currentYear));
 
     const currentYearDeferred = createDeferred<YearPerformance>();
     const previousYearDeferred = createDeferred<YearPerformance>();

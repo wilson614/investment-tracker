@@ -13,6 +13,10 @@ import {
   type ColumnMapping,
   type ParseError,
 } from '../../utils/csvParser';
+import type {
+  StockImportSelectedSellBeforeBuyAction,
+  StockImportTopUpTransactionType,
+} from '../../types';
 
 export interface FieldDefinition {
   /** 欄位 key（提供給 mapping 使用） */
@@ -42,7 +46,15 @@ export interface CSVImportSummaryItem {
   value: number | string;
 }
 
-type TopUpTransactionType = 'Deposit' | 'InitialBalance' | 'Interest' | 'OtherIncome';
+type TopUpTransactionType = StockImportTopUpTransactionType;
+type SellBeforeBuyAction = StockImportSelectedSellBeforeBuyAction;
+
+export interface CSVImportBaselineOpeningPositionInput {
+  id: string;
+  ticker: string;
+  quantity: string;
+  totalCost: string;
+}
 
 export interface CSVImportRemediationRow {
   rowNumber: number;
@@ -55,6 +67,10 @@ export interface CSVImportRemediationRow {
   tradeSide?: 'buy' | 'sell' | 'ambiguous';
   confirmedTradeSide?: 'buy' | 'sell' | null;
   requiresTradeSideConfirmation?: boolean;
+  requiresSellBeforeBuyHandling?: boolean;
+  sellBeforeBuyActionSelection?: 'default' | SellBeforeBuyAction;
+  effectiveSellBeforeBuyAction?: SellBeforeBuyAction | null;
+  usesPartialHistoryAssumption?: boolean;
   requiresBalanceAction?: boolean;
   balanceActionSelection?: 'default' | 'Margin' | 'TopUp';
   effectiveBalanceAction?: 'Margin' | 'TopUp' | null;
@@ -80,8 +96,32 @@ export interface CSVImportPreviewExtensions {
   remediationRows?: CSVImportRemediationRow[];
   previewErrors?: ParseError[];
 
+  baselineDate?: string;
+  openingCashBalance?: string;
+  openingLedgerBalance?: string;
+  openingPositions?: CSVImportBaselineOpeningPositionInput[];
+  onChangeBaselineDate?: (value: string) => void;
+  onChangeOpeningCashBalance?: (value: string) => void;
+  onChangeOpeningLedgerBalance?: (value: string) => void;
+  onAddOpeningPosition?: () => void;
+  onRemoveOpeningPosition?: (id: string) => void;
+  onChangeOpeningPosition?: (
+    id: string,
+    field: 'ticker' | 'quantity' | 'totalCost',
+    value: string,
+  ) => void;
+
   onManualTickerChange?: (rowNumber: number, value: string) => void;
   onChangeTradeSide?: (rowNumber: number, side: 'buy' | 'sell') => void;
+
+  globalSellBeforeBuyActionLabel?: string;
+  globalSellBeforeBuyAction?: SellBeforeBuyAction | null;
+  onChangeGlobalSellBeforeBuyAction?: (value: SellBeforeBuyAction | null) => void;
+  rowSellBeforeBuyActionLabel?: string;
+  onChangeRowSellBeforeBuyActionSelection?: (
+    rowNumber: number,
+    value: 'default' | SellBeforeBuyAction,
+  ) => void;
 
   globalBalanceActionLabel?: string;
   globalBalanceAction?: 'Margin' | 'TopUp' | null;
@@ -165,6 +205,12 @@ function getStatusLabel(status: CSVImportRemediationRow['status']): string {
 function getBalanceActionLabel(action: 'Margin' | 'TopUp' | null | undefined): string {
   if (action === 'Margin') return '融資';
   if (action === 'TopUp') return '補足餘額';
+  return '逐筆決定';
+}
+
+function getSellBeforeBuyActionLabel(action: SellBeforeBuyAction | null | undefined): string {
+  if (action === 'UseOpeningPosition') return '使用期初持倉';
+  if (action === 'CreateAdjustment') return '建立調整';
   return '逐筆決定';
 }
 
@@ -492,6 +538,184 @@ export function CSVImportModal({
                 </div>
               )}
 
+              {(previewExtensions?.onChangeBaselineDate
+                || previewExtensions?.onChangeOpeningCashBalance
+                || previewExtensions?.onChangeOpeningLedgerBalance
+                || previewExtensions?.onChangeOpeningPosition
+                || previewExtensions?.onAddOpeningPosition) && (
+                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-4">
+                  <h4 className="text-sm font-medium text-[var(--text-primary)]">期初基準（節錄匯入）</h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label
+                        className="text-sm font-medium text-[var(--text-primary)]"
+                        htmlFor="baseline-date-input"
+                      >
+                        基準日期
+                      </label>
+                      <input
+                        id="baseline-date-input"
+                        type="date"
+                        aria-label="期初基準日期"
+                        value={previewExtensions.baselineDate ?? ''}
+                        onChange={(event) => previewExtensions.onChangeBaselineDate?.(event.target.value)}
+                        className="input-dark w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label
+                        className="text-sm font-medium text-[var(--text-primary)]"
+                        htmlFor="opening-cash-balance-input"
+                      >
+                        期初現金餘額（可空）
+                      </label>
+                      <input
+                        id="opening-cash-balance-input"
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        aria-label="期初現金餘額"
+                        value={previewExtensions.openingCashBalance ?? ''}
+                        onChange={(event) => previewExtensions.onChangeOpeningCashBalance?.(event.target.value)}
+                        placeholder="例如 100000"
+                        className="input-dark w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label
+                        className="text-sm font-medium text-[var(--text-primary)]"
+                        htmlFor="opening-ledger-balance-input"
+                      >
+                        期初帳本餘額（可空）
+                      </label>
+                      <input
+                        id="opening-ledger-balance-input"
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        aria-label="期初帳本餘額"
+                        value={previewExtensions.openingLedgerBalance ?? ''}
+                        onChange={(event) => previewExtensions.onChangeOpeningLedgerBalance?.(event.target.value)}
+                        placeholder="例如 100000"
+                        className="input-dark w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">期初持倉（可多筆）</p>
+                      <button
+                        type="button"
+                        onClick={() => previewExtensions.onAddOpeningPosition?.()}
+                        className="btn-dark px-3 py-1.5 text-sm"
+                      >
+                        新增持倉
+                      </button>
+                    </div>
+
+                    {(previewExtensions.openingPositions ?? []).length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)]">尚未新增期初持倉，可保持空白。</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(previewExtensions.openingPositions ?? []).map((position, index) => (
+                          <div
+                            key={position.id}
+                            className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-2 items-end"
+                          >
+                            <div className="space-y-1">
+                              <label className="text-xs text-[var(--text-muted)]">Ticker</label>
+                              <input
+                                type="text"
+                                value={position.ticker}
+                                onChange={(event) => previewExtensions.onChangeOpeningPosition?.(
+                                  position.id,
+                                  'ticker',
+                                  event.target.value,
+                                )}
+                                aria-label={`期初持倉 ${index + 1} ticker`}
+                                placeholder="例如 2330"
+                                className="input-dark w-full"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs text-[var(--text-muted)]">Quantity</label>
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
+                                value={position.quantity}
+                                onChange={(event) => previewExtensions.onChangeOpeningPosition?.(
+                                  position.id,
+                                  'quantity',
+                                  event.target.value,
+                                )}
+                                aria-label={`期初持倉 ${index + 1} quantity`}
+                                placeholder="可空"
+                                className="input-dark w-full"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs text-[var(--text-muted)]">Total Cost</label>
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
+                                value={position.totalCost}
+                                onChange={(event) => previewExtensions.onChangeOpeningPosition?.(
+                                  position.id,
+                                  'totalCost',
+                                  event.target.value,
+                                )}
+                                aria-label={`期初持倉 ${index + 1} total cost`}
+                                placeholder="可空"
+                                className="input-dark w-full"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => previewExtensions.onRemoveOpeningPosition?.(position.id)}
+                              className="px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
+                            >
+                              移除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {previewExtensions?.onChangeGlobalSellBeforeBuyAction && (
+                <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-3">
+                  <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-sell-before-buy-action-selector">
+                    {previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
+                  </label>
+                  <select
+                    id="global-sell-before-buy-action-selector"
+                    aria-label={previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
+                    value={previewExtensions.globalSellBeforeBuyAction ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'UseOpeningPosition' || value === 'CreateAdjustment') {
+                        previewExtensions.onChangeGlobalSellBeforeBuyAction?.(value);
+                      } else {
+                        previewExtensions.onChangeGlobalSellBeforeBuyAction?.(null);
+                      }
+                    }}
+                    className="input-dark w-full"
+                  >
+                    <option value="">逐筆決定</option>
+                    <option value="UseOpeningPosition">使用期初持倉</option>
+                    <option value="CreateAdjustment">建立調整</option>
+                  </select>
+                </div>
+              )}
+
               {previewExtensions?.onChangeGlobalBalanceAction && (
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-3">
                   <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-balance-action-selector">
@@ -597,13 +821,14 @@ export function CSVImportModal({
               {previewExtensions?.remediationRows && previewExtensions.remediationRows.length > 0 && (
                 <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[1100px]">
+                    <table className="w-full text-sm min-w-[1240px]">
                       <thead>
                         <tr className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">列號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">標的名稱</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">股票代號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">買賣方向</th>
+                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">賣先買後處理</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">餘額不足處理</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">狀態</th>
                         </tr>
@@ -656,6 +881,29 @@ export function CSVImportModal({
                               )}
                               {row.note && (
                                 <p className="mt-1 text-xs text-[var(--text-muted)]">{row.note}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-[var(--text-secondary)]">
+                              {row.requiresSellBeforeBuyHandling ? (
+                                <select
+                                  value={row.sellBeforeBuyActionSelection ?? 'default'}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    if (value === 'default' || value === 'UseOpeningPosition' || value === 'CreateAdjustment') {
+                                      previewExtensions.onChangeRowSellBeforeBuyActionSelection?.(row.rowNumber, value);
+                                    }
+                                  }}
+                                  aria-label={previewExtensions.rowSellBeforeBuyActionLabel ?? `第 ${row.rowNumber} 行賣先買後處理方式`}
+                                  className="input-dark w-full"
+                                >
+                                  <option value="default">套用預設（{getSellBeforeBuyActionLabel(row.effectiveSellBeforeBuyAction)})</option>
+                                  <option value="UseOpeningPosition">使用期初持倉</option>
+                                  <option value="CreateAdjustment">建立調整</option>
+                                </select>
+                              ) : row.usesPartialHistoryAssumption ? (
+                                <span className="text-[var(--text-muted)]">已使用節錄假設</span>
+                              ) : (
+                                <span className="text-[var(--text-muted)]">-</span>
                               )}
                             </td>
                             <td className="px-3 py-3 text-[var(--text-secondary)]">
