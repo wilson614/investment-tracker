@@ -43,6 +43,96 @@ Validate that a user can import both legacy stock CSV and broker statement CSV f
 5. Attempt execute with unresolved shortfall decision.
 6. Verify affected rows are blocked with explicit failure reason.
 
+## Scenario D: End-to-End Performance Verification (New Account → Broker CSV → Performance)
+
+### Fixed Inputs
+- Sample CSV: `/workspaces/InvestmentTracker/證券app匯出範例.csv`
+- CSV fixed facts for this scenario: `50` data rows, years include `2025` and `2026`.
+- Expected import format: `broker_statement`.
+
+### Reproducible Checklist (fixed steps + fixed assertions)
+
+1. **Create a brand-new account** (UI: `註冊`; fields `顯示名稱`/`電子郵件`/`密碼`; button `建立帳號`) or API `POST /api/auth/register`.
+   - Request keys: `email`, `password`, `displayName`.
+   - Must pass: HTTP `201`; response `accessToken`, `refreshToken`, `expiresAt`, `user.id`, `user.email`, `user.displayName` are non-null.
+
+2. **Get target portfolio** via `GET /api/portfolios` (or UI portfolio selector).
+   - Must pass: at least one portfolio with `baseCurrency = "TWD"`; selected `id` and `boundCurrencyLedgerId` are non-null.
+
+3. **Open stock import flow** (UI button `匯入`, modal title `匯入股票交易`).
+   - Must pass: import type selector (`匯入類型`) is visible and supports values `券商` (`broker_statement`) and `一般` (`legacy_csv`).
+
+4. **Upload sample CSV and generate preview** (`產生預覽` / `重新預覽`) with `selectedFormat = broker_statement`.
+   - API contract: `POST /api/stocktransactions/import/preview` with `portfolioId`, `csvContent`, `selectedFormat`.
+   - Must pass:
+     - HTTP `200`, `sessionId` non-null UUID.
+     - `selectedFormat == "broker_statement"`.
+     - `summary.totalRows == 50`.
+     - `summary.totalRows == summary.validRows + summary.requiresActionRows + summary.invalidRows`.
+     - `rows.length == 50`.
+
+5. **Verify preview row contracts (row table + diagnostics)**.
+   - UI table columns map to API fields:
+     - `列號` -> `rows[].rowNumber`
+     - `標的名稱` -> `rows[].rawSecurityName`
+     - `股票代號` -> `rows[].ticker` (or manual input)
+     - `買賣方向` -> `rows[].tradeSide` / `rows[].confirmedTradeSide`
+     - `餘額不足處理` -> `rows[].balanceDecision` + action selectors
+     - `狀態` -> `rows[].status`
+   - Must pass:
+     - Every row has non-null `rowNumber`, `tradeSide`, `status`, `actionsRequired` (array), `fees`, `taxes`.
+     - If diagnostics exist, each `errors[]` item has non-null `rowNumber`, `fieldName`, `errorCode`, `message`, `correctionGuidance`.
+
+6. **Resolve required actions and execute import** (UI `確認匯入` or API `POST /api/stocktransactions/import/execute`).
+   - Request keys: `sessionId`, `portfolioId`, `rows[]` (`rowNumber`, `ticker`, `confirmedTradeSide`, `exclude`, optional `balanceAction`, optional `topUpTransactionType`), optional `defaultBalanceAction`.
+   - Must pass:
+     - `summary.totalRows == summary.insertedRows + summary.failedRows`.
+     - `summary.totalRows == results.length`.
+     - `summary.errorCount == errors.length`.
+     - For each `results[i]`:
+       - If `success == true`, `transactionId` must be non-null and `errorCode` must be null.
+       - If `success == false`, `transactionId` must be null and `errorCode` must be non-null.
+
+7. **Verify imported transactions exist** using `GET /api/stocktransactions?portfolioId={id}` (or portfolio transaction list UI).
+   - Must pass: total rows increased by at least `summary.insertedRows`; imported data includes trade dates in `2025`/`2026` and non-empty `ticker` for successful rows.
+
+8. **Verify performance availability and annual result**.
+   - API step A: `GET /api/portfolios/{portfolioId}/performance/years`.
+   - Must pass A: `years` contains both `2025` and `2026`; `currentYear` non-null.
+   - API step B: `POST /api/portfolios/{portfolioId}/performance/year` with `year: 2026` (optionally provide `yearEndPrices`/`yearStartPrices` to bypass external price dependency).
+   - Must pass B: response `year == 2026`, `transactionCount > 0`, `sourceCurrency` non-null.
+   - UI mapping checks on `/performance` (`績效分析` -> `歷史績效`):
+     - `資金加權報酬率` uses `modifiedDietzPercentage` (home) / `modifiedDietzPercentageSource` (source).
+     - `時間加權報酬率` uses `timeWeightedReturnPercentage` (home) / `timeWeightedReturnPercentageSource` (source).
+     - `年度摘要` (`年初價值`/`年末價值`/`淨投入`) maps to `startValue*`/`endValue*`/`netContributions*`.
+
+### Nullability Contract for This Acceptance
+
+| Scope | Field | Rule |
+|---|---|---|
+| Register response | `accessToken`, `refreshToken`, `expiresAt`, `user.id`, `user.email`, `user.displayName` | MUST be non-null |
+| Preview response | `sessionId`, `selectedFormat`, `summary`, `rows` | MUST be non-null |
+| Preview row | `rowNumber`, `tradeSide`, `status`, `actionsRequired`, `fees`, `taxes` | MUST be non-null |
+| Preview row | `tradeDate`, `rawSecurityName`, `ticker`, `confirmedTradeSide`, `quantity`, `unitPrice`, `netSettlement`, `currency`, `balanceDecision` | NULL allowed |
+| Execute response | `status`, `summary`, `results`, `errors` | MUST be non-null |
+| Execute result row | `rowNumber`, `success`, `message` | MUST be non-null |
+| Execute result row | `transactionId` | Non-null only when `success=true`; otherwise must be null |
+| Execute result row | `errorCode` | Non-null only when `success=false`; otherwise must be null |
+| Performance response | `year`, `cashFlowCount`, `transactionCount`, `missingPrices`, `isComplete` | MUST be non-null |
+| Performance response | `xirr*`, `totalReturn*`, `modifiedDietz*`, `timeWeightedReturn*`, `startValue*`, `endValue*`, `earliestTransactionDateInYear` | NULL allowed (especially when `isComplete=false`) |
+| Performance response | `missingPrices` | Must be empty when `isComplete=true`; may be non-empty when `isComplete=false` |
+
+### Failure Criteria (any one = FAIL)
+
+- Any required endpoint returns non-2xx (except explicitly expected validation failures during negative checks).
+- Preview fixed assertions fail (`summary.totalRows != 50`, `rows.length != 50`, or summary arithmetic mismatch).
+- Execute arithmetic mismatch (`totalRows != insertedRows + failedRows`, `totalRows != results.length`, or `errorCount != errors.length`).
+- Row-level contract violation (`success=true` with null `transactionId`, or `success=false` with null `errorCode`).
+- `performance/years` does not include `2025` and `2026` after successful import.
+- `performance/year` for `2026` returns `transactionCount == 0` after successful import.
+- UI/API binding mismatch for performance cards (`資金加權報酬率`, `時間加權報酬率`, `年度摘要`) versus response field mapping above.
+
+
 ## Verification Notes (T039 Update)
 
 - Updated after implementation with concrete automated evidence (date: **2026-02-16**).
@@ -136,3 +226,55 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/s
 - Automated test command logs (pass summaries listed above).
 - Scenario-to-test traceability entries for quick reproduction.
 - For manual evidence collection (optional extension): UI screenshots and backend runtime logs can still be attached per team QA process.
+
+## Verification Notes (Group D Reliability Update)
+
+- Updated for the reliability fix cycle with concrete automated evidence (date: **2026-02-18**).
+- Root cause clarifications:
+  - Position cards intentionally render only net-positive holdings (`totalShares > 0`); this is expected summary semantics, not silent import-row drops.
+- Performance loading behavior:
+  - Current-year benchmark flow now falls back to benchmark-returns API when YTD fetch is unavailable, preventing a persistent loading spinner.
+- External call reduction:
+  - Repeated `missingPrices` tickers are deduplicated before quote fetching.
+  - Quote cache lookup keeps market-aware keys with legacy-key fallback for backward-compatible cache reuse.
+- Backend fixture hardening:
+  - Broker sample CSV is resolved from test output (`AppContext.BaseDirectory`) to keep tests independent from repository-relative paths.
+- Test-infra scope note:
+  - Playwright infrastructure is not configured in this repository; this scenario is covered by backend API integration tests plus frontend integration tests.
+
+## Verification Evidence (Group D Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/performance.metrics-binding.test.tsx src/test/portfolio.page.non-transaction-cache.test.tsx src/test/stock-import.broker-preview.test.tsx
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Output Evidence |
+|---|---|---|
+| Backend API import/performance contract regression | PASS | Failed: 0, Passed: 15, Total: 15 |
+| Frontend integration reliability regression | PASS | 3 test files passed, 33 tests passed, 0 failed |
+
+### Reliability Fix-Cycle Traceability (2026-02-18)
+
+- **(a) Net-positive holdings semantics clarification**:
+  - `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` (`RegisterPreviewExecuteAndPerformance_UsingSampleCsv_ShouldProduceValidEndToEndData`)
+  - `frontend/src/pages/Portfolio.tsx`
+  - `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`
+- **(b) Performance spinner fix via YTD fallback behavior**:
+  - `frontend/src/pages/Performance.tsx`
+  - `frontend/src/test/performance.metrics-binding.test.tsx` (`falls back to benchmark returns API and unblocks loading when current-year YTD fetch is unavailable`)
+- **(c) Reduced duplicate external calls via missing-ticker dedupe and cache-key compatibility**:
+  - `frontend/src/pages/Performance.tsx`
+  - `frontend/src/test/performance.metrics-binding.test.tsx` (`deduplicates repeated missing tickers...`, `uses market-aware quote cache key first...`, `falls back to legacy quote cache key...`)
+  - `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`
+- **(d) Backend fixture hardening for sample CSV path independence**:
+  - `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+  - `backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj`
+- **(e) Scenario coverage without Playwright infra**:
+  - Frontend integration: `frontend/src/test/stock-import.broker-preview.test.tsx` (broker import to performance binding flow)
+  - Backend integration: `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`

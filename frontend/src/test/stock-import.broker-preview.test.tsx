@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
+import { useEffect, useState } from 'react';
 import { StockImportButton } from '../components/import/StockImportButton';
-import { transactionApi } from '../services/api';
+import { portfolioApi, transactionApi } from '../services/api';
 import type {
   StockImportDiagnostic,
   StockImportExecuteRequest,
@@ -12,9 +13,14 @@ import type {
   StockImportPreviewResponse,
   StockImportPreviewRow,
   StockImportSelectedFormat,
+  YearPerformance,
 } from '../types';
 
 vi.mock('../services/api', () => ({
+  portfolioApi: {
+    getAvailableYears: vi.fn(),
+    calculateYearPerformance: vi.fn(),
+  },
   transactionApi: {
     create: vi.fn(),
     previewImport: vi.fn(),
@@ -22,6 +28,7 @@ vi.mock('../services/api', () => ({
   },
 }));
 
+const mockedPortfolioApi = vi.mocked(portfolioApi, { deep: true });
 const mockedTransactionApi = vi.mocked(transactionApi, { deep: true });
 const TEST_PORTFOLIO_ID = 'portfolio-broker-preview';
 
@@ -42,14 +49,14 @@ function buildImportCsvFile(rows: string[] = []): File {
   return file;
 }
 
-function buildBrokerStatementCsvFile(rows: string[] = []): File {
+function buildBrokerStatementCsvFile(rows: string[] = [], fileName = 'stock-import-broker.csv'): File {
   const headers = '股名,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,幣別,備註';
   const sampleRows = rows.length > 0
     ? rows
     : ['"台積電","2026/01/22","1,000","-625,010","625","625,000","10","0","台幣",""'];
 
   const content = `${headers}\n${sampleRows.join('\n')}`;
-  const file = new File([content], 'stock-import-broker.csv', { type: 'text/csv' });
+  const file = new File([content], fileName, { type: 'text/csv' });
 
   Object.defineProperty(file, 'text', {
     configurable: true,
@@ -121,6 +128,37 @@ function buildExecuteResponse(overrides: Partial<StockImportExecuteResponse> = {
       },
     ],
     errors: [],
+    ...overrides,
+  };
+}
+
+function buildYearPerformance(overrides: Partial<YearPerformance> = {}): YearPerformance {
+  const year = overrides.year ?? new Date().getFullYear();
+
+  return {
+    year,
+    xirr: 0.1234,
+    xirrPercentage: 12.34,
+    totalReturnPercentage: 10.11,
+    modifiedDietzPercentage: 9.87,
+    timeWeightedReturnPercentage: 8.76,
+    startValueHome: 100000,
+    endValueHome: 120000,
+    netContributionsHome: 20000,
+    sourceCurrency: 'TWD',
+    xirrSource: 0.1234,
+    xirrPercentageSource: 12.34,
+    totalReturnPercentageSource: 10.11,
+    modifiedDietzPercentageSource: 9.87,
+    timeWeightedReturnPercentageSource: 8.76,
+    startValueSource: 100000,
+    endValueSource: 120000,
+    netContributionsSource: 20000,
+    cashFlowCount: 2,
+    transactionCount: 1,
+    earliestTransactionDateInYear: `${year}-01-22`,
+    missingPrices: [],
+    isComplete: true,
     ...overrides,
   };
 }
@@ -296,10 +334,99 @@ function expectVisibleTextOrder(textsInExpectedOrder: string[]) {
   }
 }
 
+function formatPercent(value: number | null): string {
+  if (value == null) {
+    return '-';
+  }
+
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toLocaleString('zh-TW', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function formatHomeCurrency(value: number | null | undefined): string {
+  if (value == null) {
+    return '-';
+  }
+
+  return Math.round(value).toLocaleString('zh-TW');
+}
+
+function ImportToPerformanceHarness() {
+  const [importCompleted, setImportCompleted] = useState(false);
+  const [performance, setPerformance] = useState<YearPerformance | null>(null);
+
+  useEffect(() => {
+    if (!importCompleted) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadPerformance = async () => {
+      const years = await portfolioApi.getAvailableYears(TEST_PORTFOLIO_ID);
+      const fallbackYear = years.currentYear ?? years.years[0] ?? null;
+
+      if (fallbackYear == null) {
+        if (!isCancelled) {
+          setPerformance(null);
+        }
+        return;
+      }
+
+      const result = await portfolioApi.calculateYearPerformance(TEST_PORTFOLIO_ID, {
+        year: fallbackYear,
+      });
+
+      if (!isCancelled) {
+        setPerformance(result);
+      }
+    };
+
+    void loadPerformance();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [importCompleted]);
+
+  return (
+    <div>
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={() => setImportCompleted(true)}
+        onImportSuccess={() => undefined}
+      />
+
+      {importCompleted && performance ? (
+        <section aria-label="performance-summary">
+          <div>
+            <p>年化報酬率 (XIRR)</p>
+            <p>{formatPercent(performance.xirrPercentage)}</p>
+          </div>
+          <div>
+            <p>淨投入</p>
+            <p>{`${formatHomeCurrency(performance.netContributionsHome)} ${performance.sourceCurrency ?? 'TWD'}`}</p>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 describe('Stock import broker preview flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('alert', vi.fn());
+
+    mockedPortfolioApi.getAvailableYears.mockResolvedValue({
+      years: [new Date().getFullYear()],
+      earliestYear: new Date().getFullYear(),
+      currentYear: new Date().getFullYear(),
+    });
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValue(buildYearPerformance());
   });
 
   afterEach(() => {
@@ -656,6 +783,108 @@ describe('Stock import broker preview flow', () => {
 
     await user.click(executeButton);
     expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
+  });
+
+  it('completes import from 證券app匯出範例.csv and renders performance metrics from mocked performance APIs', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-performance-flow',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 1,
+            rawSecurityName: 'ROW-PERFORMANCE',
+            ticker: '2330',
+            tradeSide: 'buy',
+            confirmedTradeSide: 'buy',
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(
+      buildExecuteResponse({
+        summary: {
+          totalRows: 1,
+          insertedRows: 1,
+          failedRows: 0,
+          errorCount: 0,
+        },
+      }),
+    );
+
+    const performanceYear = 2025;
+    mockedPortfolioApi.getAvailableYears.mockResolvedValue({
+      years: [performanceYear, performanceYear - 1],
+      earliestYear: performanceYear - 1,
+      currentYear: performanceYear,
+    });
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValue(
+      buildYearPerformance({
+        year: performanceYear,
+        xirrPercentage: 17.65,
+        netContributionsHome: 45678.6,
+        sourceCurrency: 'USD',
+      }),
+    );
+
+    render(<ImportToPerformanceHarness />);
+
+    const user = userEvent.setup();
+
+    expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
+    expect(screen.queryByText('淨投入')).not.toBeInTheDocument();
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest).toEqual(
+      expect.objectContaining({
+        portfolioId: TEST_PORTFOLIO_ID,
+        selectedFormat: 'broker_statement',
+      }),
+    );
+    expect(previewRequest.csvContent).toContain('淨收付');
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeEnabled();
+
+    await user.click(executeButton);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith(TEST_PORTFOLIO_ID);
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.calculateYearPerformance).toHaveBeenCalledWith(
+        TEST_PORTFOLIO_ID,
+        { year: performanceYear },
+      );
+    });
+
+    const performanceSummary = await screen.findByLabelText('performance-summary');
+
+    expect(within(performanceSummary).getByText('年化報酬率 (XIRR)')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('+17.65%')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('淨投入')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('45,679 USD')).toBeInTheDocument();
+
+    expect(within(performanceSummary).queryByText('+9.87%')).not.toBeInTheDocument();
+    expect(within(performanceSummary).queryByText('300 TWD')).not.toBeInTheDocument();
+    expect(within(performanceSummary).queryByText('—')).not.toBeInTheDocument();
+    expect(within(performanceSummary).queryByText('-', { exact: true })).not.toBeInTheDocument();
   });
 
   it('preview row ordering remains stable after per-row confirmation interaction', async () => {

@@ -82,11 +82,44 @@ function saveSelectedBenchmarksToLocalStorage(keys: string[]): void {
   }
 }
 
-// 報價快取 key（與 Portfolio 頁面共用）
-const getQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+// 報價快取 key：舊版（ticker-only）與新版（ticker+market）
+const getLegacyQuoteCacheKey = (ticker: string) => `quote_cache_${ticker}`;
+const getMarketAwareQuoteCacheKey = (ticker: string, market?: StockMarketType) =>
+  `quote_cache_${ticker}_${market ?? 'default'}`;
+
+interface QuoteCachePayload {
+  quote?: {
+    price?: number;
+    exchangeRate?: number;
+  };
+}
 
 /**
- * 儲存報價至 localStorage 快取（與 Portfolio 頁面共用）
+ * 讀取報價快取時，優先市場化 key，再回退 legacy key。
+ */
+function loadQuoteFromCache(ticker: string, market?: StockMarketType): QuoteCachePayload | null {
+  const candidateKeys = [
+    getMarketAwareQuoteCacheKey(ticker, market),
+    getMarketAwareQuoteCacheKey(ticker),
+    getLegacyQuoteCacheKey(ticker),
+  ];
+
+  for (const key of new Set(candidateKeys)) {
+    try {
+      const cached = localStorage.getItem(key);
+      if (!cached) continue;
+
+      return JSON.parse(cached) as QuoteCachePayload;
+    } catch {
+      // Ignore broken cache entry and continue fallback chain
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 儲存報價至 localStorage 快取（沿用既有 ticker-only key，保持相容）
  */
 function saveQuoteToCache(ticker: string, price: number, exchangeRate: number): void {
   try {
@@ -94,7 +127,7 @@ function saveQuoteToCache(ticker: string, price: number, exchangeRate: number): 
       quote: { price, exchangeRate },
       timestamp: Date.now(),
     };
-    localStorage.setItem(getQuoteCacheKey(ticker), JSON.stringify(cacheData));
+    localStorage.setItem(getLegacyQuoteCacheKey(ticker), JSON.stringify(cacheData));
   } catch {
     // Ignore
   }
@@ -308,6 +341,12 @@ function PerformancePageContent({
   const [ytdData, setYtdData] = useState<MarketYtdComparison | null>(() => {
     const cached = loadCachedYtdData();
     return cached.data ? transformYtdData(cached.data) : null;
+  });
+  // 記錄 YTD 載入是否已完成（成功或失敗）
+  // 用於當年度 YTD 不可用時啟用 benchmark returns API 備援，避免 loading 卡住
+  const [isYtdLoadSettled, setIsYtdLoadSettled] = useState(() => {
+    const cached = loadCachedYtdData();
+    return Boolean(cached.data);
   });
 
   // 從 YTD 快取（當年度）或系統基準快取（歷史年度）lazy init benchmarkReturns
@@ -527,6 +566,8 @@ function PerformancePageContent({
         setYtdData(transformYtdData(data));
       } catch (err) {
         console.error('無法載入 YTD 資料:', err);
+      } finally {
+        setIsYtdLoadSettled(true);
       }
     };
     loadFreshYtdData();
@@ -612,10 +653,10 @@ function PerformancePageContent({
 
       const isCurrentYear = selectedYear === availableYears.currentYear;
 
-      // 當年度需等待 ytdData 載入完成後再繼續
-      // 確保 YTD API 抓取時顯示 loading 狀態
-      if (isCurrentYear && !ytdData) {
-        // 保持 loading 狀態 - ytdData 到達時會重新執行
+      // 當年度需等待 YTD 載入完成後再繼續
+      // 若 YTD 失敗（isYtdLoadSettled=true 但 ytdData 為 null），改走 benchmark returns API 備援
+      if (isCurrentYear && !ytdData && !isYtdLoadSettled) {
+        // 保持 loading 狀態 - ytdData 或載入完成狀態更新時會重新執行
         if (isLatestRequest()) {
           setIsLoadingBenchmark(true);
         }
@@ -742,7 +783,7 @@ function PerformancePageContent({
     };
 
     fetchBenchmarkReturns();
-  }, [selectedYear, selectedBenchmarks, availableYears, ytdData]);
+  }, [selectedYear, selectedBenchmarks, availableYears, ytdData, isYtdLoadSettled]);
 
   /**
    * 計算自訂 benchmark 的年度報酬。
@@ -855,17 +896,10 @@ function PerformancePageContent({
                 let endPrice: number | undefined;
 
                 if (isCurrentYear) {
-                  // 當年度優先嘗試從快取載入以即時顯示
-                  try {
-                    const cached = localStorage.getItem(getQuoteCacheKey(benchmark.ticker));
-                    if (cached) {
-                      const data = JSON.parse(cached);
-                      if (data.quote?.price) {
-                        endPrice = data.quote.price;
-                      }
-                    }
-                  } catch {
-                    // 忽略快取錯誤
+                  // 當年度優先嘗試從快取載入以即時顯示（優先 market-aware key）
+                  const cachedData = loadQuoteFromCache(benchmark.ticker, benchmark.market);
+                  if (cachedData?.quote?.price) {
+                    endPrice = cachedData.quote.price;
                   }
 
                   // 若無快取則抓取即時報價
@@ -959,25 +993,25 @@ function PerformancePageContent({
    *
    * 使用時機：
    * - 在補齊缺漏價格前，先用快取減少 API 呼叫與等待。
+   *
+   * 規則：
+   * - 優先使用 market-aware key（quote_cache_${ticker}_${market}）。
+   * - 若找不到則回退 legacy key（quote_cache_${ticker}）。
    */
-  const loadCachedPrices = useCallback((tickers: string[]): Record<string, YearEndPriceInfo> => {
+  const loadCachedPrices = useCallback((missingPrices: MissingPrice[]): Record<string, YearEndPriceInfo> => {
     const prices: Record<string, YearEndPriceInfo> = {};
-    for (const ticker of tickers) {
-      try {
-        const cached = localStorage.getItem(getQuoteCacheKey(ticker));
-        if (cached) {
-          const data = JSON.parse(cached);
-          if (data.quote?.price && data.quote?.exchangeRate) {
-            prices[ticker] = {
-              price: data.quote.price,
-              exchangeRate: data.quote.exchangeRate,
-            };
-          }
-        }
-      } catch {
-        // Ignore cache errors
+
+    for (const mp of missingPrices) {
+      const market = mp.market ?? guessMarket(mp.ticker);
+      const cachedData = loadQuoteFromCache(mp.ticker, market);
+      if (cachedData?.quote?.price && cachedData.quote?.exchangeRate) {
+        prices[mp.ticker] = {
+          price: cachedData.quote.price,
+          exchangeRate: cachedData.quote.exchangeRate,
+        };
       }
     }
+
     return prices;
   }, []);
 
@@ -994,7 +1028,13 @@ function PerformancePageContent({
   ): Promise<Record<string, YearEndPriceInfo>> => {
     const prices: Record<string, YearEndPriceInfo> = {};
 
-    await Promise.all(missingPrices.map(async (mp) => {
+    // 先以 ticker 去重，避免同一輪重複請求同一檔標的
+    // market 以第一筆為準，符合既有資料結構（同 ticker 應屬同市場）
+    const uniqueMissingPricesByTicker = missingPrices.filter((mp, index, arr) =>
+      arr.findIndex(item => item.ticker === mp.ticker) === index
+    );
+
+    await Promise.all(uniqueMissingPricesByTicker.map(async (mp) => {
       try {
         // 檢查是否為 Euronext ticker (market = 4)
         if (mp.market === 4) {
@@ -1287,8 +1327,11 @@ function PerformancePageContent({
 
         if (isCurrentYear) {
           // YTD：優先使用快取價格，再抓取剩餘的
-          const tickers = effectiveMissingPrices.map(mp => mp.ticker);
-          const cachedPrices = loadCachedPrices(tickers);
+          // 先去重 ticker，避免重複缺漏項導致重複外部請求與錯誤失敗判定
+          const uniqueMissingPrices = effectiveMissingPrices.filter((mp, index, arr) =>
+            arr.findIndex(item => item.ticker === mp.ticker) === index
+          );
+          const cachedPrices = loadCachedPrices(uniqueMissingPrices);
 
           // 若有快取價格則立即計算（不顯示 spinner）
           // 在背景抓取新鮮價格時提供即時回饋
@@ -1298,7 +1341,7 @@ function PerformancePageContent({
             calculatePerformance(selectedYear, cachedPrices);
           }
 
-          const stillMissing = effectiveMissingPrices.filter(
+          const stillMissing = uniqueMissingPrices.filter(
             mp => !cachedPrices[mp.ticker]
           );
 
@@ -1319,7 +1362,7 @@ function PerformancePageContent({
           }
 
           // 檢查是否所有價格都已抓取
-          allFetched = fetchedCount >= effectiveMissingPrices.length;
+          allFetched = fetchedCount >= uniqueMissingPrices.length;
           if (!allFetched) {
             setPriceFetchFailed(true);
           }
@@ -1680,7 +1723,9 @@ function PerformancePageContent({
                   <div className="p-5">
                     {(() => {
                       // 去重 ticker 以供顯示
-                      const uniqueTickers = effectiveMissingPrices.map(mp => mp.ticker);
+                      const uniqueTickers = effectiveMissingPrices
+                        .map(mp => mp.ticker)
+                        .filter((ticker, index, arr) => arr.indexOf(ticker) === index);
                       return (
                         <>
                           <p className="text-[var(--text-secondary)] mb-4">

@@ -122,8 +122,17 @@
 - [x] T037 [P] Add structured logging and error codes for import preview/execute and TWSE ISIN source sync failures in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/`
 - [x] T038 [P] Add OpenAPI annotations/examples for new import and sync endpoints in `backend/src/InvestmentTracker.API/Controllers/StockTransactionsController.cs` and `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
 - [x] T039 Update quickstart verification notes after implementation in `specs/012-import-broker-statement/quickstart.md`
-- [x] T040 Execute quickstart scenarios and record verification evidence by updating `specs/012-import-broker-statement/quickstart.md`
+- [x] T040 Execute quickstart scenarios and record verification evidence by updating `specs/012-import-broker-statement/quickstart.md` *(補充：新增新帳號→匯入證券app範例→績效驗證情境，並以自動化測試覆蓋 preview/execute/performance 契約)*
 - [x] T041 [P] Run 500-row broker preview performance benchmark and assert <=3s target in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/PreviewStockImportPerformanceTests.cs`
+- [x] T042 Clarify net-positive holdings semantics (position cards show only `totalShares > 0`, not silent import-row drops) in `frontend/src/pages/Portfolio.tsx` and `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T043 [P] Add frontend disclosure/behavior regression coverage for net-positive holdings rendering in `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`
+- [x] T044 Fix current-year performance loading fallback (YTD unavailable -> benchmark returns fallback) to prevent persistent spinner in `frontend/src/pages/Performance.tsx`
+- [x] T045 [P] Add fallback loading-unblock regression test for current-year benchmark flow in `frontend/src/test/performance.metrics-binding.test.tsx`
+- [x] T046 Deduplicate repeated `missingPrices` tickers before quote fetch to reduce duplicate external calls in `frontend/src/pages/Performance.tsx`
+- [x] T047 [P] Add quote-fetch dedupe and cache-key compatibility regression tests (market-aware key + legacy fallback) in `frontend/src/test/performance.metrics-binding.test.tsx` and `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`
+- [x] T048 Harden backend sample CSV fixture resolution for path-independent test execution in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T049 [P] Ensure broker sample fixture is copied into test output directory for fixture path independence in `backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj`
+- [x] T050 Update reliability-cycle verification evidence and test-infra scope note (no Playwright; covered by API + frontend integration tests) in `specs/012-import-broker-statement/quickstart.md` and `frontend/src/test/stock-import.broker-preview.test.tsx`
 
 ---
 

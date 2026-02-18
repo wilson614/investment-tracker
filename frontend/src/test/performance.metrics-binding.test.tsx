@@ -8,6 +8,7 @@ import {
   type StockQuoteResponse,
   type EuronextQuoteResponse,
   type MarketYtdComparison,
+  type MissingPrice,
 } from '../types';
 import type { UserPreferences } from '../services/api';
 import { DEFAULT_BENCHMARKS } from '../constants';
@@ -119,7 +120,7 @@ import {
   userBenchmarkApi,
   userPreferencesApi,
 } from '../services/api';
-import { loadCachedYtdData } from '../services/ytdApi';
+import { getYtdData, loadCachedYtdData } from '../services/ytdApi';
 
 const mockedUsePortfolio = vi.mocked(usePortfolio);
 const mockedUseHistoricalPerformance = vi.mocked(useHistoricalPerformance);
@@ -128,6 +129,7 @@ const mockedMarketDataApi = vi.mocked(marketDataApi, { deep: true });
 const mockedUserBenchmarkApi = vi.mocked(userBenchmarkApi, { deep: true });
 const mockedUserPreferencesApi = vi.mocked(userPreferencesApi, { deep: true });
 const mockedLoadCachedYtdData = vi.mocked(loadCachedYtdData);
+const mockedGetYtdData = vi.mocked(getYtdData);
 
 const currentYear = new Date().getFullYear();
 const previousYear = currentYear - 1;
@@ -190,6 +192,29 @@ function createPerformanceMock(overrides: Partial<YearPerformance> = {}): YearPe
     isComplete: true,
     ...overrides,
   };
+}
+
+function createMissingPrice(
+  ticker: string,
+  overrides: Partial<MissingPrice> = {}
+): MissingPrice {
+  return {
+    ticker,
+    date: `${currentYear}-12-31`,
+    priceType: 'YearEnd',
+    market: StockMarket.US,
+    ...overrides,
+  };
+}
+
+function seedQuoteCache(key: string, price: number, exchangeRate: number): void {
+  localStorage.setItem(
+    key,
+    JSON.stringify({
+      quote: { price, exchangeRate },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }),
+  );
 }
 
 function setupPageMocks(
@@ -289,6 +314,25 @@ describe('PerformancePage metrics binding regression', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+
+    mockedGetYtdData.mockReset();
+    mockedLoadCachedYtdData.mockReset();
+    mockedUserBenchmarkApi.getAll.mockReset();
+    mockedUserPreferencesApi.get.mockReset();
+    mockedUserPreferencesApi.update.mockReset();
+    mockedMarketDataApi.getBenchmarkReturns.mockReset();
+    mockedMarketDataApi.getHistoricalPrices.mockReset();
+    mockedMarketDataApi.getEuronextQuoteByTicker.mockReset();
+    mockedMarketDataApi.getHistoricalExchangeRate.mockReset();
+    mockedStockPriceApi.getQuote.mockReset();
+    mockedStockPriceApi.getQuoteWithRate.mockReset();
+    mockedStockPriceApi.getExchangeRateValue.mockReset();
+
+    mockedGetYtdData.mockResolvedValue({
+      year: currentYear,
+      benchmarks: [],
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
 
     mockedLoadCachedYtdData.mockReturnValue({
       data: null,
@@ -556,6 +600,152 @@ describe('PerformancePage metrics binding regression', () => {
       expect(screen.getByText('全球 (VWRA):7.77')).toBeInTheDocument();
       expect(screen.queryByText('全球 (VWRA):20')).not.toBeInTheDocument();
     });
+  });
+
+  it('falls back to benchmark returns API and unblocks loading when current-year YTD fetch is unavailable', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+
+    const fallbackReturns = buildBenchmarkReturns(9.01, 0.5);
+    mockedLoadCachedYtdData.mockReturnValue({
+      data: null,
+      isStale: true,
+      needsMigration: false,
+    });
+    mockedGetYtdData.mockRejectedValueOnce(new Error('ytd unavailable'));
+    mockedMarketDataApi.getBenchmarkReturns.mockResolvedValueOnce(
+      buildBenchmarkResponse(currentYear, fallbackReturns)
+    );
+
+    setupPageMocks(createPerformanceMock(), { selectedYear: currentYear });
+
+    render(<PerformancePage />);
+
+    expect(await screen.findByText('載入基準報酬中...')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(mockedGetYtdData).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(mockedMarketDataApi.getBenchmarkReturns).toHaveBeenCalledWith(currentYear);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('載入基準報酬中...')).not.toBeInTheDocument();
+      expect(screen.getByTestId('performance-bar-chart')).toBeInTheDocument();
+      expect(screen.getByText(`全球 (VWRA):${fallbackReturns['All Country']}`)).toBeInTheDocument();
+    });
+  });
+
+  it('deduplicates repeated missing tickers and avoids duplicate price fetches after performance refresh rerender', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+
+    const duplicateMissingPrices: MissingPrice[] = [
+      createMissingPrice('AAPL'),
+      createMissingPrice('AAPL'),
+    ];
+
+    const calculatePerformanceMock = vi.fn(async () => undefined);
+
+    setupPageMocks(
+      createPerformanceMock({
+        missingPrices: duplicateMissingPrices,
+      }),
+      {
+        selectedYear: currentYear,
+        calculatePerformance: calculatePerformanceMock,
+      },
+    );
+
+    const { rerender } = render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledTimes(1);
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledWith(
+        StockMarket.US,
+        'AAPL',
+        mockPortfolio.homeCurrency,
+      );
+    });
+
+    await waitFor(() => {
+      expect(calculatePerformanceMock).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: '重新抓取' })).not.toBeInTheDocument();
+    });
+
+    setupPageMocks(
+      createPerformanceMock({
+        missingPrices: [...duplicateMissingPrices],
+      }),
+      {
+        selectedYear: currentYear,
+        calculatePerformance: calculatePerformanceMock,
+      },
+    );
+
+    rerender(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(mockedStockPriceApi.getQuoteWithRate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('uses market-aware quote cache key first for current-year missing prices', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    seedQuoteCache('quote_cache_AAPL_2', 123, 31);
+
+    const calculatePerformanceMock = vi.fn(async () => undefined);
+    setupPageMocks(
+      createPerformanceMock({
+        missingPrices: [createMissingPrice('AAPL', { market: StockMarket.US })],
+      }),
+      {
+        selectedYear: currentYear,
+        calculatePerformance: calculatePerformanceMock,
+      },
+    );
+
+    render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(calculatePerformanceMock).toHaveBeenCalledWith(
+        currentYear,
+        expect.objectContaining({
+          AAPL: { price: 123, exchangeRate: 31 },
+        }),
+      );
+    });
+
+    expect(mockedStockPriceApi.getQuoteWithRate).not.toHaveBeenCalled();
+  });
+
+  it('falls back to legacy quote cache key when market-aware key is unavailable', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    seedQuoteCache('quote_cache_AAPL', 111, 29);
+
+    const calculatePerformanceMock = vi.fn(async () => undefined);
+    setupPageMocks(
+      createPerformanceMock({
+        missingPrices: [createMissingPrice('AAPL', { market: StockMarket.US })],
+      }),
+      {
+        selectedYear: currentYear,
+        calculatePerformance: calculatePerformanceMock,
+      },
+    );
+
+    render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(calculatePerformanceMock).toHaveBeenCalledWith(
+        currentYear,
+        expect.objectContaining({
+          AAPL: { price: 111, exchangeRate: 29 },
+        }),
+      );
+    });
+
+    expect(mockedStockPriceApi.getQuoteWithRate).not.toHaveBeenCalled();
   });
 
   it('ignores stale benchmark response when switching years quickly', async () => {

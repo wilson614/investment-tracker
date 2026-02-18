@@ -119,7 +119,15 @@ vi.mock('../components/transactions/TransactionList', () => ({
 }));
 
 vi.mock('../components/portfolio/PositionCard', () => ({
-  PositionCard: () => null,
+  PositionCard: ({
+    position,
+  }: {
+    position: { ticker: string; market?: number };
+  }) => (
+    <article data-testid={`mock-position-card-${position.ticker}-${position.market ?? 'default'}`}>
+      {position.ticker}
+    </article>
+  ),
 }));
 
 vi.mock('../components/portfolio/PerformanceMetrics', () => ({
@@ -434,7 +442,7 @@ function setupDefaultApiMocks(): void {
 function seedHistoricalPerformanceCache(): void {
   localStorage.setItem('perf_years_portfolio-a', JSON.stringify({ years: [2025] }));
   localStorage.setItem('perf_data_portfolio-a_2025', JSON.stringify({ year: 2025 }));
-  localStorage.setItem('quote_cache_AAPL', JSON.stringify({ quote: { price: 100 } }));
+  localStorage.setItem('quote_cache_AAPL_2', JSON.stringify({ quote: { price: 100 } }));
 }
 
 function seedCompositeQuoteCacheForDuplicateTicker(): void {
@@ -488,6 +496,24 @@ describe('PortfolioPage non-transaction performance cache behavior', () => {
 });
 
 describe('PortfolioPage quote cache key consistency', () => {
+  it('shows net-positive holdings disclosure with rendered position cards', async () => {
+    setupDefaultApiMocks();
+    mockPortfolioContext(portfolioA.id);
+
+    mockedPortfolioApi.getSummary.mockResolvedValue(buildSummaryWithDuplicateTickerAcrossMarkets(portfolioA));
+
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('持倉清單僅顯示淨股數（買入－賣出）大於 0 的標的。')).toBeInTheDocument();
+      expect(screen.getByTestId('mock-position-card-ABC-2')).toBeInTheDocument();
+    });
+  });
+
   it('re-fetches quote once after switching portfolio context', async () => {
     setupDefaultApiMocks();
     mockPortfolioContext(portfolioA.id);
@@ -663,7 +689,7 @@ describe('PortfolioPage transaction cache invalidation', () => {
       expect(localStorage.getItem('perf_data_portfolio-a_2025')).toBeNull();
     });
 
-    expect(localStorage.getItem('quote_cache_AAPL')).not.toBeNull();
+    expect(localStorage.getItem('quote_cache_AAPL_2')).not.toBeNull();
   });
 
   it('clears perf_years_/perf_data_ localStorage after update transaction mutation', async () => {
@@ -699,7 +725,7 @@ describe('PortfolioPage transaction cache invalidation', () => {
       expect(localStorage.getItem('perf_data_portfolio-a_2025')).toBeNull();
     });
 
-    expect(localStorage.getItem('quote_cache_AAPL')).not.toBeNull();
+    expect(localStorage.getItem('quote_cache_AAPL_2')).not.toBeNull();
   });
 
   it('clears perf_years_/perf_data_ localStorage after delete transaction mutation', async () => {
@@ -729,7 +755,7 @@ describe('PortfolioPage transaction cache invalidation', () => {
       expect(localStorage.getItem('perf_data_portfolio-a_2025')).toBeNull();
     });
 
-    expect(localStorage.getItem('quote_cache_AAPL')).not.toBeNull();
+    expect(localStorage.getItem('quote_cache_AAPL_2')).not.toBeNull();
   });
 
   it('keeps market-scoped quote cache key untouched after transaction mutation', async () => {

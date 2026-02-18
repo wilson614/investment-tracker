@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -20,6 +22,297 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 {
     private const string PreviewEndpoint = "/api/stocktransactions/import/preview";
     private const string ExecuteEndpoint = "/api/stocktransactions/import/execute";
+    private const string SampleBrokerStatementFixtureFileName = "SampleBrokerStatement.csv";
+
+    private static readonly IReadOnlyDictionary<string, string> TwSecurityNameMappings =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["融程電"] = "3416",
+            ["瑞軒"] = "2489",
+            ["鴻海"] = "2317",
+            ["玉山金"] = "2884",
+            ["緯軟"] = "4953",
+            ["金寶"] = "2312",
+            ["邁達特"] = "6112",
+            ["中石化"] = "1314",
+            ["中工"] = "2515"
+        };
+
+    private sealed record SampleBrokerStatementFixture(string CsvContent, int DataRowCount);
+
+    [Fact]
+    public async Task RegisterPreviewExecuteAndPerformance_UsingSampleCsv_ShouldProduceValidEndToEndData()
+    {
+        // Arrange
+        var registerRequest = new RegisterRequest
+        {
+            Email = $"import-e2e-{Guid.NewGuid():N}@example.com",
+            Password = "Password123!",
+            DisplayName = "Import E2E"
+        };
+
+        var registerResponse = await Client.PostAsJsonAsync("/api/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        auth.Should().NotBeNull();
+        auth!.AccessToken.Should().NotBeNullOrWhiteSpace();
+
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        Factory.TestUserId = auth.User.Id;
+
+        var portfoliosResponse = await Client.GetAsync("/api/portfolios");
+        portfoliosResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var portfolios = await portfoliosResponse.Content.ReadFromJsonAsync<List<PortfolioDto>>();
+        portfolios.Should().NotBeNullOrEmpty();
+
+        var twdPortfolio = portfolios!
+            .SingleOrDefault(p => string.Equals(p.BaseCurrency, "TWD", StringComparison.OrdinalIgnoreCase));
+        twdPortfolio.Should().NotBeNull();
+
+        var sampleFixture = await LoadSampleBrokerStatementFixtureAsync();
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = twdPortfolio!.Id,
+            CsvContent = sampleFixture.CsvContent,
+            SelectedFormat = "broker_statement"
+        };
+
+        // Act 1: preview
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+
+        // Assert preview
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.SessionId.Should().NotBe(Guid.Empty);
+
+        var previewSummary = previewDto.Summary;
+        previewSummary.TotalRows.Should().Be(sampleFixture.DataRowCount);
+        previewSummary.TotalRows.Should().Be(
+            previewSummary.ValidRows + previewSummary.RequiresActionRows + previewSummary.InvalidRows);
+
+        previewDto.Rows.Should().HaveCount(sampleFixture.DataRowCount);
+
+        var executeRows = previewDto.Rows
+            .Where(row => !string.Equals(row.Status, "invalid", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ConfirmedTradeSide))
+            .Select(row =>
+            {
+                var resolvedTicker = ResolveTickerForExecute(row);
+                return new ExecuteStockImportRowRequest
+                {
+                    RowNumber = row.RowNumber,
+                    Ticker = resolvedTicker,
+                    ConfirmedTradeSide = row.ConfirmedTradeSide,
+                    Exclude = string.IsNullOrWhiteSpace(resolvedTicker)
+                };
+            })
+            .ToList();
+
+        executeRows.Should().Contain(row => !row.Exclude);
+
+        var excludedRows = executeRows.Count(row => row.Exclude);
+        var excludedRatio = executeRows.Count == 0 ? 0m : (decimal)excludedRows / executeRows.Count;
+        excludedRatio.Should().BeLessThanOrEqualTo(0.2m,
+            "sample CSV should not generate an abnormal excluded-row ratio");
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = twdPortfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.Margin
+            },
+            Rows = executeRows
+        };
+
+        // Act 2: execute
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert execute
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+
+        var executeDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(
+            executePayload,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        executeDto.Should().NotBeNull();
+
+        var executeSummary = executeDto!.Summary;
+        var executeResultRows = executeDto.Results;
+
+        executeSummary.InsertedRows.Should().BeGreaterThan(0);
+        executeSummary.TotalRows.Should().Be(executeSummary.InsertedRows + executeSummary.FailedRows);
+        executeSummary.TotalRows.Should().Be(executeResultRows.Count);
+        executeSummary.ErrorCount.Should().Be(executeDto.Errors.Count);
+
+        var executeResultJsonRows = executeJson.RootElement.GetProperty("results").EnumerateArray().ToList();
+        executeResultJsonRows.Should().NotBeEmpty();
+
+        foreach (var result in executeResultJsonRows)
+        {
+            result.TryGetProperty("rowNumber", out var resultRowNumber).Should().BeTrue();
+            resultRowNumber.ValueKind.Should().Be(JsonValueKind.Number);
+
+            result.TryGetProperty("success", out var resultSuccess).Should().BeTrue();
+            (resultSuccess.ValueKind == JsonValueKind.True || resultSuccess.ValueKind == JsonValueKind.False)
+                .Should().BeTrue();
+
+            result.TryGetProperty("message", out var resultMessage).Should().BeTrue();
+            resultMessage.ValueKind.Should().Be(JsonValueKind.String);
+            resultMessage.GetString().Should().NotBeNullOrWhiteSpace();
+        }
+
+        var insertedResultRows = executeResultRows
+            .Where(row => row.TransactionId.HasValue)
+            .ToList();
+        insertedResultRows.Count.Should().Be(executeSummary.InsertedRows);
+        insertedResultRows.Should().OnlyContain(row =>
+            row.TransactionId.HasValue
+            && row.TransactionId.Value != Guid.Empty
+            && string.IsNullOrWhiteSpace(row.ErrorCode));
+
+        var failedResultRows = executeResultRows
+            .Where(row => !row.Success)
+            .ToList();
+        failedResultRows.Count.Should().Be(executeSummary.FailedRows);
+        failedResultRows.Should().OnlyContain(row =>
+            !row.TransactionId.HasValue && !string.IsNullOrWhiteSpace(row.ErrorCode));
+
+        // Act 3: list imported transactions to assert net holdings semantics through API-observable data
+        var transactionsResponse = await Client.GetAsync($"/api/stocktransactions?portfolioId={twdPortfolio.Id}");
+        transactionsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var importedTransactions = await transactionsResponse.Content.ReadFromJsonAsync<List<StockTransactionDto>>();
+        importedTransactions.Should().NotBeNull();
+        importedTransactions!.Should().NotBeEmpty();
+        importedTransactions.Count.Should().Be(executeSummary.InsertedRows);
+
+        var netSharesByTicker = importedTransactions
+            .GroupBy(transaction => transaction.Ticker, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(transaction => transaction.TransactionType switch
+                {
+                    TransactionType.Buy => transaction.Shares,
+                    TransactionType.Adjustment => transaction.Shares,
+                    TransactionType.Sell => -transaction.Shares,
+                    _ => 0m
+                }),
+                StringComparer.OrdinalIgnoreCase);
+
+        netSharesByTicker.Values.Should().Contain(value => value == 0m,
+            "sample CSV contains round-trip trades that close out to zero shares");
+        netSharesByTicker.Values.Should().Contain(value => value < 0m,
+            "sample CSV contains partial-period sells that can leave non-positive net holdings");
+
+        var netPositiveTickers = netSharesByTicker
+            .Where(entry => entry.Value > 0m)
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var nonPositiveTickers = netSharesByTicker
+            .Where(entry => entry.Value <= 0m)
+            .Select(entry => entry.Key)
+            .ToList();
+
+        // Act 4: summary
+        var summaryResponse = await Client.GetAsync($"/api/portfolios/{twdPortfolio.Id}/summary");
+        summaryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<PortfolioSummaryDto>();
+        summary.Should().NotBeNull();
+        summary!.Positions.Should().NotBeEmpty();
+        summary.Positions.Should().OnlyContain(position => position.TotalShares > 0m);
+
+        var summaryTickers = summary.Positions
+            .Select(position => position.Ticker)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        summaryTickers.Should().BeEquivalentTo(netPositiveTickers,
+            "summary endpoint returns positions only when imported net shares remain positive");
+
+        foreach (var ticker in nonPositiveTickers)
+        {
+            summary.Positions.Should().NotContain(
+                position => position.Ticker.Equals(ticker, StringComparison.OrdinalIgnoreCase),
+                $"ticker {ticker} has non-positive net shares ({netSharesByTicker[ticker]})");
+        }
+
+        summary.Positions.Should().Contain(position => position.TotalCostSource > 0m);
+
+        // Act 4: available years
+        var availableYearsResponse = await Client.GetAsync($"/api/portfolios/{twdPortfolio.Id}/performance/years");
+        availableYearsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var availableYears = await availableYearsResponse.Content.ReadFromJsonAsync<AvailableYearsDto>();
+        availableYears.Should().NotBeNull();
+        availableYears!.Years.Should().Contain(2025);
+        availableYears.Years.Should().Contain(2026);
+
+        // Act 5: year performance (2026)
+        const int requestedYear = 2026;
+
+        var requestPrices = BuildYearPriceRequestFromSummaryPositions(summary.Positions);
+        var yearPerformanceRequest = new CalculateYearPerformanceRequest
+        {
+            Year = requestedYear,
+            YearStartPrices = requestPrices,
+            YearEndPrices = requestPrices
+        };
+
+        var yearResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{twdPortfolio.Id}/performance/year",
+            yearPerformanceRequest);
+
+        yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPerformance = await yearResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        yearPerformance.Should().NotBeNull();
+        yearPerformance!.Year.Should().Be(2026);
+        yearPerformance.SourceCurrency.Should().NotBeNullOrWhiteSpace();
+        yearPerformance.CashFlowCount.Should().BeGreaterThan(0);
+        yearPerformance.TransactionCount.Should().BeGreaterThan(0);
+        yearPerformance.NetContributionsHome.Should().NotBe(decimal.MinValue);
+
+        AssertFiniteIfHasValue(yearPerformance.Xirr, nameof(YearPerformanceDto.Xirr));
+        AssertFiniteIfHasValue(yearPerformance.XirrPercentage, nameof(YearPerformanceDto.XirrPercentage));
+        AssertFiniteIfHasValue(yearPerformance.TotalReturnPercentage, nameof(YearPerformanceDto.TotalReturnPercentage));
+        AssertFiniteIfHasValue(yearPerformance.ModifiedDietzPercentage, nameof(YearPerformanceDto.ModifiedDietzPercentage));
+        AssertFiniteIfHasValue(yearPerformance.TimeWeightedReturnPercentage, nameof(YearPerformanceDto.TimeWeightedReturnPercentage));
+
+        // Act 6: monthly net worth
+        var monthlyResponse = await Client.GetAsync(
+            $"/api/portfolios/{twdPortfolio.Id}/performance/monthly?fromMonth={requestedYear}-01&toMonth={requestedYear}-12");
+
+        monthlyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var monthlyHistory = await monthlyResponse.Content.ReadFromJsonAsync<MonthlyNetWorthHistoryDto>();
+        monthlyHistory.Should().NotBeNull();
+        monthlyHistory!.Data.Should().NotBeEmpty();
+        monthlyHistory.TotalMonths.Should().Be(monthlyHistory.Data.Count);
+
+        var monthlyItem = monthlyHistory.Data.First();
+        monthlyItem.Month.Should().NotBeNullOrWhiteSpace();
+        DateOnly.ParseExact(monthlyItem.Month, "yyyy-MM", CultureInfo.InvariantCulture);
+
+        if (monthlyItem.Value.HasValue)
+        {
+            monthlyItem.Value.Value.Should().NotBe(decimal.MinValue);
+        }
+
+        if (monthlyItem.Contributions.HasValue)
+        {
+            monthlyItem.Contributions.Value.Should().NotBe(decimal.MinValue);
+        }
+    }
 
     [Fact]
     public async Task Preview_Endpoint_IsAvailable_AndReturnsContractFields()
@@ -895,6 +1188,110 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var depositLinkedToSell = linkedCurrencyTransactions.Any(transaction => transaction.TransactionType == CurrencyTransactionType.Deposit);
         depositLinkedToSell.Should().BeFalse("賣出列不應觸發補足 deposit");
+    }
+
+    private static async Task<SampleBrokerStatementFixture> LoadSampleBrokerStatementFixtureAsync()
+    {
+        var fixturePath = ResolveSampleBrokerStatementFixturePath();
+        var csvContent = await File.ReadAllTextAsync(fixturePath, CancellationToken.None);
+        var dataRowCount = CountCsvDataRows(csvContent);
+
+        dataRowCount.Should().BeGreaterThan(0, "sample fixture should include at least one data row");
+
+        return new SampleBrokerStatementFixture(csvContent, dataRowCount);
+    }
+
+    private static string ResolveSampleBrokerStatementFixturePath()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, SampleBrokerStatementFixtureFileName);
+
+        if (File.Exists(fixturePath))
+        {
+            return fixturePath;
+        }
+
+        throw new FileNotFoundException(
+            $"Sample broker statement fixture '{SampleBrokerStatementFixtureFileName}' was not found under test output directory '{AppContext.BaseDirectory}'.");
+    }
+
+    private static int CountCsvDataRows(string csvContent)
+    {
+        if (string.IsNullOrWhiteSpace(csvContent))
+        {
+            return 0;
+        }
+
+        using var reader = new StringReader(csvContent);
+        _ = reader.ReadLine(); // header row
+
+        var dataRowCount = 0;
+        while (reader.ReadLine() is { } line)
+        {
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                dataRowCount++;
+            }
+        }
+
+        return dataRowCount;
+    }
+
+    private static string? ResolveTickerForExecute(StockImportPreviewRowDto row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.Ticker))
+        {
+            return row.Ticker;
+        }
+
+        if (!string.IsNullOrWhiteSpace(row.RawSecurityName)
+            && TwSecurityNameMappings.TryGetValue(row.RawSecurityName.Trim(), out var mappedTicker))
+        {
+            return mappedTicker;
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, YearEndPriceInfo> BuildYearPriceRequestFromSummaryPositions(
+        IReadOnlyList<StockPositionDto> positions)
+    {
+        Dictionary<string, YearEndPriceInfo> prices = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var position in positions)
+        {
+            if (string.IsNullOrWhiteSpace(position.Ticker))
+            {
+                continue;
+            }
+
+            var normalizedTicker = position.Ticker.Trim().ToUpperInvariant();
+            var resolvedPrice = position.CurrentPrice.HasValue && position.CurrentPrice.Value > 0m
+                ? position.CurrentPrice.Value
+                : Math.Max(position.AverageCostPerShareSource, 1m);
+
+            var resolvedExchangeRate = position.CurrentExchangeRate.HasValue && position.CurrentExchangeRate.Value > 0m
+                ? position.CurrentExchangeRate.Value
+                : 1m;
+
+            prices[normalizedTicker] = new YearEndPriceInfo
+            {
+                Price = resolvedPrice,
+                ExchangeRate = resolvedExchangeRate
+            };
+        }
+
+        return prices;
+    }
+
+    private static void AssertFiniteIfHasValue(double? value, string fieldName)
+    {
+        if (!value.HasValue)
+        {
+            return;
+        }
+
+        double.IsNaN(value.Value).Should().BeFalse($"{fieldName} should not be NaN");
+        double.IsInfinity(value.Value).Should().BeFalse($"{fieldName} should not be Infinity");
     }
 
     private static string BuildBrokerStatementCsvWithOneRow()
