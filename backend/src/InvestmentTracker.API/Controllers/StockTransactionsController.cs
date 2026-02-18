@@ -253,7 +253,7 @@ public class StockTransactionsController(
     /// <para><b>失敗回應範例（400，Session 已失效）</b></para>
     /// <code>
     /// {
-    ///   "error": "Import session not found or expired.",
+    ///   "error": "Import session not found, expired, or already consumed.",
     ///   "statusCode": 400,
     ///   "timestamp": "2026-02-16T09:30:00Z"
     /// }

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
+using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.API.Tests.Integration;
@@ -274,7 +275,15 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var yearPerformance = await yearResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        var yearPayload = await yearResponse.Content.ReadAsStringAsync();
+        using var yearJson = JsonDocument.Parse(yearPayload);
+        var yearRoot = yearJson.RootElement;
+
+        AssertYearPerformanceCoverageSignalContract(yearRoot);
+
+        var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(
+            yearPayload,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
         yearPerformance.Should().NotBeNull();
         yearPerformance!.Year.Should().Be(2026);
         yearPerformance.SourceCurrency.Should().NotBeNullOrWhiteSpace();
@@ -376,6 +385,79 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         firstRow.TryGetProperty("actionsRequired", out var actionsRequired).Should().BeTrue();
         actionsRequired.ValueKind.Should().Be(JsonValueKind.Array);
+    }
+
+    [Fact]
+    public async Task Preview_AcceptsBaselineContract_AndStillReturnsSuccess()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Baseline Contract");
+        var request = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                OpeningCashBalance = 120000m,
+                OpeningLedgerBalance = null,
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 1000m,
+                        TotalCost = 500000m
+                    }
+                ]
+            }
+        };
+
+        // Act
+        var response = await Client.PostAsJsonAsync(PreviewEndpoint, request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+        json.RootElement.TryGetProperty("sessionId", out _).Should().BeTrue();
+        json.RootElement.GetProperty("rows").ValueKind.Should().Be(JsonValueKind.Array);
+
+        var sessionId = json.RootElement.GetProperty("sessionId").GetGuid();
+
+        using var scope = Factory.Services.CreateScope();
+        var sessionStore = scope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+
+        var persistedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
+        persistedSession.Should().NotBeNull();
+        persistedSession!.Baseline.OpeningCashBalance.Should().Be(120000m);
+        persistedSession.Baseline.OpeningLedgerBalance.Should().Be(120000m, "OpeningLedgerBalance should fall back to OpeningCashBalance when omitted");
+        persistedSession.Baseline.OpeningPositions.Should().ContainSingle();
+        persistedSession.Baseline.OpeningPositions.Single().Ticker.Should().Be("2330");
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 1,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = true
+                }
+            ]
+        };
+
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var consumedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
+        consumedSession.Should().BeNull("execute should consume preview session atomically");
     }
 
     [Fact]
@@ -669,7 +751,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var payload = await response.Content.ReadAsStringAsync();
-        payload.Should().Contain("Import session not found or expired");
+        payload.Should().Contain("Import session not found, expired, or already consumed");
     }
 
     [Fact]
@@ -782,6 +864,99 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var payload = await executeResponse.Content.ReadAsStringAsync();
         payload.Should().Contain("Import session does not match current user or portfolio");
+    }
+
+    [Fact]
+    public async Task Execute_MismatchedPortfolioAttempt_ShouldNotConsumeSessionForRightfulOwner()
+    {
+        // Arrange
+        var sourcePortfolio = await CreateTestPortfolioAsync(
+            "Stock Import Session Replay Guard Source",
+            currencyCode: "USD");
+        var targetPortfolio = await CreateTestPortfolioAsync(
+            "Stock Import Session Replay Guard Target",
+            currencyCode: "EUR");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = sourcePortfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+        var firstRow = previewJson.RootElement.GetProperty("rows").EnumerateArray().First();
+        var rowNumber = firstRow.GetProperty("rowNumber").GetInt32();
+        var ticker = firstRow.GetProperty("ticker").GetString();
+        var confirmedTradeSide = firstRow.GetProperty("confirmedTradeSide").GetString();
+
+        var unauthorizedRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = targetPortfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = rowNumber,
+                    Ticker = ticker,
+                    ConfirmedTradeSide = confirmedTradeSide,
+                    Exclude = true
+                }
+            ]
+        };
+
+        // Act 1: mismatched portfolio attempt
+        var unauthorizedResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, unauthorizedRequest);
+
+        // Assert 1: request is forbidden and session remains available
+        unauthorizedResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using (var verifyScope = Factory.Services.CreateScope())
+        {
+            var sessionStore = verifyScope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+            var persistedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
+            persistedSession.Should().NotBeNull("mismatched portfolio attempt must not consume the preview session");
+        }
+
+        var authorizedRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = sourcePortfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = rowNumber,
+                    Ticker = ticker,
+                    ConfirmedTradeSide = confirmedTradeSide,
+                    Exclude = true
+                }
+            ]
+        };
+
+        // Act 2: rightful owner executes with same session
+        var authorizedResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, authorizedRequest);
+
+        // Assert 2: rightful owner can still execute and consume session
+        authorizedResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var authorizedPayload = await authorizedResponse.Content.ReadAsStringAsync();
+        using var authorizedJson = JsonDocument.Parse(authorizedPayload);
+        authorizedJson.RootElement.GetProperty("status").GetString().Should().Be("committed");
+
+        using (var verifyScope = Factory.Services.CreateScope())
+        {
+            var sessionStore = verifyScope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+            var consumedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
+            consumedSession.Should().BeNull("session should be consumed by rightful owner execution");
+        }
     }
 
     [Fact]
@@ -1281,6 +1456,43 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         }
 
         return prices;
+    }
+
+    private static void AssertYearPerformanceCoverageSignalContract(JsonElement yearPerformanceRoot)
+    {
+        yearPerformanceRoot.TryGetProperty("coverageStartDate", out var coverageStartDate).Should().BeTrue();
+        (coverageStartDate.ValueKind == JsonValueKind.Null || coverageStartDate.ValueKind == JsonValueKind.String)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("coverageDays", out var coverageDays).Should().BeTrue();
+        (coverageDays.ValueKind == JsonValueKind.Null || coverageDays.ValueKind == JsonValueKind.Number)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("hasOpeningBaseline", out var hasOpeningBaseline).Should().BeTrue();
+        (hasOpeningBaseline.ValueKind == JsonValueKind.Null
+            || hasOpeningBaseline.ValueKind == JsonValueKind.True
+            || hasOpeningBaseline.ValueKind == JsonValueKind.False)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("usesPartialHistoryAssumption", out var usesPartialHistoryAssumption).Should().BeTrue();
+        (usesPartialHistoryAssumption.ValueKind == JsonValueKind.Null
+            || usesPartialHistoryAssumption.ValueKind == JsonValueKind.True
+            || usesPartialHistoryAssumption.ValueKind == JsonValueKind.False)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("xirrReliability", out var xirrReliability).Should().BeTrue();
+        (xirrReliability.ValueKind == JsonValueKind.Null || xirrReliability.ValueKind == JsonValueKind.String)
+            .Should().BeTrue();
+
+        if (coverageDays.ValueKind == JsonValueKind.Number)
+        {
+            coverageDays.GetInt32().Should().BeGreaterThanOrEqualTo(0);
+        }
+
+        if (xirrReliability.ValueKind == JsonValueKind.String)
+        {
+            xirrReliability.GetString().Should().NotBeNullOrWhiteSpace();
+        }
     }
 
     private static void AssertFiniteIfHasValue(double? value, string fieldName)

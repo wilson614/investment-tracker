@@ -1228,6 +1228,22 @@ public class ExecuteStockImportBalanceActionTests
                 .ReturnsAsync(_portfolio);
 
             SessionStoreMock
+                .Setup(x => x.TryConsumeForOwnerAsync(
+                    SessionId,
+                    UserId,
+                    PortfolioId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StockImportSessionSnapshotDto
+                {
+                    SessionId = SessionId,
+                    UserId = UserId,
+                    PortfolioId = PortfolioId,
+                    SelectedFormat = "broker_statement",
+                    DetectedFormat = "broker_statement",
+                    Rows = _sessionRows
+                });
+
+            SessionStoreMock
                 .Setup(x => x.GetAsync(SessionId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new StockImportSessionSnapshotDto
                 {

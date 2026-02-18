@@ -85,6 +85,7 @@ public sealed class PreviewStockImportUseCase(
             PortfolioId = request.PortfolioId,
             SelectedFormat = parseResult.SelectedFormat,
             DetectedFormat = parseResult.DetectedFormat,
+            Baseline = MapBaseline(request.Baseline),
             Rows = rows.Select(row => new StockImportSessionRowSnapshotDto
             {
                 RowNumber = row.RowNumber,
@@ -165,6 +166,41 @@ public sealed class PreviewStockImportUseCase(
             ValidRows = validRows,
             RequiresActionRows = requiresActionRows,
             InvalidRows = invalidRows
+        };
+    }
+
+    private static StockImportSessionBaselineSnapshotDto MapBaseline(StockImportBaselineRequest? baseline)
+    {
+        if (baseline is null)
+        {
+            return new StockImportSessionBaselineSnapshotDto();
+        }
+
+        var openingPositions = baseline.OpeningPositions ?? [];
+
+        var normalizedPositions = openingPositions
+            .Select(position => position is null
+                ? null
+                : new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = string.IsNullOrWhiteSpace(position.Ticker)
+                        ? null
+                        : position.Ticker.Trim().ToUpperInvariant(),
+                    Quantity = position.Quantity,
+                    TotalCost = position.TotalCost
+                })
+            .OfType<StockImportSessionOpeningPositionSnapshotDto>()
+            .ToList();
+
+        var openingCashBalance = baseline.OpeningCashBalance;
+        var openingLedgerBalance = baseline.OpeningLedgerBalance ?? openingCashBalance;
+
+        return new StockImportSessionBaselineSnapshotDto
+        {
+            BaselineDate = baseline.BaselineDate,
+            OpeningPositions = normalizedPositions,
+            OpeningCashBalance = openingCashBalance,
+            OpeningLedgerBalance = openingLedgerBalance
         };
     }
 }

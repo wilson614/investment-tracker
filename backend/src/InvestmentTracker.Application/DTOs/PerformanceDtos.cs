@@ -76,6 +76,36 @@ public record YearPerformanceDto
     /// </summary>
     public DateTime? EarliestTransactionDateInYear { get; init; }
 
+    /// <summary>
+    /// 年度績效覆蓋起始日（Coverage Start）。
+    /// 目前作為契約保留欄位，若無可靠資料則為 null。
+    /// </summary>
+    public DateTime? CoverageStartDate { get; init; }
+
+    /// <summary>
+    /// 年度績效覆蓋天數（Coverage Days）。
+    /// 目前作為契約保留欄位，若無可靠資料則為 null。
+    /// </summary>
+    public int? CoverageDays { get; init; }
+
+    /// <summary>
+    /// 是否具備年度期初基準（Opening Baseline）。
+    /// 目前作為契約保留欄位，若無可靠資料則為 null。
+    /// </summary>
+    public bool? HasOpeningBaseline { get; init; }
+
+    /// <summary>
+    /// 是否使用部分歷史假設（Partial History Assumption）。
+    /// 目前作為契約保留欄位，若無可靠資料則為 null。
+    /// </summary>
+    public bool? UsesPartialHistoryAssumption { get; init; }
+
+    /// <summary>
+    /// XIRR 可靠度訊號（例如 Low/Medium/High）。
+    /// 目前作為契約保留欄位，若無可靠資料則為 null。
+    /// </summary>
+    public string? XirrReliability { get; init; }
+
     /// <summary>計算所需但缺少參考價格的持倉清單。</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 

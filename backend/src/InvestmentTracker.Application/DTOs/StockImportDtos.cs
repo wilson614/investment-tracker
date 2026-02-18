@@ -12,7 +12,29 @@ public record StockImportSessionSnapshotDto
     public Guid PortfolioId { get; init; }
     public string SelectedFormat { get; init; } = string.Empty;
     public string DetectedFormat { get; init; } = string.Empty;
+    public StockImportSessionBaselineSnapshotDto Baseline { get; init; } = new();
     public IReadOnlyList<StockImportSessionRowSnapshotDto> Rows { get; init; } = [];
+}
+
+/// <summary>
+/// Preview baseline 的可驗證快照（Group A 基礎 Session Scaffold）。
+/// </summary>
+public record StockImportSessionBaselineSnapshotDto
+{
+    public DateTime? BaselineDate { get; init; }
+    public IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto> OpeningPositions { get; init; } = [];
+    public decimal? OpeningCashBalance { get; init; }
+    public decimal? OpeningLedgerBalance { get; init; }
+}
+
+/// <summary>
+/// Preview baseline 期初持倉快照。
+/// </summary>
+public record StockImportSessionOpeningPositionSnapshotDto
+{
+    public string? Ticker { get; init; }
+    public decimal? Quantity { get; init; }
+    public decimal? TotalCost { get; init; }
 }
 
 /// <summary>

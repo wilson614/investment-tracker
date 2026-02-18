@@ -101,11 +101,23 @@ public sealed class ExecuteStockImportUseCase(
         if (portfolio.UserId != userId)
             throw new AccessDeniedException();
 
-        var session = await stockImportSessionStore.GetAsync(request.SessionId, cancellationToken)
-            ?? throw new BusinessRuleException("Import session not found or expired.");
+        var session = await stockImportSessionStore.TryConsumeForOwnerAsync(
+            request.SessionId,
+            userId,
+            request.PortfolioId,
+            cancellationToken);
 
-        if (session.UserId != userId || session.PortfolioId != request.PortfolioId)
-            throw new AccessDeniedException("Import session does not match current user or portfolio.");
+        if (session is null)
+        {
+            var existingSession = await stockImportSessionStore.GetAsync(request.SessionId, cancellationToken);
+            if (existingSession is not null
+                && (existingSession.UserId != userId || existingSession.PortfolioId != request.PortfolioId))
+            {
+                throw new AccessDeniedException("Import session does not match current user or portfolio.");
+            }
+
+            throw new BusinessRuleException("Import session not found, expired, or already consumed.");
+        }
 
         var sessionRowsByNumber = session.Rows.ToDictionary(r => r.RowNumber);
 
@@ -318,7 +330,6 @@ public sealed class ExecuteStockImportUseCase(
             if (insertedRows > 0)
             {
                 await tx.CommitAsync(cancellationToken);
-                await stockImportSessionStore.RemoveAsync(request.SessionId, cancellationToken);
             }
 
             var status = ResolveStatus(insertedRows, failedRows);

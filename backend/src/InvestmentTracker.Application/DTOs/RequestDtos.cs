@@ -141,6 +141,58 @@ public record PreviewStockImportRequest
     [Required]
     [RegularExpression("^(legacy_csv|broker_statement)$", ErrorMessage = "SelectedFormat must be either 'legacy_csv' or 'broker_statement'.")]
     public required string SelectedFormat { get; init; }
+
+    /// <summary>
+    /// Optional baseline scaffold for import context.
+    /// Group A foundation only: no execution enforcement yet.
+    /// </summary>
+    public StockImportBaselineRequest? Baseline { get; init; }
+}
+
+/// <summary>
+/// 股票匯入基準輸入（Group A 基礎契約）。
+/// </summary>
+public record StockImportBaselineRequest
+{
+    /// <summary>
+    /// 匯入基準日。
+    /// </summary>
+    public DateTime? BaselineDate { get; init; }
+
+    /// <summary>
+    /// 期初持倉清單（含股數與成本）。
+    /// </summary>
+    public IReadOnlyList<StockImportOpeningPositionRequest> OpeningPositions { get; init; } = [];
+
+    /// <summary>
+    /// 期初現金餘額（可選）。
+    /// </summary>
+    public decimal? OpeningCashBalance { get; init; }
+
+    /// <summary>
+    /// 期初帳本餘額（可選）。
+    /// 若未提供，session scaffold 會以 OpeningCashBalance 作為預設值。
+    /// </summary>
+    public decimal? OpeningLedgerBalance { get; init; }
+}
+
+/// <summary>
+/// 股票匯入期初持倉（Group A 基礎契約）。
+/// </summary>
+public record StockImportOpeningPositionRequest
+{
+    [StringLength(20, MinimumLength = 1)]
+    public string? Ticker { get; init; }
+
+    /// <summary>
+    /// 期初股數（可選）。
+    /// </summary>
+    public decimal? Quantity { get; init; }
+
+    /// <summary>
+    /// 期初總成本（可選）。
+    /// </summary>
+    public decimal? TotalCost { get; init; }
 }
 
 /// <summary>

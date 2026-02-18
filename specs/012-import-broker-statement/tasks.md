@@ -133,6 +133,11 @@
 - [x] T048 Harden backend sample CSV fixture resolution for path-independent test execution in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 - [x] T049 [P] Ensure broker sample fixture is copied into test output directory for fixture path independence in `backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj`
 - [x] T050 Update reliability-cycle verification evidence and test-infra scope note (no Playwright; covered by API + frontend integration tests) in `specs/012-import-broker-statement/quickstart.md` and `frontend/src/test/stock-import.broker-preview.test.tsx`
+- [x] T051 Add import baseline request contracts (`baselineDate`, opening positions/cost, opening cash/ledger balance) in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs`
+- [x] T052 [P] Add import session baseline snapshot DTO scaffold in `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs`
+- [x] T053 Persist baseline scaffold into preview session snapshot in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/PreviewStockImportUseCase.cs`
+- [x] T054 [P] Add performance coverage/baseline signal fields to yearly response DTO in `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`
+- [x] T059 [P] Add API contract assertions for baseline/coverage signal fields in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 
 ---
 
