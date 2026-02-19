@@ -146,6 +146,12 @@
 - [x] T065 Resolve Group E code-review findings (market-aware + legacy quote cache write and conditional TopUp gating) in `frontend/src/pages/Performance.tsx` and `frontend/src/components/import/StockImportButton.tsx`
 - [x] T066 Update Group E quickstart evidence and traceability in `specs/012-import-broker-statement/quickstart.md`
 - [x] T067 Update Speckit tasks checklist for Group E completion in `specs/012-import-broker-statement/tasks.md`
+- [x] T068 Fix execute ordering to trade-date-first with deterministic tie-breaker (sell before buy on same date) in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T069 Add application regression tests for reverse-chronological and same-day buy-first scenarios without over-topup in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+- [x] T070 Add API regression tests for reverse-chronological and same-day buy-first scenarios without over-topup in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T071 Record Group F backend QA verification evidence in `specs/012-import-broker-statement/quickstart.md`
+- [x] T072 Resolve Group F code-review findings (same-day ordering risk + duplicate rowNumber guard) in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs` and `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+- [x] T073 Update Speckit checklist and quickstart traceability for Group F in `specs/012-import-broker-statement/tasks.md` and `specs/012-import-broker-statement/quickstart.md`
 
 ---
 

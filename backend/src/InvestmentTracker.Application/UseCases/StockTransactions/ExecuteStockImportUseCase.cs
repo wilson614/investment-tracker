@@ -96,6 +96,19 @@ public sealed class ExecuteStockImportUseCase(
         if (request.SessionId == Guid.Empty)
             throw new BusinessRuleException("SessionId is required.");
 
+        var duplicatedRowNumbers = request.Rows
+            .GroupBy(row => row.RowNumber)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .OrderBy(rowNumber => rowNumber)
+            .ToList();
+
+        if (duplicatedRowNumbers.Count > 0)
+        {
+            throw new BusinessRuleException(
+                $"Rows.RowNumber contains duplicates: {string.Join(",", duplicatedRowNumbers)}.");
+        }
+
         var userId = currentUserService.UserId
             ?? throw new AccessDeniedException("User not authenticated");
 
@@ -184,7 +197,38 @@ public sealed class ExecuteStockImportUseCase(
                     cancellationToken);
             }
 
-            foreach (var row in request.Rows.OrderBy(r => r.RowNumber))
+            var rowsToExecute = request.Rows
+                .OrderBy(row =>
+                {
+                    if (sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRowForOrdering)
+                        && sessionRowForOrdering.TradeDate.HasValue)
+                    {
+                        return sessionRowForOrdering.TradeDate.Value.Date;
+                    }
+
+                    return DateTime.MaxValue;
+                })
+                .ThenBy(row =>
+                {
+                    if (!sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRowForOrdering))
+                    {
+                        return 2;
+                    }
+
+                    var normalizedTradeSideForOrdering = NormalizeConfirmedTradeSide(row.ConfirmedTradeSide)
+                        ?? NormalizeConfirmedTradeSide(sessionRowForOrdering.ConfirmedTradeSide)
+                        ?? NormalizeConfirmedTradeSide(sessionRowForOrdering.TradeSide);
+
+                    return normalizedTradeSideForOrdering switch
+                    {
+                        TradeSideSell => 0,
+                        TradeSideBuy => 1,
+                        _ => 2
+                    };
+                })
+                .ThenBy(row => row.RowNumber);
+
+            foreach (var row in rowsToExecute)
             {
                 if (!sessionRowsByNumber.TryGetValue(row.RowNumber, out var sessionRow))
                 {

@@ -5,6 +5,7 @@ using InvestmentTracker.Application.UseCases.StockTransactions;
 using System.ComponentModel.DataAnnotations;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
 using Moq;
@@ -50,6 +51,46 @@ public class ExecuteStockImportBalanceActionTests
         rowResult.BalanceDecision.Action.Should().Be(BalanceAction.None);
         rowResult.BalanceDecision.TopUpTransactionType.Should().BeNull();
         rowResult.BalanceDecision.DecisionScope.Should().Be("row_override");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RowsContainDuplicateRowNumber_ShouldThrowBusinessRuleException()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 11,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 11,
+                    Ticker = "2317",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var act = () => fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("Rows.RowNumber contains duplicates: 11.");
+
+        fixture.TransactionManagerMock.Verify(
+            manager => manager.BeginTransactionAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -732,7 +773,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_PartialPeriodSellThenBuy_WithOpeningDecision_ShouldUseSellIncomeWithoutTopUp()
+    public async Task ExecuteAsync_SameDayBuyBeforeSell_WithBuyRowNumberSmaller_ShouldUseSellIncomeWithoutTopUp()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -741,23 +782,118 @@ public class ExecuteStockImportBalanceActionTests
             sessionRows:
             [
                 Fixture.BuildSessionRow(
-                    rowNumber: 41,
-                    ticker: "2330",
-                    unitPrice: 1000m,
-                    tradeDate: tradeDate,
-                    quantity: 100m,
-                    fees: 0m,
-                    taxes: 0m,
-                    tradeSide: "sell"),
-                Fixture.BuildSessionRow(
-                    rowNumber: 42,
+                    rowNumber: 71,
                     ticker: "2330",
                     unitPrice: 500m,
                     tradeDate: tradeDate,
                     quantity: 100m,
                     fees: 0m,
                     taxes: 0m,
-                    tradeSide: "buy")
+                    tradeSide: "buy"),
+                Fixture.BuildSessionRow(
+                    rowNumber: 72,
+                    ticker: "2330",
+                    unitPrice: 1000m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 100000m
+                }
+            ]);
+
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.UseOpeningPosition
+            },
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 71,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 72,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "sell",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(2);
+        result.Summary.FailedRows.Should().Be(0);
+
+        result.Results.Should().ContainSingle(row => row.RowNumber == 71 && row.Success);
+        result.Results.Should().ContainSingle(row => row.RowNumber == 72 && row.Success);
+
+        var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<CurrencyTransaction>()
+            .ToList();
+
+        addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.OtherIncome);
+        addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
+        addedCurrencyTransactions.Should().NotContain(
+            transaction => transaction.TransactionType == CurrencyTransactionType.Deposit,
+            "同日 buy-first / sell-later（rowNumber buy < sell）應優先使用賣出入帳，不應產生補足交易");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CsvNewestToOldest_SellEarlierThanBuy_ShouldUseSellIncomeWithoutTopUp()
+    {
+        // Arrange
+        var sellTradeDate = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc);
+        var buyTradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 41,
+                    ticker: "2330",
+                    unitPrice: 500m,
+                    tradeDate: buyTradeDate,
+                    quantity: 100m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "buy"),
+                Fixture.BuildSessionRow(
+                    rowNumber: 42,
+                    ticker: "2330",
+                    unitPrice: 1000m,
+                    tradeDate: sellTradeDate,
+                    quantity: 100m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "sell")
             ],
             baselineOpeningPositions:
             [
@@ -788,14 +924,14 @@ public class ExecuteStockImportBalanceActionTests
                 {
                     RowNumber = 41,
                     Ticker = "2330",
-                    ConfirmedTradeSide = "sell",
+                    ConfirmedTradeSide = "buy",
                     Exclude = false
                 },
                 new ExecuteStockImportRowRequest
                 {
                     RowNumber = 42,
                     Ticker = "2330",
-                    ConfirmedTradeSide = "buy",
+                    ConfirmedTradeSide = "sell",
                     Exclude = false
                 }
             ]
@@ -810,7 +946,7 @@ public class ExecuteStockImportBalanceActionTests
         result.Summary.FailedRows.Should().Be(0);
 
         var warning = result.Errors.Should().ContainSingle().Subject;
-        warning.RowNumber.Should().Be(41);
+        warning.RowNumber.Should().Be(42);
         warning.ErrorCode.Should().Be("PARTIAL_PERIOD_ASSUMPTION");
 
         var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
@@ -823,7 +959,7 @@ public class ExecuteStockImportBalanceActionTests
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
         addedCurrencyTransactions.Should().NotContain(
             transaction => transaction.TransactionType == CurrencyTransactionType.Deposit,
-            "先賣後買且可用餘額足夠時，不應再建立補足交易");
+            "CSV 新到舊時，較早賣出應支應較晚買入，不應再建立補足交易");
     }
 
     [Fact]

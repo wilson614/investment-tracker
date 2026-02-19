@@ -337,3 +337,49 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/s
 - **D. Performance regression tests alignment scope**
   - `frontend/src/test/performance.metrics-binding.test.tsx`
   - `frontend/src/test/useHistoricalPerformance.test.ts`
+
+## Verification Notes (Group F Backend Closure Update)
+
+- Updated for Group F Speckit closure with backend QA evidence (date: **2026-02-19**).
+- Root cause:
+  - Broker CSV rows may come in newest-to-oldest order.
+  - Previous execution order could process a same-day buy before the corresponding sell cash inflow, causing premature TopUp and over-topup risk.
+- Fix strategy:
+  - Enforce deterministic execute ordering: `tradeDate` ascending -> `side` priority (`sell` before `buy` on same date) -> `rowNumber` ascending.
+  - Keep same-day behavior deterministic and reproducible across runs.
+- Additional guard from code review:
+  - Reject execute requests with duplicated `rows[].rowNumber` early with a clear validation error, preventing ambiguous row mapping.
+
+## Verification Evidence (Group F Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet build "/workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~ExecuteStockImportBalanceActionTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend build | PASS | Build completed successfully. |
+| Backend application regression | PASS | `ExecuteStockImportBalanceActionTests` passed, including same-day and reverse-chronological no-over-topup scenarios. |
+| Backend API regression | PASS | `StockTransactionsImportControllerTests` passed, including same-day and reverse-chronological no-over-topup scenarios plus duplicate-rowNumber bad-request coverage. |
+
+### Group F Traceability (Backend Files + Key Tests)
+
+- `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+  - Execute ordering and deterministic tie-breaker implementation (`tradeDate` -> `side` -> `rowNumber`).
+  - Duplicate `rows[].rowNumber` guard before session/transaction processing.
+- `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+  - `ExecuteAsync_SameDayBuyBeforeSell_WithBuyRowNumberSmaller_ShouldUseSellIncomeWithoutTopUp`
+  - `ExecuteAsync_CsvNewestToOldest_SellEarlierThanBuy_ShouldUseSellIncomeWithoutTopUp`
+  - `ExecuteAsync_RowsContainDuplicateRowNumber_ShouldThrowBusinessRuleException`
+- `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+  - `Execute_SameDayBuyFirstSellLater_WithBuyRowNumberSmaller_ShouldNotCreateTopUpDeposit`
+  - `Execute_ReverseChronologicalSellThenBuyPairs_ShouldCommitWithoutTopUpForKeyRows`
+  - `Execute_ReturnsBadRequest_WhenRowsContainDuplicateRowNumber`
