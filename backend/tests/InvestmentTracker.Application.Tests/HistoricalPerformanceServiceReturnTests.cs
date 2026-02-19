@@ -392,6 +392,158 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_NoOpeningBaseline_WithLateTopUpOnly_CanReachExtremeModifiedDietz()
+    {
+        // Arrange
+        const int year = 2025;
+        var tradeDate = new DateTime(year, 12, 30, 0, 0, 0, DateTimeKind.Utc);
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var yearEnd = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        const decimal topUpAmount = 100000m;
+        const decimal yearEndPrice = 105.68684m;
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Late-topup near-zero Dietz denominator test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: tradeDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1000m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+        buy.CreatedAt = new DateTime(year, 12, 30, 1, 0, 0, DateTimeKind.Utc);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buy]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var topUpDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            tradeDate,
+            CurrencyTransactionType.Deposit,
+            topUpAmount,
+            homeAmount: topUpAmount,
+            exchangeRate: 1m,
+            relatedStockTransactionId: buy.Id,
+            notes: "補足買入 2330 差額");
+
+        var buySpend = new CurrencyTransaction(
+            boundLedger.Id,
+            tradeDate,
+            CurrencyTransactionType.Spend,
+            topUpAmount,
+            homeAmount: topUpAmount,
+            exchangeRate: 1m,
+            relatedStockTransactionId: buy.Id,
+            notes: "買入 2330 × 1000");
+
+        boundLedger.AddTransaction(topUpDeposit);
+        boundLedger.AddTransaction(buySpend);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            // Ledger strategy only keeps the top-up deposit as external cash flow input.
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: topUpDeposit.Id,
+                snapshotDate: tradeDate,
+                beforeSource: 0m,
+                afterSource: topUpAmount,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 12, 30, 2, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = yearEndPrice, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeTrue();
+        result.CoverageStartDate.Should().Be(tradeDate.Date);
+        result.CoverageDays.Should().Be(2);
+        result.XirrReliability.Should().Be("Unavailable");
+        result.Xirr.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+
+        result.StartValueSource.Should().Be(0m);
+        result.EndValueSource.Should().Be(105686.84m);
+        result.NetContributionsSource.Should().Be(topUpAmount);
+
+        var totalDays = (yearEnd.Date - yearStart.Date).Days;
+        var daysSinceStart = (tradeDate.Date - yearStart.Date).Days;
+        var weight = (totalDays - daysSinceStart) / (decimal)totalDays;
+
+        // Root cause lock: denominator = startValue + weighted external cash flow = 0 + 100000 * (1/364)
+        // The weighted denominator is tiny because only a very-late top-up is treated as external cash flow.
+        var expectedDenominator = topUpAmount * weight;
+        var expectedNumerator = result.EndValueSource!.Value - result.StartValueSource!.Value - result.NetContributionsSource!.Value;
+        var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
+
+        expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
+        expectedDenominator.Should().BeLessThan(300m);
+
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.1d);
+        result.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
+
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
+        (result.ModifiedDietzPercentageSource!.Value - result.TimeWeightedReturnPercentageSource!.Value)
+            .Should().BeGreaterThan(2000d);
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_SellWithFees_UsesNegativeCashFlowAndComputesExpectedRates()
     {
         // Arrange

@@ -337,6 +337,163 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
+    public async Task PreviewExecuteAndYearPerformance_WithoutOpeningBaselineWithLateTopUp_ShouldExposeMdExtremeRootCause()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync(
+            "Stock Import MD Extreme Root Cause",
+            currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneLateYearBuyRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        // Act 1: preview
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+
+        // Assert preview
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().ContainSingle();
+
+        var previewRow = previewDto.Rows.Single();
+        previewRow.TradeDate.Should().NotBeNull();
+        previewRow.TradeDate!.Value.Date.Should().Be(new DateTime(2025, 12, 30));
+        previewRow.ConfirmedTradeSide.Should().Be("buy");
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = previewRow.RowNumber,
+                    Ticker = previewRow.Ticker,
+                    ConfirmedTradeSide = previewRow.ConfirmedTradeSide,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act 2: execute
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert execute
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executeDto = await executeResponse.Content.ReadFromJsonAsync<StockImportExecuteResponseDto>();
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
+        executeDto.Summary.InsertedRows.Should().Be(1);
+        executeDto.Summary.FailedRows.Should().Be(0);
+        executeDto.Results.Should().ContainSingle(result => result.Success && result.TransactionId.HasValue);
+
+        var importedTransactionId = executeDto.Results.Single().TransactionId!.Value;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var linkedCurrencyTransactions = await dbContext.CurrencyTransactions
+                .Where(transaction => transaction.RelatedStockTransactionId == importedTransactionId)
+                .ToListAsync();
+
+            linkedCurrencyTransactions.Should().Contain(transaction =>
+                transaction.TransactionType == CurrencyTransactionType.Deposit
+                && transaction.Notes != null
+                && transaction.Notes.Contains("補足買入", StringComparison.Ordinal));
+
+            linkedCurrencyTransactions.Should().ContainSingle(transaction =>
+                transaction.TransactionType == CurrencyTransactionType.Spend);
+        }
+
+        // Act 3: performance available years (UI-equivalent navigation step)
+        var availableYearsResponse = await Client.GetAsync($"/api/portfolios/{portfolio.Id}/performance/years");
+        availableYearsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var availableYears = await availableYearsResponse.Content.ReadFromJsonAsync<AvailableYearsDto>();
+        availableYears.Should().NotBeNull();
+        availableYears!.Years.Should().Contain(2025);
+
+        // Act 4: performance year read with manual year-end price supplement
+        // This mirrors UI補價流程：使用者提供年末價後再讀取年度績效。
+        var yearResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{portfolio.Id}/performance/year",
+            new CalculateYearPerformanceRequest
+            {
+                Year = 2025,
+                YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+                {
+                    ["2330"] = new() { Price = 105.68684m, ExchangeRate = 1m }
+                }
+            });
+
+        yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPayload = await yearResponse.Content.ReadAsStringAsync();
+        using var yearJson = JsonDocument.Parse(yearPayload);
+        var yearRoot = yearJson.RootElement;
+
+        AssertYearPerformanceCoverageSignalContract(yearRoot);
+
+        yearRoot.GetProperty("coverageDays").GetInt32().Should().Be(2);
+        yearRoot.GetProperty("hasOpeningBaseline").GetBoolean().Should().BeFalse();
+        yearRoot.GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeTrue();
+        yearRoot.GetProperty("xirrReliability").GetString().Should().Be("Unavailable");
+
+        var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(yearPayload, ApiJsonOptions);
+        yearPerformance.Should().NotBeNull();
+
+        yearPerformance!.TransactionCount.Should().Be(1);
+        yearPerformance.CashFlowCount.Should().BeGreaterThanOrEqualTo(2);
+
+        yearPerformance.StartValueSource.Should().Be(0m);
+        yearPerformance.EndValueSource.Should().BeApproximately(105686.84m, 0.001m);
+        yearPerformance.NetContributionsSource.Should().Be(100000m);
+
+        yearPerformance.Xirr.Should().BeNull();
+        yearPerformance.XirrSource.Should().BeNull();
+
+        var periodStart = new DateTime(2025, 1, 1);
+        var periodEnd = new DateTime(2025, 12, 31);
+        var tradeDate = new DateTime(2025, 12, 30);
+        var totalDays = (periodEnd.Date - periodStart.Date).Days;
+        var daysSinceStart = (tradeDate.Date - periodStart.Date).Days;
+        var weight = (totalDays - daysSinceStart) / (decimal)totalDays;
+
+        // Root-cause lock: denominator becomes tiny when year-start baseline is 0
+        // and only a very-late external top-up cash flow is weighted into MD.
+        var expectedDenominator = 100000m * weight;
+        var expectedNumerator = yearPerformance.EndValueSource!.Value
+            - yearPerformance.StartValueSource!.Value
+            - yearPerformance.NetContributionsSource!.Value;
+        var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
+
+        expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
+        expectedDenominator.Should().BeLessThan(300m);
+
+        yearPerformance.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
+        yearPerformance.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.2d);
+        yearPerformance.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
+
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        (yearPerformance.ModifiedDietzPercentageSource!.Value - yearPerformance.TimeWeightedReturnPercentageSource!.Value)
+            .Should().BeGreaterThan(2000d);
+    }
+
+    [Fact]
     public async Task Preview_Endpoint_IsAvailable_AndReturnsContractFields()
     {
         // Arrange
@@ -2057,6 +2214,14 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         return """
 股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
 "台積電","2330","2026/01/22","100","16,544","165.5","16,550","6","0","0","A0001","台幣",""
+""";
+    }
+
+    private static string BuildBrokerStatementCsvWithOneLateYearBuyRow()
+    {
+        return """
+股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
+"台積電","2330","2025/12/30","1,000","-100,000","100","100,000","0","0","0","MD0001","台幣",""
 """;
     }
 
