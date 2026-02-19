@@ -38,7 +38,7 @@
 - [x] T010 [P] Implement TW security mapping repository in `backend/src/InvestmentTracker.Infrastructure/Repositories/TwSecurityMappingRepository.cs`
 - [x] T011 Implement on-demand TWSE ISIN source synchronization service in `backend/src/InvestmentTracker.Infrastructure/Services/TwseSymbolMappingService.cs`
 - [x] T012 Wire DI registrations for mapping repository/service in `backend/src/InvestmentTracker.Infrastructure/DependencyInjection.cs`
-- [x] T013 Add API endpoint for on-demand symbol sync in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs
+- [x] T013 Add API endpoint for on-demand symbol sync in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin.
 
@@ -152,6 +152,16 @@
 - [x] T071 Record Group F backend QA verification evidence in `specs/012-import-broker-statement/quickstart.md`
 - [x] T072 Resolve Group F code-review findings (same-day ordering risk + duplicate rowNumber guard) in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs` and `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
 - [x] T073 Update Speckit checklist and quickstart traceability for Group F in `specs/012-import-broker-statement/tasks.md` and `specs/012-import-broker-statement/quickstart.md`
+- [x] T074 Add UI-equivalent import→performance regression that deterministically reproduces extreme 2025 Modified Dietz with no opening baseline and late top-up in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T075 Add service-level diagnostics assertions for MD anomaly factors (`coverageDays`, `hasOpeningBaseline`, `usesPartialHistoryAssumption`, `xirrReliability`, denominator lock) in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T076 Enforce Yahoo-first non-realtime historical price lookup in `backend/src/InvestmentTracker.API/Controllers/MarketDataController.cs`
+- [x] T077 Restrict Stooq fallback to Yahoo-failure + US/UK markets in `backend/src/InvestmentTracker.Infrastructure/Services/HistoricalYearEndDataService.cs` and `backend/src/InvestmentTracker.Infrastructure/Services/MonthlySnapshotService.cs`
+- [x] T078 Add backend regression tests for historical source priority and fallback scope in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/HistoricalYearEndDataServiceTests.cs` and `backend/tests/InvestmentTracker.API.Tests/Controllers/MarketDataControllerHistoricalPriceTests.cs`
+- [x] T079 Implement explicit XIRR UI state split (calculating vs low-confidence vs unavailable) in `frontend/src/pages/Dashboard.tsx` and `frontend/src/pages/Performance.tsx`
+- [x] T080 Add frontend regression tests for XIRR state split in `frontend/src/test/dashboard.aggregate-fixed.test.tsx` and `frontend/src/test/performance.metrics-binding.test.tsx`
+- [x] T081 Record Group G root-cause and source-policy verification evidence in `specs/012-import-broker-statement/quickstart.md`
+- [x] T082 Update Speckit checklist for Group G completion in `specs/012-import-broker-statement/tasks.md`
+- [x] T083 Update quickstart traceability matrix for Group G in `specs/012-import-broker-statement/quickstart.md`
 
 ---
 

@@ -119,6 +119,7 @@ Validate that a user can import both legacy stock CSV and broker statement CSV f
 | Execute result row | `transactionId` | Non-null only when `success=true`; otherwise must be null |
 | Execute result row | `errorCode` | Non-null only when `success=false`; otherwise must be null |
 | Performance response | `year`, `cashFlowCount`, `transactionCount`, `missingPrices`, `isComplete` | MUST be non-null |
+| Performance response | `coverageDays`, `hasOpeningBaseline`, `usesPartialHistoryAssumption`, `xirrReliability` | MUST be non-null |
 | Performance response | `xirr*`, `totalReturn*`, `modifiedDietz*`, `timeWeightedReturn*`, `startValue*`, `endValue*`, `earliestTransactionDateInYear` | NULL allowed (especially when `isComplete=false`) |
 | Performance response | `missingPrices` | Must be empty when `isComplete=true`; may be non-empty when `isComplete=false` |
 
@@ -128,10 +129,19 @@ Validate that a user can import both legacy stock CSV and broker statement CSV f
 - Preview fixed assertions fail (`summary.totalRows != 50`, `rows.length != 50`, or summary arithmetic mismatch).
 - Execute arithmetic mismatch (`totalRows != insertedRows + failedRows`, `totalRows != results.length`, or `errorCount != errors.length`).
 - Row-level contract violation (`success=true` with null `transactionId`, or `success=false` with null `errorCode`).
+- Performance signal contract violation (`coverageDays` is null/negative, `hasOpeningBaseline` is null, `usesPartialHistoryAssumption` is null, or `xirrReliability` is null).
 - `performance/years` does not include `2025` and `2026` after successful import.
 - `performance/year` for `2026` returns `transactionCount == 0` after successful import.
 - UI/API binding mismatch for performance cards (`資金加權報酬率`, `時間加權報酬率`, `年度摘要`) versus response field mapping above.
 
+### Traceability Addendum (T051-T063)
+
+| Task Range | Covered Scope | Tests / Evidence |
+|---|---|---|
+| T051-T054 | Import baseline request/snapshot contracts + yearly performance signal fields (`coverageDays`, `hasOpeningBaseline`, `usesPartialHistoryAssumption`, `xirrReliability`) | Backend suites: `StockTransactionsImportControllerTests`, `HistoricalPerformanceServiceReturnTests` (see Group G execution log, PASS) |
+| T059 | API contract assertions for baseline/coverage signal fields | `dotnet test ... InvestmentTracker.API.Tests.csproj --filter "FullyQualifiedName~StockTransactionsImportControllerTests"` (Group G log: PASS) |
+| T060, T062 | Import UI/API consistency and import-regression alignment | `src/test/stock-import.broker-preview.test.tsx`, `src/test/stock-import.balance-action.test.tsx`, `src/test/stock-import.legacy-regression.test.tsx` (Group E log: PASS) |
+| T061, T063 | Performance reliability/coverage behavior and performance-regression alignment | `src/test/performance.metrics-binding.test.tsx`, `src/test/useHistoricalPerformance.test.ts`, `src/test/dashboard.aggregate-fixed.test.tsx` (Group E/Group G logs: PASS) |
 
 ## Verification Notes (T039 Update)
 
@@ -383,3 +393,86 @@ dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.T
   - `Execute_SameDayBuyFirstSellLater_WithBuyRowNumberSmaller_ShouldNotCreateTopUpDeposit`
   - `Execute_ReverseChronologicalSellThenBuyPairs_ShouldCommitWithoutTopUpForKeyRows`
   - `Execute_ReturnsBadRequest_WhenRowsContainDuplicateRowNumber`
+
+## Verification Notes (Group G Reliability & Pricing Policy Update)
+
+- Updated for Group G reliability and pricing-policy closure with automated QA evidence (date: **2026-02-19**).
+- 2025 Modified Dietz `2070.01%` root cause is reproduced and localized:
+  - Core trigger: no opening baseline + very-late top-up creates a near-zero weighted denominator in Modified Dietz.
+  - UI-equivalent validation path is covered by import-to-performance flow (`匯入股票交易` preview/execute -> `績效分析` annual view for 2025).
+- Historical price policy is verified as:
+  - **Yahoo-first** for historical prices.
+  - **Stooq fallback only for US/UK** contexts.
+  - **No Stooq fallback** for non-US/UK contexts (for example EU/TW cases).
+- XIRR rendering behavior is explicitly verified as three states: `計算中` / `低信度` / `不可用`.
+- All targeted regression suites and frontend type-check passed in this round.
+
+## Verification Evidence (Group G Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~HistoricalPerformanceServiceReturnTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Infrastructure.Tests/InvestmentTracker.Infrastructure.Tests.csproj" --filter "FullyQualifiedName~HistoricalYearEndDataServiceTests|FullyQualifiedName~MonthlySnapshotServiceTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~MarketDataControllerHistoricalPriceTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/dashboard.aggregate-fixed.test.tsx src/test/performance.metrics-binding.test.tsx
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Application regression (`HistoricalPerformanceServiceReturnTests`) | PASS | Failed: 0, Passed: 9, Total: 9 |
+| API regression (`StockTransactionsImportControllerTests`) | PASS | Failed: 0, Passed: 23, Total: 23 |
+| Infrastructure regression (`HistoricalYearEndDataServiceTests` + `MonthlySnapshotServiceTests`) | PASS | Failed: 0, Passed: 40, Total: 40 |
+| API regression (`MarketDataControllerHistoricalPriceTests`) | PASS | Failed: 0, Passed: 10, Total: 10 |
+| Frontend regression (`dashboard.aggregate-fixed` + `performance.metrics-binding`) | PASS | 2 test files passed, 24 tests passed, 0 failed |
+| Frontend type-check | PASS | Type-check completed without errors |
+
+### Group G Traceability (Files + Key Tests)
+
+- **(1) 2025 MD `2070.01%` root cause reproduction/localization (UI-equivalent path)**
+  - `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+    - `CalculateYearPerformanceAsync_NoOpeningBaseline_WithLateTopUpOnly_CanReachExtremeModifiedDietz`
+  - `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+    - `PreviewExecuteAndYearPerformance_WithoutOpeningBaselineWithLateTopUp_ShouldExposeMdExtremeRootCause`
+  - UI-equivalent route in test flow:
+    - stock import preview/execute -> `GET /api/portfolios/{portfolioId}/performance/years` -> `POST /api/portfolios/{portfolioId}/performance/year` (`Year = 2025`)
+
+- **(2) Yahoo-first historical price strategy + Stooq US/UK-only fallback**
+  - `backend/src/InvestmentTracker.Infrastructure/Services/MonthlySnapshotService.cs`
+    - `GetHistoricalPriceAsync` enforces Yahoo-first and limits Stooq fallback to `US/UK`.
+  - `backend/tests/InvestmentTracker.API.Tests/Controllers/MarketDataControllerHistoricalPriceTests.cs`
+    - `GetHistoricalPrice_NonYearEnd_YahooFails_UsMarket_FallsBackToStooq`
+    - `GetHistoricalPrice_NonYearEnd_YahooFails_UkTicker_FallsBackToStooq`
+    - `GetHistoricalPrice_NonYearEnd_YahooFails_NonUsUkMarket_DoesNotFallbackToStooq`
+    - `GetHistoricalPrices_NonYearEnd_YahooFails_NonUsUkMarket_DoesNotFallbackToStooq`
+  - `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/HistoricalYearEndDataServiceTests.cs`
+    - `GetOrFetchYearEndPriceAsync_EuStock_YahooFails_DoesNotFallbackToStooq`
+    - `GetOrFetchYearEndPriceAsync_UkMarket_YahooFails_FallsBackToStooq`
+  - `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/MonthlySnapshotServiceTests.cs`
+    - `GetMonthlyNetWorthAsync_YahooPriceMissing_FallsBackToStooq_WhenMarketIsUS`
+    - `GetMonthlyNetWorthAsync_YahooPriceMissing_DoesNotFallbackToStooq_WhenMarketIsEU`
+
+- **(3) XIRR three-state display (`計算中` / `低信度` / `不可用`)**
+  - `frontend/src/pages/Dashboard.tsx`
+    - `xirrDisplayState` branch logic for loading/lowConfidence/unavailable states.
+  - `frontend/src/test/dashboard.aggregate-fixed.test.tsx`
+    - `shows explicit loading text while auto-refresh recalculates unavailable XIRR`
+    - `shows low confidence label when XIRR period is too short`
+    - `shows unavailable label when aggregate XIRR cannot be calculated`
+  - `frontend/src/test/performance.metrics-binding.test.tsx`
+    - `shows low-confidence XIRR state explicitly when reliability is Low`
+    - `shows XIRR loading state when performance values are still incomplete`
+
+- **(4) Regression/QA closure snapshot**
+  - Backend application/API/infrastructure targeted suites all PASS.
+  - Frontend targeted regressions and type-check PASS.
+  - Coverage links root-cause reproduction, pricing-policy constraints, and UI-state behavior in one evidence set.
