@@ -1169,7 +1169,7 @@ function PerformancePageContent({
    * 補齊「歷史年度」的缺漏價格。
    *
    * 資料來源：
-   * - `marketDataApi.getHistoricalPrices`：透過 backend 取得歷史收盤價（國際股用 Stooq，台股用 TWSE）。
+   * - `marketDataApi.getHistoricalPrices`：透過 backend 取得歷史收盤價（國際股採 Yahoo 優先，僅 US/UK 失敗時才回退 Stooq；台股用 TWSE）。
    * - `marketDataApi.getHistoricalExchangeRate`：取得對應日期的歷史匯率（目前特別針對 homeCurrency=TWD）。
    *
    * 回傳：
@@ -1526,6 +1526,7 @@ function PerformancePageContent({
         selectedCurrencyLabel: null as string | null,
         modifiedDietzValue: null as number | null,
         timeWeightedReturnValue: null as number | null,
+        xirrValue: null as number | null,
         totalReturnValue: null as number | null,
         startValue: null as number | null,
         endValue: null as number | null,
@@ -1544,6 +1545,10 @@ function PerformancePageContent({
     const timeWeightedReturnValueForYear = currencyMode === 'source'
       ? performance.timeWeightedReturnPercentageSource
       : performance.timeWeightedReturnPercentage;
+
+    const xirrValueForYear = currencyMode === 'source'
+      ? performance.xirrPercentageSource
+      : performance.xirrPercentage;
 
     const totalReturnValueForYear = currencyMode === 'source'
       ? performance.totalReturnPercentageSource
@@ -1565,6 +1570,7 @@ function PerformancePageContent({
       selectedCurrencyLabel: selectedCurrencyLabelValue,
       modifiedDietzValue: modifiedDietzValueForYear,
       timeWeightedReturnValue: timeWeightedReturnValueForYear,
+      xirrValue: xirrValueForYear,
       totalReturnValue: totalReturnValueForYear,
       startValue: startValueForYear,
       endValue: endValueForYear,
@@ -1576,6 +1582,7 @@ function PerformancePageContent({
     selectedCurrencyLabel,
     modifiedDietzValue,
     timeWeightedReturnValue,
+    xirrValue,
     totalReturnValue,
     startValue,
     endValue,
@@ -1617,14 +1624,26 @@ function PerformancePageContent({
       signals.push('已套用期初基準');
     }
 
-    if (performance.xirrReliability === 'Low') {
-      signals.push('年化報酬可信度低');
-    } else if (performance.xirrReliability === 'Unavailable') {
-      signals.push('年化報酬不提供');
-    }
-
     return signals;
   }, [isSelectedYearPerformance, performance]);
+
+  type PerformanceXirrDisplayState = 'loading' | 'ready' | 'lowConfidence' | 'unavailable';
+
+  const xirrDisplayState: PerformanceXirrDisplayState = useMemo(() => {
+    if (!isSelectedYearPerformance || !performance || !performance.isComplete || selectedCurrencyLabel == null) {
+      return 'loading';
+    }
+
+    if (xirrValue != null) {
+      return performance.xirrReliability === 'Low' ? 'lowConfidence' : 'ready';
+    }
+
+    if (performance.xirrReliability === 'Unavailable') {
+      return 'unavailable';
+    }
+
+    return 'loading';
+  }, [isSelectedYearPerformance, performance, selectedCurrencyLabel, xirrValue]);
 
   const isPerformanceValueReady = Boolean(
     performance &&
@@ -1950,7 +1969,7 @@ function PerformancePageContent({
                     <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* 資金加權報酬率 */}
                     <div>
                       <div className="flex items-center gap-1 mb-1">
@@ -2003,6 +2022,44 @@ function PerformancePageContent({
                           {formatPercent(timeWeightedReturnValue)}
                         </span>
                       </div>
+                    </div>
+
+                    {/* 年化報酬率 (XIRR) */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1">
+                        <p className="text-sm text-[var(--text-muted)]">年化報酬率 (XIRR)</p>
+                      </div>
+                      {xirrDisplayState === 'loading' && (
+                        <div className="flex items-center gap-2 text-[var(--text-muted)]">
+                          <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-peach)]" />
+                          <span className="text-lg">計算中</span>
+                        </div>
+                      )}
+                      {xirrDisplayState === 'ready' && xirrValue != null && (
+                        <div className="flex items-center gap-2">
+                          {xirrValue >= 0 ? (
+                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                          ) : (
+                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                          )}
+                          <span className={`text-3xl font-bold number-display ${
+                            xirrValue >= 0 ? 'number-positive' : 'number-negative'
+                          }`}>
+                            {formatPercent(xirrValue)}
+                          </span>
+                        </div>
+                      )}
+                      {xirrDisplayState === 'lowConfidence' && xirrValue != null && (
+                        <div className="space-y-1">
+                          <p className={`text-3xl font-bold number-display ${xirrValue >= 0 ? 'number-positive' : 'number-negative'}`}>
+                            {formatPercent(xirrValue)}
+                          </p>
+                          <p className="text-sm text-[var(--color-warning)]">低信度</p>
+                        </div>
+                      )}
+                      {xirrDisplayState === 'unavailable' && (
+                        <p className="text-lg text-[var(--text-muted)]">不可用</p>
+                      )}
                     </div>
                   </div>
                 )}

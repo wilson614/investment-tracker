@@ -369,7 +369,7 @@ public class MarketDataController(
 
     /// <summary>
     /// 取得指定日期的單一股票歷史收盤價。
-    /// US/UK 股票使用 Stooq API。
+    /// 歷史價以 Yahoo 為主；僅 US/UK 在 Yahoo 失敗時 fallback 到 Stooq。
     /// </summary>
     /// <param name="ticker">股票代號（例如：AAPL、VWRA）</param>
     /// <param name="date">目標日期（格式：yyyy-MM-dd）</param>
@@ -394,14 +394,16 @@ public class MarketDataController(
 
         var normalizedTicker = ticker.Trim().ToUpperInvariant();
 
+        var market = InferMarketForSingleTicker(normalizedTicker);
+
         // 對於已結束的年度，使用 12/31 作為年終價格查詢日期。
-        // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫 Stooq。
+        // 這些資料會以「全域快取」（跨使用者共享）方式保存，以降低重複呼叫外部來源。
         if (targetDate is { Month: 12, Day: 31 } && targetDate.Year < DateTime.UtcNow.Year)
         {
             var cachedResult = await historicalYearEndDataService.GetOrFetchYearEndPriceAsync(
                 normalizedTicker,
                 targetDate.Year,
-                market: null,
+                market,
                 cancellationToken);
 
             if (cachedResult == null)
@@ -415,8 +417,9 @@ public class MarketDataController(
                 cachedResult.ActualDate.ToString("yyyy-MM-dd")));
         }
 
-        var result = await stooqService.GetStockPriceAsync(
+        var result = await GetNonRealtimeHistoricalPriceAsync(
             normalizedTicker,
+            market,
             targetDate,
             cancellationToken);
 
@@ -433,7 +436,7 @@ public class MarketDataController(
 
     /// <summary>
     /// 取得指定日期的多檔股票歷史收盤價。
-    /// US/UK 股票使用 Stooq API。
+    /// 歷史價以 Yahoo 為主；僅 US/UK 在 Yahoo 失敗時 fallback 到 Stooq。
     /// </summary>
     [HttpPost("historical-prices")]
     [ProducesResponseType(typeof(Dictionary<string, HistoricalPriceResponse>), StatusCodes.Status200OK)]
@@ -463,18 +466,7 @@ public class MarketDataController(
         {
             var normalizedTicker = ticker.Trim().ToUpperInvariant();
 
-            // 從 request.Markets 取得 market 參數（若有提供）
-            StockMarket? market = null;
-            if (request.Markets != null)
-            {
-                var marketValue = request.Markets
-                    .FirstOrDefault(m => m.Key.Equals(ticker, StringComparison.OrdinalIgnoreCase))
-                    .Value;
-                if (marketValue.HasValue && Enum.IsDefined(typeof(StockMarket), marketValue.Value))
-                {
-                    market = (StockMarket)marketValue.Value;
-                }
-            }
+            var market = ResolveMarketFromRequest(request.Markets, ticker, normalizedTicker);
 
             try
             {
@@ -496,8 +488,9 @@ public class MarketDataController(
                 }
                 else
                 {
-                    var result = await stooqService.GetStockPriceAsync(
+                    var result = await GetNonRealtimeHistoricalPriceAsync(
                         normalizedTicker,
+                        market,
                         targetDate,
                         cancellationToken);
 
@@ -518,6 +511,151 @@ public class MarketDataController(
         }
 
         return Ok(results);
+    }
+
+    private async Task<StooqPriceResult?> GetNonRealtimeHistoricalPriceAsync(
+        string normalizedTicker,
+        StockMarket? market,
+        DateOnly targetDate,
+        CancellationToken cancellationToken)
+    {
+        var isTaiwanTicker = IsTaiwanTicker(normalizedTicker);
+        foreach (var yahooSymbol in GetYahooSymbolsForHistoricalLookup(normalizedTicker, market, isTaiwanTicker))
+        {
+            try
+            {
+                var yahooResult = await yahooHistoricalPriceService.GetHistoricalPriceAsync(yahooSymbol, targetDate, cancellationToken);
+                if (yahooResult != null)
+                {
+                    return new StooqPriceResult(
+                        yahooResult.Price,
+                        yahooResult.ActualDate,
+                        yahooResult.Currency);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex,
+                    "Yahoo historical lookup failed for {Ticker} (symbol={YahooSymbol}, market={Market})",
+                    normalizedTicker,
+                    yahooSymbol,
+                    market?.ToString() ?? "Unknown");
+            }
+        }
+
+        if (market is StockMarket.US or StockMarket.UK)
+        {
+            return await stooqService.GetStockPriceAsync(
+                normalizedTicker,
+                targetDate,
+                cancellationToken);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetYahooSymbolsForHistoricalLookup(
+        string normalizedTicker,
+        StockMarket? market,
+        bool isTaiwanTicker)
+    {
+        if (isTaiwanTicker)
+        {
+            var baseTicker = normalizedTicker.Split('.')[0];
+            var explicitSuffix = normalizedTicker.Contains('.')
+                ? normalizedTicker[(normalizedTicker.LastIndexOf('.') + 1)..]
+                : null;
+
+            if (string.Equals(explicitSuffix, "TW", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TW";
+                yield return $"{baseTicker}.TWO";
+                yield break;
+            }
+
+            if (string.Equals(explicitSuffix, "TWO", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TWO";
+                yield return $"{baseTicker}.TW";
+                yield break;
+            }
+
+            yield return $"{baseTicker}.TW";
+            yield return $"{baseTicker}.TWO";
+            yield break;
+        }
+
+        yield return YahooSymbolHelper.ConvertToYahooSymbol(normalizedTicker, market);
+    }
+
+    private static StockMarket? ResolveMarketFromRequest(
+        Dictionary<string, int?>? markets,
+        string rawTicker,
+        string normalizedTicker)
+    {
+        if (markets != null)
+        {
+            if (TryParseMarket(markets, rawTicker, out var marketFromRaw))
+            {
+                return marketFromRaw;
+            }
+
+            if (!rawTicker.Equals(normalizedTicker, StringComparison.Ordinal) &&
+                TryParseMarket(markets, normalizedTicker, out var marketFromNormalized))
+            {
+                return marketFromNormalized;
+            }
+        }
+
+        return InferMarketForSingleTicker(normalizedTicker);
+    }
+
+    private static bool TryParseMarket(
+        Dictionary<string, int?> markets,
+        string ticker,
+        out StockMarket? market)
+    {
+        if (markets.TryGetValue(ticker, out var value) &&
+            value.HasValue &&
+            Enum.IsDefined(typeof(StockMarket), value.Value))
+        {
+            market = (StockMarket)value.Value;
+            return true;
+        }
+
+        market = null;
+        return false;
+    }
+
+    private static StockMarket? InferMarketForSingleTicker(string normalizedTicker)
+    {
+        if (IsTaiwanTicker(normalizedTicker))
+        {
+            return StockMarket.TW;
+        }
+
+        if (normalizedTicker.EndsWith(".L", StringComparison.OrdinalIgnoreCase))
+        {
+            return StockMarket.UK;
+        }
+
+        if (normalizedTicker.EndsWith(".AS", StringComparison.OrdinalIgnoreCase))
+        {
+            return StockMarket.EU;
+        }
+
+        return StockMarket.US;
+    }
+
+    private static bool IsTaiwanTicker(string ticker)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+        {
+            return false;
+        }
+
+        var baseTicker = ticker.Trim().Split('.')[0];
+        return baseTicker.Length > 0 && char.IsDigit(baseTicker[0]);
     }
 
     /// <summary>

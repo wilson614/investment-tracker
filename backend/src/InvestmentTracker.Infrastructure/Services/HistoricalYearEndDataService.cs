@@ -430,8 +430,8 @@ public class HistoricalYearEndDataService(
                 return null;
             }
 
-            // 非台股維持 Stooq fallback（EU 仍只走 Yahoo）
-            if (market != StockMarket.EU)
+            // 非台股僅 US/UK 允許 Stooq fallback；TW/EU 與未知市場皆不 fallback 到 Stooq
+            if (market is StockMarket.US or StockMarket.UK)
             {
                 var stooqResult = await TryFetchFromStooqAsync(ticker, targetDate, cancellationToken);
                 if (stooqResult != null)
@@ -442,7 +442,7 @@ public class HistoricalYearEndDataService(
                 }
             }
 
-            logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from any source (Yahoo and Stooq both failed)",
+            logger.LogWarning("Could not fetch year-end price for {Ticker}/{Year} from any source (Yahoo primary, Stooq fallback only for US/UK)",
                 ticker, year);
             return null;
         }

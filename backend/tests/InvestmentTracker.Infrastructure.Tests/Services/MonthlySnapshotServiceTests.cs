@@ -256,7 +256,7 @@ public class MonthlySnapshotServiceTests
     }
 
     [Fact]
-    public async Task GetMonthlyNetWorthAsync_YahooPriceMissing_FallsBackToStooq_WhenMarketIsNotEU()
+    public async Task GetMonthlyNetWorthAsync_YahooPriceMissing_FallsBackToStooq_WhenMarketIsUS()
     {
         // Arrange
         var userId = Guid.NewGuid();
@@ -345,6 +345,157 @@ public class MonthlySnapshotServiceTests
     }
 
     [Fact]
+    public async Task GetMonthlyNetWorthAsync_YahooPriceMissing_DoesNotFallbackToStooq_WhenMarketIsEU()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "EUR", homeCurrency: "TWD", displayName: "Test");
+
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(x => x.UserId).Returns(userId);
+
+        var dbContext = CreateInMemoryDbContext(currentUserService.Object);
+        dbContext.Portfolios.Add(portfolio);
+        await dbContext.SaveChangesAsync();
+
+        var portfolioRepo = new Mock<IPortfolioRepository>();
+        portfolioRepo.Setup(x => x.GetByIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var tx = new StockTransaction(
+            portfolioId: portfolio.Id,
+            transactionDate: new DateTime(2023, 1, 5, 0, 0, 0, DateTimeKind.Utc),
+            ticker: "AGAC",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 35m,
+            fees: 0m,
+            market: StockMarket.EU,
+            currency: Currency.EUR);
+
+        var txRepo = new Mock<IStockTransactionRepository>();
+        txRepo.Setup(x => x.GetByPortfolioIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([tx]);
+
+        var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("AGAC.AS", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
+        var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
+
+        var sut = CreateSut(
+            dbContext,
+            portfolioRepo.Object,
+            txRepo.Object,
+            currentUserService.Object,
+            yahoo.Object,
+            stooq.Object,
+            twse.Object);
+
+        // Act
+        var result = await sut.GetMonthlyNetWorthAsync(
+            portfolio.Id,
+            fromMonth: new DateOnly(2023, 1, 1),
+            toMonth: new DateOnly(2023, 1, 1),
+            CancellationToken.None);
+
+        // Assert
+        result.TotalMonths.Should().Be(1);
+        result.DataSource.Should().Be("Mixed");
+        result.Data[0].Value.Should().BeNull();
+
+        yahoo.Verify(
+            x => x.GetHistoricalPriceAsync("AGAC.AS", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        stooq.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetMonthlyNetWorthAsync_YahooPriceMissing_DoesNotFallbackToStooq_WhenMarketIsTWAndTickerNotNumeric()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "TWD", homeCurrency: "TWD", displayName: "Test");
+
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(x => x.UserId).Returns(userId);
+
+        var dbContext = CreateInMemoryDbContext(currentUserService.Object);
+        dbContext.Portfolios.Add(portfolio);
+        await dbContext.SaveChangesAsync();
+
+        var portfolioRepo = new Mock<IPortfolioRepository>();
+        portfolioRepo.Setup(x => x.GetByIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var tx = new StockTransaction(
+            portfolioId: portfolio.Id,
+            transactionDate: new DateTime(2023, 1, 5, 0, 0, 0, DateTimeKind.Utc),
+            ticker: "ABC",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: null,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        var txRepo = new Mock<IStockTransactionRepository>();
+        txRepo.Setup(x => x.GetByPortfolioIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([tx]);
+
+        var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("ABC.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("ABC.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
+
+        var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
+        twse.Setup(x => x.GetStockPriceAsync("ABC", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TwseStockPriceResult?)null);
+
+        var sut = CreateSut(
+            dbContext,
+            portfolioRepo.Object,
+            txRepo.Object,
+            currentUserService.Object,
+            yahoo.Object,
+            stooq.Object,
+            twse.Object);
+
+        // Act
+        var result = await sut.GetMonthlyNetWorthAsync(
+            portfolio.Id,
+            fromMonth: new DateOnly(2023, 1, 1),
+            toMonth: new DateOnly(2023, 1, 1),
+            CancellationToken.None);
+
+        // Assert
+        result.TotalMonths.Should().Be(1);
+        result.DataSource.Should().Be("Mixed");
+        result.Data[0].Value.Should().BeNull();
+
+        yahoo.Verify(
+            x => x.GetHistoricalPriceAsync("ABC.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        yahoo.Verify(
+            x => x.GetHistoricalPriceAsync("ABC.TWO", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        stooq.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task GetMonthlyNetWorthAsync_YahooFxMissing_FallsBackToStooqExchangeRate()
     {
         // Arrange
@@ -420,6 +571,14 @@ public class MonthlySnapshotServiceTests
         result.TotalMonths.Should().Be(1);
         result.DataSource.Should().Be("Yahoo");
         result.Data[0].Value.Should().Be(34100m);
+
+        yahoo.Verify(
+            x => x.GetHistoricalPriceAsync("VT", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        stooq.Verify(
+            x => x.GetStockPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
 
         yahoo.Verify(
             x => x.GetExchangeRateAsync("USD", "TWD", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),

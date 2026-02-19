@@ -475,7 +475,7 @@ describe('PerformancePage metrics binding regression', () => {
     expect(within(twrCard as HTMLElement).queryByText('+21.43%')).not.toBeInTheDocument();
   });
 
-  it('shows coverage and reliability signals for partial-history yearly data', async () => {
+  it('shows coverage signals for partial-history yearly data without mixing XIRR state copy', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(
       createPerformanceMock({
@@ -492,7 +492,40 @@ describe('PerformancePage metrics binding regression', () => {
     expect(await screen.findByText(/資料覆蓋有限/)).toBeInTheDocument();
     expect(screen.getByText(/此年度含節錄匯入假設/)).toBeInTheDocument();
     expect(screen.getByText(/已套用期初基準/)).toBeInTheDocument();
-    expect(screen.getByText(/年化報酬不提供/)).toBeInTheDocument();
+    expect(screen.queryByText(/年化報酬不提供/)).not.toBeInTheDocument();
+    expect(screen.getByText('不可用')).toBeInTheDocument();
+  });
+
+  it('shows low-confidence XIRR state explicitly when reliability is Low', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        xirrPercentage: 8.88,
+        xirrReliability: 'Low',
+      })
+    );
+
+    render(<PerformancePage />);
+
+    expect(await screen.findByText('+8.88%')).toBeInTheDocument();
+    expect(screen.getByText('低信度')).toBeInTheDocument();
+  });
+
+  it('shows XIRR loading state when performance values are still incomplete', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        isComplete: false,
+      })
+    );
+
+    render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('計算績效中...').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('低信度')).not.toBeInTheDocument();
+    expect(screen.queryByText('不可用')).not.toBeInTheDocument();
   });
 
   it('binds total return to home/source fields when currency mode changes', async () => {

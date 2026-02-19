@@ -12,7 +12,7 @@ import { RefreshCw, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { portfolioApi, stockPriceApi, transactionApi, marketDataApi } from '../services/api';
 import { MarketContext, MarketYtdSection, HistoricalValueChart } from '../components/dashboard';
 import { AssetAllocationPieChart } from '../components/charts';
-import { XirrWarningBadge } from '../components/common/XirrWarningBadge';
+import { XirrWarningBadge, isXirrPeriodTooShort } from '../components/common/XirrWarningBadge';
 import { Skeleton } from '../components/common/SkeletonLoader';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { StockMarket, TransactionType } from '../types';
@@ -768,8 +768,25 @@ export function DashboardPage() {
     (sum, item) => sum + (item.summary.totalValueHome ?? 0),
     0
   );
+
+  type DashboardXirrDisplayState = 'loading' | 'ready' | 'lowConfidence' | 'unavailable';
+
   const hasXirrValue = xirrResult?.xirrPercentage != null;
-  const isXirrCardLoading = isSummaryReady && !hasXirrValue && (isCalculatingXirr || isFetchingPrices);
+  const hasXirrError = xirrError != null;
+  const isXirrLowConfidence = Boolean(
+    xirrResult?.xirrPercentage != null &&
+    xirrResult &&
+    isXirrPeriodTooShort(xirrResult.earliestTransactionDate, xirrResult.asOfDate)
+  );
+
+  const xirrDisplayState: DashboardXirrDisplayState = (() => {
+    if (!isSummaryReady) return 'loading';
+    if (isCalculatingXirr) return hasXirrValue ? 'ready' : 'loading';
+    if (hasXirrError) return 'unavailable';
+    if (isXirrLowConfidence) return 'lowConfidence';
+    if (hasXirrValue) return 'ready';
+    return 'unavailable';
+  })();
 
   return (
     <div className="min-h-screen py-8">
@@ -851,9 +868,14 @@ export function DashboardPage() {
             </div>
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
-              {isXirrCardLoading ? (
-                <Skeleton width="w-16" height="h-7" className="mt-1" />
-              ) : isSummaryReady && xirrResult?.xirrPercentage != null ? (
+              {xirrDisplayState === 'loading' && (
+                <div className="flex items-center gap-2 text-[var(--text-muted)]" aria-label="XIRR 計算中">
+                  <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-peach)]" />
+                  <span className="text-lg">計算中</span>
+                </div>
+              )}
+
+              {xirrDisplayState === 'ready' && xirrResult?.xirrPercentage != null && (
                 <div className="flex items-center gap-1">
                   <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
                     {formatPercent(xirrResult.xirrPercentage)}
@@ -863,16 +885,34 @@ export function DashboardPage() {
                     asOfDate={xirrResult.asOfDate}
                   />
                 </div>
-              ) : (
-                <Skeleton width="w-16" height="h-7" className="mt-1" />
               )}
+
+              {xirrDisplayState === 'lowConfidence' && xirrResult?.xirrPercentage != null && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <p className={`text-xl font-bold number-display ${xirrResult.xirrPercentage >= 0 ? 'number-positive' : 'number-negative'}`}>
+                      {formatPercent(xirrResult.xirrPercentage)}
+                    </p>
+                    <XirrWarningBadge
+                      earliestTransactionDate={xirrResult.earliestTransactionDate}
+                      asOfDate={xirrResult.asOfDate}
+                    />
+                  </div>
+                  <p className="text-sm text-[var(--color-warning)]">低信度</p>
+                </div>
+              )}
+
+              {xirrDisplayState === 'unavailable' && (
+                <p className="text-lg text-[var(--text-muted)]">不可用</p>
+              )}
+
               {isSummaryReady && xirrResult && xirrResult.cashFlowCount > 1 && (
                 <p className="text-sm text-[var(--text-muted)]">
                   {xirrResult.cashFlowCount - 1} 筆交易
                 </p>
               )}
               {isSummaryReady && xirrError && (
-                <p className="text-sm text-[var(--color-danger)]">{xirrError}</p>
+                <p className="text-xs text-[var(--color-danger)]">{xirrError}</p>
               )}
             </div>
             <div className="metric-card">

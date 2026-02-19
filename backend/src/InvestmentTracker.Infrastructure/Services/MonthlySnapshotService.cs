@@ -453,7 +453,7 @@ public class MonthlySnapshotService(
             return null;
         }
 
-        if (market != StockMarket.EU)
+        if (market is StockMarket.US or StockMarket.UK)
         {
             var stooq = await stooqService.GetStockPriceAsync(ticker, date, cancellationToken);
             if (stooq != null)

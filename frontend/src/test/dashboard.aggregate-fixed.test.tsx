@@ -20,9 +20,16 @@ vi.mock('../components/charts', () => ({
   AssetAllocationPieChart: () => <div data-testid="asset-allocation-chart" />,
 }));
 
-vi.mock('../components/common/XirrWarningBadge', () => ({
-  XirrWarningBadge: () => null,
-}));
+vi.mock('../components/common/XirrWarningBadge', async () => {
+  const actual = await vi.importActual<typeof import('../components/common/XirrWarningBadge')>(
+    '../components/common/XirrWarningBadge'
+  );
+
+  return {
+    ...actual,
+    XirrWarningBadge: () => null,
+  };
+});
 
 vi.mock('../components/common/SkeletonLoader', () => ({
   Skeleton: () => <div data-testid="skeleton" />,
@@ -282,66 +289,90 @@ describe('DashboardPage aggregate fixed behavior', () => {
     expect(screen.getByText('各投資組合市值貢獻')).toBeInTheDocument();
   });
 
-  it('keeps showing previous XIRR value during manual refetch until new value is ready', async () => {
+  it('shows explicit loading text while auto-refresh recalculates unavailable XIRR', async () => {
     setupDashboardMocks({ currentPortfolioId: 'all', isAllPortfolios: true });
 
     const deferredXirr = createDeferred<XirrResult>();
-    let aggregateXirrCallCount = 0;
+    const unavailableXirr: XirrResult = {
+      ...aggregateXirr,
+      xirr: null,
+      xirrPercentage: null,
+    };
 
+    let aggregateXirrCallCount = 0;
     mockedPortfolioApi.calculateAggregateXirr.mockImplementation(() => {
       aggregateXirrCallCount += 1;
+      if (aggregateXirrCallCount === 1) {
+        return Promise.resolve(unavailableXirr);
+      }
       if (aggregateXirrCallCount === 2) {
         return deferredXirr.promise;
       }
       return Promise.resolve(aggregateXirr);
     });
 
-    mockedStockPriceApi.getQuoteWithRate.mockResolvedValue({
-      symbol: 'AAPL',
-      name: 'Apple Inc.',
-      price: 125,
-      market: StockMarket.US,
-      source: 'test',
-      fetchedAt: nowIso,
-      exchangeRate: 31,
-      exchangeRatePair: 'USD/TWD',
+    render(<DashboardPage />);
+
+    await screen.findByRole('heading', { name: '儀表板' });
+
+    const xirrCard = screen.getByText('年化報酬 (XIRR)').closest('.metric-card') as HTMLElement | null;
+    expect(xirrCard).not.toBeNull();
+
+    await waitFor(() => {
+      expect(aggregateXirrCallCount).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(within(xirrCard as HTMLElement).getByText('計算中')).toBeInTheDocument();
+
+    await act(async () => {
+      deferredXirr.resolve(aggregateXirr);
+      await deferredXirr.promise;
+    });
+
+    await waitFor(() => {
+      expect(within(xirrCard as HTMLElement).queryByText('計算中')).not.toBeInTheDocument();
+      expect(within(xirrCard as HTMLElement).getByText('+12.00%')).toBeInTheDocument();
+    });
+  });
+
+  it('shows low confidence label when XIRR period is too short', async () => {
+    setupDashboardMocks({ currentPortfolioId: 'all', isAllPortfolios: true });
+
+    mockedPortfolioApi.calculateAggregateXirr.mockResolvedValue({
+      ...aggregateXirr,
+      earliestTransactionDate: '2025-12-01',
+      asOfDate: '2026-01-01',
     });
 
     render(<DashboardPage />);
 
     await screen.findByRole('heading', { name: '儀表板' });
 
+    const xirrCard = screen.getByText('年化報酬 (XIRR)').closest('.metric-card') as HTMLElement | null;
+    expect(xirrCard).not.toBeNull();
+
     await waitFor(() => {
-      expect(screen.getByText('+12.00%')).toBeInTheDocument();
+      expect(within(xirrCard as HTMLElement).getByText('+12.00%')).toBeInTheDocument();
+      expect(within(xirrCard as HTMLElement).getByText('低信度')).toBeInTheDocument();
     });
+  });
+
+  it('shows unavailable label when aggregate XIRR cannot be calculated', async () => {
+    setupDashboardMocks({ currentPortfolioId: 'all', isAllPortfolios: true });
+
+    mockedPortfolioApi.calculateAggregateXirr.mockRejectedValue(new Error('no quote data'));
+
+    render(<DashboardPage />);
+
+    await screen.findByRole('heading', { name: '儀表板' });
 
     const xirrCard = screen.getByText('年化報酬 (XIRR)').closest('.metric-card') as HTMLElement | null;
     expect(xirrCard).not.toBeNull();
 
-    const refreshButton = screen.getByRole('button', { name: '更新全部' });
-    refreshButton.click();
-
     await waitFor(() => {
-      expect(aggregateXirrCallCount).toBeGreaterThanOrEqual(2);
+      expect(within(xirrCard as HTMLElement).getByText('不可用')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('+12.00%')).toBeInTheDocument();
-
-    if (xirrCard) {
-      expect(within(xirrCard).queryByTestId('skeleton')).not.toBeInTheDocument();
-    }
-
-    await act(async () => {
-      deferredXirr.resolve({
-        ...aggregateXirr,
-        xirr: 0.135,
-        xirrPercentage: 13.5,
-      });
-      await deferredXirr.promise;
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('+13.50%')).toBeInTheDocument();
-    });
+    expect(within(xirrCard as HTMLElement).queryByText('計算中')).not.toBeInTheDocument();
   });
 });
