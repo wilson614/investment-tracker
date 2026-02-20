@@ -595,14 +595,39 @@ public class HistoricalPerformanceService(
             currencyTransactions);
 
         var cashFlowEvents = cashFlowStrategy.GetCashFlowEvents(
-            portfolio,
-            yearStart,
-            yearEnd,
-            validTransactions,
-            ledgers,
-            currencyTransactions);
+                portfolio,
+                yearStart,
+                yearEnd,
+                validTransactions,
+                ledgers,
+                currencyTransactions)
+            .ToList();
 
-        var cashFlowEventIds = cashFlowEvents
+        // TWR 快照路徑可在「無顯式外部現金流」時回退到股票交易事件；
+        // 但 MD / NetContributions 應維持原本外部現金流資料路徑，不受 fallback 影響。
+        var twrCashFlowEvents = cashFlowEvents;
+
+        if (twrCashFlowEvents.Count == 0)
+        {
+            var stockFallbackEvents = new StockTransactionCashFlowStrategy().GetCashFlowEvents(
+                portfolio,
+                yearStart,
+                yearEnd,
+                validTransactions,
+                ledgers,
+                currencyTransactions);
+
+            if (stockFallbackEvents.Count > 0)
+            {
+                twrCashFlowEvents = stockFallbackEvents.ToList();
+                logger.LogInformation(
+                    "No explicit external cash-flow events found for portfolio {PortfolioId} year {Year}; fallback to stock-transaction cash-flow path for TWR snapshots only.",
+                    portfolioId,
+                    year);
+            }
+        }
+
+        var twrCashFlowEventIds = twrCashFlowEvents
             .Select(e => e.TransactionId)
             .ToHashSet();
 
@@ -612,7 +637,7 @@ public class HistoricalPerformanceService(
         var snapshots = await txSnapshotService.GetSnapshotsAsync(portfolioId, yearStart, yearEnd, cancellationToken);
 
         var cashFlowEventSnapshots = snapshots
-            .Where(s => cashFlowEventIds.Contains(s.TransactionId))
+            .Where(s => twrCashFlowEventIds.Contains(s.TransactionId))
             .OrderBy(s => s.SnapshotDate)
             .ThenBy(s => s.CreatedAt)
             .ToList();

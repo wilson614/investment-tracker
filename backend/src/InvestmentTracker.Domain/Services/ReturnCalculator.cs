@@ -53,6 +53,12 @@ public class ReturnCalculator : IReturnCalculator
         decimal endValue,
         IReadOnlyList<ReturnValuationSnapshot> cashFlowSnapshots)
     {
+        static bool CrossesZero(decimal from, decimal to) =>
+            (from > 0m && to < 0m) || (from < 0m && to > 0m);
+
+        if (startValue < 0m || endValue < 0m)
+            return null;
+
         var orderedSnapshots = cashFlowSnapshots
             .Select((snapshot, index) => (snapshot, index))
             .OrderBy(x => x.snapshot.Date.Date)
@@ -66,7 +72,16 @@ public class ReturnCalculator : IReturnCalculator
 
         foreach (var snapshot in orderedSnapshots)
         {
-            if (currentStartValue > 0)
+            if (snapshot.ValueBefore < 0m || snapshot.ValueAfter < 0m)
+                return null;
+
+            if (CrossesZero(currentStartValue, snapshot.ValueBefore)
+                || CrossesZero(snapshot.ValueBefore, snapshot.ValueAfter))
+            {
+                return null;
+            }
+
+            if (currentStartValue > 0m)
             {
                 factor *= snapshot.ValueBefore / currentStartValue;
                 hasAnyPeriod = true;
@@ -75,7 +90,10 @@ public class ReturnCalculator : IReturnCalculator
             currentStartValue = snapshot.ValueAfter;
         }
 
-        if (currentStartValue > 0)
+        if (CrossesZero(currentStartValue, endValue))
+            return null;
+
+        if (currentStartValue > 0m)
         {
             factor *= endValue / currentStartValue;
             hasAnyPeriod = true;

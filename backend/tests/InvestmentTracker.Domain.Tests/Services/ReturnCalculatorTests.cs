@@ -150,6 +150,71 @@ public class ReturnCalculatorTests
     }
 
     [Fact]
+    public void CalculateTimeWeightedReturn_WithNegativeStartValue_ReturnsNull()
+    {
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            new(new DateTime(2024, 6, 1), 100m, 120m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(
+            startValue: -1m,
+            endValue: 130m,
+            cashFlowSnapshots: snapshots);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithNegativeSnapshotValue_ReturnsNull()
+    {
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            new(new DateTime(2024, 6, 1), 100m, -120m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(
+            startValue: 100m,
+            endValue: 130m,
+            cashFlowSnapshots: snapshots);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithCrossZeroBetweenSubPeriods_ReturnsNull()
+    {
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            // Crosses zero from positive start to negative before.
+            new(new DateTime(2024, 6, 1), -10m, -5m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(
+            startValue: 100m,
+            endValue: 50m,
+            cashFlowSnapshots: snapshots);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithCrossZeroAtTailPeriod_ReturnsNull()
+    {
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            new(new DateTime(2024, 6, 1), 110m, 120m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(
+            startValue: 100m,
+            endValue: -1m,
+            cashFlowSnapshots: snapshots);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
     public void GetStrategy_WithActiveBoundLedger_UsesCurrencyLedgerStrategyRegardlessOfExternalEvents()
     {
         // Arrange

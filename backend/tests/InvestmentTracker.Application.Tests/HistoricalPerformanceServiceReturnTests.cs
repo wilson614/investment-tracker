@@ -39,6 +39,10 @@ public class HistoricalPerformanceServiceReturnTests
             .Setup(x => x.UserId)
             .Returns(_userId);
 
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
         _service = new HistoricalPerformanceService(
             _portfolioRepoMock.Object,
             _transactionRepoMock.Object,
@@ -1360,6 +1364,127 @@ public class HistoricalPerformanceServiceReturnTests
         // both MD and TWR in this fixture would collapse near 0%.
         result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(0d, 0.0001d);
         result.ModifiedDietzPercentageSource.Should().NotBeApproximately(0d, 0.0001d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_LedgerHasNoExplicitExternalCashFlows_FallbackShouldAffectOnlyTwrNotMdOrNetContributions()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var buyDate = new DateTime(year, 10, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "USD",
+            homeCurrency: "USD",
+            displayName: "Ledger No External CF Fallback Portfolio");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: buyDate,
+            ticker: "AAPL",
+            transactionType: TransactionType.Buy,
+            shares: 1m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.US,
+            currency: Currency.USD,
+            notes: null);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buy]);
+
+        var boundLedger = new CurrencyLedger(_userId, "USD", "USD Ledger", "USD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        // No explicit external cash-flow event in ledger path.
+        var stockLinkedSpend = new CurrencyTransaction(
+            boundLedger.Id,
+            buyDate,
+            CurrencyTransactionType.Spend,
+            100m,
+            homeAmount: 100m,
+            exchangeRate: 1m,
+            relatedStockTransactionId: buy.Id,
+            notes: "stock-buy linked spend");
+
+        boundLedger.AddTransaction(stockLinkedSpend);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: buy.Id,
+                snapshotDate: buyDate,
+                beforeSource: 0m,
+                afterSource: 100m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 10, 31, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 112.39m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["AAPL"] = new() { Price = 112.39m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+
+        // TWR should still be computable via stock-transaction fallback snapshots.
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-87.61d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(-87.61d, 0.0001d);
+
+        // MD / NetContributions must stay on the original external-cash-flow path (no fallback overwrite).
+        result.NetContributionsSource.Should().Be(0m);
+        result.NetContributionsHome.Should().Be(0m);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
+        result.ModifiedDietzPercentage.Should().BeNull();
+
+        // Keep low-confidence characteristics: still no opening baseline and partial-history assumption.
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeTrue();
     }
 
     private static TransactionPortfolioSnapshot CreateSnapshot(

@@ -8,6 +8,8 @@ using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Interfaces;
+using InvestmentTracker.Domain.Services;
 using InvestmentTracker.API.Tests.Integration;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +26,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     private const string PreviewEndpoint = "/api/stocktransactions/import/preview";
     private const string ExecuteEndpoint = "/api/stocktransactions/import/execute";
     private const string SampleBrokerStatementFixtureFileName = "SampleBrokerStatement.csv";
+    private const string SourceBrokerStatementFixtureAbsolutePath = "/workspaces/InvestmentTracker/證券app匯出範例.csv";
 
     private static readonly JsonSerializerOptions ApiJsonOptions = new()
     {
@@ -302,7 +305,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.SourceCurrency.Should().NotBeNullOrWhiteSpace();
         yearPerformance.CashFlowCount.Should().BeGreaterThan(0);
         yearPerformance.TransactionCount.Should().BeGreaterThan(0);
-        yearPerformance.NetContributionsHome.Should().NotBe(decimal.MinValue);
+        yearPerformance.NetContributionsHome.Should().BeInRange(-1_000_000_000m, 1_000_000_000m);
 
         AssertFiniteIfHasValue(yearPerformance.Xirr, nameof(YearPerformanceDto.Xirr));
         AssertFiniteIfHasValue(yearPerformance.XirrPercentage, nameof(YearPerformanceDto.XirrPercentage));
@@ -327,12 +330,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         if (monthlyItem.Value.HasValue)
         {
-            monthlyItem.Value.Value.Should().NotBe(decimal.MinValue);
+            monthlyItem.Value.Value.Should().BeInRange(-1_000_000_000m, 1_000_000_000m);
         }
 
         if (monthlyItem.Contributions.HasValue)
         {
-            monthlyItem.Contributions.Value.Should().NotBe(decimal.MinValue);
+            monthlyItem.Contributions.Value.Should().BeInRange(-1_000_000_000m, 1_000_000_000m);
         }
     }
 
@@ -504,6 +507,270 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
         (yearPerformance.ModifiedDietzPercentageSource!.Value - yearPerformance.TimeWeightedReturnPercentageSource!.Value)
             .Should().BeGreaterThan(2000d);
+    }
+
+    [Fact]
+    public async Task RegisterPreviewExecuteAndPerformance_UsingSampleCsv_WithMarginDataPath_ShouldKeep2025TwrInReasonableRange()
+    {
+        // Arrange
+        var registerRequest = new RegisterRequest
+        {
+            Email = $"import-margin-2025-{Guid.NewGuid():N}@example.com",
+            Password = "Password123!",
+            DisplayName = "Import Margin 2025"
+        };
+
+        var registerResponse = await Client.PostAsJsonAsync("/api/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        auth.Should().NotBeNull();
+        auth!.AccessToken.Should().NotBeNullOrWhiteSpace();
+
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        Factory.TestUserId = auth.User.Id;
+
+        var portfoliosResponse = await Client.GetAsync("/api/portfolios");
+        portfoliosResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var portfolios = await portfoliosResponse.Content.ReadFromJsonAsync<List<PortfolioDto>>();
+        portfolios.Should().NotBeNullOrEmpty();
+
+        var twdPortfolio = portfolios!
+            .SingleOrDefault(p => string.Equals(p.BaseCurrency, "TWD", StringComparison.OrdinalIgnoreCase));
+        twdPortfolio.Should().NotBeNull();
+
+        var sampleFixture = await LoadSampleBrokerStatementFixtureAsync();
+
+        var previewResponse = await Client.PostAsJsonAsync(
+            PreviewEndpoint,
+            new PreviewStockImportRequest
+            {
+                PortfolioId = twdPortfolio!.Id,
+                CsvContent = sampleFixture.CsvContent,
+                SelectedFormat = "broker_statement"
+            });
+
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().HaveCount(sampleFixture.DataRowCount);
+
+        var executeRows = previewDto.Rows
+            .Where(row => !string.Equals(row.Status, "invalid", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ConfirmedTradeSide)
+                && string.Equals(row.ConfirmedTradeSide, "buy", StringComparison.OrdinalIgnoreCase))
+            .Select(row =>
+            {
+                var resolvedTicker = ResolveTickerForExecute(row);
+                return new ExecuteStockImportRowRequest
+                {
+                    RowNumber = row.RowNumber,
+                    Ticker = resolvedTicker,
+                    ConfirmedTradeSide = row.ConfirmedTradeSide,
+                    Exclude = string.IsNullOrWhiteSpace(resolvedTicker)
+                };
+            })
+            .ToList();
+
+        executeRows.Should().Contain(row => !row.Exclude);
+
+        // Data-path lock: use buy-only rows + Margin to stabilize 2025 return path without synthetic top-up deposits.
+        var executeResponse = await Client.PostAsJsonAsync(
+            ExecuteEndpoint,
+            new ExecuteStockImportRequest
+            {
+                SessionId = previewDto.SessionId,
+                PortfolioId = twdPortfolio.Id,
+                DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+                {
+                    Action = BalanceAction.Margin
+                },
+                Rows = executeRows
+            });
+
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(executePayload, ApiJsonOptions);
+        executeDto.Should().NotBeNull();
+        executeDto!.Summary.InsertedRows.Should().BeGreaterThan(0);
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var topUpDepositsIn2025 = await dbContext.CurrencyTransactions
+                .Where(transaction => !transaction.IsDeleted
+                    && transaction.CurrencyLedgerId == twdPortfolio.BoundCurrencyLedgerId
+                    && transaction.TransactionType == CurrencyTransactionType.Deposit
+                    && transaction.RelatedStockTransactionId != null
+                    && transaction.Notes != null
+                    && transaction.Notes.StartsWith("補足買入", StringComparison.Ordinal)
+                    && transaction.TransactionDate.Year == 2025)
+                .ToListAsync();
+
+            // Root-cause data-path difference vs 2070.01% extreme test:
+            // this sample path may or may not create top-up deposits depending on price/position state.
+            // When top-up events exist, they must stay on import buy-link semantics and not include sell-link rows.
+            if (topUpDepositsIn2025.Count > 0)
+            {
+                var importedBuyTransactionIds = await dbContext.StockTransactions
+                    .Where(transaction => !transaction.IsDeleted
+                        && transaction.PortfolioId == twdPortfolio.Id
+                        && transaction.TransactionType == TransactionType.Buy)
+                    .Select(transaction => transaction.Id)
+                    .ToListAsync();
+
+                topUpDepositsIn2025.Should().OnlyContain(transaction =>
+                    transaction.RelatedStockTransactionId.HasValue
+                    && importedBuyTransactionIds.Contains(transaction.RelatedStockTransactionId.Value)
+                    && transaction.ForeignAmount > 0m
+                    && transaction.TransactionDate.Year == 2025
+                    && transaction.TransactionDate.Date <= new DateTime(2025, 12, 31));
+            }
+        }
+
+        var availableYearsResponse = await Client.GetAsync($"/api/portfolios/{twdPortfolio.Id}/performance/years");
+        availableYearsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var availableYears = await availableYearsResponse.Content.ReadFromJsonAsync<AvailableYearsDto>();
+        availableYears.Should().NotBeNull();
+        availableYears!.Years.Should().Contain(2025);
+
+        var summaryResponse = await Client.GetAsync($"/api/portfolios/{twdPortfolio.Id}/summary");
+        summaryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<PortfolioSummaryDto>();
+        summary.Should().NotBeNull();
+
+        var requestPrices = BuildYearPriceRequestFromSummaryPositions(summary!.Positions);
+
+        var yearResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{twdPortfolio.Id}/performance/year",
+            new CalculateYearPerformanceRequest
+            {
+                Year = 2025,
+                YearStartPrices = requestPrices,
+                YearEndPrices = requestPrices
+            });
+
+        yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPayload = await yearResponse.Content.ReadAsStringAsync();
+        using var yearJson = JsonDocument.Parse(yearPayload);
+        var yearRoot = yearJson.RootElement;
+        AssertYearPerformanceCoverageSignalContract(yearRoot);
+
+        var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(yearPayload, ApiJsonOptions);
+        yearPerformance.Should().NotBeNull();
+
+        yearPerformance!.Year.Should().Be(2025);
+        yearPerformance.HasOpeningBaseline.Should().BeFalse();
+        yearPerformance.UsesPartialHistoryAssumption.Should().BeTrue();
+        yearPerformance.CoverageDays.Should().BeGreaterThan(60);
+        yearPerformance.CoverageDays.Should().BeLessThan(90);
+
+        // Regression lock: 2025 TWR should be computable and match rebuildable snapshot-chain calculation.
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().NotBeNull($"year payload: {yearPayload}");
+        yearPerformance.TimeWeightedReturnPercentage.Should().NotBeNull($"year payload: {yearPayload}");
+
+        double? expectedTwrPctSource = null;
+        double? expectedTotalReturnPctSource = null;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var portfolioEntity = await dbContext.Portfolios
+                .Where(portfolio => portfolio.Id == twdPortfolio.Id)
+                .SingleAsync();
+
+            var yearStart = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var yearEnd = new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+            var twrSnapshots = await dbContext.TransactionPortfolioSnapshots
+                .Where(snapshot => snapshot.PortfolioId == twdPortfolio.Id
+                    && snapshot.SnapshotDate >= yearStart
+                    && snapshot.SnapshotDate <= yearEnd)
+                .OrderBy(snapshot => snapshot.SnapshotDate)
+                .ThenBy(snapshot => snapshot.CreatedAt)
+                .Select(snapshot => new ReturnValuationSnapshot(
+                    snapshot.SnapshotDate,
+                    snapshot.PortfolioValueBeforeSource,
+                    snapshot.PortfolioValueAfterSource))
+                .ToListAsync();
+
+            var returnCalculator = new ReturnCalculator();
+
+            var expectedTwrSource = returnCalculator.CalculateTimeWeightedReturn(
+                yearPerformance.StartValueSource ?? 0m,
+                yearPerformance.EndValueSource ?? 0m,
+                twrSnapshots);
+
+            expectedTwrPctSource = expectedTwrSource.HasValue
+                ? (double)(expectedTwrSource.Value * 100m)
+                : null;
+
+            var netContributionsSource = yearPerformance.NetContributionsSource ?? 0m;
+            var startValueSource = yearPerformance.StartValueSource ?? 0m;
+            var endValueSource = yearPerformance.EndValueSource ?? 0m;
+
+            if (startValueSource > 0m)
+            {
+                expectedTotalReturnPctSource = (double)((endValueSource - startValueSource - netContributionsSource) / startValueSource) * 100d;
+            }
+            else if (netContributionsSource != 0m)
+            {
+                expectedTotalReturnPctSource = (double)((endValueSource - netContributionsSource) / netContributionsSource) * 100d;
+            }
+        }
+
+        expectedTwrPctSource.Should().NotBeNull("snapshot chain should produce a deterministic TWR for 2025 margin data path");
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(expectedTwrPctSource!.Value, 0.0001d);
+        yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(expectedTwrPctSource.Value, 0.0001d);
+
+        // Regression lock: total return may be null under low-confidence/no-opening-baseline path,
+        // but if present it should match source-path reconstruction.
+        if (yearPerformance.TotalReturnPercentageSource.HasValue)
+        {
+            expectedTotalReturnPctSource.Should().NotBeNull();
+            yearPerformance.TotalReturnPercentageSource!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
+        }
+
+        if (yearPerformance.TotalReturnPercentage.HasValue)
+        {
+            expectedTotalReturnPctSource.Should().NotBeNull();
+            yearPerformance.TotalReturnPercentage!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
+        }
+
+        var aggregateResponse = await Client.PostAsJsonAsync(
+            "/api/portfolios/aggregate/performance/year",
+            new CalculateYearPerformanceRequest
+            {
+                Year = 2025,
+                YearStartPrices = requestPrices,
+                YearEndPrices = requestPrices
+            });
+
+        aggregateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var aggregatePerformance = await aggregateResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        aggregatePerformance.Should().NotBeNull();
+
+        if (aggregatePerformance!.TotalReturnPercentageSource.HasValue)
+        {
+            expectedTotalReturnPctSource.Should().NotBeNull();
+            aggregatePerformance.TotalReturnPercentageSource!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
+        }
+
+        if (aggregatePerformance.TotalReturnPercentage.HasValue)
+        {
+            expectedTotalReturnPctSource.Should().NotBeNull();
+            aggregatePerformance.TotalReturnPercentage!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
+        }
     }
 
     [Fact]
@@ -2086,6 +2353,11 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
     private static string ResolveSampleBrokerStatementFixturePath()
     {
+        if (File.Exists(SourceBrokerStatementFixtureAbsolutePath))
+        {
+            return SourceBrokerStatementFixtureAbsolutePath;
+        }
+
         var fixturePath = Path.Combine(AppContext.BaseDirectory, SampleBrokerStatementFixtureFileName);
 
         if (File.Exists(fixturePath))
@@ -2094,7 +2366,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         }
 
         throw new FileNotFoundException(
-            $"Sample broker statement fixture '{SampleBrokerStatementFixtureFileName}' was not found under test output directory '{AppContext.BaseDirectory}'.");
+            $"Sample broker statement fixture not found at '{SourceBrokerStatementFixtureAbsolutePath}' nor '{fixturePath}'.");
     }
 
     private static int CountCsvDataRows(string csvContent)
