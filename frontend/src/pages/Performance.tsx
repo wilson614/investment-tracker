@@ -49,9 +49,9 @@ const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 const MINIMUM_RELIABLE_COVERAGE_DAYS = 90;
 
 const RETURN_DISPLAY_DEGRADE_REASON_COPY: Record<string, string> = {
-  LOW_CONFIDENCE_NO_OPENING_BASELINE: '此年度缺少期初基準，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
-  LOW_CONFIDENCE_LOW_COVERAGE: '此年度資料覆蓋天數不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
-  LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
+  LOW_CONFIDENCE_NO_OPENING_BASELINE: '此年度缺少期初基準，資金加權報酬率（MD）信度偏低。',
+  LOW_CONFIDENCE_LOW_COVERAGE: '此年度資料覆蓋天數不足，資金加權報酬率（MD）信度偏低。',
+  LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，資金加權報酬率（MD）信度偏低。',
 };
 
 /**
@@ -1638,10 +1638,10 @@ function PerformancePageContent({
 
     const backendMessage = performance.returnDisplayDegradeReasonMessage?.trim();
     if (backendMessage) {
-      return `此年度績效指標（含 MD／TWR／XIRR）信度偏低（${backendMessage}）`;
+      return `此年度資金加權報酬率（MD）信度偏低（${backendMessage}）`;
     }
 
-    return '此年度績效指標（含 MD／TWR／XIRR）信度偏低，請優先參考年度摘要與資料覆蓋訊號。';
+    return '此年度資金加權報酬率（MD）信度偏低，請優先參考年度摘要與資料覆蓋訊號。';
   }, [isSelectedYearPerformance, performance]);
 
   const isPerformanceValueReady = Boolean(
@@ -1951,9 +1951,20 @@ function PerformancePageContent({
                     {selectedYear} 年度報酬 {selectedCurrencyLabel ? `(${selectedCurrencyLabel})` : ''}
                   </h3>
                   <div className="relative group">
-                    <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                      <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                    <button
+                      type="button"
+                      aria-label="年度報酬說明"
+                      aria-describedby="annual-return-tooltip"
+                      className="inline-flex items-center rounded-sm text-[var(--text-muted)] cursor-help"
+                    >
+                      <Info className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10">
+                      <div
+                        id="annual-return-tooltip"
+                        role="tooltip"
+                        className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap"
+                      >
                         {currencyMode === 'source'
                           ? '原幣報酬率（不含匯率變動）'
                           : `${performance.transactionCount} 筆交易`}
@@ -1976,15 +1987,33 @@ function PerformancePageContent({
                         </p>
                       </div>
                     )}
+                    {performance.hasRecentLargeInflowWarning && (
+                      <div className="mb-4 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3">
+                        <p className="text-sm text-[var(--color-warning)]">
+                          近期大額資金異動可能導致資金加權報酬率短期波動。
+                        </p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* 資金加權報酬率 */}
                       <div>
                         <div className="flex items-center gap-1 mb-1">
                           <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
                           <div className="relative group">
-                            <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            <button
+                              type="button"
+                              aria-label="資金加權報酬率說明"
+                              aria-describedby="md-tooltip"
+                              className="inline-flex items-center rounded-sm text-[var(--text-muted)] cursor-help"
+                            >
+                              <Info className="w-4 h-4" aria-hidden="true" />
+                            </button>
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10">
+                              <div
+                                id="md-tooltip"
+                                role="tooltip"
+                                className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap"
+                              >
                                 衡量比例的重壓 (Modified Dietz)
                               </div>
                             </div>
@@ -2009,9 +2038,20 @@ function PerformancePageContent({
                         <div className="flex items-center gap-1 mb-1">
                           <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
                           <div className="relative group">
-                            <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            <button
+                              type="button"
+                              aria-label="時間加權報酬率說明"
+                              aria-describedby="twr-tooltip"
+                              className="inline-flex items-center rounded-sm text-[var(--text-muted)] cursor-help"
+                            >
+                              <Info className="w-4 h-4" aria-hidden="true" />
+                            </button>
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10">
+                              <div
+                                id="twr-tooltip"
+                                role="tooltip"
+                                className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap"
+                              >
                                 衡量本金的重壓 (TWR)
                               </div>
                             </div>

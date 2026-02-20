@@ -588,6 +588,7 @@ export interface YearPerformance {
   shouldDegradeReturnDisplay: boolean;
   returnDisplayDegradeReasonCode: string | null;
   returnDisplayDegradeReasonMessage: string | null;
+  hasRecentLargeInflowWarning: boolean;
   missingPrices: MissingPrice[];
   isComplete: boolean;
 }

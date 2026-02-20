@@ -217,6 +217,7 @@ function createPerformanceMock(overrides: Partial<YearPerformance> = {}): YearPe
     shouldDegradeReturnDisplay: false,
     returnDisplayDegradeReasonCode: null,
     returnDisplayDegradeReasonMessage: null,
+    hasRecentLargeInflowWarning: false,
     missingPrices: [],
     isComplete: true,
     ...overrides,
@@ -418,7 +419,7 @@ describe('PerformancePage metrics binding regression', () => {
     mockedStockPriceApi.getExchangeRateValue.mockResolvedValue(1);
   });
 
-  it('shows revised MD/TWR helper wording and removes deprecated copy', async () => {
+  it('shows revised MD/TWR helper wording with tooltip a11y semantics and removes deprecated copy', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(createPerformanceMock());
 
@@ -428,6 +429,30 @@ describe('PerformancePage metrics binding regression', () => {
     expect(screen.getByText('衡量本金的重壓 (TWR)')).toBeInTheDocument();
     expect(screen.queryByText('衡量投資人操作 (Modified Dietz)')).not.toBeInTheDocument();
     expect(screen.queryByText('衡量資產本身表現 (TWR)')).not.toBeInTheDocument();
+
+    const annualInfoButton = screen.getByRole('button', { name: '年度報酬說明' });
+    const mdInfoButton = screen.getByRole('button', { name: '資金加權報酬率說明' });
+    const twrInfoButton = screen.getByRole('button', { name: '時間加權報酬率說明' });
+
+    expect(annualInfoButton).toHaveAttribute('aria-describedby', 'annual-return-tooltip');
+    expect(mdInfoButton).toHaveAttribute('aria-describedby', 'md-tooltip');
+    expect(twrInfoButton).toHaveAttribute('aria-describedby', 'twr-tooltip');
+
+    const annualTooltip = document.getElementById('annual-return-tooltip');
+    const mdTooltip = document.getElementById('md-tooltip');
+    const twrTooltip = document.getElementById('twr-tooltip');
+
+    expect(annualTooltip).toHaveAttribute('role', 'tooltip');
+    expect(mdTooltip).toHaveAttribute('role', 'tooltip');
+    expect(twrTooltip).toHaveAttribute('role', 'tooltip');
+
+    expect(annualTooltip).toHaveTextContent('2 筆交易');
+    expect(mdTooltip).toHaveTextContent('衡量比例的重壓 (Modified Dietz)');
+    expect(twrTooltip).toHaveTextContent('衡量本金的重壓 (TWR)');
+
+    expect(annualTooltip?.parentElement).toHaveClass('group-focus-within:block');
+    expect(mdTooltip?.parentElement).toHaveClass('group-focus-within:block');
+    expect(twrTooltip?.parentElement).toHaveClass('group-focus-within:block');
   });
 
   it('uses home-currency fields for Modified Dietz and TWR cards', async () => {
@@ -509,7 +534,7 @@ describe('PerformancePage metrics binding regression', () => {
 
     render(<PerformancePage />);
 
-    expect(await screen.findByText(/低信度年度：此年度資料覆蓋天數不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。/)).toBeInTheDocument();
+    expect(await screen.findByText(/低信度年度：此年度資料覆蓋天數不足，資金加權報酬率（MD）信度偏低。/)).toBeInTheDocument();
     expect(screen.queryByText(/已停用單年度年化報酬（XIRR）主顯示/)).not.toBeInTheDocument();
     expect(screen.getByText('資金加權報酬率')).toBeInTheDocument();
     expect(screen.getByText('時間加權報酬率')).toBeInTheDocument();
@@ -529,9 +554,24 @@ describe('PerformancePage metrics binding regression', () => {
     render(<PerformancePage />);
 
     expect(
-      await screen.findByText(/此年度績效指標（含 MD／TWR／XIRR）信度偏低（Low confidence aggregate performance: insufficient coverage period\.）/)
+      await screen.findByText(/此年度資金加權報酬率（MD）信度偏低（Low confidence aggregate performance: insufficient coverage period\.）/)
     ).toBeInTheDocument();
     expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
+  });
+
+  it('shows recent large inflow warning when backend signal is true', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        hasRecentLargeInflowWarning: true,
+      })
+    );
+
+    render(<PerformancePage />);
+
+    expect(
+      await screen.findByText('近期大額資金異動可能導致資金加權報酬率短期波動。')
+    ).toBeInTheDocument();
   });
 
   it('keeps XIRR card hidden while performance values are still incomplete', async () => {

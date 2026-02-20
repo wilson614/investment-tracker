@@ -168,7 +168,9 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
 }
 
 function findGlobalSellBeforeBuyActionSelector(): HTMLSelectElement | null {
-  const labeled = screen.queryByLabelText(/賣在買前時，預設怎麼處理|賣先買後預設處理方式/i);
+  const labeled = screen.queryByRole('combobox', {
+    name: /賣先買後預設處理方式|賣在買前時，預設怎麼處理/i,
+  });
   if (labeled instanceof HTMLSelectElement) {
     return labeled;
   }
@@ -1103,7 +1105,67 @@ describe('Stock import balance action flow', () => {
     expect(within(rowSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
   });
 
-  it('updates baseline and sell-before-buy copy, and uses wider preview layout classes', async () => {
+  it('connects tooltip triggers to tooltip semantics for keyboard and screen reader access', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-tooltip-a11y',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 80,
+            rawSecurityName: 'ROW-TOOLTIP-A11Y',
+            status: 'requires_user_action',
+            usesPartialHistoryAssumption: true,
+            actionsRequired: ['choose_sell_before_buy_handling'],
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+
+    const baselineHint = screen.getByLabelText('欄位說明：期初基準');
+    expect(baselineHint.tagName).toBe('BUTTON');
+
+    let tabGuard = 0;
+    while (document.activeElement !== baselineHint && tabGuard < 25) {
+      await user.tab();
+      tabGuard += 1;
+    }
+    expect(baselineHint).toHaveFocus();
+
+    const baselineTooltipId = baselineHint.getAttribute('aria-describedby');
+    expect(baselineTooltipId).toBeTruthy();
+    const baselineTooltip = document.getElementById(baselineTooltipId as string);
+    expect(baselineTooltip).toBeInTheDocument();
+    expect(baselineTooltip).toHaveAttribute('role', 'tooltip');
+
+    await requestPreview(user);
+
+    const sellBeforeBuyHint = screen.getByLabelText('欄位說明：賣先買後預設處理方式');
+    expect(sellBeforeBuyHint.tagName).toBe('BUTTON');
+    sellBeforeBuyHint.focus();
+    expect(sellBeforeBuyHint).toHaveFocus();
+
+    const sellBeforeBuyTooltipId = sellBeforeBuyHint.getAttribute('aria-describedby');
+    expect(sellBeforeBuyTooltipId).toBeTruthy();
+    const sellBeforeBuyTooltip = document.getElementById(sellBeforeBuyTooltipId as string);
+    expect(sellBeforeBuyTooltip).toBeInTheDocument();
+    expect(sellBeforeBuyTooltip).toHaveAttribute('role', 'tooltip');
+  });
+
+  it('updates baseline and sell-before-buy copy, uses custom tooltip style, and keeps wider preview layout classes', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-copy-layout',
@@ -1139,6 +1201,11 @@ describe('Stock import balance action flow', () => {
     expect(openingCashInput).toHaveAttribute('placeholder', '可空');
     expect(openingLedgerInput).toHaveAttribute('placeholder', '可空');
     expect(screen.getByText('期初持倉')).toBeInTheDocument();
+    expect(screen.getByText('期初基準')).toBeInTheDocument();
+    expect(screen.queryByText('期初基準（節錄匯入）')).not.toBeInTheDocument();
+
+    const baselineHint = screen.getByLabelText('欄位說明：期初基準');
+    expect(baselineHint).toBeInTheDocument();
 
     expect(screen.queryByText('期初現金餘額（可空）')).not.toBeInTheDocument();
     expect(screen.queryByText('期初帳本餘額（可空）')).not.toBeInTheDocument();
@@ -1146,11 +1213,12 @@ describe('Stock import balance action flow', () => {
 
     await requestPreview(user);
 
-    expect(screen.getByText('賣在買前時，預設怎麼處理')).toBeInTheDocument();
-    expect(screen.queryByText('賣先買後預設處理方式')).not.toBeInTheDocument();
+    expect(screen.getByText('賣先買後預設處理方式')).toBeInTheDocument();
+    expect(screen.queryByText('賣在買前時，預設怎麼處理')).not.toBeInTheDocument();
 
-    const hint = screen.getByLabelText('欄位說明：賣在買前時處理');
-    expect(hint).toHaveAttribute('title', '當資料出現先賣後買時，可先選一個預設；也可保留「逐筆決定」在下方每列個別設定。');
+    const hint = screen.getByLabelText('欄位說明：賣先買後預設處理方式');
+    expect(hint).toBeInTheDocument();
+    expect(hint).not.toHaveAttribute('title');
 
     const modalHeading = screen.getByRole('heading', { name: '匯入股票交易' });
     const modalContainer = modalHeading.closest('.card-dark');

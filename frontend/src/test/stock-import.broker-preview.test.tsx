@@ -166,6 +166,7 @@ function buildYearPerformance(overrides: Partial<YearPerformance> = {}): YearPer
     shouldDegradeReturnDisplay: false,
     returnDisplayDegradeReasonCode: null,
     returnDisplayDegradeReasonMessage: null,
+    hasRecentLargeInflowWarning: false,
     missingPrices: [],
     isComplete: true,
     ...overrides,

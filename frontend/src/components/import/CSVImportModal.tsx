@@ -4,8 +4,8 @@
  * 通用 CSV 匯入 Modal：提供「上傳 → 欄位對應 → 預覽 → 匯入結果」流程。
  * 可透過可選 props 擴充為 preview/execute 雙階段，以及 unresolved row remediation UI。
  */
-import { useState, useCallback } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { useState, useCallback, useId } from 'react';
+import { X, Upload, FileText, AlertCircle, CheckCircle, ChevronDown, ChevronUp, Loader2, Info } from 'lucide-react';
 import {
   parseCSV,
   autoMapColumns,
@@ -209,12 +209,6 @@ function getBalanceActionLabel(action: 'Margin' | 'TopUp' | null | undefined): s
   return '逐筆決定';
 }
 
-function getSellBeforeBuyActionLabel(action: SellBeforeBuyAction | null | undefined): string {
-  if (action === 'UseOpeningPosition') return '使用期初持倉';
-  if (action === 'CreateAdjustment') return '建立調整';
-  return '逐筆決定';
-}
-
 export function CSVImportModal({
   isOpen,
   onClose,
@@ -238,6 +232,9 @@ export function CSVImportModal({
     successCount: number;
   } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  const baselineTooltipId = useId();
+  const sellBeforeBuyTooltipId = useId();
 
   const visibleMappingFields = fields.filter((field) => !hiddenMappingFieldNames.includes(field.name));
 
@@ -545,7 +542,28 @@ export function CSVImportModal({
                 || previewExtensions?.onChangeOpeningPosition
                 || previewExtensions?.onAddOpeningPosition) && (
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-4">
-                  <h4 className="text-sm font-medium text-[var(--text-primary)]">期初基準（節錄匯入）</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-medium text-[var(--text-primary)]">期初基準</h4>
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center p-0 border-0 bg-transparent text-[var(--text-muted)] cursor-help"
+                        aria-label="欄位說明：期初基準"
+                        aria-describedby={baselineTooltipId}
+                      >
+                        <Info className="w-4 h-4" />
+                      </button>
+                      <div
+                        id={baselineTooltipId}
+                        role="tooltip"
+                        className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10"
+                      >
+                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                          可填入節錄匯入前的現金、帳本與持倉，作為起始基準。
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="space-y-1">
@@ -695,21 +713,33 @@ export function CSVImportModal({
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-3">
                   <div className="flex items-center gap-2">
                     <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-sell-before-buy-action-selector">
-                      {previewExtensions.globalSellBeforeBuyActionLabel ?? '賣在買前時，預設怎麼處理'}
+                      {previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
                     </label>
                     {previewExtensions.globalSellBeforeBuyActionHint && (
-                      <span
-                        className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[var(--border-color)] text-[10px] text-[var(--text-muted)] cursor-help"
-                        title={previewExtensions.globalSellBeforeBuyActionHint}
-                        aria-label="欄位說明：賣在買前時處理"
-                      >
-                        i
-                      </span>
+                      <div className="relative group">
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center p-0 border-0 bg-transparent text-[var(--text-muted)] cursor-help"
+                          aria-label="欄位說明：賣先買後預設處理方式"
+                          aria-describedby={sellBeforeBuyTooltipId}
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                        <div
+                          id={sellBeforeBuyTooltipId}
+                          role="tooltip"
+                          className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10"
+                        >
+                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            {previewExtensions.globalSellBeforeBuyActionHint}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                   <select
                     id="global-sell-before-buy-action-selector"
-                    aria-label={previewExtensions.globalSellBeforeBuyActionLabel ?? '賣在買前時，預設怎麼處理'}
+                    aria-label={previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
                     value={previewExtensions.globalSellBeforeBuyAction ?? ''}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -908,7 +938,7 @@ export function CSVImportModal({
                                   aria-label={previewExtensions.rowSellBeforeBuyActionLabel ?? `第 ${row.rowNumber} 行賣先買後處理方式`}
                                   className="input-dark w-full"
                                 >
-                                  <option value="default">套用預設（{getSellBeforeBuyActionLabel(row.effectiveSellBeforeBuyAction)})</option>
+                                  <option value="default">套用預設</option>
                                   <option value="UseOpeningPosition">使用期初持倉</option>
                                   <option value="CreateAdjustment">建立調整</option>
                                 </select>

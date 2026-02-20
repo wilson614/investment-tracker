@@ -375,8 +375,20 @@ describe('DashboardPage aggregate fixed behavior', () => {
       const unavailableText = within(xirrCard as HTMLElement).getByText('資料不足不顯示');
       expect(unavailableText).toBeInTheDocument();
       expect((unavailableText.closest('div') as HTMLElement | null)?.className ?? '').toContain('text-[var(--text-secondary)]');
-      expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 MD／TWR／XIRR。')).toBeInTheDocument();
+      expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 XIRR。')).toBeInTheDocument();
     });
+
+    const tooltipTrigger = within(xirrCard as HTMLElement).getByRole('button', {
+      name: 'XIRR 無法計算說明',
+    });
+    tooltipTrigger.focus();
+    expect(tooltipTrigger).toHaveFocus();
+    expect(tooltipTrigger).toHaveAttribute('aria-describedby');
+
+    const tooltip = within(xirrCard as HTMLElement).getByRole('tooltip');
+    expect(tooltip).toHaveAttribute('id', tooltipTrigger.getAttribute('aria-describedby') ?? '');
+    expect(tooltip.className).toContain('group-hover:block');
+    expect(tooltip.className).toContain('group-focus-within:block');
 
     expect(within(xirrCard as HTMLElement).queryByText('資料更新中，正在計算年化報酬')).not.toBeInTheDocument();
   });

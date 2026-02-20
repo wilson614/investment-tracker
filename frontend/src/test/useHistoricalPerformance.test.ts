@@ -73,6 +73,7 @@ const aggregatePerformanceMock: YearPerformance = {
   shouldDegradeReturnDisplay: false,
   returnDisplayDegradeReasonCode: null,
   returnDisplayDegradeReasonMessage: null,
+  hasRecentLargeInflowWarning: false,
   missingPrices: [],
   isComplete: true,
 };

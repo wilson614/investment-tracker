@@ -69,7 +69,20 @@ describe('PerformanceMetrics XIRR display consistency', () => {
     expect(xirrCard).not.toBeNull();
 
     expect(within(xirrCard as HTMLElement).getByText('資料不足不顯示')).toBeInTheDocument();
-    expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 MD／TWR／XIRR。')).toBeInTheDocument();
+    expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 XIRR。')).toBeInTheDocument();
+
+    const tooltipTrigger = within(xirrCard as HTMLElement).getByRole('button', {
+      name: 'XIRR 無法計算說明',
+    });
+    tooltipTrigger.focus();
+    expect(tooltipTrigger).toHaveFocus();
+    expect(tooltipTrigger).toHaveAttribute('aria-describedby');
+
+    const tooltip = within(xirrCard as HTMLElement).getByRole('tooltip');
+    expect(tooltip).toHaveAttribute('id', tooltipTrigger.getAttribute('aria-describedby') ?? '');
+    expect(tooltip.className).toContain('group-hover:block');
+    expect(tooltip.className).toContain('group-focus-within:block');
+
     expect(within(xirrCard as HTMLElement).queryByText('-', { exact: true })).not.toBeInTheDocument();
     expect(within(xirrCard as HTMLElement).queryByText('-')).not.toBeInTheDocument();
   });

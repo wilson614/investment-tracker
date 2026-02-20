@@ -8,7 +8,7 @@
  * - 在頁面載入後自動更新所有報價，並在新增持倉時針對單一 ticker 觸發自動抓價。
  * - 支援 Euronext 報價流程（透過 `marketDataApi.getEuronextQuote` 產生 synthetic quote）。
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Loader2, Info } from 'lucide-react';
 import { portfolioApi, stockPriceApi, marketDataApi, currencyLedgerApi } from '../services/api';
@@ -183,6 +183,7 @@ export function PortfolioPage() {
 
   const currentPricesRef = useRef<PositionPriceMap>({});
   const importTriggerRef = useRef<(() => void) | null>(null);
+  const positionsTooltipId = useId();
 
   /**
    * 載入指定投資組合的資料（summary、交易清單），並嘗試套用報價快取做快速計算。
@@ -744,8 +745,19 @@ export function PortfolioPage() {
                 持倉 <span className="text-sm font-normal text-[var(--text-muted)]">（點擊查看詳情）</span>
               </h2>
               <div className="relative group">
-                <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                <button
+                  type="button"
+                  aria-label="持倉顯示規則說明"
+                  aria-describedby={positionsTooltipId}
+                  className="inline-flex items-center justify-center rounded-sm bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-peach)]"
+                >
+                  <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                </button>
+                <div
+                  id={positionsTooltipId}
+                  role="tooltip"
+                  className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10"
+                >
                   <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
                     持倉清單僅顯示淨股數（買入－賣出）大於 0 的標的。
                   </div>
