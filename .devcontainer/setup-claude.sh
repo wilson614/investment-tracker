@@ -55,12 +55,24 @@ export CLAUDE_CONFIG_Update='{
         "AUGMENT_API_TOKEN": "PLACEHOLDER_TOKEN",
         "AUGMENT_API_URL": "https://d1.api.augmentcode.com/"
       }
+    },
+    "fast-context": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "fast-cxt-mcp"
+      ],
+      "env": {
+        "WINDSURF_API_KEY": "PLACEHOLDER_WINDSURF_API_KEY"
+      }
     }
   }
 }'
 
 # 把真實的 Token 塞進去 (取代上面的 PLACEHOLDER)
 export CLAUDE_CONFIG_Update="${CLAUDE_CONFIG_Update/PLACEHOLDER_TOKEN/$AUGMENT_API_TOKEN}"
+export CLAUDE_CONFIG_Update="${CLAUDE_CONFIG_Update/PLACEHOLDER_WINDSURF_API_KEY/$WINDSURF_API_KEY}"
 
 echo "⚙️ Merging configuration into .claude.json..."
 
