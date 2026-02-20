@@ -593,3 +593,58 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
 | T108 | `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`, `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` | Reproducible 2025 MD assertions include `startValueSource=0`, `endValueSource=105686.84`, `netContributionsSource=100000`, `coverageDays=2`, `hasOpeningBaseline=false`, `usesPartialHistoryAssumption=true`, `denominator≈274.7252747`, `numerator=5686.84`, `ModifiedDietz≈2070.01%`, and `TimeWeightedReturn≈5.68684%` |
 | T109 | `specs/012-import-broker-statement/quickstart.md` | This Group I notes/evidence/traceability update with concrete MD readability explanation |
 | T110 | `specs/012-import-broker-statement/tasks.md` | Group I checklist completion recorded |
+
+## Verification Notes (Group J Data-Path & UX/A11y Closure Update)
+
+- Updated for Group J closure with automated QA evidence (date: **2026-02-20**).
+- **2025 TWR discrepancy root cause clarification**:
+  - Root cause is **data path selection**, not the TWR formula itself.
+  - In no-explicit-external-cash-flow scenarios, snapshot fallback is allowed **only** for TWR event selection.
+  - MD / NetContributions remain on the original external cash-flow path and are not overwritten by fallback inputs.
+  - Fix strategy: keep fallback scope isolated to TWR snapshots so TWR recoverability improves without polluting MD denominator or net contribution accounting.
+- **Recent large inflow warning rule**:
+  - Trigger when a positive inflow occurs in the **last 10%** of the period window and inflow size is **greater than 50%** of period total assets (boundary is strict `>` for the 50% threshold).
+  - Fixed warning copy: `近期大額資金異動可能導致資金加權報酬率短期波動。`
+- Frontend copy/tooltip adjustments in this round:
+  - Annual low-confidence wording is scoped to **MD** (not generic MD/TWR/XIRR grouping copy).
+  - Performance and import tooltip interactions include keyboard/screen-reader semantics (`aria-describedby`, `role="tooltip"`, and `group-focus-within:block` visibility path).
+
+## Verification Evidence (Group J Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Domain.Tests/InvestmentTracker.Domain.Tests.csproj" --filter "FullyQualifiedName~ReturnCalculatorTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~HistoricalPerformanceServiceReturnTests|FullyQualifiedName~CalculateAggregateYearPerformanceUseCaseTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/performance.metrics-binding.test.tsx src/test/dashboard.aggregate-fixed.test.tsx src/test/portfolio.performance-metrics.test.tsx src/test/stock-import.balance-action.test.tsx src/test/stock-import.broker-preview.test.tsx src/test/useHistoricalPerformance.test.ts
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend domain regression (`ReturnCalculatorTests`) | PASS | Failed: 0, Passed: 13, Total: 13 |
+| Backend application regression (`HistoricalPerformanceServiceReturnTests` + `CalculateAggregateYearPerformanceUseCaseTests`) | PASS | Failed: 0, Passed: 24, Total: 24 |
+| Backend API regression (`StockTransactionsImportControllerTests`) | PASS | Failed: 0, Passed: 24, Total: 24 |
+| Frontend combined regression (`performance.metrics-binding` + `dashboard.aggregate-fixed` + `portfolio.performance-metrics` + `stock-import.balance-action` + `stock-import.broker-preview` + `useHistoricalPerformance`) | PASS | 6 test files passed, 71 tests passed, 0 failed |
+| Frontend type-check | PASS | Type-check completed without errors |
+
+### Group J Traceability (T111-T128)
+
+| Task(s) | Key File(s) | Key Test(s) / Evidence |
+|---|---|---|
+| T111, T116 | `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` | TWR-only fallback path is isolated from MD/NetContributions; explicit fallback logging present |
+| T112, T113 | `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs`, `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs` | Negative/cross-zero TWR guard regressions in `ReturnCalculatorTests` (13 passed scope) |
+| T114, T120 | `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs` | `...FallbackShouldAffectOnlyTwrNotMdOrNetContributions`, boundary/trigger warning tests, and YTD day-weight regression |
+| T115, T122 | `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` | API assertions for data-path consistency plus warning signal/message contract fields |
+| T117, T118 | `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`, `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` | DTO contract fields + warning rule implementation (`last 10%` and `>50%`) |
+| T119, T121 | `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs` | Aggregate warning propagation and current-year actual-day MD weighting regressions |
+| T123, T126 | `frontend/src/pages/Performance.tsx`, `frontend/src/types/index.ts` | MD-scoped low-confidence copy + warning banner rendering + frontend contract alignment |
+| T124, T127 | `frontend/src/pages/Dashboard.tsx`, `frontend/src/components/portfolio/PerformanceMetrics.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, `frontend/src/test/portfolio.performance-metrics.test.tsx`, `frontend/src/test/performance.metrics-binding.test.tsx` | XIRR unavailable wording consistency and tooltip a11y semantics (`aria-describedby` / `role="tooltip"` / keyboard focus path) |
+| T125, T128 | `frontend/src/pages/Portfolio.tsx`, `frontend/src/components/import/StockImportButton.tsx`, `frontend/src/components/import/CSVImportModal.tsx`, `frontend/src/test/stock-import.balance-action.test.tsx`, `frontend/src/test/stock-import.broker-preview.test.tsx`, `frontend/src/test/useHistoricalPerformance.test.ts` | Import/portfolio tooltip copy + accessibility regression coverage |

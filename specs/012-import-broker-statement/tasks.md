@@ -189,6 +189,24 @@
 - [x] T108 Add backend regression assertions with concrete reproducible 2025 MD extreme-value data points in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`, and `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 - [x] T109 Record Group I verification evidence and concrete 2025 MD explanation in `specs/012-import-broker-statement/quickstart.md`
 - [x] T110 Update Speckit checklist for Group I completion in `specs/012-import-broker-statement/tasks.md`
+- [x] T111 Scope no-external-cash-flow fallback to TWR snapshot event selection only (without mutating MD/NetContributions cash-flow path) in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T112 [P] Harden TWR calculator guardrails for negative valuations and cross-zero transitions in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs`
+- [x] T113 [P] Add domain regression coverage for negative/cross-zero TWR guard behavior in `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs`
+- [x] T114 Add application regression coverage proving no-external-cash-flow fallback affects TWR only while keeping MD/NetContributions unchanged in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T115 Add API regression assertions for reproducible import-to-year-performance comparison and data-path consistency in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T116 Add operational logging for TWR-only fallback activation under missing explicit external cash-flow events in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T117 Add annual performance DTO contract fields for recent large inflow warning signal in `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`
+- [x] T118 Implement recent-large-inflow warning rule (last 10% period window and inflow >50% of period total assets) in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T119 Propagate recent-large-inflow warning signal to aggregate yearly response in `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`
+- [x] T120 [P] Add service-level regression tests for warning threshold boundaries and YTD actual-day weighting behavior in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T121 [P] Add aggregate use-case regression tests for warning propagation and current-year actual-day Modified Dietz weighting in `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`
+- [x] T122 Add API contract regression assertions for warning signal/message fields and reliability signal compatibility in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T123 Update annual performance copy to scope low-confidence wording to MD only and render recent-large-inflow warning banner in `frontend/src/pages/Performance.tsx`
+- [x] T124 Align Dashboard and Portfolio XIRR unavailable copy/tooltip behavior with explicit state wording in `frontend/src/pages/Dashboard.tsx` and `frontend/src/components/portfolio/PerformanceMetrics.tsx`
+- [x] T125 Improve tooltip-driven guidance wording and keyboard accessibility for portfolio/import interactions in `frontend/src/pages/Portfolio.tsx`, `frontend/src/components/import/StockImportButton.tsx`, and `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T126 Extend frontend yearly performance type contract with `hasRecentLargeInflowWarning` in `frontend/src/types/index.ts`
+- [x] T127 [P] Add frontend regression coverage for performance copy updates, warning rendering, and tooltip a11y semantics in `frontend/src/test/performance.metrics-binding.test.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, and `frontend/src/test/portfolio.performance-metrics.test.tsx`
+- [x] T128 [P] Add frontend regression coverage for import tooltip a11y semantics and related copy updates in `frontend/src/test/stock-import.balance-action.test.tsx`, `frontend/src/test/stock-import.broker-preview.test.tsx`, and `frontend/src/test/useHistoricalPerformance.test.ts`
 
 ---
 
