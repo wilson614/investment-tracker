@@ -459,6 +459,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearRoot.GetProperty("returnDisplayDegradeReasonCode").GetString()
             .Should().Be("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
         yearRoot.GetProperty("returnDisplayDegradeReasonMessage").GetString().Should().NotBeNullOrWhiteSpace();
+        yearRoot.GetProperty("hasRecentLargeInflowWarning").GetBoolean().Should().BeTrue();
+        yearRoot.GetProperty("recentLargeInflowWarningMessage").GetString()
+            .Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
 
         var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(yearPayload, ApiJsonOptions);
         yearPerformance.Should().NotBeNull();
@@ -507,6 +510,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
         (yearPerformance.ModifiedDietzPercentageSource!.Value - yearPerformance.TimeWeightedReturnPercentageSource!.Value)
             .Should().BeGreaterThan(2000d);
+
+        yearPerformance.HasRecentLargeInflowWarning.Should().BeTrue();
+        yearPerformance.RecentLargeInflowWarningMessage.Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
     }
 
     [Fact]
@@ -731,6 +737,8 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         expectedTwrPctSource.Should().NotBeNull("snapshot chain should produce a deterministic TWR for 2025 margin data path");
         yearPerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(expectedTwrPctSource!.Value, 0.0001d);
         yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(expectedTwrPctSource.Value, 0.0001d);
+        yearPerformance.HasRecentLargeInflowWarning.Should().BeFalse();
+        yearPerformance.RecentLargeInflowWarningMessage.Should().BeNull();
 
         // Regression lock: total return may be null under low-confidence/no-opening-baseline path,
         // but if present it should match source-path reconstruction.
@@ -760,7 +768,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         var aggregatePerformance = await aggregateResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
         aggregatePerformance.Should().NotBeNull();
 
-        if (aggregatePerformance!.TotalReturnPercentageSource.HasValue)
+        aggregatePerformance!.HasRecentLargeInflowWarning.Should().BeFalse();
+        aggregatePerformance.RecentLargeInflowWarningMessage.Should().BeNull();
+
+        if (aggregatePerformance.TotalReturnPercentageSource.HasValue)
         {
             expectedTotalReturnPctSource.Should().NotBeNull();
             aggregatePerformance.TotalReturnPercentageSource!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
@@ -2477,6 +2488,15 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         (degradeReasonMessage.ValueKind == JsonValueKind.Null || degradeReasonMessage.ValueKind == JsonValueKind.String)
             .Should().BeTrue();
 
+        yearPerformanceRoot.TryGetProperty("hasRecentLargeInflowWarning", out var hasRecentLargeInflowWarning).Should().BeTrue();
+        (hasRecentLargeInflowWarning.ValueKind == JsonValueKind.True
+            || hasRecentLargeInflowWarning.ValueKind == JsonValueKind.False)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("recentLargeInflowWarningMessage", out var recentLargeInflowWarningMessage).Should().BeTrue();
+        (recentLargeInflowWarningMessage.ValueKind == JsonValueKind.Null || recentLargeInflowWarningMessage.ValueKind == JsonValueKind.String)
+            .Should().BeTrue();
+
         if (coverageDays.ValueKind == JsonValueKind.Number)
         {
             coverageDays.GetInt32().Should().BeGreaterThanOrEqualTo(0);
@@ -2495,6 +2515,11 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         if (degradeReasonMessage.ValueKind == JsonValueKind.String)
         {
             degradeReasonMessage.GetString().Should().NotBeNullOrWhiteSpace();
+        }
+
+        if (hasRecentLargeInflowWarning.ValueKind == JsonValueKind.True)
+        {
+            recentLargeInflowWarningMessage.GetString().Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
         }
     }
 

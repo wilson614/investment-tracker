@@ -36,6 +36,10 @@ public class HistoricalPerformanceService(
     private const string ReturnDisplayDegradeReasonNoOpeningBaseline = "LOW_CONFIDENCE_NO_OPENING_BASELINE";
     private const string ReturnDisplayDegradeReasonLowCoverage = "LOW_CONFIDENCE_LOW_COVERAGE";
     private const string ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage = "LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE";
+    private const decimal RecentLargeInflowThresholdRatio = 0.5m;
+    private const decimal RecentLargeInflowPeriodRatio = 0.1m;
+    private const string RecentLargeInflowWarningMessage = "近期大額資金異動可能導致資金加權報酬率短期波動。";
+
     /// <summary>
     /// 取得可計算績效的年份清單。
     /// </summary>
@@ -896,6 +900,16 @@ public class HistoricalPerformanceService(
             closedLoopEndValueHome,
             netContributionsHome);
 
+        var recentLargeInflowWarning = ResolveRecentLargeInflowWarningSignal(
+            periodStart: yearStart,
+            periodEnd: yearEnd,
+            sourceCurrencyCashFlows: dietzCashFlowsSource,
+            sourceStartValue: closedLoopStartValueSource,
+            sourceEndValue: closedLoopEndValueSource,
+            homeCurrencyCashFlows: dietzCashFlowsHome,
+            homeStartValue: closedLoopStartValueHome,
+            homeEndValue: closedLoopEndValueHome);
+
         var hasXirrValue = rawXirrHome.HasValue || rawXirrSource.HasValue;
         var xirrReliability = ResolveXirrReliability(
             hasOpeningBaseline,
@@ -968,8 +982,72 @@ public class HistoricalPerformanceService(
             ShouldDegradeReturnDisplay = returnDisplayDegradeSignal.ShouldDegrade,
             ReturnDisplayDegradeReasonCode = returnDisplayDegradeSignal.ReasonCode,
             ReturnDisplayDegradeReasonMessage = returnDisplayDegradeSignal.ReasonMessage,
+            HasRecentLargeInflowWarning = recentLargeInflowWarning.ShouldWarn,
+            RecentLargeInflowWarningMessage = recentLargeInflowWarning.WarningMessage,
             MissingPrices = []
         };
+    }
+
+    private static RecentLargeInflowWarningSignal ResolveRecentLargeInflowWarningSignal(
+        DateTime periodStart,
+        DateTime periodEnd,
+        IReadOnlyList<ReturnCashFlow> sourceCurrencyCashFlows,
+        decimal sourceStartValue,
+        decimal sourceEndValue,
+        IReadOnlyList<ReturnCashFlow> homeCurrencyCashFlows,
+        decimal homeStartValue,
+        decimal homeEndValue)
+    {
+        var sourceTriggered = HasRecentLargeInflowInLastWindow(
+            periodStart,
+            periodEnd,
+            sourceCurrencyCashFlows,
+            sourceStartValue,
+            sourceEndValue);
+
+        var homeTriggered = HasRecentLargeInflowInLastWindow(
+            periodStart,
+            periodEnd,
+            homeCurrencyCashFlows,
+            homeStartValue,
+            homeEndValue);
+
+        if (!sourceTriggered && !homeTriggered)
+            return RecentLargeInflowWarningSignal.None;
+
+        return new RecentLargeInflowWarningSignal(
+            ShouldWarn: true,
+            WarningMessage: RecentLargeInflowWarningMessage);
+    }
+
+    private static bool HasRecentLargeInflowInLastWindow(
+        DateTime periodStart,
+        DateTime periodEnd,
+        IReadOnlyList<ReturnCashFlow> cashFlows,
+        decimal startValue,
+        decimal endValue)
+    {
+        var startDate = periodStart.Date;
+        var endDate = periodEnd.Date;
+        var totalDays = (endDate - startDate).Days;
+
+        if (totalDays <= 0)
+            return false;
+
+        var lastWindowDays = Math.Max(1, (int)Math.Ceiling(totalDays * (double)RecentLargeInflowPeriodRatio));
+        var lastWindowStartDate = endDate.AddDays(-(lastWindowDays - 1));
+
+        var periodTotalAssets = Math.Max(startValue, endValue);
+        if (periodTotalAssets <= 0m)
+            return false;
+
+        var inflowThreshold = periodTotalAssets * RecentLargeInflowThresholdRatio;
+
+        return cashFlows.Any(cashFlow =>
+            cashFlow.Amount > inflowThreshold
+            && cashFlow.Amount > 0m
+            && cashFlow.Date.Date >= lastWindowStartDate
+            && cashFlow.Date.Date <= endDate);
     }
 
     private static int? CalculateCoverageDays(DateTime? coverageStartDate, DateTime yearEnd)
@@ -1121,5 +1199,14 @@ public class HistoricalPerformanceService(
             ShouldDegrade: false,
             ReasonCode: null,
             ReasonMessage: null);
+    }
+
+    private readonly record struct RecentLargeInflowWarningSignal(
+        bool ShouldWarn,
+        string? WarningMessage)
+    {
+        public static RecentLargeInflowWarningSignal None { get; } = new(
+            ShouldWarn: false,
+            WarningMessage: null);
     }
 }

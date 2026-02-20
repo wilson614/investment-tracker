@@ -633,6 +633,261 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.XirrReliability.Should().Be("High");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenOnePortfolioTriggersRecentLargeInflowWarning_ShouldExposeAggregateWarning()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "TWD");
+        var portfolioB = CreatePortfolio(userId, "TWD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2024;
+        var eventDate = new DateTime(year, 12, 5);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 2000m,
+                EndValueSource = 4001m,
+                StartValueHome = 2000m,
+                EndValueHome = 4001m,
+                NetContributionsSource = 2001m,
+                NetContributionsHome = 2001m,
+                TimeWeightedReturnPercentageSource = 10d,
+                TimeWeightedReturnPercentage = 10d,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                HasRecentLargeInflowWarning = true,
+                RecentLargeInflowWarningMessage = "近期大額資金異動可能導致資金加權報酬率短期波動。",
+                MissingPrices = []
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 0m,
+                EndValueSource = 0m,
+                StartValueHome = 0m,
+                EndValueHome = 0m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                HasRecentLargeInflowWarning = false,
+                RecentLargeInflowWarningMessage = null,
+                MissingPrices = []
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.HasRecentLargeInflowWarning.Should().BeTrue();
+        result.RecentLargeInflowWarningMessage.Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenNoPortfolioTriggersRecentLargeInflowWarning_ShouldNotExposeAggregateWarning()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "USD");
+        var portfolioB = CreatePortfolio(userId, "USD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2024;
+        var eventDate = new DateTime(year, 6, 30);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 1000m,
+                EndValueSource = 1100m,
+                StartValueHome = 31000m,
+                EndValueHome = 34100m,
+                NetContributionsSource = 100m,
+                NetContributionsHome = 3100m,
+                TimeWeightedReturnPercentageSource = 10d,
+                TimeWeightedReturnPercentage = 10d,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                HasRecentLargeInflowWarning = false,
+                RecentLargeInflowWarningMessage = null,
+                MissingPrices = []
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 0m,
+                EndValueSource = 0m,
+                StartValueHome = 0m,
+                EndValueHome = 0m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 366,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                HasRecentLargeInflowWarning = false,
+                RecentLargeInflowWarningMessage = null,
+                MissingPrices = []
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.HasRecentLargeInflowWarning.Should().BeFalse();
+        result.RecentLargeInflowWarningMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CurrentYearYtdModifiedDietz_UsesActualElapsedDaysFromYearStartInsteadOfFixed365()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "USD");
+        var portfolioB = CreatePortfolio(userId, "USD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        var year = DateTime.UtcNow.Year;
+        var yearStart = new DateTime(year, 1, 1);
+        var ytdEnd = DateTime.UtcNow.Date;
+        var flowDate = ytdEnd;
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 1000m,
+                EndValueSource = 2200m,
+                StartValueHome = 30000m,
+                EndValueHome = 66000m,
+                NetContributionsSource = 1000m,
+                NetContributionsHome = 30000m,
+                TimeWeightedReturnPercentageSource = 10d,
+                TimeWeightedReturnPercentage = 10d,
+                EarliestTransactionDateInYear = flowDate,
+                TransactionCount = 1,
+                CoverageStartDate = yearStart,
+                CoverageDays = Math.Max(1, (ytdEnd - yearStart).Days + 1),
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = []
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 0m,
+                EndValueSource = 0m,
+                StartValueHome = 0m,
+                EndValueHome = 0m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = flowDate,
+                TransactionCount = 1,
+                CoverageStartDate = yearStart,
+                CoverageDays = Math.Max(1, (ytdEnd - yearStart).Days + 1),
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = []
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        var totalDaysActual = (ytdEnd - yearStart).Days;
+        var daysSinceStart = (flowDate.Date - yearStart.Date).Days;
+
+        if (totalDaysActual <= 0)
+        {
+            result.ModifiedDietzPercentageSource.Should().BeNull();
+            result.ModifiedDietzPercentage.Should().BeNull();
+            return;
+        }
+
+        var actualWeight = (totalDaysActual - daysSinceStart) / (decimal)totalDaysActual;
+        var expectedActual = (2200m - 1000m - 1000m) / (1000m + 1000m * actualWeight);
+        var expectedActualPct = (double)(expectedActual * 100m);
+
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedActualPct, 0.0001d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(expectedActualPct, 0.0001d);
+
+        result.HasRecentLargeInflowWarning.Should().BeFalse();
+        result.RecentLargeInflowWarningMessage.Should().BeNull();
+
+        var fixed365Weight = (365m - daysSinceStart) / 365m;
+        var expectedFixed365 = (2200m - 1000m - 1000m) / (1000m + 1000m * fixed365Weight);
+        var expectedFixed365Pct = (double)(expectedFixed365 * 100m);
+
+        if (totalDaysActual != 365)
+        {
+            result.ModifiedDietzPercentageSource!.Value.Should().NotBeApproximately(expectedFixed365Pct, 0.0001d);
+        }
+    }
+
     private CalculateAggregateYearPerformanceUseCase CreateUseCase()
     {
         return new CalculateAggregateYearPerformanceUseCase(

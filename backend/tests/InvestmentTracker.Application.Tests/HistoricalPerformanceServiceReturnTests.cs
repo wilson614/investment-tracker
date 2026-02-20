@@ -555,6 +555,9 @@ public class HistoricalPerformanceServiceReturnTests
         result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
         (result.ModifiedDietzPercentageSource!.Value - result.TimeWeightedReturnPercentageSource!.Value)
             .Should().BeGreaterThan(2000d);
+
+        result.HasRecentLargeInflowWarning.Should().BeTrue();
+        result.RecentLargeInflowWarningMessage.Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
     }
 
     [Fact]
@@ -912,6 +915,9 @@ public class HistoricalPerformanceServiceReturnTests
 
         // Without floor this would be -99.9; this assertion guards the floor+fees path in annual sell cashflow.
         result.NetContributionsSource.Should().NotBe(-99.9m);
+
+        result.HasRecentLargeInflowWarning.Should().BeFalse();
+        result.RecentLargeInflowWarningMessage.Should().BeNull();
     }
 
     [Fact]
@@ -1485,6 +1491,219 @@ public class HistoricalPerformanceServiceReturnTests
         // Keep low-confidence characteristics: still no opening baseline and partial-history assumption.
         result.HasOpeningBaseline.Should().BeFalse();
         result.UsesPartialHistoryAssumption.Should().BeTrue();
+
+        result.HasRecentLargeInflowWarning.Should().BeFalse();
+        result.RecentLargeInflowWarningMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_InflowAt50PercentBoundary_ShouldNotTriggerRecentLargeInflowWarning()
+    {
+        // Arrange
+        const int year = 2024;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var triggerDate = new DateTime(year, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Recent inflow boundary (50%) test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 20m,
+            pricePerShare: 50m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var boundaryInflow = new CurrencyTransaction(
+            boundLedger.Id,
+            triggerDate,
+            CurrencyTransactionType.Deposit,
+            1000m,
+            homeAmount: 1000m,
+            exchangeRate: 1m);
+
+        boundLedger.AddTransaction(boundaryInflow);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: boundaryInflow.Id,
+                snapshotDate: triggerDate,
+                beforeSource: 1000m,
+                afterSource: 2000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 12, 5, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 50m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 50m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.HasRecentLargeInflowWarning.Should().BeFalse();
+        result.RecentLargeInflowWarningMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_InflowJustAbove50PercentInLast10PercentWindow_ShouldTriggerRecentLargeInflowWarning()
+    {
+        // Arrange
+        const int year = 2024;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var triggerDate = new DateTime(year, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Recent inflow trigger test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 20m,
+            pricePerShare: 50m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var largeInflow = new CurrencyTransaction(
+            boundLedger.Id,
+            triggerDate,
+            CurrencyTransactionType.Deposit,
+            1001m,
+            homeAmount: 1001m,
+            exchangeRate: 1m);
+
+        boundLedger.AddTransaction(largeInflow);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: largeInflow.Id,
+                snapshotDate: triggerDate,
+                beforeSource: 1000m,
+                afterSource: 2001m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 12, 5, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 50m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 50m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.HasRecentLargeInflowWarning.Should().BeTrue();
+        result.RecentLargeInflowWarningMessage.Should().Be("近期大額資金異動可能導致資金加權報酬率短期波動。");
     }
 
     private static TransactionPortfolioSnapshot CreateSnapshot(

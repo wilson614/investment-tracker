@@ -121,6 +121,17 @@ public record YearPerformanceDto
     /// </summary>
     public string? ReturnDisplayDegradeReasonMessage { get; init; }
 
+    /// <summary>
+    /// Modified Dietz 極端值防禦訊號：是否偵測到期間最後 10% 時段的大額入金（> 當期總資產 50%）。
+    /// </summary>
+    public bool HasRecentLargeInflowWarning { get; init; }
+
+    /// <summary>
+    /// Modified Dietz 極端值防禦訊號文案。
+    /// 觸發時固定為「近期大額資金異動可能導致資金加權報酬率短期波動。」。
+    /// </summary>
+    public string? RecentLargeInflowWarningMessage { get; init; }
+
     /// <summary>計算所需但缺少參考價格的持倉清單。</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 

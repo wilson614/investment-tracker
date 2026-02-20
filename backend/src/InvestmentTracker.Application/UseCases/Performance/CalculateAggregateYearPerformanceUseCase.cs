@@ -22,6 +22,8 @@ public class CalculateAggregateYearPerformanceUseCase(
     private const string ReturnDisplayDegradeReasonNoOpeningBaseline = "LOW_CONFIDENCE_NO_OPENING_BASELINE";
     private const string ReturnDisplayDegradeReasonLowCoverage = "LOW_CONFIDENCE_LOW_COVERAGE";
     private const string ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage = "LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE";
+    private const string RecentLargeInflowWarningMessage = "近期大額資金異動可能導致資金加權報酬率短期波動。";
+
     public async Task<YearPerformanceDto> ExecuteAsync(
         CalculateYearPerformanceRequest request,
         CancellationToken cancellationToken = default)
@@ -100,6 +102,8 @@ public class CalculateAggregateYearPerformanceUseCase(
             hasOpeningBaseline,
             coverageDays);
 
+        var recentLargeInflowWarning = ResolveAggregateRecentLargeInflowWarning(relevantPortfolioResults);
+
         if (missingPrices.Count > 0)
         {
             return ApplyAggregateXirrSuppression(new YearPerformanceDto
@@ -117,7 +121,9 @@ public class CalculateAggregateYearPerformanceUseCase(
                 XirrReliability = rawXirrReliability,
                 ShouldDegradeReturnDisplay = aggregateDegradeSignal.ShouldDegrade,
                 ReturnDisplayDegradeReasonCode = aggregateDegradeSignal.ReasonCode,
-                ReturnDisplayDegradeReasonMessage = aggregateDegradeSignal.ReasonMessage
+                ReturnDisplayDegradeReasonMessage = aggregateDegradeSignal.ReasonMessage,
+                HasRecentLargeInflowWarning = recentLargeInflowWarning.ShouldWarn,
+                RecentLargeInflowWarningMessage = recentLargeInflowWarning.WarningMessage
             });
         }
 
@@ -220,6 +226,8 @@ public class CalculateAggregateYearPerformanceUseCase(
             ShouldDegradeReturnDisplay = aggregateDegradeSignal.ShouldDegrade,
             ReturnDisplayDegradeReasonCode = aggregateDegradeSignal.ReasonCode,
             ReturnDisplayDegradeReasonMessage = aggregateDegradeSignal.ReasonMessage,
+            HasRecentLargeInflowWarning = recentLargeInflowWarning.ShouldWarn,
+            RecentLargeInflowWarningMessage = recentLargeInflowWarning.WarningMessage,
             MissingPrices = []
         });
     }
@@ -433,6 +441,17 @@ public class CalculateAggregateYearPerformanceUseCase(
         return ReturnDisplayDegradeSignal.None;
     }
 
+    private static RecentLargeInflowWarningSignal ResolveAggregateRecentLargeInflowWarning(
+        IReadOnlyList<YearPerformanceDto> portfolioResults)
+    {
+        if (!portfolioResults.Any(result => result.HasRecentLargeInflowWarning))
+            return RecentLargeInflowWarningSignal.None;
+
+        return new RecentLargeInflowWarningSignal(
+            ShouldWarn: true,
+            WarningMessage: RecentLargeInflowWarningMessage);
+    }
+
     private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)
     {
         if (startValue != 0)
@@ -453,5 +472,14 @@ public class CalculateAggregateYearPerformanceUseCase(
             ShouldDegrade: false,
             ReasonCode: null,
             ReasonMessage: null);
+    }
+
+    private readonly record struct RecentLargeInflowWarningSignal(
+        bool ShouldWarn,
+        string? WarningMessage)
+    {
+        public static RecentLargeInflowWarningSignal None { get; } = new(
+            ShouldWarn: false,
+            WarningMessage: null);
     }
 }
