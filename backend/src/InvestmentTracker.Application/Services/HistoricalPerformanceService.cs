@@ -175,7 +175,7 @@ public class HistoricalPerformanceService(
         // Year-start prices: use provided YearStartPrices, or fall back to YearEndPrices
         var yearStartPrices = request.YearStartPrices != null
             ? new Dictionary<string, YearEndPriceInfo>(request.YearStartPrices, StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, YearEndPriceInfo>(StringComparer.OrdinalIgnoreCase);
+            : new Dictionary<string, YearEndPriceInfo>(yearEndPrices, StringComparer.OrdinalIgnoreCase);
 
         // Build ticker -> market lookup from transactions
         var tickerMarketLookup = validTransactions
