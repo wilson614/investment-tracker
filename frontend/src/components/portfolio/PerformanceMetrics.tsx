@@ -1,3 +1,4 @@
+import { Info } from 'lucide-react';
 import { isXirrPeriodTooShort } from '../common/XirrWarningBadge';
 import type { PortfolioSummary, XirrResult } from '../../types';
 
@@ -78,7 +79,7 @@ export function PerformanceMetrics({
     }
 
     if (xirrDisplayState === 'unavailable') {
-      return '資料不足，暫不顯示年化報酬';
+      return '資料不足不顯示';
     }
 
     return null;
@@ -155,7 +156,17 @@ export function PerformanceMetrics({
             )}
 
             {xirrDisplayState === 'unavailable' && (
-              <p className="text-sm text-[var(--text-secondary)]">{xirrStatusText}</p>
+              <div className="flex items-center gap-1 text-sm text-[var(--text-secondary)]">
+                <span>{xirrStatusText}</span>
+                <div className="relative group">
+                  <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                      因交易筆數或資料期間不足，暫無法可靠計算 MD／TWR／XIRR。
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {xirrDisplayState !== 'unavailable' &&

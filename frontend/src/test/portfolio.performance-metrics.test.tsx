@@ -68,7 +68,8 @@ describe('PerformanceMetrics XIRR display consistency', () => {
     const xirrCard = screen.getByText('年化報酬 (XIRR)').closest('.metric-card') as HTMLElement | null;
     expect(xirrCard).not.toBeNull();
 
-    expect(within(xirrCard as HTMLElement).getByText('資料不足，暫不顯示年化報酬')).toBeInTheDocument();
+    expect(within(xirrCard as HTMLElement).getByText('資料不足不顯示')).toBeInTheDocument();
+    expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 MD／TWR／XIRR。')).toBeInTheDocument();
     expect(within(xirrCard as HTMLElement).queryByText('-', { exact: true })).not.toBeInTheDocument();
     expect(within(xirrCard as HTMLElement).queryByText('-')).not.toBeInTheDocument();
   });

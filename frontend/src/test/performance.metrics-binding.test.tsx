@@ -509,8 +509,8 @@ describe('PerformancePage metrics binding regression', () => {
 
     render(<PerformancePage />);
 
-    expect(await screen.findByText(/低信度年度：此年度資料覆蓋天數不足，報酬率信度偏低。/)).toBeInTheDocument();
-    expect(screen.getByText(/已停用單年度年化報酬（XIRR）主顯示/)).toBeInTheDocument();
+    expect(await screen.findByText(/低信度年度：此年度資料覆蓋天數不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。/)).toBeInTheDocument();
+    expect(screen.queryByText(/已停用單年度年化報酬（XIRR）主顯示/)).not.toBeInTheDocument();
     expect(screen.getByText('資金加權報酬率')).toBeInTheDocument();
     expect(screen.getByText('時間加權報酬率')).toBeInTheDocument();
     expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
@@ -529,7 +529,7 @@ describe('PerformancePage metrics binding regression', () => {
     render(<PerformancePage />);
 
     expect(
-      await screen.findByText(/此年度報酬率信度偏低（Low confidence aggregate performance: insufficient coverage period\.）/)
+      await screen.findByText(/此年度績效指標（含 MD／TWR／XIRR）信度偏低（Low confidence aggregate performance: insufficient coverage period\.）/)
     ).toBeInTheDocument();
     expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
   });

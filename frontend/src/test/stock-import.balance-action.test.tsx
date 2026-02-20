@@ -168,7 +168,7 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
 }
 
 function findGlobalSellBeforeBuyActionSelector(): HTMLSelectElement | null {
-  const labeled = screen.queryByLabelText(/賣先買後預設處理方式/i);
+  const labeled = screen.queryByLabelText(/賣在買前時，預設怎麼處理|賣先買後預設處理方式/i);
   if (labeled instanceof HTMLSelectElement) {
     return labeled;
   }
@@ -1101,5 +1101,67 @@ describe('Stock import balance action flow', () => {
     expect(within(rowSelector).getByRole('option', { name: '補足餘額' })).toHaveValue('TopUp');
     expect(within(rowSelector).queryByRole('option', { name: '融資（Margin）' })).not.toBeInTheDocument();
     expect(within(rowSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
+  });
+
+  it('updates baseline and sell-before-buy copy, and uses wider preview layout classes', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-copy-layout',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 81,
+            rawSecurityName: 'ROW-COPY-LAYOUT',
+            status: 'requires_user_action',
+            usesPartialHistoryAssumption: true,
+            actionsRequired: ['choose_sell_before_buy_handling'],
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+
+    const openingCashInput = screen.getByLabelText('期初現金餘額');
+    const openingLedgerInput = screen.getByLabelText('期初帳本餘額');
+
+    expect(openingCashInput).toHaveAttribute('placeholder', '可空');
+    expect(openingLedgerInput).toHaveAttribute('placeholder', '可空');
+    expect(screen.getByText('期初持倉')).toBeInTheDocument();
+
+    expect(screen.queryByText('期初現金餘額（可空）')).not.toBeInTheDocument();
+    expect(screen.queryByText('期初帳本餘額（可空）')).not.toBeInTheDocument();
+    expect(screen.queryByText('期初持倉（可多筆）')).not.toBeInTheDocument();
+
+    await requestPreview(user);
+
+    expect(screen.getByText('賣在買前時，預設怎麼處理')).toBeInTheDocument();
+    expect(screen.queryByText('賣先買後預設處理方式')).not.toBeInTheDocument();
+
+    const hint = screen.getByLabelText('欄位說明：賣在買前時處理');
+    expect(hint).toHaveAttribute('title', '當資料出現先賣後買時，可先選一個預設；也可保留「逐筆決定」在下方每列個別設定。');
+
+    const modalHeading = screen.getByRole('heading', { name: '匯入股票交易' });
+    const modalContainer = modalHeading.closest('.card-dark');
+    expect(modalContainer).not.toBeNull();
+    expect(modalContainer as HTMLElement).toHaveClass('max-w-6xl');
+
+    const sellBeforeBuyHeader = screen.getByRole('columnheader', { name: '賣先買後處理' });
+    expect(sellBeforeBuyHeader).toHaveClass('w-[200px]');
+
+    const remediationTable = sellBeforeBuyHeader.closest('table');
+    expect(remediationTable).not.toBeNull();
+    expect(remediationTable as HTMLElement).toHaveClass('min-w-[1080px]');
   });
 });

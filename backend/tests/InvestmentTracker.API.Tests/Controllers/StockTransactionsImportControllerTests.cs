@@ -466,6 +466,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.StartValueSource.Should().Be(0m);
         yearPerformance.EndValueSource.Should().BeApproximately(105686.84m, 0.001m);
         yearPerformance.NetContributionsSource.Should().Be(100000m);
+        yearPerformance.StartValueHome.Should().Be(0m);
+        yearPerformance.EndValueHome.Should().BeApproximately(105686.84m, 0.001m);
+        yearPerformance.NetContributionsHome.Should().Be(100000m);
 
         yearPerformance.Xirr.Should().BeNull();
         yearPerformance.XirrSource.Should().BeNull();
@@ -479,20 +482,26 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         // Root-cause lock: denominator becomes tiny when year-start baseline is 0
         // and only a very-late external top-up cash flow is weighted into MD.
-        var expectedDenominator = 100000m * weight;
+        var expectedDenominator = yearPerformance.StartValueSource!.Value + yearPerformance.NetContributionsSource!.Value * weight;
         var expectedNumerator = yearPerformance.EndValueSource!.Value
             - yearPerformance.StartValueSource!.Value
             - yearPerformance.NetContributionsSource!.Value;
         var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
 
+        totalDays.Should().Be(364);
+        daysSinceStart.Should().Be(363);
+        weight.Should().BeApproximately(1m / 364m, 0.0000001m);
         expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
         expectedDenominator.Should().BeLessThan(300m);
+        expectedNumerator.Should().Be(5686.84m);
 
         yearPerformance.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
         yearPerformance.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.2d);
         yearPerformance.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
+        yearPerformance.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
 
         yearPerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
         (yearPerformance.ModifiedDietzPercentageSource!.Value - yearPerformance.TimeWeightedReturnPercentageSource!.Value)
             .Should().BeGreaterThan(2000d);
     }

@@ -1421,7 +1421,8 @@ export function StockImportButton({
         [rowNumber]: side,
       }));
     },
-    globalSellBeforeBuyActionLabel: '賣先買後預設處理方式',
+    globalSellBeforeBuyActionLabel: '賣在買前時，預設怎麼處理',
+    globalSellBeforeBuyActionHint: '當資料出現先賣後買時，可先選一個預設；也可保留「逐筆決定」在下方每列個別設定。',
     globalSellBeforeBuyAction,
     onChangeGlobalSellBeforeBuyAction: (value) => {
       setGlobalSellBeforeBuyAction(value);

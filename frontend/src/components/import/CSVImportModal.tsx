@@ -115,6 +115,7 @@ export interface CSVImportPreviewExtensions {
   onChangeTradeSide?: (rowNumber: number, side: 'buy' | 'sell') => void;
 
   globalSellBeforeBuyActionLabel?: string;
+  globalSellBeforeBuyActionHint?: string;
   globalSellBeforeBuyAction?: SellBeforeBuyAction | null;
   onChangeGlobalSellBeforeBuyAction?: (value: SellBeforeBuyAction | null) => void;
   rowSellBeforeBuyActionLabel?: string;
@@ -368,7 +369,7 @@ export function CSVImportModal({
 
   return (
     <div className="fixed inset-0 modal-overlay flex items-center justify-center z-50">
-      <div className="card-dark rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="card-dark rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
@@ -569,7 +570,7 @@ export function CSVImportModal({
                         className="text-sm font-medium text-[var(--text-primary)]"
                         htmlFor="opening-cash-balance-input"
                       >
-                        期初現金餘額（可空）
+                        期初現金餘額
                       </label>
                       <input
                         id="opening-cash-balance-input"
@@ -579,7 +580,7 @@ export function CSVImportModal({
                         aria-label="期初現金餘額"
                         value={previewExtensions.openingCashBalance ?? ''}
                         onChange={(event) => previewExtensions.onChangeOpeningCashBalance?.(event.target.value)}
-                        placeholder="例如 100000"
+                        placeholder="可空"
                         className="input-dark w-full"
                       />
                     </div>
@@ -589,7 +590,7 @@ export function CSVImportModal({
                         className="text-sm font-medium text-[var(--text-primary)]"
                         htmlFor="opening-ledger-balance-input"
                       >
-                        期初帳本餘額（可空）
+                        期初帳本餘額
                       </label>
                       <input
                         id="opening-ledger-balance-input"
@@ -599,7 +600,7 @@ export function CSVImportModal({
                         aria-label="期初帳本餘額"
                         value={previewExtensions.openingLedgerBalance ?? ''}
                         onChange={(event) => previewExtensions.onChangeOpeningLedgerBalance?.(event.target.value)}
-                        placeholder="例如 100000"
+                        placeholder="可空"
                         className="input-dark w-full"
                       />
                     </div>
@@ -607,7 +608,7 @@ export function CSVImportModal({
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-[var(--text-primary)]">期初持倉（可多筆）</p>
+                      <p className="text-sm font-medium text-[var(--text-primary)]">期初持倉</p>
                       <button
                         type="button"
                         onClick={() => previewExtensions.onAddOpeningPosition?.()}
@@ -692,12 +693,23 @@ export function CSVImportModal({
 
               {previewExtensions?.onChangeGlobalSellBeforeBuyAction && (
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-3">
-                  <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-sell-before-buy-action-selector">
-                    {previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-[var(--text-primary)]" htmlFor="global-sell-before-buy-action-selector">
+                      {previewExtensions.globalSellBeforeBuyActionLabel ?? '賣在買前時，預設怎麼處理'}
+                    </label>
+                    {previewExtensions.globalSellBeforeBuyActionHint && (
+                      <span
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[var(--border-color)] text-[10px] text-[var(--text-muted)] cursor-help"
+                        title={previewExtensions.globalSellBeforeBuyActionHint}
+                        aria-label="欄位說明：賣在買前時處理"
+                      >
+                        i
+                      </span>
+                    )}
+                  </div>
                   <select
                     id="global-sell-before-buy-action-selector"
-                    aria-label={previewExtensions.globalSellBeforeBuyActionLabel ?? '賣先買後預設處理方式'}
+                    aria-label={previewExtensions.globalSellBeforeBuyActionLabel ?? '賣在買前時，預設怎麼處理'}
                     value={previewExtensions.globalSellBeforeBuyAction ?? ''}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -821,14 +833,14 @@ export function CSVImportModal({
               {previewExtensions?.remediationRows && previewExtensions.remediationRows.length > 0 && (
                 <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[1240px]">
+                    <table className="w-full text-sm min-w-[1080px]">
                       <thead>
                         <tr className="border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">列號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">標的名稱</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">股票代號</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">買賣方向</th>
-                          <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">賣先買後處理</th>
+                          <th className="px-3 py-2 w-[200px] text-left text-[var(--text-muted)] font-medium">賣先買後處理</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">餘額不足處理</th>
                           <th className="px-3 py-2 text-left text-[var(--text-muted)] font-medium">狀態</th>
                         </tr>
@@ -883,7 +895,7 @@ export function CSVImportModal({
                                 <p className="mt-1 text-xs text-[var(--text-muted)]">{row.note}</p>
                               )}
                             </td>
-                            <td className="px-3 py-3 text-[var(--text-secondary)]">
+                            <td className="px-3 py-3 w-[200px] text-[var(--text-secondary)]">
                               {row.requiresSellBeforeBuyHandling ? (
                                 <select
                                   value={row.sellBeforeBuyActionSelection ?? 'default'}

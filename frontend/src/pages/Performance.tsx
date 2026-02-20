@@ -49,9 +49,9 @@ const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 const MINIMUM_RELIABLE_COVERAGE_DAYS = 90;
 
 const RETURN_DISPLAY_DEGRADE_REASON_COPY: Record<string, string> = {
-  LOW_CONFIDENCE_NO_OPENING_BASELINE: '此年度缺少期初基準，報酬率信度偏低。',
-  LOW_CONFIDENCE_LOW_COVERAGE: '此年度資料覆蓋天數不足，報酬率信度偏低。',
-  LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，報酬率信度偏低。',
+  LOW_CONFIDENCE_NO_OPENING_BASELINE: '此年度缺少期初基準，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
+  LOW_CONFIDENCE_LOW_COVERAGE: '此年度資料覆蓋天數不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
+  LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，年度績效指標（含 MD／TWR／XIRR）信度偏低。',
 };
 
 /**
@@ -1638,10 +1638,10 @@ function PerformancePageContent({
 
     const backendMessage = performance.returnDisplayDegradeReasonMessage?.trim();
     if (backendMessage) {
-      return `此年度報酬率信度偏低（${backendMessage}）`;
+      return `此年度績效指標（含 MD／TWR／XIRR）信度偏低（${backendMessage}）`;
     }
 
-    return '此年度報酬率信度偏低，請優先參考年度摘要與資料覆蓋訊號。';
+    return '此年度績效指標（含 MD／TWR／XIRR）信度偏低，請優先參考年度摘要與資料覆蓋訊號。';
   }, [isSelectedYearPerformance, performance]);
 
   const isPerformanceValueReady = Boolean(
@@ -1973,9 +1973,6 @@ function PerformancePageContent({
                       <div className="mb-4 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3">
                         <p className="text-sm text-[var(--color-warning)]">
                           低信度年度：{returnDisplayDegradeHint}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                          已停用單年度年化報酬（XIRR）主顯示，請搭配下方年度摘要評估。
                         </p>
                       </div>
                     )}

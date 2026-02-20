@@ -372,9 +372,10 @@ describe('DashboardPage aggregate fixed behavior', () => {
     expect(xirrCard).not.toBeNull();
 
     await waitFor(() => {
-      const unavailableText = within(xirrCard as HTMLElement).getByText('資料不足，暫不顯示年化報酬');
+      const unavailableText = within(xirrCard as HTMLElement).getByText('資料不足不顯示');
       expect(unavailableText).toBeInTheDocument();
-      expect(unavailableText.className).toContain('text-[var(--text-secondary)]');
+      expect((unavailableText.closest('div') as HTMLElement | null)?.className ?? '').toContain('text-[var(--text-secondary)]');
+      expect(within(xirrCard as HTMLElement).getByText('因交易筆數或資料期間不足，暫無法可靠計算 MD／TWR／XIRR。')).toBeInTheDocument();
     });
 
     expect(within(xirrCard as HTMLElement).queryByText('資料更新中，正在計算年化報酬')).not.toBeInTheDocument();

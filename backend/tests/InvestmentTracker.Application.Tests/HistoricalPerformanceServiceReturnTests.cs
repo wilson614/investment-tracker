@@ -521,6 +521,9 @@ public class HistoricalPerformanceServiceReturnTests
         result.StartValueSource.Should().Be(0m);
         result.EndValueSource.Should().Be(105686.84m);
         result.NetContributionsSource.Should().Be(topUpAmount);
+        result.StartValueHome.Should().Be(0m);
+        result.EndValueHome.Should().Be(105686.84m);
+        result.NetContributionsHome.Should().Be(topUpAmount);
 
         var totalDays = (yearEnd.Date - yearStart.Date).Days;
         var daysSinceStart = (tradeDate.Date - yearStart.Date).Days;
@@ -532,8 +535,12 @@ public class HistoricalPerformanceServiceReturnTests
         var expectedNumerator = result.EndValueSource!.Value - result.StartValueSource!.Value - result.NetContributionsSource!.Value;
         var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
 
+        totalDays.Should().Be(364);
+        daysSinceStart.Should().Be(363);
+        weight.Should().BeApproximately(1m / 364m, 0.0000001m);
         expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
         expectedDenominator.Should().BeLessThan(300m);
+        expectedNumerator.Should().Be(5686.84m);
 
         result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
         result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);

@@ -332,10 +332,39 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.ReturnDisplayDegradeReasonMessage.Should().NotBeNullOrWhiteSpace();
 
         result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeTrue();
+        result.CoverageStartDate.Should().Be(lateTradeDate);
         result.CoverageDays.Should().Be(2);
+
+        result.StartValueSource.Should().Be(0m);
+        result.EndValueSource.Should().Be(105686.84m);
+        result.NetContributionsSource.Should().Be(100000m);
+        result.StartValueHome.Should().Be(0m);
+        result.EndValueHome.Should().Be(105686.84m);
+        result.NetContributionsHome.Should().Be(100000m);
+
+        var periodStart = new DateTime(year, 1, 1);
+        var periodEnd = new DateTime(year, 12, 31);
+        var totalDays = (periodEnd.Date - periodStart.Date).Days;
+        var daysSinceStart = (lateTradeDate.Date - periodStart.Date).Days;
+        var weight = (totalDays - daysSinceStart) / (decimal)totalDays;
+
+        var expectedDenominator = result.StartValueSource!.Value + result.NetContributionsSource!.Value * weight;
+        var expectedNumerator = result.EndValueSource!.Value - result.StartValueSource!.Value - result.NetContributionsSource!.Value;
+        var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
+
+        totalDays.Should().Be(364);
+        daysSinceStart.Should().Be(363);
+        weight.Should().BeApproximately(1m / 364m, 0.0000001m);
+        expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
+        expectedNumerator.Should().Be(5686.84m);
+
         result.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
         result.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.01d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
     }
 
     [Fact]

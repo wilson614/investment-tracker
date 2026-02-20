@@ -509,6 +509,7 @@ describe('PortfolioPage quote cache key consistency', () => {
     );
 
     await waitFor(() => {
+      expect(screen.getByText('持倉')).toBeInTheDocument();
       expect(screen.getByText('持倉清單僅顯示淨股數（買入－賣出）大於 0 的標的。')).toBeInTheDocument();
       expect(screen.getByTestId('mock-position-card-ABC-2')).toBeInTheDocument();
     });
