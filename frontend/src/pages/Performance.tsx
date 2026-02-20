@@ -48,6 +48,12 @@ const BENCHMARK_OPTIONS = [
 const YTD_PREFS_KEY = 'ytd_benchmark_preferences';
 const MINIMUM_RELIABLE_COVERAGE_DAYS = 90;
 
+const RETURN_DISPLAY_DEGRADE_REASON_COPY: Record<string, string> = {
+  LOW_CONFIDENCE_NO_OPENING_BASELINE: '此年度缺少期初基準，報酬率信度偏低。',
+  LOW_CONFIDENCE_LOW_COVERAGE: '此年度資料覆蓋天數不足，報酬率信度偏低。',
+  LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，報酬率信度偏低。',
+};
+
 /**
  * 從 localStorage 讀取使用者選擇的 benchmark（與 Dashboard 同步，fallback 用）。
  *
@@ -1526,7 +1532,6 @@ function PerformancePageContent({
         selectedCurrencyLabel: null as string | null,
         modifiedDietzValue: null as number | null,
         timeWeightedReturnValue: null as number | null,
-        xirrValue: null as number | null,
         totalReturnValue: null as number | null,
         startValue: null as number | null,
         endValue: null as number | null,
@@ -1545,10 +1550,6 @@ function PerformancePageContent({
     const timeWeightedReturnValueForYear = currencyMode === 'source'
       ? performance.timeWeightedReturnPercentageSource
       : performance.timeWeightedReturnPercentage;
-
-    const xirrValueForYear = currencyMode === 'source'
-      ? performance.xirrPercentageSource
-      : performance.xirrPercentage;
 
     const totalReturnValueForYear = currencyMode === 'source'
       ? performance.totalReturnPercentageSource
@@ -1570,7 +1571,6 @@ function PerformancePageContent({
       selectedCurrencyLabel: selectedCurrencyLabelValue,
       modifiedDietzValue: modifiedDietzValueForYear,
       timeWeightedReturnValue: timeWeightedReturnValueForYear,
-      xirrValue: xirrValueForYear,
       totalReturnValue: totalReturnValueForYear,
       startValue: startValueForYear,
       endValue: endValueForYear,
@@ -1582,7 +1582,6 @@ function PerformancePageContent({
     selectedCurrencyLabel,
     modifiedDietzValue,
     timeWeightedReturnValue,
-    xirrValue,
     totalReturnValue,
     startValue,
     endValue,
@@ -1627,23 +1626,23 @@ function PerformancePageContent({
     return signals;
   }, [isSelectedYearPerformance, performance]);
 
-  type PerformanceXirrDisplayState = 'loading' | 'ready' | 'lowConfidence' | 'unavailable';
-
-  const xirrDisplayState: PerformanceXirrDisplayState = useMemo(() => {
-    if (!isSelectedYearPerformance || !performance || !performance.isComplete || selectedCurrencyLabel == null) {
-      return 'loading';
+  const returnDisplayDegradeHint = useMemo(() => {
+    if (!isSelectedYearPerformance || !performance || !performance.shouldDegradeReturnDisplay) {
+      return null;
     }
 
-    if (xirrValue != null) {
-      return performance.xirrReliability === 'Low' ? 'lowConfidence' : 'ready';
+    const reasonCode = performance.returnDisplayDegradeReasonCode?.trim() ?? '';
+    if (reasonCode && RETURN_DISPLAY_DEGRADE_REASON_COPY[reasonCode]) {
+      return RETURN_DISPLAY_DEGRADE_REASON_COPY[reasonCode];
     }
 
-    if (performance.xirrReliability === 'Unavailable') {
-      return 'unavailable';
+    const backendMessage = performance.returnDisplayDegradeReasonMessage?.trim();
+    if (backendMessage) {
+      return `此年度報酬率信度偏低（${backendMessage}）`;
     }
 
-    return 'loading';
-  }, [isSelectedYearPerformance, performance, selectedCurrencyLabel, xirrValue]);
+    return '此年度報酬率信度偏低，請優先參考年度摘要與資料覆蓋訊號。';
+  }, [isSelectedYearPerformance, performance]);
 
   const isPerformanceValueReady = Boolean(
     performance &&
@@ -1969,99 +1968,73 @@ function PerformancePageContent({
                     <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* 資金加權報酬率 */}
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
-                        <div className="relative group">
-                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              衡量比例的重壓 (Modified Dietz)
+                  <>
+                    {returnDisplayDegradeHint && (
+                      <div className="mb-4 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3">
+                        <p className="text-sm text-[var(--color-warning)]">
+                          低信度年度：{returnDisplayDegradeHint}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                          已停用單年度年化報酬（XIRR）主顯示，請搭配下方年度摘要評估。
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* 資金加權報酬率 */}
+                      <div>
+                        <div className="flex items-center gap-1 mb-1">
+                          <p className="text-sm text-[var(--text-muted)]">資金加權報酬率</p>
+                          <div className="relative group">
+                            <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                                衡量比例的重壓 (Modified Dietz)
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {modifiedDietzValue! >= 0 ? (
-                          <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
-                        ) : (
-                          <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
-                        )}
-                        <span className={`text-3xl font-bold number-display ${
-                          modifiedDietzValue! >= 0 ? 'number-positive' : 'number-negative'
-                        }`}>
-                          {formatPercent(modifiedDietzValue)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 時間加權報酬率 */}
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
-                        <div className="relative group">
-                          <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
-                            <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              衡量本金的重壓 (TWR)
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {timeWeightedReturnValue! >= 0 ? (
-                          <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
-                        ) : (
-                          <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
-                        )}
-                        <span className={`text-3xl font-bold number-display ${
-                          timeWeightedReturnValue! >= 0 ? 'number-positive' : 'number-negative'
-                        }`}>
-                          {formatPercent(timeWeightedReturnValue)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 年化報酬率 (XIRR) */}
-                    <div>
-                      <div className="flex items-center gap-1 mb-1">
-                        <p className="text-sm text-[var(--text-muted)]">年化報酬率 (XIRR)</p>
-                      </div>
-                      {xirrDisplayState === 'loading' && (
-                        <div className="flex items-center gap-2 text-[var(--text-muted)]">
-                          <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-peach)]" />
-                          <span className="text-lg">計算中</span>
-                        </div>
-                      )}
-                      {xirrDisplayState === 'ready' && xirrValue != null && (
                         <div className="flex items-center gap-2">
-                          {xirrValue >= 0 ? (
+                          {modifiedDietzValue! >= 0 ? (
                             <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
                           ) : (
                             <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
                           )}
                           <span className={`text-3xl font-bold number-display ${
-                            xirrValue >= 0 ? 'number-positive' : 'number-negative'
+                            modifiedDietzValue! >= 0 ? 'number-positive' : 'number-negative'
                           }`}>
-                            {formatPercent(xirrValue)}
+                            {formatPercent(modifiedDietzValue)}
                           </span>
                         </div>
-                      )}
-                      {xirrDisplayState === 'lowConfidence' && xirrValue != null && (
-                        <div className="space-y-1">
-                          <p className={`text-3xl font-bold number-display ${xirrValue >= 0 ? 'number-positive' : 'number-negative'}`}>
-                            {formatPercent(xirrValue)}
-                          </p>
-                          <p className="text-sm text-[var(--color-warning)]">低信度</p>
+                      </div>
+
+                      {/* 時間加權報酬率 */}
+                      <div>
+                        <div className="flex items-center gap-1 mb-1">
+                          <p className="text-sm text-[var(--text-muted)]">時間加權報酬率</p>
+                          <div className="relative group">
+                            <Info className="w-4 h-4 text-[var(--text-muted)] cursor-help" />
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10">
+                              <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                                衡量本金的重壓 (TWR)
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      {xirrDisplayState === 'unavailable' && (
-                        <p className="text-lg text-[var(--text-muted)]">不可用</p>
-                      )}
+                        <div className="flex items-center gap-2">
+                          {timeWeightedReturnValue! >= 0 ? (
+                            <TrendingUp className="w-6 h-6 text-[var(--color-success)]" />
+                          ) : (
+                            <TrendingDown className="w-6 h-6 text-[var(--color-danger)]" />
+                          )}
+                          <span className={`text-3xl font-bold number-display ${
+                            timeWeightedReturnValue! >= 0 ? 'number-positive' : 'number-negative'
+                          }`}>
+                            {formatPercent(timeWeightedReturnValue)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             </div>

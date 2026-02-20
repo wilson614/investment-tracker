@@ -70,6 +70,9 @@ const aggregatePerformanceMock: YearPerformance = {
   hasOpeningBaseline: null,
   usesPartialHistoryAssumption: null,
   xirrReliability: null,
+  shouldDegradeReturnDisplay: false,
+  returnDisplayDegradeReasonCode: null,
+  returnDisplayDegradeReasonMessage: null,
   missingPrices: [],
   isComplete: true,
 };

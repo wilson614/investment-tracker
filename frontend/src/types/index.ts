@@ -585,6 +585,9 @@ export interface YearPerformance {
   hasOpeningBaseline: boolean | null;
   usesPartialHistoryAssumption: boolean | null;
   xirrReliability: 'High' | 'Medium' | 'Low' | 'Unavailable' | null;
+  shouldDegradeReturnDisplay: boolean;
+  returnDisplayDegradeReasonCode: string | null;
+  returnDisplayDegradeReasonMessage: string | null;
   missingPrices: MissingPrice[];
   isComplete: boolean;
 }

@@ -214,6 +214,9 @@ function createPerformanceMock(overrides: Partial<YearPerformance> = {}): YearPe
     hasOpeningBaseline: false,
     usesPartialHistoryAssumption: false,
     xirrReliability: 'High',
+    shouldDegradeReturnDisplay: false,
+    returnDisplayDegradeReasonCode: null,
+    returnDisplayDegradeReasonMessage: null,
     missingPrices: [],
     isComplete: true,
     ...overrides,
@@ -475,7 +478,7 @@ describe('PerformancePage metrics binding regression', () => {
     expect(within(twrCard as HTMLElement).queryByText('+21.43%')).not.toBeInTheDocument();
   });
 
-  it('shows coverage signals for partial-history yearly data without mixing XIRR state copy', async () => {
+  it('shows coverage signals for partial-history yearly data and does not render XIRR card', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(
       createPerformanceMock({
@@ -492,26 +495,46 @@ describe('PerformancePage metrics binding regression', () => {
     expect(await screen.findByText(/資料覆蓋有限/)).toBeInTheDocument();
     expect(screen.getByText(/此年度含節錄匯入假設/)).toBeInTheDocument();
     expect(screen.getByText(/已套用期初基準/)).toBeInTheDocument();
-    expect(screen.queryByText(/年化報酬不提供/)).not.toBeInTheDocument();
-    expect(screen.getByText('不可用')).toBeInTheDocument();
+    expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
   });
 
-  it('shows low-confidence XIRR state explicitly when reliability is Low', async () => {
+  it('shows degrade hint and keeps MD/TWR visible when return display should degrade', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(
       createPerformanceMock({
-        xirrPercentage: 8.88,
-        xirrReliability: 'Low',
+        shouldDegradeReturnDisplay: true,
+        returnDisplayDegradeReasonCode: 'LOW_CONFIDENCE_LOW_COVERAGE',
       })
     );
 
     render(<PerformancePage />);
 
-    expect(await screen.findByText('+8.88%')).toBeInTheDocument();
-    expect(screen.getByText('低信度')).toBeInTheDocument();
+    expect(await screen.findByText(/低信度年度：此年度資料覆蓋天數不足，報酬率信度偏低。/)).toBeInTheDocument();
+    expect(screen.getByText(/已停用單年度年化報酬（XIRR）主顯示/)).toBeInTheDocument();
+    expect(screen.getByText('資金加權報酬率')).toBeInTheDocument();
+    expect(screen.getByText('時間加權報酬率')).toBeInTheDocument();
+    expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
   });
 
-  it('shows XIRR loading state when performance values are still incomplete', async () => {
+  it('shows fallback degrade hint from backend reason message when reason code is unknown', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+    setupPageMocks(
+      createPerformanceMock({
+        shouldDegradeReturnDisplay: true,
+        returnDisplayDegradeReasonCode: 'SOME_UNKNOWN_CODE',
+        returnDisplayDegradeReasonMessage: 'Low confidence aggregate performance: insufficient coverage period.',
+      })
+    );
+
+    render(<PerformancePage />);
+
+    expect(
+      await screen.findByText(/此年度報酬率信度偏低（Low confidence aggregate performance: insufficient coverage period\.）/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
+  });
+
+  it('keeps XIRR card hidden while performance values are still incomplete', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(
       createPerformanceMock({
@@ -524,8 +547,7 @@ describe('PerformancePage metrics binding regression', () => {
     await waitFor(() => {
       expect(screen.getAllByText('計算績效中...').length).toBeGreaterThan(0);
     });
-    expect(screen.queryByText('低信度')).not.toBeInTheDocument();
-    expect(screen.queryByText('不可用')).not.toBeInTheDocument();
+    expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
   });
 
   it('binds total return to home/source fields when currency mode changes', async () => {

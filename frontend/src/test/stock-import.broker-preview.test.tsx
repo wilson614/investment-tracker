@@ -163,6 +163,9 @@ function buildYearPerformance(overrides: Partial<YearPerformance> = {}): YearPer
     hasOpeningBaseline: false,
     usesPartialHistoryAssumption: false,
     xirrReliability: 'High',
+    shouldDegradeReturnDisplay: false,
+    returnDisplayDegradeReasonCode: null,
+    returnDisplayDegradeReasonMessage: null,
     missingPrices: [],
     isComplete: true,
     ...overrides,
@@ -408,10 +411,17 @@ function ImportToPerformanceHarness() {
 
       {importCompleted && performance ? (
         <section aria-label="performance-summary">
-          <div>
-            <p>年化報酬率 (XIRR)</p>
-            <p>{formatPercent(performance.xirrPercentage)}</p>
-          </div>
+          {!performance.shouldDegradeReturnDisplay ? (
+            <div>
+              <p>年化報酬率 (XIRR)</p>
+              <p>{formatPercent(performance.xirrPercentage)}</p>
+            </div>
+          ) : (
+            <div>
+              <p>低信度年度</p>
+              <p>{performance.returnDisplayDegradeReasonMessage ?? '此年度報酬率信度偏低，已停用年化報酬主顯示。'}</p>
+            </div>
+          )}
           <div>
             <p>淨投入</p>
             <p>{`${formatHomeCurrency(performance.netContributionsHome)} ${performance.sourceCurrency ?? 'TWD'}`}</p>
@@ -891,6 +901,78 @@ describe('Stock import broker preview flow', () => {
     expect(within(performanceSummary).queryByText('300 TWD')).not.toBeInTheDocument();
     expect(within(performanceSummary).queryByText('—')).not.toBeInTheDocument();
     expect(within(performanceSummary).queryByText('-', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('shows degrade reason instead of XIRR value after import when yearly return display should degrade', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-performance-degrade-flow',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 1,
+            rawSecurityName: 'ROW-PERFORMANCE-DEGRADE',
+            ticker: '2330',
+            tradeSide: 'buy',
+            confirmedTradeSide: 'buy',
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(
+      buildExecuteResponse({
+        summary: {
+          totalRows: 1,
+          insertedRows: 1,
+          failedRows: 0,
+          errorCount: 0,
+        },
+      }),
+    );
+
+    const performanceYear = 2025;
+    mockedPortfolioApi.getAvailableYears.mockResolvedValue({
+      years: [performanceYear],
+      earliestYear: performanceYear,
+      currentYear: performanceYear,
+    });
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValue(
+      buildYearPerformance({
+        year: performanceYear,
+        xirrPercentage: 88.88,
+        shouldDegradeReturnDisplay: true,
+        returnDisplayDegradeReasonCode: 'LOW_CONFIDENCE_LOW_COVERAGE',
+        returnDisplayDegradeReasonMessage: 'Low confidence performance: insufficient coverage period.',
+        netContributionsHome: 22222.2,
+        sourceCurrency: 'USD',
+      }),
+    );
+
+    render(<ImportToPerformanceHarness />);
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    await user.click(executeButton);
+
+    const performanceSummary = await screen.findByLabelText('performance-summary');
+
+    expect(within(performanceSummary).queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
+    expect(within(performanceSummary).queryByText('+88.88%')).not.toBeInTheDocument();
+    expect(within(performanceSummary).getByText('低信度年度')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('Low confidence performance: insufficient coverage period.')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('22,222 USD')).toBeInTheDocument();
   });
 
   it('preview row ordering remains stable after per-row confirmation interaction', async () => {
