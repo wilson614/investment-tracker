@@ -476,3 +476,55 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
   - Backend application/API/infrastructure targeted suites all PASS.
   - Frontend targeted regressions and type-check PASS.
   - Coverage links root-cause reproduction, pricing-policy constraints, and UI-state behavior in one evidence set.
+
+## Verification Notes (Group H XIRR/Annual Degrade Closure Update)
+
+- Updated for Group H closure with automated QA evidence (date: **2026-02-20**).
+- Single-year Performance page no longer renders XIRR as the primary annual value; annual card focus is kept on non-XIRR primary metrics and reliability-aware signals.
+- Dashboard and Portfolio XIRR status copy is unified to the same explicit state wording, and Portfolio no longer displays the `-` placeholder for XIRR state.
+- The 2025 Modified Dietz extreme-value scenario is treated as a **degraded/low-confidence annual signal** when confidence is low, and is no longer presented as a normal primary annual value.
+- Backend and frontend regressions confirm consistency across contract fields, degrade reasons, and UI rendering behavior.
+
+## Verification Evidence (Group H Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~HistoricalPerformanceServiceReturnTests|FullyQualifiedName~CalculateAggregateYearPerformanceUseCaseTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/dashboard.aggregate-fixed.test.tsx src/test/portfolio.performance-metrics.test.tsx
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/performance.metrics-binding.test.tsx src/test/stock-import.broker-preview.test.tsx src/test/useHistoricalPerformance.test.ts
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend application regression (`HistoricalPerformanceServiceReturnTests` + `CalculateAggregateYearPerformanceUseCaseTests`) | PASS | Failed: 0, Passed: 18, Total: 18 |
+| Backend API regression (`StockTransactionsImportControllerTests`) | PASS | Failed: 0, Passed: 23, Total: 23 |
+| Frontend regression (`dashboard.aggregate-fixed` + `portfolio.performance-metrics`) | PASS | 2 test files passed, 8 tests passed, 0 failed |
+| Frontend regression (`performance.metrics-binding` + `stock-import.broker-preview` + `useHistoricalPerformance`) | PASS | 3 test files passed, 51 tests passed, 0 failed |
+| Frontend type-check | PASS | Type-check completed without errors |
+
+### Group H Traceability (T084-T097)
+
+| Task(s) | Key File(s) | Key Test(s) / Evidence |
+|---|---|---|
+| T084, T094 | `frontend/src/pages/Performance.tsx`, `frontend/src/types/index.ts` | `frontend/src/test/performance.metrics-binding.test.tsx`, `frontend/src/test/useHistoricalPerformance.test.ts`, `frontend/src/test/stock-import.broker-preview.test.tsx` |
+| T085 | `frontend/src/test/performance.metrics-binding.test.tsx` | Single-year XIRR disablement + low-confidence degrade-hint assertions |
+| T086 | `frontend/src/pages/Dashboard.tsx` | `frontend/src/test/dashboard.aggregate-fixed.test.tsx` |
+| T087 | `frontend/src/components/portfolio/PerformanceMetrics.tsx` | `frontend/src/test/portfolio.performance-metrics.test.tsx` |
+| T088 | `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, `frontend/src/test/portfolio.performance-metrics.test.tsx` | Dashboard/Portfolio XIRR state regression coverage |
+| T089 | `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs` | API contract assertions in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` |
+| T090 | `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs` | `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs` |
+| T091 | `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs` | `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs` |
+| T092 | `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs` | Degrade-reason branch regressions (18 passed summary scope) |
+| T093 | `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` | Annual degrade-signal contract API regressions (23 passed summary scope) |
+| T095 | `frontend/src/test/stock-import.broker-preview.test.tsx` | Import-to-performance degraded-summary regression |
+| T096 | `specs/012-import-broker-statement/tasks.md` | Group H checklist completion recorded |
+| T097 | `specs/012-import-broker-statement/quickstart.md` | This Group H notes/evidence/traceability update |

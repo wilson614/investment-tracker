@@ -162,6 +162,20 @@
 - [x] T081 Record Group G root-cause and source-policy verification evidence in `specs/012-import-broker-statement/quickstart.md`
 - [x] T082 Update Speckit checklist for Group G completion in `specs/012-import-broker-statement/tasks.md`
 - [x] T083 Update quickstart traceability matrix for Group G in `specs/012-import-broker-statement/quickstart.md`
+- [x] T084 Disable single-year XIRR primary value rendering in `frontend/src/pages/Performance.tsx`
+- [x] T085 Add frontend regression assertions for single-year XIRR disablement and degrade hint behavior in `frontend/src/test/performance.metrics-binding.test.tsx`
+- [x] T086 Unify dashboard XIRR status copy and visual contrast in `frontend/src/pages/Dashboard.tsx`
+- [x] T087 Replace portfolio XIRR `-` placeholder with explicit status copy in `frontend/src/components/portfolio/PerformanceMetrics.tsx`
+- [x] T088 Add dashboard/portfolio XIRR state regression tests in `frontend/src/test/dashboard.aggregate-fixed.test.tsx` and `frontend/src/test/portfolio.performance-metrics.test.tsx`
+- [x] T089 Add annual return display degrade contract fields in `backend/src/InvestmentTracker.Application/DTOs/PerformanceDtos.cs`
+- [x] T090 Implement low-confidence annual return degrade signal in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T091 Apply aggregate annual return degrade signal in `backend/src/InvestmentTracker.Application/UseCases/Performance/CalculateAggregateYearPerformanceUseCase.cs`
+- [x] T092 Add backend branch regression tests for degrade reasons in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs` and `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`
+- [x] T093 Add API regression assertions for annual degrade signal contract in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T094 Integrate degrade reason warning rendering in `frontend/src/pages/Performance.tsx` and `frontend/src/types/index.ts`
+- [x] T095 Add import-to-performance degraded-summary regression coverage in `frontend/src/test/stock-import.broker-preview.test.tsx`
+- [x] T096 Update Speckit checklist for Group H completion in `specs/012-import-broker-statement/tasks.md`
+- [x] T097 Record Group H QA evidence and traceability in `specs/012-import-broker-statement/quickstart.md`
 
 ---
 
