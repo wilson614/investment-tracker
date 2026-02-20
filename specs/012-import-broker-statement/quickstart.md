@@ -528,3 +528,68 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
 | T095 | `frontend/src/test/stock-import.broker-preview.test.tsx` | Import-to-performance degraded-summary regression |
 | T096 | `specs/012-import-broker-statement/tasks.md` | Group H checklist completion recorded |
 | T097 | `specs/012-import-broker-statement/quickstart.md` | This Group H notes/evidence/traceability update |
+
+## Verification Notes (Group I UX Copy & Import Preview Usability Update)
+
+- Updated for Group I UX copy and import-preview usability closure with automated QA evidence (date: **2026-02-20**).
+- This round copy/tooltip/modal adjustments focus on readability and operator confidence:
+  - Annual low-confidence wording now explicitly describes confidence impact for MD/TWR/XIRR indicators instead of generic disablement wording.
+  - Dashboard and Portfolio unavailable state copy is unified to `資料不足不顯示`, with info-tooltips that explain why values are intentionally hidden.
+  - Portfolio holdings net-share visibility note is moved into a tooltip to keep the page clean while preserving discoverability.
+  - Import modal baseline labels/placeholders are normalized to `可空`, `期初持倉（可多筆）` is renamed to `期初持倉`, and preview balance-action wording/tooltips are made user-facing.
+  - Import preview usability is improved by narrowing the `賣先買後處理` column and widening the modal to reduce horizontal scrolling.
+- Reproducible 2025 MD data points used in this round:
+  - `startValueSource=0`
+  - `endValueSource=105686.84`
+  - `netContributionsSource=100000`
+  - `coverageDays=2`
+  - `hasOpeningBaseline=false`
+  - `usesPartialHistoryAssumption=true`
+  - `denominator≈274.7252747`
+  - `numerator=5686.84`
+  - `ModifiedDietz≈2070.01%`
+  - `TimeWeightedReturn≈5.68684%`
+- Why the Modified Dietz becomes extreme in this case (concrete readable explanation):
+  - With `hasOpeningBaseline=false`, the year starts from zero baseline and the method must infer return from a partial-history setup.
+  - The net contribution (`100000`) arrives very late in the year (`coverageDays=2`), so time-weighting shrinks the effective denominator to about `274.7252747`.
+  - Absolute gain (`numerator=5686.84`) is not unusually large by itself, but dividing by a near-zero denominator amplifies the MD percentage.
+  - This yields `ModifiedDietz≈2070.01%`, which is mathematically consistent with cash-flow timing rather than a normal full-year growth profile.
+  - `TimeWeightedReturn≈5.68684%` remains comparatively moderate because TWR is less sensitive to the same late-flow denominator compression.
+
+## Verification Evidence (Group I Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~HistoricalPerformanceServiceReturnTests|FullyQualifiedName~CalculateAggregateYearPerformanceUseCaseTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/performance.metrics-binding.test.tsx src/test/dashboard.aggregate-fixed.test.tsx src/test/portfolio.performance-metrics.test.tsx src/test/portfolio.page.non-transaction-cache.test.tsx src/test/stock-import.balance-action.test.tsx
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend application regression (`HistoricalPerformanceServiceReturnTests` + `CalculateAggregateYearPerformanceUseCaseTests`) | PASS | Failed: 0, Passed: 18, Total: 18 |
+| Backend API regression (`StockTransactionsImportControllerTests`) | PASS | Failed: 0, Passed: 23, Total: 23 |
+| Frontend combined regression (`performance.metrics-binding` + `dashboard.aggregate-fixed` + `portfolio.performance-metrics` + `portfolio.page.non-transaction-cache` + `stock-import.balance-action`) | PASS | 5 test files passed, 48 tests passed, 0 failed |
+| Frontend type-check | PASS | Type-check completed without errors |
+
+### Group I Traceability (T098-T110)
+
+| Task(s) | Key File(s) | Key Test(s) / Evidence |
+|---|---|---|
+| T098, T099 | `frontend/src/pages/Performance.tsx` | `frontend/src/test/performance.metrics-binding.test.tsx` (annual copy and low-confidence wording assertions) |
+| T100 | `frontend/src/pages/Dashboard.tsx` | `frontend/src/test/dashboard.aggregate-fixed.test.tsx` (`資料不足不顯示` copy + tooltip reason assertions) |
+| T101 | `frontend/src/components/portfolio/PerformanceMetrics.tsx` | `frontend/src/test/portfolio.performance-metrics.test.tsx` (`資料不足不顯示` copy + tooltip reason assertions) |
+| T102 | `frontend/src/pages/Portfolio.tsx` | `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx` (net-share visibility note rendered via tooltip) |
+| T103, T104, T106 | `frontend/src/components/import/CSVImportModal.tsx` | `frontend/src/test/stock-import.balance-action.test.tsx` (baseline label/placeholder, heading rename, and preview usability assertions) |
+| T105 | `frontend/src/components/import/StockImportButton.tsx`, `frontend/src/components/import/CSVImportModal.tsx` | `frontend/src/test/stock-import.balance-action.test.tsx` (user-friendly balance-action wording + tooltip guidance) |
+| T107 | `frontend/src/test/performance.metrics-binding.test.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, `frontend/src/test/portfolio.performance-metrics.test.tsx`, `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`, `frontend/src/test/stock-import.balance-action.test.tsx` | Combined frontend regression closure evidence in this round (performance/dashboard/portfolio/import balance: 48 passed) |
+| T108 | `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`, `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs` | Reproducible 2025 MD assertions include `startValueSource=0`, `endValueSource=105686.84`, `netContributionsSource=100000`, `coverageDays=2`, `hasOpeningBaseline=false`, `usesPartialHistoryAssumption=true`, `denominator≈274.7252747`, `numerator=5686.84`, `ModifiedDietz≈2070.01%`, and `TimeWeightedReturn≈5.68684%` |
+| T109 | `specs/012-import-broker-statement/quickstart.md` | This Group I notes/evidence/traceability update with concrete MD readability explanation |
+| T110 | `specs/012-import-broker-statement/tasks.md` | Group I checklist completion recorded |

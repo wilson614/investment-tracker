@@ -176,6 +176,19 @@
 - [x] T095 Add import-to-performance degraded-summary regression coverage in `frontend/src/test/stock-import.broker-preview.test.tsx`
 - [x] T096 Update Speckit checklist for Group H completion in `specs/012-import-broker-statement/tasks.md`
 - [x] T097 Record Group H QA evidence and traceability in `specs/012-import-broker-statement/quickstart.md`
+- [x] T098 Remove the single-year XIRR disablement sentence from annual performance card in `frontend/src/pages/Performance.tsx`
+- [x] T099 Update low-confidence annual messaging to explicitly cover MD/TWR/XIRR indicator confidence in `frontend/src/pages/Performance.tsx`
+- [x] T100 Change dashboard unavailable copy to `資料不足不顯示` and add info-tooltip reason in `frontend/src/pages/Dashboard.tsx`
+- [x] T101 Change portfolio unavailable copy to `資料不足不顯示` and add info-tooltip reason in `frontend/src/components/portfolio/PerformanceMetrics.tsx`
+- [x] T102 Move holdings net-share visibility note into info-tooltip in `frontend/src/pages/Portfolio.tsx`
+- [x] T103 Update baseline input labels/placeholders (`可空`) and remove `(可空)` suffix in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T104 Rename `期初持倉（可多筆）` heading to `期初持倉` in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T105 Replace `賣先買後預設處理方式` with user-friendly wording and tooltip in `frontend/src/components/import/StockImportButton.tsx` and `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T106 Reduce `賣先買後處理` preview column width and widen import modal to reduce horizontal scrolling in `frontend/src/components/import/CSVImportModal.tsx`
+- [x] T107 Add frontend regressions for updated copy/tooltips/layout in `frontend/src/test/performance.metrics-binding.test.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, `frontend/src/test/portfolio.performance-metrics.test.tsx`, `frontend/src/test/portfolio.page.non-transaction-cache.test.tsx`, and `frontend/src/test/stock-import.balance-action.test.tsx`
+- [x] T108 Add backend regression assertions with concrete reproducible 2025 MD extreme-value data points in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs`, and `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T109 Record Group I verification evidence and concrete 2025 MD explanation in `specs/012-import-broker-statement/quickstart.md`
+- [x] T110 Update Speckit checklist for Group I completion in `specs/012-import-broker-statement/tasks.md`
 
 ---
 
