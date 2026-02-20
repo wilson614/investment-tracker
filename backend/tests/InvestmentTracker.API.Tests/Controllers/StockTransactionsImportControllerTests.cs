@@ -452,6 +452,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearRoot.GetProperty("hasOpeningBaseline").GetBoolean().Should().BeFalse();
         yearRoot.GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeTrue();
         yearRoot.GetProperty("xirrReliability").GetString().Should().Be("Unavailable");
+        yearRoot.GetProperty("shouldDegradeReturnDisplay").GetBoolean().Should().BeTrue();
+        yearRoot.GetProperty("returnDisplayDegradeReasonCode").GetString()
+            .Should().Be("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
+        yearRoot.GetProperty("returnDisplayDegradeReasonMessage").GetString().Should().NotBeNullOrWhiteSpace();
 
         var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(yearPayload, ApiJsonOptions);
         yearPerformance.Should().NotBeNull();
@@ -2179,6 +2183,19 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         (xirrReliability.ValueKind == JsonValueKind.Null || xirrReliability.ValueKind == JsonValueKind.String)
             .Should().BeTrue();
 
+        yearPerformanceRoot.TryGetProperty("shouldDegradeReturnDisplay", out var shouldDegradeReturnDisplay).Should().BeTrue();
+        (shouldDegradeReturnDisplay.ValueKind == JsonValueKind.True
+            || shouldDegradeReturnDisplay.ValueKind == JsonValueKind.False)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("returnDisplayDegradeReasonCode", out var degradeReasonCode).Should().BeTrue();
+        (degradeReasonCode.ValueKind == JsonValueKind.Null || degradeReasonCode.ValueKind == JsonValueKind.String)
+            .Should().BeTrue();
+
+        yearPerformanceRoot.TryGetProperty("returnDisplayDegradeReasonMessage", out var degradeReasonMessage).Should().BeTrue();
+        (degradeReasonMessage.ValueKind == JsonValueKind.Null || degradeReasonMessage.ValueKind == JsonValueKind.String)
+            .Should().BeTrue();
+
         if (coverageDays.ValueKind == JsonValueKind.Number)
         {
             coverageDays.GetInt32().Should().BeGreaterThanOrEqualTo(0);
@@ -2187,6 +2204,16 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         if (xirrReliability.ValueKind == JsonValueKind.String)
         {
             xirrReliability.GetString().Should().NotBeNullOrWhiteSpace();
+        }
+
+        if (degradeReasonCode.ValueKind == JsonValueKind.String)
+        {
+            degradeReasonCode.GetString().Should().NotBeNullOrWhiteSpace();
+        }
+
+        if (degradeReasonMessage.ValueKind == JsonValueKind.String)
+        {
+            degradeReasonMessage.GetString().Should().NotBeNullOrWhiteSpace();
         }
     }
 

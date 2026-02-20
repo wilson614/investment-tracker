@@ -512,6 +512,9 @@ public class HistoricalPerformanceServiceReturnTests
         result.CoverageStartDate.Should().Be(tradeDate.Date);
         result.CoverageDays.Should().Be(2);
         result.XirrReliability.Should().Be("Unavailable");
+        result.ShouldDegradeReturnDisplay.Should().BeTrue();
+        result.ReturnDisplayDegradeReasonCode.Should().Be("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
+        result.ReturnDisplayDegradeReasonMessage.Should().NotBeNullOrWhiteSpace();
         result.Xirr.Should().BeNull();
         result.XirrSource.Should().BeNull();
 
@@ -541,6 +544,117 @@ public class HistoricalPerformanceServiceReturnTests
         result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
         (result.ModifiedDietzPercentageSource!.Value - result.TimeWeightedReturnPercentageSource!.Value)
             .Should().BeGreaterThan(2000d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_NoOpeningBaselineWithSufficientCoverage_DegradesWithNoOpeningBaselineReason()
+    {
+        // Arrange
+        const int year = 2025;
+        var tradeDate = new DateTime(year, 10, 3, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "No baseline only degrade reason test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: tradeDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1000m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+        buy.CreatedAt = new DateTime(year, 10, 3, 1, 0, 0, DateTimeKind.Utc);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buy]);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: buy.Id,
+                snapshotDate: tradeDate,
+                beforeSource: 0m,
+                afterSource: 100000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 10, 3, 2, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 105.68684m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.CoverageStartDate.Should().Be(tradeDate.Date);
+        result.CoverageDays.Should().Be(90);
+
+        result.ShouldDegradeReturnDisplay.Should().BeTrue();
+        result.ReturnDisplayDegradeReasonCode.Should().Be("LOW_CONFIDENCE_NO_OPENING_BASELINE");
+        result.ReturnDisplayDegradeReasonCode.Should().NotBe("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
+        result.ReturnDisplayDegradeReasonMessage.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void ResolveReturnDisplayDegradeSignal_WithOpeningBaselineAndLowCoverage_ReturnsLowCoverageReason()
+    {
+        // Arrange
+        var method = typeof(HistoricalPerformanceService).GetMethod(
+            "ResolveReturnDisplayDegradeSignal",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        // Act
+        var signal = method!.Invoke(null, ["Unavailable", true, 17]);
+        var signalType = signal!.GetType();
+        var shouldDegrade = (bool)signalType.GetProperty("ShouldDegrade")!.GetValue(signal)!;
+        var reasonCode = (string?)signalType.GetProperty("ReasonCode")!.GetValue(signal);
+
+        // Assert
+        shouldDegrade.Should().BeTrue();
+        reasonCode.Should().Be("LOW_CONFIDENCE_LOW_COVERAGE");
+        reasonCode.Should().NotBe("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
     }
 
     [Fact]

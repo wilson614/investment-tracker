@@ -322,7 +322,7 @@ describe('DashboardPage aggregate fixed behavior', () => {
       expect(aggregateXirrCallCount).toBeGreaterThanOrEqual(2);
     });
 
-    expect(within(xirrCard as HTMLElement).getByText('計算中')).toBeInTheDocument();
+    expect(within(xirrCard as HTMLElement).getByText('資料更新中，正在計算年化報酬')).toBeInTheDocument();
 
     await act(async () => {
       deferredXirr.resolve(aggregateXirr);
@@ -330,7 +330,7 @@ describe('DashboardPage aggregate fixed behavior', () => {
     });
 
     await waitFor(() => {
-      expect(within(xirrCard as HTMLElement).queryByText('計算中')).not.toBeInTheDocument();
+      expect(within(xirrCard as HTMLElement).queryByText('資料更新中，正在計算年化報酬')).not.toBeInTheDocument();
       expect(within(xirrCard as HTMLElement).getByText('+12.00%')).toBeInTheDocument();
     });
   });
@@ -353,7 +353,9 @@ describe('DashboardPage aggregate fixed behavior', () => {
 
     await waitFor(() => {
       expect(within(xirrCard as HTMLElement).getByText('+12.00%')).toBeInTheDocument();
-      expect(within(xirrCard as HTMLElement).getByText('低信度')).toBeInTheDocument();
+      const warningText = within(xirrCard as HTMLElement).getByText('資料期間較短，年化報酬僅供參考');
+      expect(warningText).toBeInTheDocument();
+      expect(warningText.className).toContain('text-[var(--color-warning)]');
     });
   });
 
@@ -370,9 +372,11 @@ describe('DashboardPage aggregate fixed behavior', () => {
     expect(xirrCard).not.toBeNull();
 
     await waitFor(() => {
-      expect(within(xirrCard as HTMLElement).getByText('不可用')).toBeInTheDocument();
+      const unavailableText = within(xirrCard as HTMLElement).getByText('資料不足，暫不顯示年化報酬');
+      expect(unavailableText).toBeInTheDocument();
+      expect(unavailableText.className).toContain('text-[var(--text-secondary)]');
     });
 
-    expect(within(xirrCard as HTMLElement).queryByText('計算中')).not.toBeInTheDocument();
+    expect(within(xirrCard as HTMLElement).queryByText('資料更新中，正在計算年化報酬')).not.toBeInTheDocument();
   });
 });

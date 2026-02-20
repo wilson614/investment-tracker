@@ -16,6 +16,12 @@ public class CalculateAggregateYearPerformanceUseCase(
     PortfolioCalculator portfolioCalculator,
     IReturnCalculator returnCalculator)
 {
+    private const int MinimumReliableCoverageDays = 90;
+    private const string XirrReliabilityLow = "Low";
+    private const string XirrReliabilityUnavailable = "Unavailable";
+    private const string ReturnDisplayDegradeReasonNoOpeningBaseline = "LOW_CONFIDENCE_NO_OPENING_BASELINE";
+    private const string ReturnDisplayDegradeReasonLowCoverage = "LOW_CONFIDENCE_LOW_COVERAGE";
+    private const string ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage = "LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE";
     public async Task<YearPerformanceDto> ExecuteAsync(
         CalculateYearPerformanceRequest request,
         CancellationToken cancellationToken = default)
@@ -89,6 +95,10 @@ public class CalculateAggregateYearPerformanceUseCase(
             .Any(r => r.UsesPartialHistoryAssumption == true);
 
         var rawXirrReliability = ResolveAggregateXirrReliability(relevantPortfolioResults);
+        var aggregateDegradeSignal = ResolveReturnDisplayDegradeSignal(
+            rawXirrReliability,
+            hasOpeningBaseline,
+            coverageDays);
 
         if (missingPrices.Count > 0)
         {
@@ -104,7 +114,10 @@ public class CalculateAggregateYearPerformanceUseCase(
                 CoverageDays = coverageDays,
                 HasOpeningBaseline = hasOpeningBaseline,
                 UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
-                XirrReliability = rawXirrReliability
+                XirrReliability = rawXirrReliability,
+                ShouldDegradeReturnDisplay = aggregateDegradeSignal.ShouldDegrade,
+                ReturnDisplayDegradeReasonCode = aggregateDegradeSignal.ReasonCode,
+                ReturnDisplayDegradeReasonMessage = aggregateDegradeSignal.ReasonMessage
             });
         }
 
@@ -204,6 +217,9 @@ public class CalculateAggregateYearPerformanceUseCase(
             HasOpeningBaseline = hasOpeningBaseline,
             UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
             XirrReliability = rawXirrReliability,
+            ShouldDegradeReturnDisplay = aggregateDegradeSignal.ShouldDegrade,
+            ReturnDisplayDegradeReasonCode = aggregateDegradeSignal.ReasonCode,
+            ReturnDisplayDegradeReasonMessage = aggregateDegradeSignal.ReasonMessage,
             MissingPrices = []
         });
     }
@@ -377,6 +393,46 @@ public class CalculateAggregateYearPerformanceUseCase(
         return "Unavailable";
     }
 
+    private static ReturnDisplayDegradeSignal ResolveReturnDisplayDegradeSignal(
+        string? xirrReliability,
+        bool hasOpeningBaseline,
+        int? coverageDays)
+    {
+        var isLowConfidence = string.Equals(xirrReliability, XirrReliabilityLow, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(xirrReliability, XirrReliabilityUnavailable, StringComparison.OrdinalIgnoreCase);
+
+        if (!isLowConfidence)
+            return ReturnDisplayDegradeSignal.None;
+
+        var hasLowCoverage = !coverageDays.HasValue || coverageDays.Value < MinimumReliableCoverageDays;
+
+        if (!hasOpeningBaseline && hasLowCoverage)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage,
+                ReasonMessage: "Low confidence aggregate performance: missing opening baseline and insufficient coverage.");
+        }
+
+        if (!hasOpeningBaseline)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonNoOpeningBaseline,
+                ReasonMessage: "Low confidence aggregate performance: missing opening baseline.");
+        }
+
+        if (hasLowCoverage)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonLowCoverage,
+                ReasonMessage: "Low confidence aggregate performance: insufficient coverage period.");
+        }
+
+        return ReturnDisplayDegradeSignal.None;
+    }
+
     private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)
     {
         if (startValue != 0)
@@ -386,5 +442,16 @@ public class CalculateAggregateYearPerformanceUseCase(
             return (double)((endValue - netContributions) / netContributions) * 100;
 
         return null;
+    }
+
+    private readonly record struct ReturnDisplayDegradeSignal(
+        bool ShouldDegrade,
+        string? ReasonCode,
+        string? ReasonMessage)
+    {
+        public static ReturnDisplayDegradeSignal None { get; } = new(
+            ShouldDegrade: false,
+            ReasonCode: null,
+            ReasonMessage: null);
     }
 }

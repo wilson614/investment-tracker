@@ -1,3 +1,4 @@
+import { isXirrPeriodTooShort } from '../common/XirrWarningBadge';
 import type { PortfolioSummary, XirrResult } from '../../types';
 
 interface PerformanceMetricsProps {
@@ -56,6 +57,33 @@ export function PerformanceMetrics({
     ? 'number-positive'
     : 'number-negative';
 
+  type PortfolioXirrDisplayState = 'ready' | 'lowConfidence' | 'unavailable';
+
+  const hasXirrValue = displayValues.xirrPercentage != null;
+  const isXirrLowConfidence = Boolean(
+    xirrResult &&
+    displayValues.xirrPercentage != null &&
+    isXirrPeriodTooShort(xirrResult.earliestTransactionDate, xirrResult.asOfDate)
+  );
+
+  const xirrDisplayState: PortfolioXirrDisplayState = (() => {
+    if (!hasXirrValue) return 'unavailable';
+    if (isXirrLowConfidence) return 'lowConfidence';
+    return 'ready';
+  })();
+
+  const xirrStatusText = (() => {
+    if (xirrDisplayState === 'lowConfidence') {
+      return '資料期間較短，年化報酬僅供參考';
+    }
+
+    if (xirrDisplayState === 'unavailable') {
+      return '資料不足，暫不顯示年化報酬';
+    }
+
+    return null;
+  })();
+
   if (isLoading) {
     return (
       <div className="card-dark p-6 animate-pulse" style={{ minHeight: 206 }}>
@@ -109,14 +137,33 @@ export function PerformanceMetrics({
           </div>
 
           <div className="metric-card">
-            <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬率 (XIRR)</p>
-            <p className={`text-xl font-bold number-display ${displayValues.xirrPercentage != null ? xirrColor : 'text-[var(--text-muted)]'}`}>
-              {formatPercent(displayValues.xirrPercentage)}
-            </p>
-            {displayValues.cashFlowCount != null && displayValues.cashFlowCount > 1 && (
-              <p className="text-sm text-[var(--text-muted)]">
-                基於 {displayValues.cashFlowCount - 1} 筆交易計算
+            <p className="text-sm text-[var(--text-muted)] mb-1">年化報酬 (XIRR)</p>
+
+            {xirrDisplayState === 'ready' && (
+              <p className={`text-xl font-bold number-display ${xirrColor}`}>
+                {formatPercent(displayValues.xirrPercentage)}
               </p>
+            )}
+
+            {xirrDisplayState === 'lowConfidence' && (
+              <div className="space-y-1">
+                <p className={`text-xl font-bold number-display ${xirrColor}`}>
+                  {formatPercent(displayValues.xirrPercentage)}
+                </p>
+                <p className="text-sm text-[var(--color-warning)]">{xirrStatusText}</p>
+              </div>
+            )}
+
+            {xirrDisplayState === 'unavailable' && (
+              <p className="text-sm text-[var(--text-secondary)]">{xirrStatusText}</p>
+            )}
+
+            {xirrDisplayState !== 'unavailable' &&
+              displayValues.cashFlowCount != null &&
+              displayValues.cashFlowCount > 1 && (
+                <p className="text-sm text-[var(--text-muted)]">
+                  基於 {displayValues.cashFlowCount - 1} 筆交易計算
+                </p>
             )}
           </div>
         </div>

@@ -33,6 +33,9 @@ public class HistoricalPerformanceService(
     private const string XirrReliabilityMedium = "Medium";
     private const string XirrReliabilityLow = "Low";
     private const string XirrReliabilityUnavailable = "Unavailable";
+    private const string ReturnDisplayDegradeReasonNoOpeningBaseline = "LOW_CONFIDENCE_NO_OPENING_BASELINE";
+    private const string ReturnDisplayDegradeReasonLowCoverage = "LOW_CONFIDENCE_LOW_COVERAGE";
+    private const string ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage = "LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE";
     /// <summary>
     /// 取得可計算績效的年份清單。
     /// </summary>
@@ -328,6 +331,10 @@ public class HistoricalPerformanceService(
                 usesPartialHistoryAssumption,
                 coverageDays,
                 hasXirrValue: false);
+            var degradeSignalOnMissingPrices = ResolveReturnDisplayDegradeSignal(
+                reliabilityOnMissingPrices,
+                hasOpeningBaseline,
+                coverageDays);
 
             return new YearPerformanceDto
             {
@@ -341,7 +348,10 @@ public class HistoricalPerformanceService(
                 CoverageDays = coverageDays,
                 HasOpeningBaseline = hasOpeningBaseline,
                 UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
-                XirrReliability = reliabilityOnMissingPrices
+                XirrReliability = reliabilityOnMissingPrices,
+                ShouldDegradeReturnDisplay = degradeSignalOnMissingPrices.ShouldDegrade,
+                ReturnDisplayDegradeReasonCode = degradeSignalOnMissingPrices.ReasonCode,
+                ReturnDisplayDegradeReasonMessage = degradeSignalOnMissingPrices.ReasonMessage
             };
         }
 
@@ -881,6 +891,11 @@ public class HistoricalPerformanceService(
         var xirrPercentageHome = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
         var xirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
 
+        var returnDisplayDegradeSignal = ResolveReturnDisplayDegradeSignal(
+            xirrReliability,
+            hasOpeningBaseline,
+            coverageDays);
+
         logger.LogInformation(
             "Year {Year} performance reliability={Reliability} coverageDays={CoverageDays} hasOpeningBaseline={HasOpeningBaseline} usesPartialHistoryAssumption={UsesPartialHistoryAssumption}",
             year,
@@ -925,6 +940,9 @@ public class HistoricalPerformanceService(
             HasOpeningBaseline = hasOpeningBaseline,
             UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
             XirrReliability = xirrReliability,
+            ShouldDegradeReturnDisplay = returnDisplayDegradeSignal.ShouldDegrade,
+            ReturnDisplayDegradeReasonCode = returnDisplayDegradeSignal.ReasonCode,
+            ReturnDisplayDegradeReasonMessage = returnDisplayDegradeSignal.ReasonMessage,
             MissingPrices = []
         };
     }
@@ -965,6 +983,46 @@ public class HistoricalPerformanceService(
             return XirrReliabilityMedium;
 
         return XirrReliabilityHigh;
+    }
+
+    private static ReturnDisplayDegradeSignal ResolveReturnDisplayDegradeSignal(
+        string? xirrReliability,
+        bool hasOpeningBaseline,
+        int? coverageDays)
+    {
+        var isLowConfidence = string.Equals(xirrReliability, XirrReliabilityLow, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(xirrReliability, XirrReliabilityUnavailable, StringComparison.OrdinalIgnoreCase);
+
+        if (!isLowConfidence)
+            return ReturnDisplayDegradeSignal.None;
+
+        var hasLowCoverage = !coverageDays.HasValue || coverageDays.Value < MinimumReliableCoverageDays;
+
+        if (!hasOpeningBaseline && hasLowCoverage)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonNoOpeningBaselineAndLowCoverage,
+                ReasonMessage: "Low confidence performance: missing opening baseline and insufficient coverage.");
+        }
+
+        if (!hasOpeningBaseline)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonNoOpeningBaseline,
+                ReasonMessage: "Low confidence performance: missing opening baseline.");
+        }
+
+        if (hasLowCoverage)
+        {
+            return new ReturnDisplayDegradeSignal(
+                ShouldDegrade: true,
+                ReasonCode: ReturnDisplayDegradeReasonLowCoverage,
+                ReasonMessage: "Low confidence performance: insufficient coverage period.");
+        }
+
+        return ReturnDisplayDegradeSignal.None;
     }
 
     private static double? CalculateTotalReturnPercentage(decimal startValue, decimal endValue, decimal netContributions)
@@ -1029,4 +1087,14 @@ public class HistoricalPerformanceService(
         };
     }
 
+    private readonly record struct ReturnDisplayDegradeSignal(
+        bool ShouldDegrade,
+        string? ReasonCode,
+        string? ReasonMessage)
+    {
+        public static ReturnDisplayDegradeSignal None { get; } = new(
+            ShouldDegrade: false,
+            ReasonCode: null,
+            ReasonMessage: null);
+    }
 }

@@ -106,6 +106,21 @@ public record YearPerformanceDto
     /// </summary>
     public string? XirrReliability { get; init; }
 
+    /// <summary>
+    /// 前端主績效顯示是否應降級（例如避免把低信度年度的極端數值當作主值）。
+    /// </summary>
+    public bool ShouldDegradeReturnDisplay { get; init; }
+
+    /// <summary>
+    /// 主績效顯示降級原因碼（例如 LOW_CONFIDENCE_NO_OPENING_BASELINE / LOW_CONFIDENCE_LOW_COVERAGE）。
+    /// </summary>
+    public string? ReturnDisplayDegradeReasonCode { get; init; }
+
+    /// <summary>
+    /// 主績效顯示降級原因訊息。
+    /// </summary>
+    public string? ReturnDisplayDegradeReasonMessage { get; init; }
+
     /// <summary>計算所需但缺少參考價格的持倉清單。</summary>
     public IReadOnlyList<MissingPriceDto> MissingPrices { get; init; } = [];
 

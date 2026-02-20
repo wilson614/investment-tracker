@@ -788,6 +788,22 @@ export function DashboardPage() {
     return 'unavailable';
   })();
 
+  const xirrStatusText = (() => {
+    if (xirrDisplayState === 'loading') {
+      return '資料更新中，正在計算年化報酬';
+    }
+
+    if (xirrDisplayState === 'lowConfidence') {
+      return '資料期間較短，年化報酬僅供參考';
+    }
+
+    if (xirrDisplayState === 'unavailable') {
+      return '資料不足，暫不顯示年化報酬';
+    }
+
+    return null;
+  })();
+
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -869,9 +885,9 @@ export function DashboardPage() {
             <div className="metric-card">
               <p className="text-[var(--text-muted)] text-sm mb-1">年化報酬 (XIRR)</p>
               {xirrDisplayState === 'loading' && (
-                <div className="flex items-center gap-2 text-[var(--text-muted)]" aria-label="XIRR 計算中">
+                <div className="flex items-center gap-2 text-[var(--text-secondary)]" aria-label="XIRR 計算中">
                   <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-peach)]" />
-                  <span className="text-lg">計算中</span>
+                  <span className="text-sm">{xirrStatusText}</span>
                 </div>
               )}
 
@@ -898,18 +914,21 @@ export function DashboardPage() {
                       asOfDate={xirrResult.asOfDate}
                     />
                   </div>
-                  <p className="text-sm text-[var(--color-warning)]">低信度</p>
+                  <p className="text-sm text-[var(--color-warning)]">{xirrStatusText}</p>
                 </div>
               )}
 
               {xirrDisplayState === 'unavailable' && (
-                <p className="text-lg text-[var(--text-muted)]">不可用</p>
+                <p className="text-sm text-[var(--text-secondary)]">{xirrStatusText}</p>
               )}
 
-              {isSummaryReady && xirrResult && xirrResult.cashFlowCount > 1 && (
-                <p className="text-sm text-[var(--text-muted)]">
-                  {xirrResult.cashFlowCount - 1} 筆交易
-                </p>
+              {xirrDisplayState !== 'unavailable' &&
+                isSummaryReady &&
+                xirrResult &&
+                xirrResult.cashFlowCount > 1 && (
+                  <p className="text-sm text-[var(--text-muted)]">
+                    {xirrResult.cashFlowCount - 1} 筆交易
+                  </p>
               )}
               {isSummaryReady && xirrError && (
                 <p className="text-xs text-[var(--color-danger)]">{xirrError}</p>
