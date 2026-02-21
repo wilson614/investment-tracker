@@ -20,6 +20,8 @@ public class StockTransaction : BaseEntity
     public string? Notes { get; private set; }
     public bool IsDeleted { get; private set; }
     public decimal? RealizedPnlHome { get; private set; }
+    public decimal? MarketValueAtImport { get; private set; }
+    public decimal? HistoricalTotalCost { get; private set; }
     public StockMarket Market { get; private set; }
     public Currency Currency { get; private set; }
 

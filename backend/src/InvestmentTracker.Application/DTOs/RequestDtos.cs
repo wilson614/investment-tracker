@@ -193,6 +193,11 @@ public record StockImportOpeningPositionRequest
     /// 期初總成本（可選）。
     /// </summary>
     public decimal? TotalCost { get; init; }
+
+    /// <summary>
+    /// 使用者提供的歷史總成本（可選）。
+    /// </summary>
+    public decimal? HistoricalTotalCost { get; init; }
 }
 
 /// <summary>

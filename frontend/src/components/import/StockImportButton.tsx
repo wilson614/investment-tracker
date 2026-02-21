@@ -503,16 +503,22 @@ function buildBaselineRequest(
     .map((position) => {
       const ticker = normalizeTickerValue(position.ticker);
       const quantity = parseOptionalNumber(position.quantity);
-      const totalCost = parseOptionalNumber(position.totalCost);
+      const historicalTotalCost = parseOptionalNumber(position.totalCost);
 
-      if (!ticker && quantity === undefined && totalCost === undefined) {
+      if (!ticker && quantity === undefined && historicalTotalCost === undefined) {
         return null;
       }
 
       return {
         ...(ticker ? { ticker } : {}),
         ...(quantity !== undefined ? { quantity } : {}),
-        ...(totalCost !== undefined ? { totalCost } : {}),
+        ...(historicalTotalCost !== undefined
+          ? {
+              historicalTotalCost,
+              // Backward compatibility: keep legacy key until backend contract fully migrates.
+              totalCost: historicalTotalCost,
+            }
+          : {}),
       };
     })
     .filter((position): position is NonNullable<typeof position> => position !== null);

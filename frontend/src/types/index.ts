@@ -134,6 +134,7 @@ export type StockImportBalanceDecisionScope = 'global_default' | 'row_override';
 export interface StockImportOpeningPositionRequest {
   ticker?: string;
   quantity?: number;
+  historicalTotalCost?: number;
   totalCost?: number;
 }
 

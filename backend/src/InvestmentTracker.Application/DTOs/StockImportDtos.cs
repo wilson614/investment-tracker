@@ -35,6 +35,7 @@ public record StockImportSessionOpeningPositionSnapshotDto
     public string? Ticker { get; init; }
     public decimal? Quantity { get; init; }
     public decimal? TotalCost { get; init; }
+    public decimal? HistoricalTotalCost { get; init; }
 }
 
 /// <summary>

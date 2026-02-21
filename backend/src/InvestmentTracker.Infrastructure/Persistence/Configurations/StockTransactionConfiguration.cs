@@ -40,6 +40,14 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
             .HasPrecision(18, 2)
             .HasDefaultValue(0m);
 
+        builder.Property(t => t.MarketValueAtImport)
+            .IsRequired(false)
+            .HasPrecision(18, 2);
+
+        builder.Property(t => t.HistoricalTotalCost)
+            .IsRequired(false)
+            .HasPrecision(18, 2);
+
         builder.Property(t => t.Notes)
             .HasMaxLength(500);
 

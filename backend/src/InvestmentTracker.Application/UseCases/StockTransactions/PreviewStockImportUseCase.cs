@@ -518,7 +518,8 @@ public sealed class PreviewStockImportUseCase(
                         ? null
                         : position.Ticker.Trim().ToUpperInvariant(),
                     Quantity = position.Quantity,
-                    TotalCost = position.TotalCost
+                    TotalCost = position.TotalCost,
+                    HistoricalTotalCost = position.HistoricalTotalCost
                 })
             .OfType<StockImportSessionOpeningPositionSnapshotDto>()
             .ToList();
