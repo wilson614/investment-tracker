@@ -207,6 +207,9 @@
 - [x] T126 Extend frontend yearly performance type contract with `hasRecentLargeInflowWarning` in `frontend/src/types/index.ts`
 - [x] T127 [P] Add frontend regression coverage for performance copy updates, warning rendering, and tooltip a11y semantics in `frontend/src/test/performance.metrics-binding.test.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, and `frontend/src/test/portfolio.performance-metrics.test.tsx`
 - [x] T128 [P] Add frontend regression coverage for import tooltip a11y semantics and related copy updates in `frontend/src/test/stock-import.balance-action.test.tsx`, `frontend/src/test/stock-import.broker-preview.test.tsx`, and `frontend/src/test/useHistoricalPerformance.test.ts`
+- [x] T129 Add `MarketValueAtImport` and `HistoricalTotalCost` fields to `StockTransaction` and update EF mapping/migration in `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`, `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockTransactionConfiguration.cs`, and `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
+- [x] T130 Extend stock import opening-position contracts with optional `HistoricalTotalCost` in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` and `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs`
+- [x] T131 Align baseline snapshot/payload contract for `HistoricalTotalCost` in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/PreviewStockImportUseCase.cs`, `frontend/src/types/index.ts`, and `frontend/src/components/import/StockImportButton.tsx`
 
 ---
 
