@@ -135,6 +135,93 @@ public class PortfolioCalculatorTests
         Assert.Equal(10.1234m, position.TotalShares);
     }
 
+    [Fact]
+    public void CalculatePosition_AdjustmentCostPriority_UsesHistoricalTotalCostFirst()
+    {
+        // Arrange
+        var adjustment = CreateAdjustmentTransaction("VWRA", 10m, 100m, 2m, 5m);
+        adjustment.SetImportInitialization(marketValueAtImport: 1500m, historicalTotalCost: 1200m);
+
+        var transactions = new List<StockTransaction> { adjustment };
+
+        // Act
+        var position = _calculator.CalculatePosition("VWRA", transactions);
+
+        // Assert
+        Assert.Equal(10m, position.TotalShares);
+        Assert.Equal(1200m, position.TotalCostSource);
+        Assert.Equal(2400m, position.TotalCostHome);
+    }
+
+    [Fact]
+    public void CalculatePositionByMarket_AdjustmentCostPriority_UsesMarketValueAtImportWhenHistoricalTotalCostMissing()
+    {
+        // Arrange
+        var adjustment = CreateAdjustmentTransactionWithMarket("VWRA", StockMarket.UK, 8m, 50m, 3m, 2m);
+        adjustment.SetImportInitialization(marketValueAtImport: 700m, historicalTotalCost: null);
+
+        var transactions = new List<StockTransaction> { adjustment };
+
+        // Act
+        var position = _calculator.CalculatePositionByMarket("VWRA", StockMarket.UK, transactions);
+
+        // Assert
+        Assert.Equal(8m, position.TotalShares);
+        Assert.Equal(700m, position.TotalCostSource);
+        Assert.Equal(2100m, position.TotalCostHome);
+    }
+
+    [Fact]
+    public void CalculatePositionWithSplitAdjustments_AdjustmentCostPriority_FallsBackToTransactionTotalCostWhenImportFieldsMissing()
+    {
+        // Arrange
+        var splitService = new StockSplitAdjustmentService();
+        var adjustment = CreateAdjustmentTransaction("AAPL", 5m, 20m, 4m, 1m);
+
+        var transactions = new List<StockTransaction> { adjustment };
+
+        // Act
+        var position = _calculator.CalculatePositionWithSplitAdjustments(
+            "AAPL",
+            transactions,
+            [],
+            splitService);
+
+        // Assert
+        Assert.Equal(5m, position.TotalShares);
+        Assert.Equal(101m, position.TotalCostSource);
+        Assert.Equal(404m, position.TotalCostHome);
+    }
+
+    [Fact]
+    public void CalculatePositionWithSplitAdjustmentsByMarket_AdjustmentCostPriority_UsesHistoricalTotalCostFirst()
+    {
+        // Arrange
+        var splitService = new StockSplitAdjustmentService();
+        var adjustment = CreateAdjustmentTransactionWithMarket("AAPL", StockMarket.US, 5m, 20m, 4m, 1m);
+        adjustment.SetImportInitialization(marketValueAtImport: 450m, historicalTotalCost: 420m);
+
+        var splits = new List<StockSplit>
+        {
+            CreateStockSplit("AAPL", StockMarket.US, adjustment.TransactionDate.AddDays(1), 2m)
+        };
+
+        var transactions = new List<StockTransaction> { adjustment };
+
+        // Act
+        var position = _calculator.CalculatePositionWithSplitAdjustmentsByMarket(
+            "AAPL",
+            StockMarket.US,
+            transactions,
+            splits,
+            splitService);
+
+        // Assert
+        Assert.Equal(10m, position.TotalShares);
+        Assert.Equal(420m, position.TotalCostSource);
+        Assert.Equal(1680m, position.TotalCostHome);
+    }
+
     #endregion
 
     #region CalculateUnrealizedPnl Tests
@@ -468,6 +555,41 @@ public class PortfolioCalculatorTests
             fees);
         tx.SetMarket(market);
         return tx;
+    }
+
+    private StockTransaction CreateAdjustmentTransaction(
+        string ticker, decimal shares, decimal price, decimal exchangeRate, decimal fees)
+    {
+        return new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            ticker,
+            TransactionType.Adjustment,
+            shares,
+            price,
+            exchangeRate,
+            fees);
+    }
+
+    private StockTransaction CreateAdjustmentTransactionWithMarket(
+        string ticker, StockMarket market, decimal shares, decimal price, decimal exchangeRate, decimal fees)
+    {
+        var tx = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            ticker,
+            TransactionType.Adjustment,
+            shares,
+            price,
+            exchangeRate,
+            fees);
+        tx.SetMarket(market);
+        return tx;
+    }
+
+    private static StockSplit CreateStockSplit(string symbol, StockMarket market, DateTime splitDate, decimal splitRatio)
+    {
+        return new StockSplit(symbol, market, splitDate, splitRatio);
     }
 
     #endregion

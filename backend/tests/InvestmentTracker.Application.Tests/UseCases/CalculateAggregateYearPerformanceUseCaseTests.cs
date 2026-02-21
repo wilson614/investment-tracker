@@ -788,6 +788,97 @@ public class CalculateAggregateYearPerformanceUseCaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_AggregateHistoricalTotalCostVariants_ShouldNotChangeAggregateTwrMdOrXirr()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "TWD");
+        var portfolioB = CreatePortfolio(userId, "TWD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2026;
+        var eventDate = new DateTime(year, 6, 30);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 10000m,
+                EndValueSource = 12000m,
+                StartValueHome = 10000m,
+                EndValueHome = 12000m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 20d,
+                TimeWeightedReturnPercentage = 20d,
+                XirrSource = 0.20d,
+                Xirr = 0.20d,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = []
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 5000m,
+                EndValueSource = 5000m,
+                StartValueHome = 5000m,
+                EndValueHome = 5000m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 0d,
+                TimeWeightedReturnPercentage = 0d,
+                XirrSource = 0d,
+                Xirr = 0d,
+                EarliestTransactionDateInYear = eventDate,
+                TransactionCount = 1,
+                CoverageStartDate = new DateTime(year, 1, 1),
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = []
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(13.3333333333d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(13.3333333333d, 0.0001d);
+
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(13.3333333333d, 0.0001d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(13.3333333333d, 0.0001d);
+
+        result.XirrSource.Should().NotBeNull();
+        result.XirrPercentageSource.Should().NotBeNull();
+        result.XirrSource!.Value.Should().BeGreaterThan(0d);
+        result.XirrPercentageSource!.Value.Should().BeGreaterThan(0d);
+
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.XirrReliability.Should().Be("High");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_CurrentYearYtdModifiedDietz_UsesActualElapsedDaysFromYearStartInsteadOfFixed365()
     {
         // Arrange

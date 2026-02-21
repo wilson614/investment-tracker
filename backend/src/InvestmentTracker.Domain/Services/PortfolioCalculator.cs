@@ -66,12 +66,13 @@ public class PortfolioCalculator
                     break;
 
                 case TransactionType.Adjustment:
-                    // 直接調整股數與／或成本
-                    totalShares += transaction.Shares;
-                    // 僅在有匯率時才納入本位幣成本
-                    if (transaction.TotalCostHome.HasValue)
-                        totalCostHome += transaction.TotalCostHome.Value;
-                    totalCostSource += transaction.TotalCostSource;
+                    // 直接調整股數與／或成本（依匯入欄位優先序）
+                    AccumulateAdjustmentCost(
+                        transaction,
+                        ref totalShares,
+                        ref totalCostHome,
+                        ref totalCostSource,
+                        transaction.Shares);
                     break;
             }
         }
@@ -139,10 +140,12 @@ public class PortfolioCalculator
                     break;
 
                 case TransactionType.Adjustment:
-                    totalShares += transaction.Shares;
-                    if (transaction.TotalCostHome.HasValue)
-                        totalCostHome += transaction.TotalCostHome.Value;
-                    totalCostSource += transaction.TotalCostSource;
+                    AccumulateAdjustmentCost(
+                        transaction,
+                        ref totalShares,
+                        ref totalCostHome,
+                        ref totalCostSource,
+                        transaction.Shares);
                     break;
             }
         }
@@ -309,11 +312,12 @@ public class PortfolioCalculator
                     break;
 
                 case TransactionType.Adjustment:
-                    totalShares += adjustedShares;
-                    // Only add to home currency totals if exchange rate exists
-                    if (transaction.TotalCostHome.HasValue)
-                        totalCostHome += transaction.TotalCostHome.Value;
-                    totalCostSource += transaction.TotalCostSource;
+                    AccumulateAdjustmentCost(
+                        transaction,
+                        ref totalShares,
+                        ref totalCostHome,
+                        ref totalCostSource,
+                        adjustedShares);
                     break;
             }
         }
@@ -388,10 +392,12 @@ public class PortfolioCalculator
                     break;
 
                 case TransactionType.Adjustment:
-                    totalShares += adjustedShares;
-                    if (transaction.TotalCostHome.HasValue)
-                        totalCostHome += transaction.TotalCostHome.Value;
-                    totalCostSource += transaction.TotalCostSource;
+                    AccumulateAdjustmentCost(
+                        transaction,
+                        ref totalShares,
+                        ref totalCostHome,
+                        ref totalCostSource,
+                        adjustedShares);
                     break;
             }
         }
@@ -404,6 +410,46 @@ public class PortfolioCalculator
         var averageCostSource = totalShares > 0 ? totalCostSource / totalShares : 0m;
 
         return new StockPosition(ticker, totalShares, totalCostHome, totalCostSource, averageCostHome, averageCostSource, market, currency?.ToString());
+    }
+
+    private static void AccumulateAdjustmentCost(
+        StockTransaction transaction,
+        ref decimal totalShares,
+        ref decimal totalCostHome,
+        ref decimal totalCostSource,
+        decimal adjustmentShares)
+    {
+        totalShares += adjustmentShares;
+
+        var (resolvedCostSource, resolvedCostHome) = ResolveAdjustmentCosts(transaction);
+        totalCostSource += resolvedCostSource;
+        if (resolvedCostHome.HasValue)
+            totalCostHome += resolvedCostHome.Value;
+    }
+
+    private static (decimal CostSource, decimal? CostHome) ResolveAdjustmentCosts(StockTransaction transaction)
+    {
+        if (transaction.HistoricalTotalCost.HasValue)
+        {
+            var historicalCostSource = transaction.HistoricalTotalCost.Value;
+            decimal? historicalCostHome = transaction.ExchangeRate.HasValue
+                ? historicalCostSource * transaction.ExchangeRate.Value
+                : null;
+
+            return (historicalCostSource, historicalCostHome);
+        }
+
+        if (transaction.MarketValueAtImport.HasValue)
+        {
+            var marketValueCostSource = transaction.MarketValueAtImport.Value;
+            decimal? marketValueCostHome = transaction.ExchangeRate.HasValue
+                ? marketValueCostSource * transaction.ExchangeRate.Value
+                : null;
+
+            return (marketValueCostSource, marketValueCostHome);
+        }
+
+        return (transaction.TotalCostSource, transaction.TotalCostHome);
     }
 
     /// <summary>

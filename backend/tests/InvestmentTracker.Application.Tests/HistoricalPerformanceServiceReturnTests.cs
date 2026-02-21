@@ -1052,6 +1052,368 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_Day1SeededAdjustmentPairedWithInitialBalance_ShouldNotProduceInfiniteStyleReturn()
+    {
+        // Arrange
+        var year = DateTime.UtcNow.Year - 1;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var dayOne = yearStart.AddDays(-1);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Day-1 seeded adjustment regression");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var seededAdjustment = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: dayOne,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 100m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        seededAdjustment.SetImportInitialization(
+            marketValueAtImport: 10000m,
+            historicalTotalCost: 9800m);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([seededAdjustment]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var openingInitialBalance = new CurrencyTransaction(
+            boundLedger.Id,
+            dayOne,
+            CurrencyTransactionType.InitialBalance,
+            10000m,
+            homeAmount: 10000m,
+            exchangeRate: 1m,
+            notes: "import-execute-opening-initial-balance");
+        boundLedger.AddTransaction(openingInitialBalance);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: openingInitialBalance.Id,
+                snapshotDate: dayOne,
+                beforeSource: 0m,
+                afterSource: 10000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 1, 1, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 102m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().Be(yearStart.Date);
+
+        result.StartValueSource.Should().BeGreaterThan(0m);
+        result.EndValueSource.Should().BeGreaterThan(0m);
+        result.NetContributionsSource.Should().Be(0m);
+
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.ModifiedDietzPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource!.Value.Should().BeGreaterThan(0d);
+        result.ModifiedDietzPercentageSource!.Value.Should().BeGreaterThan(0d);
+        result.TimeWeightedReturnPercentageSource.Value.Should().BeLessThan(10d);
+        result.ModifiedDietzPercentageSource.Value.Should().BeLessThan(10d);
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(result.ModifiedDietzPercentageSource.Value, 0.0001d);
+
+        result.XirrReliability.Should().Be("High");
+        result.XirrSource.Should().NotBeNull();
+
+        double.IsInfinity(result.TimeWeightedReturnPercentageSource.Value).Should().BeFalse();
+        double.IsNaN(result.TimeWeightedReturnPercentageSource.Value).Should().BeFalse();
+        double.IsInfinity(result.ModifiedDietzPercentageSource.Value).Should().BeFalse();
+        double.IsNaN(result.ModifiedDietzPercentageSource.Value).Should().BeFalse();
+        result.XirrSource.HasValue.Should().BeTrue();
+        double.IsInfinity(result.XirrSource!.Value).Should().BeFalse();
+        double.IsNaN(result.XirrSource.Value).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_HistoricalTotalCostShouldAffectCostBasisOnly_NotTwrMdOrXirr()
+    {
+        // Arrange
+        var year = DateTime.UtcNow.Year - 1;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var sellDate = yearStart.AddMonths(6);
+
+        var portfolioIdA = Guid.NewGuid();
+        var portfolioIdB = Guid.NewGuid();
+        var sharedLedgerId = Guid.NewGuid();
+
+        var portfolioA = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: sharedLedgerId,
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "HistoricalTotalCost variant A");
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolioA, [portfolioIdA]);
+
+        var portfolioB = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: sharedLedgerId,
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "HistoricalTotalCost variant B");
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolioB, [portfolioIdB]);
+
+        var adjustmentLowCost = new StockTransaction(
+            portfolioId: portfolioIdA,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 100m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        adjustmentLowCost.SetImportInitialization(
+            marketValueAtImport: 10000m,
+            historicalTotalCost: 9000m);
+
+        var adjustmentHighCost = new StockTransaction(
+            portfolioId: portfolioIdB,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 100m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        adjustmentHighCost.SetImportInitialization(
+            marketValueAtImport: 10000m,
+            historicalTotalCost: 11000m);
+
+        var sellA = new StockTransaction(
+            portfolioId: portfolioIdA,
+            transactionDate: sellDate,
+            ticker: "2330",
+            transactionType: TransactionType.Sell,
+            shares: 100m,
+            pricePerShare: 120m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: null);
+
+        var sellB = new StockTransaction(
+            portfolioId: portfolioIdB,
+            transactionDate: sellDate,
+            ticker: "2330",
+            transactionType: TransactionType.Sell,
+            shares: 100m,
+            pricePerShare: 120m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: null);
+
+        var expectedRealizedLowCost = new PortfolioCalculator().CalculateRealizedPnl(
+            positionBeforeSell: new StockPosition(
+                Ticker: "2330",
+                TotalShares: 100m,
+                TotalCostHome: 9000m,
+                TotalCostSource: 9000m,
+                AverageCostPerShareHome: 90m,
+                AverageCostPerShareSource: 90m,
+                Market: StockMarket.TW,
+                Currency: "TWD"),
+            sellTransaction: sellA);
+        sellA.SetRealizedPnl(expectedRealizedLowCost);
+
+        var expectedRealizedHighCost = new PortfolioCalculator().CalculateRealizedPnl(
+            positionBeforeSell: new StockPosition(
+                Ticker: "2330",
+                TotalShares: 100m,
+                TotalCostHome: 11000m,
+                TotalCostSource: 11000m,
+                AverageCostPerShareHome: 110m,
+                AverageCostPerShareSource: 110m,
+                Market: StockMarket.TW,
+                Currency: "TWD"),
+            sellTransaction: sellB);
+        sellB.SetRealizedPnl(expectedRealizedHighCost);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(portfolioIdA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolioA);
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(portfolioIdB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolioB);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(portfolioIdA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([adjustmentLowCost, sellA]);
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(portfolioIdB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([adjustmentHighCost, sellB]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [sharedLedgerId]);
+
+        var initialBalance = new CurrencyTransaction(
+            boundLedger.Id,
+            baselineDate,
+            CurrencyTransactionType.InitialBalance,
+            10000m,
+            homeAmount: 10000m,
+            exchangeRate: 1m,
+            notes: "import-execute-opening-initial-balance");
+        boundLedger.AddTransaction(initialBalance);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(sharedLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshotsA = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: portfolioIdA,
+                transactionId: sellA.Id,
+                snapshotDate: sellDate,
+                beforeSource: 10000m,
+                afterSource: 12000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 30, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        var snapshotsB = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: portfolioIdB,
+                transactionId: sellB.Id,
+                snapshotDate: sellDate,
+                beforeSource: 10000m,
+                afterSource: 12000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 30, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(portfolioIdA, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshotsA);
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(portfolioIdB, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshotsB);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 120m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var resultLowCost = await _service.CalculateYearPerformanceAsync(portfolioIdA, request, CancellationToken.None);
+        var resultHighCost = await _service.CalculateYearPerformanceAsync(portfolioIdB, request, CancellationToken.None);
+
+        // Assert
+        resultLowCost.IsComplete.Should().BeTrue();
+        resultHighCost.IsComplete.Should().BeTrue();
+
+        resultLowCost.TimeWeightedReturnPercentageSource.Should().BeApproximately(resultHighCost.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+        resultLowCost.ModifiedDietzPercentageSource.Should().BeApproximately(resultHighCost.ModifiedDietzPercentageSource!.Value, 0.0001d);
+        resultLowCost.XirrSource.Should().BeApproximately(resultHighCost.XirrSource!.Value, 0.0000001d);
+
+        resultLowCost.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        resultLowCost.ModifiedDietzPercentageSource.Should().NotBeNull();
+        resultLowCost.XirrSource.Should().NotBeNull();
+
+        sellA.RealizedPnlHome.Should().Be(expectedRealizedLowCost);
+        sellB.RealizedPnlHome.Should().Be(expectedRealizedHighCost);
+        sellA.RealizedPnlHome.Should().NotBe(sellB.RealizedPnlHome);
+        sellA.RealizedPnlHome.Should().HaveValue();
+        sellB.RealizedPnlHome.Should().HaveValue();
+        sellA.RealizedPnlHome!.Value.Should().BeGreaterThan(sellB.RealizedPnlHome!.Value);
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_WithBoundLedgerExternalDeposit_UsesUnifiedClosedLoopBaselineForMdAndTwr()
     {
         // Arrange

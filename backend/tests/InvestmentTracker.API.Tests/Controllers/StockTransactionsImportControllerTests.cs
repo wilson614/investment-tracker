@@ -1741,6 +1741,158 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
+    public async Task Execute_PartialPeriodSellWithoutHoldings_WithCreateAdjustmentAndHistoricalTotalCost_ShouldKeepYearAndAggregateReturnsFiniteAndConsistent()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Sell No Holdings Historical Cost Return Guard", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneSellRow(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc),
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 100m,
+                        TotalCost = 10000m,
+                        HistoricalTotalCost = 9800m
+                    }
+                ]
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var root = previewJson.RootElement;
+
+        var firstRow = root.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = root.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = "sell",
+                    SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act 1: execute
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert execute
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeRoot = executeJson.RootElement;
+
+        executeRoot.GetProperty("status").GetString().Should().Be("committed");
+
+        var warnings = executeRoot.GetProperty("errors").EnumerateArray().ToList();
+        warnings.Should().ContainSingle();
+        warnings[0].GetProperty("errorCode").GetString().Should().Be("PARTIAL_PERIOD_ASSUMPTION");
+
+        using (var verifyScope = Factory.Services.CreateScope())
+        {
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var openingAdjustment = await verifyDbContext.StockTransactions
+                .Where(transaction =>
+                    transaction.PortfolioId == portfolio.Id
+                    && transaction.Ticker == "2330"
+                    && transaction.TransactionType == TransactionType.Adjustment
+                    && transaction.Notes != null
+                    && transaction.Notes.Contains("import-execute-adjustment"))
+                .SingleAsync();
+
+            openingAdjustment.MarketValueAtImport.Should().Be(10000m);
+            openingAdjustment.HistoricalTotalCost.Should().Be(9800m);
+
+            var pairedOpeningInitialBalance = await verifyDbContext.CurrencyTransactions
+                .Where(transaction =>
+                    transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
+                    && transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                    && transaction.RelatedStockTransactionId == openingAdjustment.Id
+                    && transaction.Notes == "import-execute-opening-initial-balance")
+                .SingleAsync();
+
+            pairedOpeningInitialBalance.ForeignAmount.Should().Be(10000m);
+        }
+
+        var summaryResponse = await Client.GetAsync($"/api/portfolios/{portfolio.Id}/summary");
+        summaryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var summaryDto = await summaryResponse.Content.ReadFromJsonAsync<PortfolioSummaryDto>();
+        summaryDto.Should().NotBeNull();
+
+        var yearPriceRequest = BuildYearPriceRequestFromSummaryPositions(summaryDto!.Positions);
+        yearPriceRequest["2330"] = new YearEndPriceInfo { Price = 165.5m, ExchangeRate = 1m };
+
+        var yearPerformanceResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{portfolio.Id}/performance/year",
+            new CalculateYearPerformanceRequest
+            {
+                Year = 2026,
+                YearStartPrices = yearPriceRequest,
+                YearEndPrices = yearPriceRequest
+            });
+        yearPerformanceResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPayload = await yearPerformanceResponse.Content.ReadAsStringAsync();
+        using var yearJson = JsonDocument.Parse(yearPayload);
+        AssertYearPerformanceCoverageSignalContract(yearJson.RootElement);
+
+        var yearPerformance = JsonSerializer.Deserialize<YearPerformanceDto>(yearPayload, ApiJsonOptions);
+        yearPerformance.Should().NotBeNull();
+
+        AssertFiniteIfHasValue(yearPerformance!.TimeWeightedReturnPercentageSource, nameof(yearPerformance.TimeWeightedReturnPercentageSource));
+        AssertFiniteIfHasValue(yearPerformance.ModifiedDietzPercentageSource, nameof(yearPerformance.ModifiedDietzPercentageSource));
+        AssertFiniteIfHasValue(yearPerformance.XirrSource, nameof(yearPerformance.XirrSource));
+
+
+        var aggregateResponse = await Client.PostAsJsonAsync(
+            "/api/portfolios/aggregate/performance/year",
+            new CalculateYearPerformanceRequest
+            {
+                Year = 2026,
+                YearStartPrices = yearPriceRequest,
+                YearEndPrices = yearPriceRequest
+            });
+        aggregateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var aggregatePerformance = await aggregateResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        aggregatePerformance.Should().NotBeNull();
+
+        AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentageSource, nameof(aggregatePerformance.TimeWeightedReturnPercentageSource));
+        AssertFiniteIfHasValue(aggregatePerformance.ModifiedDietzPercentageSource, nameof(aggregatePerformance.ModifiedDietzPercentageSource));
+        AssertFiniteIfHasValue(aggregatePerformance.XirrSource, nameof(aggregatePerformance.XirrSource));
+
+        aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(
+            yearPerformance.TimeWeightedReturnPercentageSource!.Value,
+            0.0001d);
+        aggregatePerformance.ModifiedDietzPercentageSource.Should().BeApproximately(
+            yearPerformance.ModifiedDietzPercentageSource!.Value,
+            0.0001d);
+    }
+
+    [Fact]
     public async Task Execute_PartialPeriodSellThenBuy_WithOpeningDecision_ShouldUseSellIncomeWithoutTopUp()
     {
         // Arrange
