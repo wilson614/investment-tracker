@@ -210,6 +210,8 @@
 - [x] T129 Add `MarketValueAtImport` and `HistoricalTotalCost` fields to `StockTransaction` and update EF mapping/migration in `backend/src/InvestmentTracker.Domain/Entities/StockTransaction.cs`, `backend/src/InvestmentTracker.Infrastructure/Persistence/Configurations/StockTransactionConfiguration.cs`, and `backend/src/InvestmentTracker.Infrastructure/Persistence/Migrations/`
 - [x] T130 Extend stock import opening-position contracts with optional `HistoricalTotalCost` in `backend/src/InvestmentTracker.Application/DTOs/RequestDtos.cs` and `backend/src/InvestmentTracker.Application/DTOs/StockImportDtos.cs`
 - [x] T131 Align baseline snapshot/payload contract for `HistoricalTotalCost` in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/PreviewStockImportUseCase.cs`, `frontend/src/types/index.ts`, and `frontend/src/components/import/StockImportButton.tsx`
+- [x] T132 Inject historical pricing dependency into stock import execution flow in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T133 Implement mark-to-market seeded opening adjustment with paired `CurrencyTransactionType.InitialBalance` booking and cross-currency baseline FX handling in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
 
 ---
 
