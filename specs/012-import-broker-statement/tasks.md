@@ -216,6 +216,8 @@
 - [x] T135 [P] Add domain/application regression coverage for adjustment cost-priority behavior and Day-1 seeded-initialization return stability in `backend/tests/InvestmentTracker.Domain.Tests/Services/PortfolioCalculatorTests.cs` and `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
 - [x] T136 [P] Add aggregate/API regression coverage proving `HistoricalTotalCost` does not alter TWR/MD/XIRR while maintaining finite year/aggregate returns in `backend/tests/InvestmentTracker.Application.Tests/UseCases/CalculateAggregateYearPerformanceUseCaseTests.cs` and `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 - [x] T137 [P] Add frontend regression coverage for baseline `historicalTotalCost` payload compatibility and finite import-performance summary display in `frontend/src/test/stock-import.broker-preview.test.tsx` and `frontend/src/test/stock-import.balance-action.test.tsx`
+- [x] T138 Record this round Mark-to-Market initialization closure (`entity`/DTO/execute/ledger sync) in `specs/012-import-broker-statement/quickstart.md`
+- [x] T139 Record this round QA/regression verification and root-cause difference summary completion in `specs/012-import-broker-statement/quickstart.md`
 
 ---
 

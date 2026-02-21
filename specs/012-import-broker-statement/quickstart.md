@@ -648,3 +648,64 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
 | T123, T126 | `frontend/src/pages/Performance.tsx`, `frontend/src/types/index.ts` | MD-scoped low-confidence copy + warning banner rendering + frontend contract alignment |
 | T124, T127 | `frontend/src/pages/Dashboard.tsx`, `frontend/src/components/portfolio/PerformanceMetrics.tsx`, `frontend/src/test/dashboard.aggregate-fixed.test.tsx`, `frontend/src/test/portfolio.performance-metrics.test.tsx`, `frontend/src/test/performance.metrics-binding.test.tsx` | XIRR unavailable wording consistency and tooltip a11y semantics (`aria-describedby` / `role="tooltip"` / keyboard focus path) |
 | T125, T128 | `frontend/src/pages/Portfolio.tsx`, `frontend/src/components/import/StockImportButton.tsx`, `frontend/src/components/import/CSVImportModal.tsx`, `frontend/src/test/stock-import.balance-action.test.tsx`, `frontend/src/test/stock-import.broker-preview.test.tsx`, `frontend/src/test/useHistoricalPerformance.test.ts` | Import/portfolio tooltip copy + accessibility regression coverage |
+
+## Verification Notes (Group K Mark-to-Market Initialization Convergence)
+
+- Updated for Group K documentation convergence (date: **2026-02-21**).
+- This round closes documentation for Mark-to-Market initialization and QA/regression verification alignment.
+
+### Root-Cause Difference Summary: Existing Approach vs Mark-to-Market Initialization
+
+- **Orphaned positions risk (existing approach)**: opening holdings could be materialized without a fully paired baseline-cash initialization path, making holdings/cash traceability less explicit during import bootstrap.
+- **Seeded adjustment at zero cost (existing approach)**: seeded adjustments with an implicit zero-cost baseline could amplify denominator instability and produce unintuitive return signals near Day-1.
+- **Incomplete one-to-one initialization pairing (existing approach)**: initial holdings and baseline cash events were not consistently documented as a strict per-`InitialBalance` pair, which increased reconciliation complexity.
+- **Mark-to-Market initialization (current closure)**: each opening initialization path is documented and validated as position + ledger synchronized initialization with explicit valuation/cost anchors.
+
+### Key Fix Points Confirmed in This Round
+
+- `MarketValueAtImport` is retained as the import-time valuation anchor for opening initialization.
+- `HistoricalTotalCost` is retained as the preferred historical cost anchor when provided.
+- Cross-currency baseline FX is applied for initialization flows to keep baseline valuation/cash conversion consistent.
+- Paired `CurrencyTransactionType.InitialBalance` booking is documented as required for each initialization path.
+
+## Verification Evidence (Group K Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet build "/workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Domain.Tests/InvestmentTracker.Domain.Tests.csproj" --filter "FullyQualifiedName~PortfolioCalculatorTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~ExecuteStockImportBalanceActionTests|FullyQualifiedName~HistoricalPerformanceServiceReturnTests|FullyQualifiedName~CalculateAggregateYearPerformanceUseCaseTests"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/stock-import.broker-preview.test.tsx src/test/stock-import.balance-action.test.tsx src/test/performance.metrics-binding.test.tsx src/test/useHistoricalPerformance.test.ts
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend build (`InvestmentTracker.API.csproj`) | PASS | Build completed successfully for API/backend dependency graph. |
+| Backend domain regression (`PortfolioCalculatorTests`) | PASS | Adjustment cost-priority behavior remained stable. |
+| Backend application regression (import execute + historical performance + aggregate performance) | PASS | Key Mark-to-Market initialization and return-stability paths passed selected suites. |
+| Backend API regression (`StockTransactionsImportControllerTests`) | PASS | Import/preview/execute/performance contract assertions passed for key paths. |
+| Frontend type-check | PASS | Type-check completed without errors. |
+| Frontend targeted regression (`stock-import*`, `performance.metrics-binding`, `useHistoricalPerformance`) | PASS | Targeted integration and contract-alignment tests completed without failures. |
+
+### Known Limitations / Follow-up Notes
+
+- When historical quotes are unavailable for specific symbols/period boundaries, annual completeness may still degrade according to existing reliability rules.
+- `HistoricalTotalCost` remains optional in opening-position input; when omitted, fallback priority still applies by design.
+- This Group K update is documentation convergence for already-delivered behavior (no new runtime scope beyond prior implementation tasks).
+
+### Group K Traceability (T138-T139)
+
+| Task(s) | Coverage | Evidence |
+|---|---|---|
+| T138 | Mark-to-Market initialization closure record (`entity`/DTO/execute/ledger sync) | This Group K root-cause and key-fix documentation block |
+| T139 | QA/regression verification and root-cause difference closure record | This Group K command log, PASS summary, and limitations notes |
