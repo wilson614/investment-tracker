@@ -1714,16 +1714,30 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             .OrderByDescending(transaction => transaction.CreatedAt)
             .FirstAsync();
 
-        importedSell.RealizedPnlHome.Should().Be(16544m);
+        importedSell.RealizedPnlHome.Should().Be(6544m);
 
-        var hasAdjustment = await verifyDbContext.StockTransactions.AnyAsync(transaction =>
-            transaction.PortfolioId == portfolio.Id
-            && transaction.Ticker == "2330"
-            && transaction.TransactionType == TransactionType.Adjustment
-            && transaction.Notes != null
-            && transaction.Notes.Contains("import-execute-adjustment"));
+        var openingAdjustment = await verifyDbContext.StockTransactions
+            .Where(transaction =>
+                transaction.PortfolioId == portfolio.Id
+                && transaction.Ticker == "2330"
+                && transaction.TransactionType == TransactionType.Adjustment
+                && transaction.Notes != null
+                && transaction.Notes.Contains("import-execute-adjustment"))
+            .SingleAsync();
 
-        hasAdjustment.Should().BeTrue("CreateAdjustment 應持久化一筆 adjustment 交易以便追蹤");
+        openingAdjustment.MarketValueAtImport.Should().Be(10000m);
+        openingAdjustment.HistoricalTotalCost.Should().BeNull();
+
+        var pairedOpeningInitialBalance = await verifyDbContext.CurrencyTransactions
+            .Where(transaction =>
+                transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
+                && transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.RelatedStockTransactionId == openingAdjustment.Id
+                && transaction.Notes == "import-execute-opening-initial-balance")
+            .SingleAsync();
+
+        pairedOpeningInitialBalance.ForeignAmount.Should().Be(10000m);
+        pairedOpeningInitialBalance.TransactionDate.Should().Be(new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc));
     }
 
     [Fact]

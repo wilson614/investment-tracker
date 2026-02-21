@@ -1,5 +1,6 @@
 using InvestmentTracker.Domain.Common;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 
 namespace InvestmentTracker.Domain.Entities;
 
@@ -179,6 +180,23 @@ public class StockTransaction : BaseEntity
     public void SetRealizedPnl(decimal? realizedPnlHome)
     {
         RealizedPnlHome = realizedPnlHome.HasValue ? Math.Round(realizedPnlHome.Value, 2) : null;
+    }
+
+    public void SetImportInitialization(decimal? marketValueAtImport, decimal? historicalTotalCost)
+    {
+        if (marketValueAtImport is < 0m)
+            throw new BusinessRuleException("MarketValueAtImport cannot be negative.");
+
+        if (historicalTotalCost is < 0m)
+            throw new BusinessRuleException("HistoricalTotalCost cannot be negative.");
+
+        MarketValueAtImport = marketValueAtImport.HasValue
+            ? Math.Round(marketValueAtImport.Value, 2)
+            : null;
+
+        HistoricalTotalCost = historicalTotalCost.HasValue
+            ? Math.Round(historicalTotalCost.Value, 2)
+            : null;
     }
 
     public void SetTransactionType(TransactionType transactionType)

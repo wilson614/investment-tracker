@@ -1,5 +1,6 @@
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
+using InvestmentTracker.Domain.Exceptions;
 
 namespace InvestmentTracker.Domain.Tests.Entities;
 
@@ -369,6 +370,94 @@ public class StockTransactionTests
 
         // Assert
         Assert.False(transaction.IsDeleted);
+    }
+
+    #endregion
+
+    #region Import Initialization Tests
+
+    [Fact]
+    public void SetImportInitialization_SetsRoundedFields()
+    {
+        // Arrange
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VWRA",
+            TransactionType.Adjustment,
+            10m,
+            100m,
+            1m);
+
+        // Act
+        transaction.SetImportInitialization(1234.567m, 987.654m);
+
+        // Assert
+        Assert.Equal(1234.57m, transaction.MarketValueAtImport);
+        Assert.Equal(987.65m, transaction.HistoricalTotalCost);
+    }
+
+    [Fact]
+    public void SetImportInitialization_AllowsNulls()
+    {
+        // Arrange
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VWRA",
+            TransactionType.Adjustment,
+            10m,
+            100m,
+            1m);
+
+        // Act
+        transaction.SetImportInitialization(null, null);
+
+        // Assert
+        Assert.Null(transaction.MarketValueAtImport);
+        Assert.Null(transaction.HistoricalTotalCost);
+    }
+
+    [Fact]
+    public void SetImportInitialization_NegativeMarketValueAtImport_ThrowsBusinessRuleException()
+    {
+        // Arrange
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VWRA",
+            TransactionType.Adjustment,
+            10m,
+            100m,
+            1m);
+
+        // Act
+        var action = () => transaction.SetImportInitialization(-0.01m, null);
+
+        // Assert
+        var exception = Assert.Throws<BusinessRuleException>(action);
+        Assert.Equal("MarketValueAtImport cannot be negative.", exception.Message);
+    }
+
+    [Fact]
+    public void SetImportInitialization_NegativeHistoricalTotalCost_ThrowsBusinessRuleException()
+    {
+        // Arrange
+        var transaction = new StockTransaction(
+            _portfolioId,
+            DateTime.UtcNow,
+            "VWRA",
+            TransactionType.Adjustment,
+            10m,
+            100m,
+            1m);
+
+        // Act
+        var action = () => transaction.SetImportInitialization(100m, -0.01m);
+
+        // Assert
+        var exception = Assert.Throws<BusinessRuleException>(action);
+        Assert.Equal("HistoricalTotalCost cannot be negative.", exception.Message);
     }
 
     #endregion

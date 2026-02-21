@@ -227,12 +227,34 @@ public class ExecuteStockImportBalanceActionTests
             .Should().ContainSingle(transaction => transaction.TransactionType == TransactionType.Sell)
             .Subject;
 
-        createdSellTransaction.RealizedPnlHome.Should().Be(16544m);
+        createdSellTransaction.RealizedPnlHome.Should().Be(6544m);
 
-        addedStockTransactions.Should().ContainSingle(transaction =>
+        var seededAdjustment = addedStockTransactions.Should().ContainSingle(transaction =>
             transaction.TransactionType == TransactionType.Adjustment
             && transaction.Notes != null
-            && transaction.Notes.Contains("import-execute-adjustment", StringComparison.Ordinal));
+            && transaction.Notes.Contains("import-execute-adjustment", StringComparison.Ordinal)).Subject;
+
+        seededAdjustment.MarketValueAtImport.Should().Be(10000m);
+        seededAdjustment.HistoricalTotalCost.Should().BeNull();
+
+        fixture.CurrencyTransactionRepositoryMock.Verify(
+            x => x.AddAsync(
+                It.Is<CurrencyTransaction>(tx =>
+                    tx.TransactionType == CurrencyTransactionType.InitialBalance
+                    && tx.RelatedStockTransactionId == seededAdjustment.Id
+                    && tx.ForeignAmount == 10000m
+                    && tx.TransactionDate == new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc)
+                    && tx.Notes == "import-execute-opening-initial-balance"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        fixture.TxSnapshotServiceMock.Verify(
+            x => x.UpsertSnapshotAsync(
+                fixture.PortfolioId,
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
 
         fixture.CurrencyTransactionRepositoryMock.Verify(
             x => x.AddAsync(
@@ -987,7 +1009,8 @@ public class ExecuteStockImportBalanceActionTests
                 {
                     Ticker = "2330",
                     Quantity = 100m,
-                    TotalCost = 6000m
+                    TotalCost = 6000m,
+                    HistoricalTotalCost = 5800m
                 }
             ],
             baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
@@ -1018,6 +1041,229 @@ public class ExecuteStockImportBalanceActionTests
         var createdSellTransaction = createdTransactions.Single(transaction => transaction.TransactionType == TransactionType.Sell);
 
         createdSellTransaction.RealizedPnlHome.Should().Be(10544m);
+
+        var seededOpeningTransaction = createdTransactions
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededOpeningTransaction.MarketValueAtImport.Should().Be(6000m);
+        seededOpeningTransaction.HistoricalTotalCost.Should().Be(5800m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCreateAdjustmentAndMissingHistoricalPrice_ShouldFallbackToBaselineTotalCost()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 83,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 7000m,
+                    HistoricalTotalCost = 6800m
+                }
+            ],
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        fixture.YahooHistoricalPriceServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 83,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.CreateAdjustment);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var seededAdjustment = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededAdjustment.MarketValueAtImport.Should().Be(7000m);
+        seededAdjustment.HistoricalTotalCost.Should().Be(6800m);
+
+        fixture.CurrencyTransactionRepositoryMock.Verify(
+            x => x.AddAsync(
+                It.Is<CurrencyTransaction>(tx =>
+                    tx.TransactionType == CurrencyTransactionType.InitialBalance
+                    && tx.RelatedStockTransactionId == seededAdjustment.Id
+                    && tx.ForeignAmount == 7000m),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCreateAdjustmentOnCrossCurrencyLedger_ShouldUseBaselineDateFxForSeededAdjustmentAndInitialBalance()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 831,
+                    ticker: "AAPL",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell",
+                    currencyCode: "USD")
+            ],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "AAPL",
+                    Quantity = 100m,
+                    TotalCost = 7000m,
+                    HistoricalTotalCost = 6800m
+                }
+            ],
+            baselineDate: baselineDate,
+            boundLedgerCurrencyCode: "USD",
+            boundLedgerHomeCurrency: "TWD");
+
+        fixture.YahooHistoricalPriceServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        fixture.FxServiceMock
+            .Setup(x => x.GetOrFetchAsync("USD", "TWD", baselineDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionDateExchangeRateResult
+            {
+                Rate = 31.5m,
+                CurrencyPair = "USDTWD",
+                RequestedDate = baselineDate,
+                ActualDate = baselineDate,
+                Source = "test",
+                FromCache = true
+            });
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 831,
+            ticker: "AAPL",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.CreateAdjustment);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var seededAdjustment = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededAdjustment.ExchangeRate.Should().Be(31.5m);
+        seededAdjustment.PricePerShare.Should().Be(70m);
+        seededAdjustment.MarketValueAtImport.Should().Be(7000m);
+        seededAdjustment.HistoricalTotalCost.Should().Be(6800m);
+
+        fixture.FxServiceMock.Verify(
+            x => x.GetOrFetchAsync("USD", "TWD", baselineDate, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        fixture.CurrencyTransactionRepositoryMock.Verify(
+            x => x.AddAsync(
+                It.Is<CurrencyTransaction>(tx =>
+                    tx.TransactionType == CurrencyTransactionType.InitialBalance
+                    && tx.RelatedStockTransactionId == seededAdjustment.Id
+                    && tx.ForeignAmount == 7000m
+                    && tx.ExchangeRate == null
+                    && tx.HomeAmount == null),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCreateAdjustmentAndNoBaselineCost_ShouldSkipSeedingAndFailAsSellBeforeBuyActionRequired()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 84,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        fixture.YahooHistoricalPriceServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 84,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.CreateAdjustment);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("rejected");
+        result.Summary.InsertedRows.Should().Be(0);
+        result.Summary.FailedRows.Should().Be(1);
+
+        var rowResult = result.Results.Should().ContainSingle().Subject;
+        rowResult.Success.Should().BeFalse();
+        rowResult.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+
+        fixture.StockTransactionRepositoryMock.Verify(
+            x => x.AddAsync(
+                It.Is<StockTransaction>(tx => tx.TransactionType == TransactionType.Adjustment),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -1065,7 +1311,8 @@ public class ExecuteStockImportBalanceActionTests
         addedCurrencyTransactions.Should().ContainSingle(transaction =>
             transaction.TransactionType == CurrencyTransactionType.InitialBalance
             && transaction.ForeignAmount == 626425m
-            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            && transaction.RelatedStockTransactionId == null);
 
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
         addedCurrencyTransactions.Should().NotContain(transaction => transaction.TransactionType == CurrencyTransactionType.Deposit);
@@ -1558,6 +1805,7 @@ public class ExecuteStockImportBalanceActionTests
         public Mock<ITransactionPortfolioSnapshotService> TxSnapshotServiceMock { get; } = new();
         public Mock<IAppDbTransactionManager> TransactionManagerMock { get; } = new();
         public Mock<IAppDbTransaction> AppDbTransactionMock { get; } = new();
+        public Mock<IYahooHistoricalPriceService> YahooHistoricalPriceServiceMock { get; } = new();
 
         public ExecuteStockImportUseCase UseCase { get; }
 
@@ -1694,6 +1942,27 @@ public class ExecuteStockImportBalanceActionTests
                     FromCache = true
                 });
 
+            YahooHistoricalPriceServiceMock
+                .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string symbol, DateOnly targetDate, CancellationToken _) =>
+                {
+                    var isTaiwanSymbol = symbol.EndsWith(".TW", StringComparison.OrdinalIgnoreCase)
+                        || symbol.EndsWith(".TWO", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(symbol, "2330", StringComparison.OrdinalIgnoreCase);
+
+                    if (!isTaiwanSymbol)
+                    {
+                        return null;
+                    }
+
+                    return new YahooHistoricalPriceResult
+                    {
+                        Price = 100m,
+                        ActualDate = targetDate,
+                        Currency = "TWD"
+                    };
+                });
+
             TransactionManagerMock
                 .Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AppDbTransactionMock.Object);
@@ -1711,6 +1980,7 @@ public class ExecuteStockImportBalanceActionTests
                 new CurrencyLedgerService(),
                 new PortfolioCalculator(),
                 TransactionManagerMock.Object,
+                YahooHistoricalPriceServiceMock.Object,
                 Mock.Of<Microsoft.Extensions.Logging.ILogger<ExecuteStockImportUseCase>>());
         }
 

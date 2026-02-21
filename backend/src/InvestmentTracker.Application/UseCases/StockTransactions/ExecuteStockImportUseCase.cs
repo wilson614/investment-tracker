@@ -53,6 +53,7 @@ public sealed class ExecuteStockImportUseCase(
     CurrencyLedgerService currencyLedgerService,
     PortfolioCalculator portfolioCalculator,
     IAppDbTransactionManager transactionManager,
+    IYahooHistoricalPriceService yahooHistoricalPriceService,
     ILogger<ExecuteStockImportUseCase> logger) : IExecuteStockImportUseCase
 {
     private const string StatusCommitted = "committed";
@@ -568,6 +569,8 @@ public sealed class ExecuteStockImportUseCase(
 
         var usesPartialHistoryAssumption = false;
         var pendingSeededStockTransactions = new List<StockTransaction>();
+        var pendingCurrencyTransactions = new List<CurrencyTransaction>();
+        var pendingTopUpTransactions = new List<CurrencyTransaction>();
 
         decimal? realizedPnlHome = null;
         if (transactionType == TransactionType.Sell)
@@ -590,7 +593,8 @@ public sealed class ExecuteStockImportUseCase(
                         shares,
                         currentPosition.TotalShares);
 
-                    var seededOpeningPosition = BuildOpeningAdjustmentFromBaseline(
+                    var seededOpeningPosition = await BuildOpeningAdjustmentFromBaselineAsync(
+                        boundLedger,
                         sessionSnapshot,
                         normalizedTicker,
                         market,
@@ -599,7 +603,8 @@ public sealed class ExecuteStockImportUseCase(
                         sellBeforeBuyAction,
                         requiredShares: shares,
                         portfolio.Id,
-                        boundLedger.Id);
+                        boundLedger.Id,
+                        cancellationToken);
 
                     if (seededOpeningPosition is not null)
                     {
@@ -620,6 +625,30 @@ public sealed class ExecuteStockImportUseCase(
                         }
 
                         await stockTransactionRepository.AddAsync(seededOpeningPosition, cancellationToken);
+
+                        if (seededOpeningPosition.MarketValueAtImport is decimal openingMarketValueAtImport
+                            && openingMarketValueAtImport > 0m)
+                        {
+                            decimal? openingHomeAmount = null;
+                            decimal? openingExchangeRate = null;
+                            if (string.Equals(boundLedger.CurrencyCode, boundLedger.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+                            {
+                                openingExchangeRate = 1.0m;
+                                openingHomeAmount = openingMarketValueAtImport;
+                            }
+
+                            var openingInitialBalanceTransaction = new CurrencyTransaction(
+                                boundLedger.Id,
+                                seededOpeningPosition.TransactionDate,
+                                CurrencyTransactionType.InitialBalance,
+                                openingMarketValueAtImport,
+                                homeAmount: openingHomeAmount,
+                                exchangeRate: openingExchangeRate,
+                                relatedStockTransactionId: seededOpeningPosition.Id,
+                                notes: "import-execute-opening-initial-balance");
+
+                            pendingCurrencyTransactions.Add(openingInitialBalanceTransaction);
+                        }
 
                         var seededAffectedFromMonth = new DateOnly(
                             seededOpeningPosition.TransactionDate.Year,
@@ -699,9 +728,6 @@ public sealed class ExecuteStockImportUseCase(
             transactionType,
             transaction,
             boundLedger);
-
-        var pendingCurrencyTransactions = new List<CurrencyTransaction>();
-        var pendingTopUpTransactions = new List<CurrencyTransaction>();
 
         if (linkedSpec != null)
         {
@@ -1015,7 +1041,8 @@ public sealed class ExecuteStockImportUseCase(
             decisionScope);
     }
 
-    private static StockTransaction? BuildOpeningAdjustmentFromBaseline(
+    private async Task<StockTransaction?> BuildOpeningAdjustmentFromBaselineAsync(
+        Domain.Entities.CurrencyLedger boundLedger,
         StockImportSessionSnapshotDto sessionSnapshot,
         string normalizedTicker,
         StockMarket market,
@@ -1024,7 +1051,8 @@ public sealed class ExecuteStockImportUseCase(
         SellBeforeBuyAction resolvedAction,
         decimal requiredShares,
         Guid portfolioId,
-        Guid? currencyLedgerId)
+        Guid? currencyLedgerId,
+        CancellationToken cancellationToken)
     {
         if (resolvedAction == SellBeforeBuyAction.None)
         {
@@ -1032,6 +1060,7 @@ public sealed class ExecuteStockImportUseCase(
         }
 
         var openingPosition = ResolveOpeningPosition(sessionSnapshot, normalizedTicker);
+        var baselineDate = ResolveBaselineDate(sessionSnapshot, tradeDate);
 
         if (resolvedAction == SellBeforeBuyAction.UseOpeningPosition)
         {
@@ -1046,78 +1075,86 @@ public sealed class ExecuteStockImportUseCase(
                 return null;
             }
 
-            var baselineDate = ResolveBaselineDate(sessionSnapshot, tradeDate);
-            var (pricePerShare, exchangeRate) = ResolveOpeningCostComponents(openingPosition, openingShares, currency);
+            var openingExchangeRate = await ResolveOpeningExchangeRateAsync(
+                boundLedger,
+                baselineDate,
+                cancellationToken);
+            var pricePerShare = ResolveOpeningCostComponents(openingPosition, openingShares);
 
-            return new StockTransaction(
+            var openingTransaction = new StockTransaction(
                 portfolioId: portfolioId,
                 transactionDate: baselineDate,
                 ticker: normalizedTicker,
                 transactionType: TransactionType.Adjustment,
                 shares: openingShares,
                 pricePerShare: pricePerShare,
-                exchangeRate: exchangeRate,
+                exchangeRate: openingExchangeRate,
                 fees: 0m,
                 currencyLedgerId: currencyLedgerId,
                 notes: "import-execute-opening-baseline",
                 market: market,
                 currency: currency);
+
+            openingTransaction.SetImportInitialization(
+                marketValueAtImport: openingPosition.TotalCost,
+                historicalTotalCost: openingPosition.HistoricalTotalCost);
+
+            return openingTransaction;
         }
 
         if (resolvedAction == SellBeforeBuyAction.CreateAdjustment)
         {
-            var baselineDate = ResolveBaselineDate(sessionSnapshot, tradeDate);
-
-            if (openingPosition is null)
+            var resolvedShares = requiredShares;
+            if (openingPosition?.Quantity is decimal openingShares && openingShares > 0m)
             {
-                return new StockTransaction(
-                    portfolioId: portfolioId,
-                    transactionDate: baselineDate,
-                    ticker: normalizedTicker,
-                    transactionType: TransactionType.Adjustment,
-                    shares: requiredShares,
-                    pricePerShare: 0m,
-                    exchangeRate: 1m,
-                    fees: 0m,
-                    currencyLedgerId: currencyLedgerId,
-                    notes: "import-execute-adjustment",
-                    market: market,
-                    currency: currency);
+                resolvedShares = openingShares;
             }
 
-            var openingShares = openingPosition.Quantity!.Value;
-            if (openingShares <= 0m)
+            var marketValueAtImport = await ResolveOpeningMarketValueAtImportAsync(
+                normalizedTicker,
+                market,
+                baselineDate,
+                resolvedShares,
+                openingPosition,
+                cancellationToken);
+
+            if (marketValueAtImport <= 0m)
             {
-                return new StockTransaction(
-                    portfolioId: portfolioId,
-                    transactionDate: baselineDate,
-                    ticker: normalizedTicker,
-                    transactionType: TransactionType.Adjustment,
-                    shares: requiredShares,
-                    pricePerShare: 0m,
-                    exchangeRate: 1m,
-                    fees: 0m,
-                    currencyLedgerId: currencyLedgerId,
-                    notes: "import-execute-adjustment",
-                    market: market,
-                    currency: currency);
+                return null;
             }
 
-            var (pricePerShare, exchangeRate) = ResolveOpeningCostComponents(openingPosition, openingShares, currency);
+            var openingExchangeRate = await ResolveOpeningExchangeRateAsync(
+                boundLedger,
+                baselineDate,
+                cancellationToken);
 
-            return new StockTransaction(
+            var pricePerShare = resolvedShares > 0m
+                ? Math.Round(marketValueAtImport / resolvedShares, 4, MidpointRounding.AwayFromZero)
+                : 0m;
+            if (pricePerShare < 0m)
+            {
+                pricePerShare = 0m;
+            }
+
+            var openingTransaction = new StockTransaction(
                 portfolioId: portfolioId,
                 transactionDate: baselineDate,
                 ticker: normalizedTicker,
                 transactionType: TransactionType.Adjustment,
-                shares: openingShares,
+                shares: resolvedShares,
                 pricePerShare: pricePerShare,
-                exchangeRate: exchangeRate,
+                exchangeRate: openingExchangeRate,
                 fees: 0m,
                 currencyLedgerId: currencyLedgerId,
                 notes: "import-execute-adjustment",
                 market: market,
                 currency: currency);
+
+            openingTransaction.SetImportInitialization(
+                marketValueAtImport: marketValueAtImport,
+                historicalTotalCost: openingPosition?.HistoricalTotalCost);
+
+            return openingTransaction;
         }
 
         return null;
@@ -1136,24 +1173,178 @@ public sealed class ExecuteStockImportUseCase(
         return explicitOpeningPosition;
     }
 
-    private static (decimal PricePerShare, decimal ExchangeRate) ResolveOpeningCostComponents(
-        StockImportSessionOpeningPositionSnapshotDto openingPosition,
-        decimal openingShares,
-        Currency _)
+    private async Task<decimal> ResolveOpeningExchangeRateAsync(
+        Domain.Entities.CurrencyLedger boundLedger,
+        DateTime baselineDate,
+        CancellationToken cancellationToken)
     {
-        const decimal exchangeRate = 1m;
+        if (string.Equals(boundLedger.CurrencyCode, boundLedger.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1.0m;
+        }
 
+        var fxResult = await txDateFxService.GetOrFetchAsync(
+            boundLedger.CurrencyCode,
+            boundLedger.HomeCurrency,
+            baselineDate,
+            cancellationToken);
+
+        if (fxResult is null)
+        {
+            throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
+        }
+
+        return fxResult.Rate;
+    }
+
+    private static decimal ResolveOpeningCostComponents(
+        StockImportSessionOpeningPositionSnapshotDto openingPosition,
+        decimal openingShares)
+    {
         if (openingPosition.TotalCost is decimal totalCost && totalCost > 0m)
         {
             var unitCost = totalCost / openingShares;
             var roundedUnitCost = Math.Round(unitCost, 4, MidpointRounding.AwayFromZero);
             if (roundedUnitCost > 0m)
             {
-                return (roundedUnitCost, exchangeRate);
+                return roundedUnitCost;
             }
         }
 
-        return (0m, exchangeRate);
+        return 0m;
+    }
+
+    private async Task<decimal?> TryGetClosingPriceForBaselineAsync(
+        string normalizedTicker,
+        StockMarket market,
+        DateTime baselineDate,
+        CancellationToken cancellationToken)
+    {
+        var targetDate = DateOnly.FromDateTime(baselineDate.Date);
+
+        foreach (var yahooSymbol in GetYahooSymbolsForHistoricalLookup(normalizedTicker, market))
+        {
+            try
+            {
+                var result = await yahooHistoricalPriceService.GetHistoricalPriceAsync(
+                    yahooSymbol,
+                    targetDate,
+                    cancellationToken);
+
+                if (result is { Price: > 0m })
+                {
+                    return result.Price;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Failed to fetch baseline historical price. Ticker={Ticker}, Market={Market}, YahooSymbol={YahooSymbol}, BaselineDate={BaselineDate}",
+                    normalizedTicker,
+                    market,
+                    yahooSymbol,
+                    baselineDate);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<decimal> ResolveOpeningMarketValueAtImportAsync(
+        string normalizedTicker,
+        StockMarket market,
+        DateTime baselineDate,
+        decimal shares,
+        StockImportSessionOpeningPositionSnapshotDto? openingPosition,
+        CancellationToken cancellationToken)
+    {
+        if (shares <= 0m)
+        {
+            return 0m;
+        }
+
+        var fetchedPrice = await TryGetClosingPriceForBaselineAsync(
+            normalizedTicker,
+            market,
+            baselineDate,
+            cancellationToken);
+
+        if (fetchedPrice is > 0m)
+        {
+            return Math.Round(shares * fetchedPrice.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        if (openingPosition?.TotalCost is decimal openingTotalCost && openingTotalCost > 0m)
+        {
+            return Math.Round(openingTotalCost, 2, MidpointRounding.AwayFromZero);
+        }
+
+        logger.LogInformation(
+            "Historical price unavailable for opening adjustment. Ticker={Ticker}, Market={Market}, BaselineDate={BaselineDate}. Fallback to zero market value.",
+            normalizedTicker,
+            market,
+            baselineDate);
+
+        return 0m;
+    }
+
+    private static IEnumerable<string> GetYahooSymbolsForHistoricalLookup(string normalizedTicker, StockMarket market)
+    {
+        var isTaiwanStock = market == StockMarket.TW || IsTaiwanTicker(normalizedTicker);
+        if (isTaiwanStock)
+        {
+            var baseTicker = normalizedTicker.Split('.')[0];
+            var explicitSuffix = normalizedTicker.Contains('.')
+                ? normalizedTicker[(normalizedTicker.LastIndexOf('.') + 1)..]
+                : null;
+
+            if (string.Equals(explicitSuffix, "TW", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TW";
+                yield return $"{baseTicker}.TWO";
+                yield break;
+            }
+
+            if (string.Equals(explicitSuffix, "TWO", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return $"{baseTicker}.TWO";
+                yield return $"{baseTicker}.TW";
+                yield break;
+            }
+
+            yield return $"{baseTicker}.TW";
+            yield return $"{baseTicker}.TWO";
+            yield break;
+        }
+
+        yield return ConvertToYahooSymbol(normalizedTicker, market);
+    }
+
+    private static string ConvertToYahooSymbol(string ticker, StockMarket market)
+    {
+        if (ticker.Contains('.'))
+        {
+            return ticker;
+        }
+
+        return market switch
+        {
+            StockMarket.UK => $"{ticker}.L",
+            StockMarket.EU => $"{ticker}.AS",
+            _ => ticker
+        };
+    }
+
+    private static bool IsTaiwanTicker(string ticker)
+    {
+        if (string.IsNullOrWhiteSpace(ticker))
+        {
+            return false;
+        }
+
+        var baseTicker = ticker.Trim().Split('.')[0];
+        return baseTicker.Length > 0 && char.IsDigit(baseTicker[0]);
     }
 
     private static CurrencyTransaction? BuildOpeningLedgerBaselineTransaction(
