@@ -335,6 +335,33 @@ async function confirmTradeSideForRow(
   throw new Error('找不到每列買賣方向控制項');
 }
 
+async function addBaselineOpeningPosition(
+  user: ReturnType<typeof userEvent.setup>,
+  params: {
+    baselineDate?: string;
+    openingCashBalance?: string;
+    ticker: string;
+    quantity: string;
+    totalCost: string;
+  },
+) {
+  if (params.baselineDate) {
+    fireEvent.change(screen.getByLabelText('期初基準日期'), {
+      target: { value: params.baselineDate },
+    });
+  }
+
+  if (params.openingCashBalance) {
+    await user.type(screen.getByLabelText('期初現金餘額'), params.openingCashBalance);
+  }
+
+  await user.click(screen.getByRole('button', { name: '新增持倉' }));
+
+  await user.type(await screen.findByLabelText('期初持倉 1 ticker'), params.ticker);
+  await user.type(screen.getByLabelText('期初持倉 1 quantity'), params.quantity);
+  await user.type(screen.getByLabelText('期初持倉 1 total cost'), params.totalCost);
+}
+
 function expectVisibleTextOrder(textsInExpectedOrder: string[]) {
   const nodes = textsInExpectedOrder.map((text) => screen.getByText(text));
 
@@ -484,12 +511,8 @@ describe('Stock import broker preview flow', () => {
     await requestPreview(user);
 
     const firstPreviewRequest = getLatestPreviewRequest();
-    expect(firstPreviewRequest).toEqual(
-      expect.objectContaining({
-        portfolioId: TEST_PORTFOLIO_ID,
-        selectedFormat: 'broker_statement',
-      }),
-    );
+    expect(firstPreviewRequest.portfolioId).toBe(TEST_PORTFOLIO_ID);
+    expect(firstPreviewRequest.selectedFormat).toBe('broker_statement');
     expect(firstPreviewRequest.csvContent).toContain('代碼');
     expect(screen.getByText('系統偵測：一般')).toBeInTheDocument();
 
@@ -592,12 +615,8 @@ describe('Stock import broker preview flow', () => {
     });
 
     const executeRequest = getLatestExecuteRequest();
-    expect(executeRequest).toEqual(
-      expect.objectContaining({
-        sessionId: 'session-ambiguous',
-        portfolioId: TEST_PORTFOLIO_ID,
-      }),
-    );
+    expect(executeRequest.sessionId).toBe('session-ambiguous');
+    expect(executeRequest.portfolioId).toBe(TEST_PORTFOLIO_ID);
 
     expect(executeRequest.rows).toEqual(
       expect.arrayContaining([
@@ -861,12 +880,8 @@ describe('Stock import broker preview flow', () => {
     await requestPreview(user);
 
     const previewRequest = getLatestPreviewRequest();
-    expect(previewRequest).toEqual(
-      expect.objectContaining({
-        portfolioId: TEST_PORTFOLIO_ID,
-        selectedFormat: 'broker_statement',
-      }),
-    );
+    expect(previewRequest.portfolioId).toBe(TEST_PORTFOLIO_ID);
+    expect(previewRequest.selectedFormat).toBe('broker_statement');
     expect(previewRequest.csvContent).toContain('淨收付');
 
     const executeButton = await screen.findByRole('button', {
@@ -902,6 +917,138 @@ describe('Stock import broker preview flow', () => {
     expect(within(performanceSummary).queryByText('300 TWD')).not.toBeInTheDocument();
     expect(within(performanceSummary).queryByText('—')).not.toBeInTheDocument();
     expect(within(performanceSummary).queryByText('-', { exact: true })).not.toBeInTheDocument();
+  });
+
+  it('sends baseline openingPositions with historicalTotalCost while keeping legacy totalCost compatibility', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-baseline-openings-compat',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 1,
+            rawSecurityName: 'ROW-BASELINE-COMPAT',
+            ticker: '2330',
+            tradeSide: 'buy',
+            confirmedTradeSide: 'buy',
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+    await addBaselineOpeningPosition(user, {
+      baselineDate: '2026-01-01',
+      openingCashBalance: '1000',
+      ticker: '2330',
+      quantity: '100',
+      totalCost: '62500',
+    });
+
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.baseline).toEqual(
+      expect.objectContaining({
+        baselineDate: '2026-01-01',
+        openingCashBalance: 1000,
+      }),
+    );
+
+    const openingPosition = previewRequest.baseline?.openingPositions?.[0];
+    expect(openingPosition).toEqual(
+      expect.objectContaining({
+        ticker: '2330',
+        quantity: 100,
+        historicalTotalCost: 62500,
+        totalCost: 62500,
+      }),
+    );
+  });
+
+  it('keeps annual performance display finite after import when backend returns null XIRR', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-performance-finite-flow',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 1,
+            rawSecurityName: 'ROW-PERFORMANCE-FINITE',
+            ticker: '2330',
+            tradeSide: 'buy',
+            confirmedTradeSide: 'buy',
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(
+      buildExecuteResponse({
+        summary: {
+          totalRows: 1,
+          insertedRows: 1,
+          failedRows: 0,
+          errorCount: 0,
+        },
+      }),
+    );
+
+    const performanceYear = 2025;
+    mockedPortfolioApi.getAvailableYears.mockResolvedValue({
+      years: [performanceYear],
+      earliestYear: performanceYear,
+      currentYear: performanceYear,
+    });
+    mockedPortfolioApi.calculateYearPerformance.mockResolvedValue(
+      buildYearPerformance({
+        year: performanceYear,
+        xirr: null,
+        xirrPercentage: null,
+        netContributionsHome: 32100,
+        sourceCurrency: 'USD',
+      }),
+    );
+
+    render(<ImportToPerformanceHarness />);
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    await user.click(executeButton);
+
+    const performanceSummary = await screen.findByLabelText('performance-summary');
+
+    expect(within(performanceSummary).getByText('年化報酬率 (XIRR)')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('-')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('淨投入')).toBeInTheDocument();
+    expect(within(performanceSummary).getByText('32,100 USD')).toBeInTheDocument();
+    expect(within(performanceSummary).queryByText(/NaN|Infinity/i)).not.toBeInTheDocument();
   });
 
   it('shows degrade reason instead of XIRR value after import when yearly return display should degrade', async () => {

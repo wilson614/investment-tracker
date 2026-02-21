@@ -391,6 +391,33 @@ async function selectRowTopUpTransactionType(
   await user.selectOptions(selector, option.value);
 }
 
+async function addBaselineOpeningPosition(
+  user: ReturnType<typeof userEvent.setup>,
+  params: {
+    baselineDate?: string;
+    openingCashBalance?: string;
+    ticker: string;
+    quantity: string;
+    totalCost: string;
+  },
+) {
+  if (params.baselineDate) {
+    fireEvent.change(screen.getByLabelText('期初基準日期'), {
+      target: { value: params.baselineDate },
+    });
+  }
+
+  if (params.openingCashBalance) {
+    await user.type(screen.getByLabelText('期初現金餘額'), params.openingCashBalance);
+  }
+
+  await user.click(screen.getByRole('button', { name: '新增持倉' }));
+
+  await user.type(await screen.findByLabelText('期初持倉 1 ticker'), params.ticker);
+  await user.type(screen.getByLabelText('期初持倉 1 quantity'), params.quantity);
+  await user.type(screen.getByLabelText('期初持倉 1 total cost'), params.totalCost);
+}
+
 async function executeImport(user: ReturnType<typeof userEvent.setup>) {
   const executeButton = await screen.findByRole('button', {
     name: /確認匯入|執行匯入|開始匯入/i,
@@ -462,12 +489,8 @@ describe('Stock import balance action flow', () => {
     await requestPreview(user);
 
     const previewRequest = getLatestPreviewRequest();
-    expect(previewRequest).toEqual(
-      expect.objectContaining({
-        portfolioId: TEST_PORTFOLIO_ID,
-        selectedFormat: 'broker_statement',
-      }),
-    );
+    expect(previewRequest.portfolioId).toBe(TEST_PORTFOLIO_ID);
+    expect(previewRequest.selectedFormat).toBe('broker_statement');
 
     await selectGlobalBalanceAction(user, 'Margin');
 
@@ -489,6 +512,86 @@ describe('Stock import balance action flow', () => {
           balanceAction: 'Margin',
           confirmedTradeSide: 'buy',
           ticker: '2330',
+        }),
+      ]),
+    );
+  });
+
+  it('includes baseline openingPositions historicalTotalCost while preserving legacy totalCost compatibility', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-baseline-balance-compat',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 15,
+            rawSecurityName: 'ROW-BASELINE-COMPAT',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 300,
+              availableBalance: 200,
+              shortfall: 100,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+        ],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+
+    await addBaselineOpeningPosition(user, {
+      baselineDate: '2026-01-01',
+      openingCashBalance: '5000',
+      ticker: '2330',
+      quantity: '10',
+      totalCost: '6250',
+    });
+
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    const openingPosition = previewRequest.baseline?.openingPositions?.[0];
+
+    expect(openingPosition).toEqual(
+      expect.objectContaining({
+        ticker: '2330',
+        quantity: 10,
+        historicalTotalCost: 6250,
+        totalCost: 6250,
+      }),
+    );
+
+    await selectGlobalBalanceAction(user, 'Margin');
+    await executeImport(user);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest.defaultBalanceAction).toEqual({
+      action: 'Margin',
+    });
+    expect(executeRequest.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rowNumber: 15,
+          balanceAction: 'Margin',
         }),
       ]),
     );
