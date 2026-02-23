@@ -1404,12 +1404,22 @@ public sealed class ExecuteStockImportUseCase(
         StockImportSessionSnapshotDto sessionSnapshot,
         DateTime tradeDate)
     {
-        if (sessionSnapshot.Baseline.BaselineDate is DateTime baselineDate)
+        var resolvedBaselineDate = sessionSnapshot.Baseline.BaselineDate is DateTime baselineDate
+            ? DateTime.SpecifyKind(baselineDate.Date, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
+
+        // Year-boundary guard: if opening baseline lands on Jan 1 of the same import year,
+        // historical performance treats it as an in-period event and can split the same economic value
+        // into both valuation and external cash flow. Move it to the previous day (Dec 31).
+        if (resolvedBaselineDate.Month == 1
+            && resolvedBaselineDate.Day == 1
+            && tradeDate.Year == resolvedBaselineDate.Year
+            && tradeDate.Date >= resolvedBaselineDate.Date)
         {
-            return DateTime.SpecifyKind(baselineDate.Date, DateTimeKind.Utc);
+            return DateTime.SpecifyKind(resolvedBaselineDate.AddDays(-1).Date, DateTimeKind.Utc);
         }
 
-        return DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
+        return resolvedBaselineDate;
     }
 
     private static StockImportRowFailureException CreateSellBeforeBuyActionFailure(

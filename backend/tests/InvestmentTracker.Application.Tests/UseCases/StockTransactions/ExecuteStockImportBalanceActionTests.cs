@@ -1040,7 +1040,7 @@ public class ExecuteStockImportBalanceActionTests
         createdTransactions.Should().ContainSingle(transaction => transaction.TransactionType == TransactionType.Sell);
         var createdSellTransaction = createdTransactions.Single(transaction => transaction.TransactionType == TransactionType.Sell);
 
-        createdSellTransaction.RealizedPnlHome.Should().Be(10544m);
+        createdSellTransaction.RealizedPnlHome.Should().Be(10744m);
 
         var seededOpeningTransaction = createdTransactions
             .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
@@ -1108,13 +1108,15 @@ public class ExecuteStockImportBalanceActionTests
 
         seededAdjustment.MarketValueAtImport.Should().Be(7000m);
         seededAdjustment.HistoricalTotalCost.Should().Be(6800m);
+        seededAdjustment.TransactionDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
 
         fixture.CurrencyTransactionRepositoryMock.Verify(
             x => x.AddAsync(
                 It.Is<CurrencyTransaction>(tx =>
                     tx.TransactionType == CurrencyTransactionType.InitialBalance
                     && tx.RelatedStockTransactionId == seededAdjustment.Id
-                    && tx.ForeignAmount == 7000m),
+                    && tx.ForeignAmount == 7000m
+                    && tx.TransactionDate == new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc)),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -1125,6 +1127,7 @@ public class ExecuteStockImportBalanceActionTests
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
         var baselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var expectedFxDate = baselineDate.AddDays(-1);
         var fixture = new Fixture(
             seedLedgerTransactions: [],
             sessionRows:
@@ -1159,13 +1162,13 @@ public class ExecuteStockImportBalanceActionTests
             .ReturnsAsync((YahooHistoricalPriceResult?)null);
 
         fixture.FxServiceMock
-            .Setup(x => x.GetOrFetchAsync("USD", "TWD", baselineDate, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetOrFetchAsync("USD", "TWD", expectedFxDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TransactionDateExchangeRateResult
             {
                 Rate = 31.5m,
                 CurrencyPair = "USDTWD",
-                RequestedDate = baselineDate,
-                ActualDate = baselineDate,
+                RequestedDate = expectedFxDate,
+                ActualDate = expectedFxDate,
                 Source = "test",
                 FromCache = true
             });
@@ -1198,8 +1201,12 @@ public class ExecuteStockImportBalanceActionTests
         seededAdjustment.HistoricalTotalCost.Should().Be(6800m);
 
         fixture.FxServiceMock.Verify(
-            x => x.GetOrFetchAsync("USD", "TWD", baselineDate, It.IsAny<CancellationToken>()),
+            x => x.GetOrFetchAsync("USD", "TWD", expectedFxDate, It.IsAny<CancellationToken>()),
             Times.Once);
+
+        fixture.FxServiceMock.Verify(
+            x => x.GetOrFetchAsync("USD", "TWD", baselineDate, It.IsAny<CancellationToken>()),
+            Times.Never);
 
         fixture.CurrencyTransactionRepositoryMock.Verify(
             x => x.AddAsync(
@@ -1311,7 +1318,7 @@ public class ExecuteStockImportBalanceActionTests
         addedCurrencyTransactions.Should().ContainSingle(transaction =>
             transaction.TransactionType == CurrencyTransactionType.InitialBalance
             && transaction.ForeignAmount == 626425m
-            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            && transaction.TransactionDate == new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc)
             && transaction.RelatedStockTransactionId == null);
 
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);

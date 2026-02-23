@@ -1161,16 +1161,19 @@ public class HistoricalPerformanceServiceReturnTests
         result.UsesPartialHistoryAssumption.Should().BeFalse();
         result.CoverageStartDate.Should().Be(yearStart.Date);
 
-        result.StartValueSource.Should().BeGreaterThan(0m);
-        result.EndValueSource.Should().BeGreaterThan(0m);
+        result.StartValueSource.Should().Be(20000m);
+        result.EndValueSource.Should().Be(20200m);
+        result.StartValueHome.Should().Be(20000m);
+        result.EndValueHome.Should().Be(20200m);
         result.NetContributionsSource.Should().Be(0m);
+        result.NetContributionsHome.Should().Be(0m);
+        result.TotalReturnPercentageSource.Should().BeApproximately(1d, 0.0001d);
+        result.TotalReturnPercentage.Should().BeApproximately(1d, 0.0001d);
 
         result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
         result.ModifiedDietzPercentageSource.Should().NotBeNull();
-        result.TimeWeightedReturnPercentageSource!.Value.Should().BeGreaterThan(0d);
-        result.ModifiedDietzPercentageSource!.Value.Should().BeGreaterThan(0d);
-        result.TimeWeightedReturnPercentageSource.Value.Should().BeLessThan(10d);
-        result.ModifiedDietzPercentageSource.Value.Should().BeLessThan(10d);
+        result.TimeWeightedReturnPercentageSource!.Value.Should().BeApproximately(1d, 0.0001d);
+        result.ModifiedDietzPercentageSource!.Value.Should().BeApproximately(1d, 0.0001d);
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(result.ModifiedDietzPercentageSource.Value, 0.0001d);
 
         result.XirrReliability.Should().Be("High");
