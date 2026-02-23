@@ -709,3 +709,63 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- src/test/s
 |---|---|---|
 | T138 | Mark-to-Market initialization closure record (`entity`/DTO/execute/ledger sync) | This Group K root-cause and key-fix documentation block |
 | T139 | QA/regression verification and root-cause difference closure record | This Group K command log, PASS summary, and limitations notes |
+
+## Verification Notes (Group L Closed-Loop Consistency Fix)
+
+- Updated for Group L closure with closed-loop baseline-date consistency verification (date: **2026-02-23**).
+- Problem symptom (reproducible): importing the same dataset could produce **2025 Modified Dietz = +112.92%** while **2025 TWR = -100%**.
+- Root cause summary:
+  - When `baselineDate` resolved to `01/01`, the opening seed was treated as an in-year event.
+  - This created a split between valuation initialization and external cash-flow paths.
+  - The split broke closed-loop consistency for Day-1 return aggregation.
+- Patch summary:
+  - Added a year-boundary guard in `ExecuteStockImportUseCase.ResolveBaselineDate`.
+  - If baseline is `01/01` and same-year trades exist, baseline is shifted to the previous day (`12/31`).
+  - Opening seeded adjustment and paired initial-balance booking now share a consistent closed-loop date anchor.
+
+## Verification Evidence (Group L Execution Log)
+
+### Affected Test Files and Focus
+
+| Test File | Focus |
+|---|---|
+| `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs` | Regression coverage for baseline-date guard, seeded-adjustment date alignment, and FX lookup date consistency. |
+| `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs` | Stronger Day-1 seeded finite-return assertions to prevent non-finite or path-split regressions. |
+
+### Commands Executed
+
+```bash
+dotnet build "/workspaces/InvestmentTracker/backend/src/InvestmentTracker.API/InvestmentTracker.API.csproj"
+
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~ExecuteStockImportBalanceActionTests|FullyQualifiedName~HistoricalPerformanceServiceReturnTests"
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend build (`InvestmentTracker.API.csproj`) | PASS | Build completed successfully. |
+| Backend application regression (`ExecuteStockImportBalanceActionTests` + `HistoricalPerformanceServiceReturnTests`) | PASS | Failed: 0, Passed: 50, Total: 50 |
+
+### Code Review Conclusion
+
+- **PASS WITH NOTES** (non-blocking).
+- Notes were documentation-oriented and did not require additional runtime behavior changes.
+
+### Git Commit Evidence
+
+- Commit: `6880ca9`
+- Message: `fix(performance): 修正期初種子交易閉環邊界`
+- Scope: `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`, `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`, `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- Verification: commit created after QA PASS and review gate completion.
+
+### Group L Traceability (T140-T145)
+
+| Task(s) | Coverage | Evidence |
+|---|---|---|
+| T140 | Baseline year-boundary guard (`1/1` -> previous day) in execute flow | Group L root-cause + patch summary and targeted test scope |
+| T141 | Opening seeded adjustment / paired initial-balance date closed-loop alignment | Group L patch summary and closed-loop date-anchor note |
+| T142 | `ExecuteStockImportBalanceActionTests` baseline-date + FX lookup date regressions | Group L affected-test table and 50-pass command summary |
+| T143 | `HistoricalPerformanceServiceReturnTests` Day-1 seeded finite-return assertion strengthening | Group L affected-test table and 50-pass command summary |
+| T144 | QA/review/commit evidence recording in quickstart | Group L execution log, command list, and code-review conclusion |
+| T145 | Speckit checklist completion marker update | `specs/012-import-broker-statement/tasks.md` now includes checked T145 |

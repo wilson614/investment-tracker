@@ -218,6 +218,12 @@
 - [x] T137 [P] Add frontend regression coverage for baseline `historicalTotalCost` payload compatibility and finite import-performance summary display in `frontend/src/test/stock-import.broker-preview.test.tsx` and `frontend/src/test/stock-import.balance-action.test.tsx`
 - [x] T138 Record this round Mark-to-Market initialization closure (`entity`/DTO/execute/ledger sync) in `specs/012-import-broker-statement/quickstart.md`
 - [x] T139 Record this round QA/regression verification and root-cause difference summary completion in `specs/012-import-broker-statement/quickstart.md`
+- [x] T140 Fix `ExecuteStockImportUseCase` baseline year-boundary guard (`1/1` -> previous day) in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T141 Align opening seeded adjustment and paired initial-balance date closed loop in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T142 Add `ExecuteStockImportBalanceActionTests` regression coverage for baseline-date and FX-lookup-date alignment in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+- [x] T143 Strengthen `HistoricalPerformanceServiceReturnTests` assertions for Day-1 seeded finite returns in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T144 Record this round QA/review/commit evidence in `specs/012-import-broker-statement/quickstart.md`
+- [x] T145 Update Speckit checklist completion marker for Group L closure in `specs/012-import-broker-statement/tasks.md`
 
 ---
 
