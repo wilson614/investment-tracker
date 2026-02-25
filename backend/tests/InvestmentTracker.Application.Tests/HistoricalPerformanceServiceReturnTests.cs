@@ -1417,8 +1417,10 @@ public class HistoricalPerformanceServiceReturnTests
             .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(boundLedger);
 
-        // Regression guard: day-1 snapshot baseline must stay positive (cost fallback path),
-        // otherwise TWR start->first-event subperiod can be multiplied by 0 and collapse to -100%.
+        // Regression guard (mocked snapshots): even if snapshots are synthetic, we must still assert
+        // the service-level day-1/anchor baseline stays positive via seeded-adjustment cost fallback.
+        // If fallback regresses to zero, the TWR start->first-event subperiod can be multiplied by 0
+        // and collapse to -100%.
         var snapshots = new List<TransactionPortfolioSnapshot>
         {
             CreateSnapshot(
@@ -1463,8 +1465,18 @@ public class HistoricalPerformanceServiceReturnTests
         result.NetContributionsSource.Should().Be(1_000_000m);
         result.NetContributionsHome.Should().Be(1_000_000m);
 
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.UsesPartialHistoryAssumption.Should().BeFalse();
+        result.CoverageStartDate.Should().Be(yearStart.Date);
+
+        // Explicit zero-fallback regression guards for the day-1 seeded-adjustment baseline.
+        result.StartValueSource.Should().BeGreaterThan(0m);
+        result.StartValueHome.Should().BeGreaterThan(0m);
+        result.StartValueSource.Should().BeGreaterThan(900_000m);
         result.StartValueSource.Should().Be(980_000m);
         result.EndValueSource.Should().Be(990_000m);
+        result.StartValueHome.Should().Be(980_000m);
+        result.EndValueHome.Should().Be(990_000m);
         result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(1.0204081633d, 0.0001d);
         result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);

@@ -577,14 +577,21 @@ public class TransactionPortfolioSnapshotServiceTests
             transactionType: TransactionType.Adjustment,
             shares: 10_000m,
             pricePerShare: 100m,
-            exchangeRate: 1m,
+            exchangeRate: 0.0000004m, // rounds to 0 with 6 decimals, but HasExchangeRate remains true
             fees: 0m,
             market: StockMarket.US,
             currency: Currency.USD,
             notes: "import-execute-adjustment");
-        seededAdjustment.SetImportInitialization(
-            marketValueAtImport: 1_000_000m,
-            historicalTotalCost: 980_000m);
+
+        var seededPosition = new PortfolioCalculator()
+            .RecalculateAllPositionsWithSplitAdjustments(
+                [seededAdjustment],
+                splits: [],
+                splitService: new StockSplitAdjustmentService())
+            .Single();
+
+        seededPosition.AverageCostPerShareHome.Should().Be(0m);
+        seededPosition.TotalCostSource.Should().Be(1_000_000m);
 
         var portfolioRepository = new Mock<IPortfolioRepository>(MockBehavior.Strict);
         portfolioRepository
@@ -681,14 +688,14 @@ public class TransactionPortfolioSnapshotServiceTests
         snapshots.Select(s => s.TransactionId).Should().NotContain(openingOffsetSpend.Id);
 
         var snapshot = snapshots.Single();
-        snapshot.PortfolioValueBeforeSource.Should().BeApproximately(980_000m, 0.0001m);
-        snapshot.PortfolioValueBeforeHome.Should().BeApproximately(980_000m, 0.0001m);
+        snapshot.PortfolioValueBeforeSource.Should().BeApproximately(1_000_000m, 0.0001m);
+        snapshot.PortfolioValueBeforeHome.Should().BeApproximately(1_000_000m, 0.0001m);
         snapshot.PortfolioValueBeforeSource.Should().BeGreaterThan(900_000m);
         snapshot.PortfolioValueBeforeHome.Should().BeGreaterThan(900_000m);
 
         // InitialBalance and paired offset spend occur on the same anchor day and should net to 0 in ledger valuation.
-        snapshot.PortfolioValueAfterSource.Should().BeApproximately(980_000m, 0.0001m);
-        snapshot.PortfolioValueAfterHome.Should().BeApproximately(980_000m, 0.0001m);
+        snapshot.PortfolioValueAfterSource.Should().BeApproximately(1_000_000m, 0.0001m);
+        snapshot.PortfolioValueAfterHome.Should().BeApproximately(1_000_000m, 0.0001m);
 
         if (yahooReturnsZeroPrice)
         {
