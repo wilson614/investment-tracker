@@ -117,7 +117,9 @@ public class TransactionPortfolioSnapshotService(
 
         var existingById = existingSnapshots
             .GroupBy(s => s.TransactionId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+            .Select(g => g.OrderByDescending(x => x.CreatedAt).FirstOrDefault())
+            .Where(s => s != null)
+            .ToDictionary(s => s!.TransactionId, s => s!);
 
         var allSnapshotsExist = dayIds.All(id => existingById.ContainsKey(id));
         var firstTxId = dayTransactions[0].Id;
@@ -843,17 +845,30 @@ public class TransactionPortfolioSnapshotService(
                             && (!position.Market.HasValue || t.Market == position.Market.Value))
                 .ToList();
 
-            var positionValue = await CalculatePositionValueHomeWithCostFallbackAsync(
-                position,
-                positionTransactions,
-                valuationDate,
-                homeCurrency,
-                cancellationToken);
+            decimal positionValue;
+            try
+            {
+                var resolvedPositionValue = await CalculatePositionValueHomeWithCostFallbackAsync(
+                    position,
+                    positionTransactions,
+                    valuationDate,
+                    homeCurrency,
+                    cancellationToken);
 
-            if (!positionValue.HasValue)
-                return null;
+                // 保守處理：單一部位估值失敗或缺 FX 時回 0，避免整體 snapshot 崩潰。
+                positionValue = resolvedPositionValue ?? 0m;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 保守處理：單一部位估值失敗時回 0，避免整體 snapshot 崩潰。
+                positionValue = 0m;
+            }
 
-            total += positionValue.Value;
+            total += positionValue;
         }
 
         return Math.Round(total, 4);
@@ -907,18 +922,31 @@ public class TransactionPortfolioSnapshotService(
                             && (!position.Market.HasValue || t.Market == position.Market.Value))
                 .ToList();
 
-            var positionValue = await CalculatePositionValueSourceWithCostFallbackAsync(
-                position,
-                positionTransactions,
-                valuationDate,
-                sourceCurrency,
-                homeCurrency,
-                cancellationToken);
+            decimal positionValue;
+            try
+            {
+                var resolvedPositionValue = await CalculatePositionValueSourceWithCostFallbackAsync(
+                    position,
+                    positionTransactions,
+                    valuationDate,
+                    sourceCurrency,
+                    homeCurrency,
+                    cancellationToken);
 
-            if (!positionValue.HasValue)
-                return null;
+                // 保守處理：單一部位估值失敗或缺 FX 時回 0，避免整體 snapshot 崩潰。
+                positionValue = resolvedPositionValue ?? 0m;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 保守處理：單一部位估值失敗時回 0，避免整體 snapshot 崩潰。
+                positionValue = 0m;
+            }
 
-            total += positionValue.Value;
+            total += positionValue;
         }
 
         return Math.Round(total, 4);
@@ -1109,12 +1137,35 @@ public class TransactionPortfolioSnapshotService(
             return 1m;
         }
 
-        var result = await yahooService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
-        if (result != null)
-            return result.Rate;
+        try
+        {
+            var result = await yahooService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
+            if (result is { Rate: > 0m })
+                return result.Rate;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // 保守處理：外部 FX provider 例外不應讓 snapshot 流程崩潰。
+        }
 
-        var stooq = await stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
-        return stooq?.Rate;
+        try
+        {
+            var stooq = await stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
+            return stooq is { Rate: > 0m } ? stooq.Rate : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // 保守處理：外部 FX provider 例外不應讓 snapshot 流程崩潰。
+            return null;
+        }
     }
 
     private async Task<HistoricalPriceInfo?> GetHistoricalPriceAsync(
@@ -1125,32 +1176,54 @@ public class TransactionPortfolioSnapshotService(
     {
         foreach (var yahooSymbol in GetYahooSymbolsForHistoricalLookup(ticker, market))
         {
-            var yahoo = await yahooService.GetHistoricalPriceAsync(yahooSymbol, date, cancellationToken);
-            if (yahoo == null)
+            try
             {
-                continue;
-            }
+                var yahoo = await yahooService.GetHistoricalPriceAsync(yahooSymbol, date, cancellationToken);
+                if (yahoo == null)
+                {
+                    continue;
+                }
 
-            return new HistoricalPriceInfo(
-                Price: yahoo.Price,
-                Currency: yahoo.Currency,
-                ActualDate: yahoo.ActualDate,
-                Market: market,
-                Source: "Yahoo");
+                return new HistoricalPriceInfo(
+                    Price: yahoo.Price,
+                    Currency: yahoo.Currency,
+                    ActualDate: yahoo.ActualDate,
+                    Market: market,
+                    Source: "Yahoo");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 保守處理：單一 provider 失敗時繼續嘗試其他來源。
+            }
         }
 
         if (market == StockMarket.TW || IsTaiwanTicker(ticker))
         {
             var stockNo = ticker.Split('.')[0];
-            var twse = await twseStockService.GetStockPriceAsync(stockNo, date, cancellationToken);
-            if (twse != null)
+            try
             {
-                return new HistoricalPriceInfo(
-                    Price: twse.Price,
-                    Currency: "TWD",
-                    ActualDate: twse.ActualDate,
-                    Market: StockMarket.TW,
-                    Source: twse.Source is "TWSE" or "TPEx" ? twse.Source : "TWSE");
+                var twse = await twseStockService.GetStockPriceAsync(stockNo, date, cancellationToken);
+                if (twse != null)
+                {
+                    return new HistoricalPriceInfo(
+                        Price: twse.Price,
+                        Currency: "TWD",
+                        ActualDate: twse.ActualDate,
+                        Market: StockMarket.TW,
+                        Source: twse.Source is "TWSE" or "TPEx" ? twse.Source : "TWSE");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 保守處理：TWSE provider 失敗時不拋例外，改用成本回退。
             }
 
             return null;
@@ -1158,15 +1231,26 @@ public class TransactionPortfolioSnapshotService(
 
         if (market != StockMarket.EU)
         {
-            var stooq = await stooqService.GetStockPriceAsync(ticker, date, cancellationToken);
-            if (stooq != null)
+            try
             {
-                return new HistoricalPriceInfo(
-                    Price: stooq.Price,
-                    Currency: stooq.Currency,
-                    ActualDate: stooq.ActualDate,
-                    Market: market,
-                    Source: "Stooq");
+                var stooq = await stooqService.GetStockPriceAsync(ticker, date, cancellationToken);
+                if (stooq != null)
+                {
+                    return new HistoricalPriceInfo(
+                        Price: stooq.Price,
+                        Currency: stooq.Currency,
+                        ActualDate: stooq.ActualDate,
+                        Market: market,
+                        Source: "Stooq");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 保守處理：Stooq provider 失敗時不拋例外，改用成本回退。
             }
         }
 
