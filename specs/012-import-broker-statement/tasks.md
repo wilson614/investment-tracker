@@ -262,6 +262,10 @@
 - [x] T181 [P] Add API regression assertions for broker opening offset spend `HomeAmount` and `ExchangeRate` in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
 - [x] T182 Run focused QA verification for InitialBalance/offset-spend denominator guard across domain/application/API suites
 - [x] T183 Complete code-review gate for InitialBalance/offset-spend denominator guard closure
+- [x] T184 Fix TWR zero-denominator blank-subperiod guard at geometric chaining point in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs`
+- [x] T185 Add annual full-year regression (first trade starts in October; blank pre-trade days skipped; TWR positive and not `-100%`) in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T186 Run focused QA verification for TWR zero-denominator/blank-day regression in backend domain+application tests
+- [x] T187 Complete code-review gate for TWR denominator-zero guard and regression coverage closure
 
 ---
 

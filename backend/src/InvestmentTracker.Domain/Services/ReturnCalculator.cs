@@ -81,24 +81,32 @@ public class ReturnCalculator : IReturnCalculator
                 return null;
             }
 
-            if (currentStartValue > 0m)
+            // In before/after snapshots, denominator = startValue + netCashFlow maps to
+            // the current sub-period start (ValueAfter of previous event, or startValue for first segment).
+            // When denominator == 0, this is a 0/0 blank segment (e.g. no position before first trade),
+            // so skip the sub-period to avoid divide-by-zero and accidental factor collapse.
+            var denominator = currentStartValue;
+            if (denominator == 0m)
             {
-                factor *= snapshot.ValueBefore / currentStartValue;
-                hasAnyPeriod = true;
+                currentStartValue = snapshot.ValueAfter;
+                continue;
             }
 
+            factor *= snapshot.ValueBefore / denominator;
+            hasAnyPeriod = true;
             currentStartValue = snapshot.ValueAfter;
         }
 
         if (CrossesZero(currentStartValue, endValue))
             return null;
 
-        if (currentStartValue > 0m)
-        {
-            factor *= endValue / currentStartValue;
-            hasAnyPeriod = true;
-        }
+        var tailDenominator = currentStartValue;
+        if (tailDenominator == 0m)
+            return hasAnyPeriod ? factor - 1m : null;
 
-        return hasAnyPeriod ? factor - 1 : null;
+        factor *= endValue / tailDenominator;
+        hasAnyPeriod = true;
+
+        return factor - 1m;
     }
 }

@@ -796,6 +796,16 @@ public class HistoricalPerformanceServiceReturnTests
         result.CoverageStartDate.Should().Be(tradeDate.Date);
         result.CoverageDays.Should().Be(90);
 
+        // Regression guard: year-start to first trade is a leading blank segment (Vstart=0, CF=0, Vend=0).
+        // TWR geometric linking must skip that zero-denominator sub-period and preserve the post-trade market return.
+        result.StartValueSource.Should().Be(0m);
+        result.StartValueHome.Should().Be(0m);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(0d);
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+
         result.ShouldDegradeReturnDisplay.Should().BeTrue();
         result.ReturnDisplayDegradeReasonCode.Should().Be("LOW_CONFIDENCE_NO_OPENING_BASELINE");
         result.ReturnDisplayDegradeReasonCode.Should().NotBe("LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE");
