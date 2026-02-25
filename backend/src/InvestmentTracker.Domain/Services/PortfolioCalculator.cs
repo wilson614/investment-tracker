@@ -109,9 +109,10 @@ public class PortfolioCalculator
         var totalCostHome = 0m;
         var totalCostSource = 0m;
 
-        // 取得幣別：使用第一筆買入交易的幣別
+        // 取得幣別：優先使用第一筆買入交易，若無買入則回退第一筆交易（支援 adjustment-only）
         var currency = tickerTransactions
-            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency;
+            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency
+            ?? tickerTransactions.FirstOrDefault()?.Currency;
 
         foreach (var transaction in tickerTransactions)
         {
@@ -357,9 +358,10 @@ public class PortfolioCalculator
         var totalCostHome = 0m;
         var totalCostSource = 0m;
 
-        // 取得幣別：使用第一筆買入交易的幣別
+        // 取得幣別：優先使用第一筆買入交易，若無買入則回退第一筆交易（支援 adjustment-only）
         var currency = tickerTransactions
-            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency;
+            .FirstOrDefault(t => t.TransactionType == TransactionType.Buy)?.Currency
+            ?? tickerTransactions.FirstOrDefault()?.Currency;
 
         foreach (var transaction in tickerTransactions)
         {

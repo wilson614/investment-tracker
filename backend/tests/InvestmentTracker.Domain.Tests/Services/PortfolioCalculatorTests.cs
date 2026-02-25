@@ -172,6 +172,22 @@ public class PortfolioCalculatorTests
     }
 
     [Fact]
+    public void CalculatePositionByMarket_AdjustmentOnlyTransactions_SetsCurrencyFromAdjustmentTransaction()
+    {
+        // Arrange
+        var adjustment = CreateAdjustmentTransactionWithMarket("AGAC", StockMarket.EU, 10m, 20m, 2m, 0m);
+        adjustment.SetCurrency(Currency.EUR);
+
+        var transactions = new List<StockTransaction> { adjustment };
+
+        // Act
+        var position = _calculator.CalculatePositionByMarket("AGAC", StockMarket.EU, transactions);
+
+        // Assert
+        Assert.Equal("EUR", position.Currency);
+    }
+
+    [Fact]
     public void CalculatePositionWithSplitAdjustments_AdjustmentCostPriority_FallsBackToTransactionTotalCostWhenImportFieldsMissing()
     {
         // Arrange

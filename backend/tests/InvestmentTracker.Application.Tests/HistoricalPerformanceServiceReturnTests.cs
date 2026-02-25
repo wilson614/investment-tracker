@@ -561,6 +561,157 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_NoOpeningBaseline_WithLateImportOpeningInitialBalanceAndOffsetSpend_TreatsInitialBalanceAsExternalCashFlow()
+    {
+        // Arrange
+        const int year = 2025;
+        var tradeDate = new DateTime(year, 12, 30, 0, 0, 0, DateTimeKind.Utc);
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var yearEnd = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        const decimal openingAmount = 100000m;
+        const decimal yearEndPrice = 105.68684m;
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Late import opening initial balance regression test");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buy = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: tradeDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1000m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+        buy.CreatedAt = new DateTime(year, 12, 30, 1, 0, 0, DateTimeKind.Utc);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buy]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var importOpeningInitialBalance = new CurrencyTransaction(
+            boundLedger.Id,
+            tradeDate,
+            CurrencyTransactionType.InitialBalance,
+            openingAmount,
+            homeAmount: openingAmount,
+            exchangeRate: 1m,
+            relatedStockTransactionId: buy.Id,
+            notes: "import-execute-opening-initial-balance");
+
+        var openingInitialBalanceOffsetSpend = new CurrencyTransaction(
+            boundLedger.Id,
+            tradeDate,
+            CurrencyTransactionType.Spend,
+            openingAmount,
+            relatedStockTransactionId: buy.Id,
+            notes: "import-execute-opening-initial-balance-offset");
+
+        boundLedger.AddTransaction(importOpeningInitialBalance);
+        boundLedger.AddTransaction(openingInitialBalanceOffsetSpend);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            // Regression guard: import opening InitialBalance must remain an external CF event.
+            // The paired broker offset spend is internal and should not cancel MD/TWR cash-flow inputs.
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: importOpeningInitialBalance.Id,
+                snapshotDate: tradeDate,
+                beforeSource: 0m,
+                afterSource: openingAmount,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 12, 30, 2, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = yearEndPrice, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        result.HasOpeningBaseline.Should().BeFalse();
+        result.UsesPartialHistoryAssumption.Should().BeTrue();
+        result.CoverageStartDate.Should().Be(tradeDate.Date);
+        result.CoverageDays.Should().Be(2);
+
+        result.StartValueSource.Should().Be(0m);
+        result.EndValueSource.Should().Be(105686.84m);
+        result.StartValueHome.Should().Be(0m);
+        result.EndValueHome.Should().Be(105686.84m);
+
+        result.NetContributionsSource.Should().Be(openingAmount,
+            "import opening InitialBalance must be treated as external CF while paired offset spend remains internal");
+        result.NetContributionsHome.Should().Be(openingAmount);
+
+        var totalDays = (yearEnd.Date - yearStart.Date).Days;
+        var daysSinceStart = (tradeDate.Date - yearStart.Date).Days;
+        var weight = (totalDays - daysSinceStart) / (decimal)totalDays;
+        var expectedDenominator = openingAmount * weight;
+        var expectedNumerator = 105686.84m - openingAmount;
+        var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
+
+        totalDays.Should().Be(364);
+        daysSinceStart.Should().Be(363);
+        weight.Should().BeApproximately(1m / 364m, 0.0000001m);
+
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.1d);
+        result.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
+
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
+        (result.ModifiedDietzPercentageSource!.Value - result.TimeWeightedReturnPercentageSource!.Value)
+            .Should().BeGreaterThan(2000d);
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_NoOpeningBaselineWithSufficientCoverage_DegradesWithNoOpeningBaselineReason()
     {
         // Arrange
@@ -1186,6 +1337,142 @@ public class HistoricalPerformanceServiceReturnTests
         result.XirrSource.HasValue.Should().BeTrue();
         double.IsInfinity(result.XirrSource!.Value).Should().BeFalse();
         double.IsNaN(result.XirrSource.Value).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_NonTradingAnchorStyleDay1SnapshotPositive_WhenInitialBalanceExternalAndOffsetSpendInternal_TwrShouldNotCollapseToMinus100()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var anchorDate = new DateTime(year, 1, 5, 0, 0, 0, DateTimeKind.Utc); // Sunday (non-trading style day-1)
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Non-trading anchor day-1 snapshot guard");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var seededAdjustment = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 10_000m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        seededAdjustment.SetImportInitialization(
+            marketValueAtImport: 1_000_000m,
+            historicalTotalCost: 980_000m);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([seededAdjustment]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var openingInitialBalance = new CurrencyTransaction(
+            boundLedger.Id,
+            anchorDate,
+            CurrencyTransactionType.InitialBalance,
+            1_000_000m,
+            homeAmount: 1_000_000m,
+            exchangeRate: 1m,
+            relatedStockTransactionId: seededAdjustment.Id,
+            notes: "import-execute-opening-initial-balance");
+
+        var openingInitialBalanceOffsetSpend = new CurrencyTransaction(
+            boundLedger.Id,
+            anchorDate,
+            CurrencyTransactionType.Spend,
+            1_000_000m,
+            relatedStockTransactionId: seededAdjustment.Id,
+            notes: "import-execute-opening-initial-balance-offset");
+
+        boundLedger.AddTransaction(openingInitialBalance);
+        boundLedger.AddTransaction(openingInitialBalanceOffsetSpend);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        // Regression guard: day-1 snapshot baseline must stay positive (cost fallback path),
+        // otherwise TWR start->first-event subperiod can be multiplied by 0 and collapse to -100%.
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: openingInitialBalance.Id,
+                snapshotDate: anchorDate,
+                beforeSource: 980_000m,
+                afterSource: 980_000m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 1, 5, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 98m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 99m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.IsComplete.Should().BeTrue();
+
+        // Keep existing contract: InitialBalance is external CF, paired offset spend stays internal.
+        result.NetContributionsSource.Should().Be(1_000_000m);
+        result.NetContributionsHome.Should().Be(1_000_000m);
+
+        result.StartValueSource.Should().Be(980_000m);
+        result.EndValueSource.Should().Be(990_000m);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(1.0204081633d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);
+        result.TimeWeightedReturnPercentage.Should().NotBeNull();
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+
+        // Explicit regression guard against the old collapse pattern.
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
     }
 
     [Fact]

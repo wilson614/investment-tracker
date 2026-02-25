@@ -838,15 +838,16 @@ public class TransactionPortfolioSnapshotService(
 
         foreach (var position in positions)
         {
-            var priceInfo = await GetHistoricalPriceAsync(position.Ticker, position.Market, valuationDate, cancellationToken);
-            if (priceInfo == null)
+            var positionValue = await CalculatePositionValueHomeWithCostFallbackAsync(
+                position,
+                valuationDate,
+                homeCurrency,
+                cancellationToken);
+
+            if (!positionValue.HasValue)
                 return null;
 
-            var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, homeCurrency, priceInfo.ActualDate, cancellationToken);
-            if (exchangeRate == null)
-                return null;
-
-            total += position.TotalShares * priceInfo.Price * exchangeRate.Value;
+            total += positionValue.Value;
         }
 
         return Math.Round(total, 4);
@@ -895,19 +896,110 @@ public class TransactionPortfolioSnapshotService(
 
         foreach (var position in positions)
         {
-            var priceInfo = await GetHistoricalPriceAsync(position.Ticker, position.Market, valuationDate, cancellationToken);
-            if (priceInfo == null)
+            var positionValue = await CalculatePositionValueSourceWithCostFallbackAsync(
+                position,
+                valuationDate,
+                sourceCurrency,
+                homeCurrency,
+                cancellationToken);
+
+            if (!positionValue.HasValue)
                 return null;
 
-            // 先取得該價格幣別到 sourceCurrency 的匯率
-            var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, sourceCurrency, priceInfo.ActualDate, cancellationToken);
-            if (exchangeRate == null)
-                return null;
-
-            total += position.TotalShares * priceInfo.Price * exchangeRate.Value;
+            total += positionValue.Value;
         }
 
         return Math.Round(total, 4);
+    }
+
+    private async Task<decimal?> CalculatePositionValueHomeWithCostFallbackAsync(
+        StockPosition position,
+        DateOnly valuationDate,
+        string homeCurrency,
+        CancellationToken cancellationToken)
+    {
+        var priceInfo = await GetHistoricalPriceAsync(position.Ticker, position.Market, valuationDate, cancellationToken);
+        if (priceInfo == null || priceInfo.Price <= 0m)
+        {
+            return ResolveCostFallbackHome(position);
+        }
+
+        var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, homeCurrency, priceInfo.ActualDate, cancellationToken);
+        if (exchangeRate == null)
+            return null;
+
+        return position.TotalShares * priceInfo.Price * exchangeRate.Value;
+    }
+
+    private async Task<decimal?> CalculatePositionValueSourceWithCostFallbackAsync(
+        StockPosition position,
+        DateOnly valuationDate,
+        string sourceCurrency,
+        string homeCurrency,
+        CancellationToken cancellationToken)
+    {
+        var priceInfo = await GetHistoricalPriceAsync(position.Ticker, position.Market, valuationDate, cancellationToken);
+        if (priceInfo == null || priceInfo.Price <= 0m)
+        {
+            return await ResolveCostFallbackSourceAsync(
+                position,
+                valuationDate,
+                sourceCurrency,
+                homeCurrency,
+                cancellationToken);
+        }
+
+        var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, sourceCurrency, priceInfo.ActualDate, cancellationToken);
+        if (exchangeRate == null)
+            return null;
+
+        return position.TotalShares * priceInfo.Price * exchangeRate.Value;
+    }
+
+    private static decimal ResolveCostFallbackHome(StockPosition position)
+    {
+        if (position.TotalCostHome > 0m)
+            return position.TotalCostHome;
+
+        if (position.AverageCostPerShareHome > 0m)
+            return position.TotalShares * position.AverageCostPerShareHome;
+
+        return 0m;
+    }
+
+    private async Task<decimal?> ResolveCostFallbackSourceAsync(
+        StockPosition position,
+        DateOnly valuationDate,
+        string sourceCurrency,
+        string homeCurrency,
+        CancellationToken cancellationToken)
+    {
+        var sourceCostBasis = position.TotalCostSource > 0m
+            ? position.TotalCostSource
+            : position.TotalShares * position.AverageCostPerShareSource;
+
+        if (sourceCostBasis > 0m && !string.IsNullOrWhiteSpace(position.Currency))
+        {
+            if (string.Equals(position.Currency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+                return sourceCostBasis;
+
+            var rateFromPositionCurrency = await GetExchangeRateAsync(position.Currency, sourceCurrency, valuationDate, cancellationToken);
+            if (rateFromPositionCurrency != null)
+                return sourceCostBasis * rateFromPositionCurrency.Value;
+        }
+
+        var homeCostBasis = ResolveCostFallbackHome(position);
+        if (homeCostBasis <= 0m)
+            return 0m;
+
+        if (string.Equals(homeCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+            return homeCostBasis;
+
+        var homeToSourceRate = await GetExchangeRateAsync(homeCurrency, sourceCurrency, valuationDate, cancellationToken);
+        if (homeToSourceRate == null)
+            return null;
+
+        return homeCostBasis * homeToSourceRate.Value;
     }
 
     private async Task<decimal?> GetExchangeRateAsync(
