@@ -17,7 +17,8 @@ internal sealed class StockImportRowFailureException(
     string message,
     string correctionGuidance,
     string? invalidValue = null,
-    StockImportBalanceDecisionContextDto? balanceDecision = null)
+    StockImportBalanceDecisionContextDto? balanceDecision = null,
+    StockImportSellBeforeBuyDecisionContextDto? sellBeforeBuyDecision = null)
     : BusinessRuleException(message)
 {
     public string ErrorCode { get; } = errorCode;
@@ -25,6 +26,7 @@ internal sealed class StockImportRowFailureException(
     public string CorrectionGuidance { get; } = correctionGuidance;
     public string? InvalidValue { get; } = invalidValue;
     public StockImportBalanceDecisionContextDto? BalanceDecision { get; } = balanceDecision;
+    public StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision { get; } = sellBeforeBuyDecision;
 }
 
 public interface IExecuteStockImportUseCase
@@ -32,13 +34,18 @@ public interface IExecuteStockImportUseCase
     Task<StockImportExecuteResponseDto> ExecuteAsync(
         ExecuteStockImportRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<StockImportExecuteStatusResponseDto> GetStatusAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
 }
 
 internal readonly record struct ImportedStockTransactionCreationResult(
     StockTransaction Transaction,
     IReadOnlyList<StockTransaction> SeededTransactions,
     IReadOnlyList<CurrencyTransaction> CreatedCurrencyTransactions,
-    bool UsesPartialHistoryAssumption);
+    bool UsesPartialHistoryAssumption,
+    StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision);
 
 public sealed class ExecuteStockImportUseCase(
     IPortfolioRepository portfolioRepository,
@@ -59,6 +66,12 @@ public sealed class ExecuteStockImportUseCase(
     private const string StatusCommitted = "committed";
     private const string StatusPartiallyCommitted = "partially_committed";
     private const string StatusRejected = "rejected";
+
+    private const string ExecutionStatusPending = "pending";
+    private const string ExecutionStatusProcessing = "processing";
+    private const string ExecutionStatusCompleted = "completed";
+    private const string ExecutionStatusFailed = "failed";
+    private const string ExecutionStatusNotFound = "not_found";
 
     private const string ErrorCodeSymbolUnresolved = "SYMBOL_UNRESOLVED";
     private const string ErrorCodeSessionRowMismatch = "SESSION_ROW_MISMATCH";
@@ -81,12 +94,31 @@ public sealed class ExecuteStockImportUseCase(
 
     private const string MessageExcluded = "此列已由使用者排除。";
     private const string MessageCreated = "Created";
+    private const string MessageExecutionInProgress = "Import execution is already in progress for this session.";
+    private const string MessageSessionNotFound = "Import session not found, expired, or already consumed.";
+    private const string MessageExecutionFailedSafe = "Import execution failed. Please retry later.";
+    private const string MessageBrokerStatementAtomicRollbackDueToBalanceAction = "匯入包含需先指定餘額處理方式的列，已整批回滾；請補齊後重試。";
     private const string WarningMessagePartialPeriodAssumption = "偵測到匯入可能是部分期間；已依使用者指定方式套用 sell-before-buy 處理。";
     private const string WarningCorrectionGuidancePartialPeriodAssumption = "若要提升帳本成本與績效精準度，建議補匯入更早交易紀錄或提供完整期初持倉基準。";
+
+    private const string SellBeforeBuyStrategyNone = "none";
+    private const string SellBeforeBuyStrategyUseOpeningPosition = "use_opening_position";
+    private const string SellBeforeBuyStrategyCreateAdjustment = "create_adjustment";
+
+    private const string SellBeforeBuyReasonNotApplicable = "not_sell_before_buy_or_has_position";
+    private const string SellBeforeBuyReasonAutoDefault = "auto_default_for_sell_before_buy";
+    private const string SellBeforeBuyReasonRowOverride = "row_override";
+    private const string SellBeforeBuyReasonGlobalDefault = "global_default";
+
+    private const string DecisionScopeAutoDefault = "auto_default";
+    private const string DecisionScopeGlobalDefault = "global_default";
+    private const string DecisionScopeRowOverride = "row_override";
 
     private const string TradeSideBuy = "buy";
     private const string TradeSideSell = "sell";
     private const string TwdCurrencyCode = "TWD";
+    private const string ImportExecuteOpeningInitialBalanceNote = "import-execute-opening-initial-balance";
+    private const string ImportExecuteOpeningInitialBalanceOffsetNote = "import-execute-opening-initial-balance-offset";
 
     public async Task<StockImportExecuteResponseDto> ExecuteAsync(
         ExecuteStockImportRequest request,
@@ -119,6 +151,42 @@ public sealed class ExecuteStockImportUseCase(
         if (portfolio.UserId != userId)
             throw new AccessDeniedException();
 
+        var replayResponse = await TryResolveReplayResponseAsync(request.SessionId, request.PortfolioId, userId, cancellationToken);
+        if (replayResponse is not null)
+        {
+            return replayResponse;
+        }
+
+        var previewSessionForOwnership = await stockImportSessionStore.GetAsync(request.SessionId, cancellationToken);
+        if (previewSessionForOwnership is null)
+        {
+            throw new BusinessRuleException(MessageSessionNotFound);
+        }
+
+        if (previewSessionForOwnership.UserId != userId || previewSessionForOwnership.PortfolioId != request.PortfolioId)
+        {
+            throw new AccessDeniedException("Import session does not match current user or portfolio.");
+        }
+
+        var started = await stockImportSessionStore.TryStartExecutionAsync(
+            request.SessionId,
+            userId,
+            request.PortfolioId,
+            cancellationToken);
+
+        if (!started)
+        {
+            var secondReplayResponse = await TryResolveReplayResponseAsync(request.SessionId, request.PortfolioId, userId, cancellationToken);
+            if (secondReplayResponse is not null)
+            {
+                return secondReplayResponse;
+            }
+
+            throw new BusinessRuleException(MessageExecutionInProgress);
+        }
+
+        var executionStartedAtUtc = DateTime.UtcNow;
+
         var session = await stockImportSessionStore.TryConsumeForOwnerAsync(
             request.SessionId,
             userId,
@@ -127,16 +195,125 @@ public sealed class ExecuteStockImportUseCase(
 
         if (session is null)
         {
-            var existingSession = await stockImportSessionStore.GetAsync(request.SessionId, cancellationToken);
-            if (existingSession is not null
-                && (existingSession.UserId != userId || existingSession.PortfolioId != request.PortfolioId))
+            await stockImportSessionStore.RemoveAsync(request.SessionId, cancellationToken);
+
+            throw new BusinessRuleException(MessageSessionNotFound);
+        }
+
+        return await ExecuteWithConsumedSessionAsync(
+            request,
+            portfolio,
+            userId,
+            session,
+            executionStartedAtUtc,
+            cancellationToken);
+    }
+
+    public async Task<StockImportExecuteStatusResponseDto> GetStatusAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (sessionId == Guid.Empty)
+            throw new BusinessRuleException("SessionId is required.");
+
+        var userId = currentUserService.UserId
+            ?? throw new AccessDeniedException("User not authenticated");
+
+        var executionState = await stockImportSessionStore.GetExecutionStateAsync(sessionId, cancellationToken);
+        if (executionState is not null)
+        {
+            if (executionState.UserId != userId)
             {
                 throw new AccessDeniedException("Import session does not match current user or portfolio.");
             }
 
-            throw new BusinessRuleException("Import session not found, expired, or already consumed.");
+            return new StockImportExecuteStatusResponseDto
+            {
+                SessionId = sessionId,
+                PortfolioId = executionState.PortfolioId,
+                ExecutionStatus = executionState.ExecutionStatus,
+                Message = executionState.Message,
+                StartedAtUtc = executionState.StartedAtUtc,
+                CompletedAtUtc = executionState.CompletedAtUtc,
+                Result = executionState.Result
+            };
         }
 
+        var previewSession = await stockImportSessionStore.GetAsync(sessionId, cancellationToken);
+        if (previewSession is not null)
+        {
+            if (previewSession.UserId != userId)
+            {
+                throw new AccessDeniedException("Import session does not match current user or portfolio.");
+            }
+
+            return new StockImportExecuteStatusResponseDto
+            {
+                SessionId = sessionId,
+                PortfolioId = previewSession.PortfolioId,
+                ExecutionStatus = ExecutionStatusPending,
+                Message = null,
+                StartedAtUtc = null,
+                CompletedAtUtc = null,
+                Result = null
+            };
+        }
+
+        return new StockImportExecuteStatusResponseDto
+        {
+            SessionId = sessionId,
+            PortfolioId = null,
+            ExecutionStatus = ExecutionStatusNotFound,
+            Message = null,
+            StartedAtUtc = null,
+            CompletedAtUtc = null,
+            Result = null
+        };
+    }
+
+    private async Task<StockImportExecuteResponseDto?> TryResolveReplayResponseAsync(
+        Guid sessionId,
+        Guid portfolioId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var executionState = await stockImportSessionStore.GetExecutionStateAsync(sessionId, cancellationToken);
+        if (executionState is null)
+        {
+            return null;
+        }
+
+        if (executionState.UserId != userId || executionState.PortfolioId != portfolioId)
+        {
+            throw new AccessDeniedException("Import session does not match current user or portfolio.");
+        }
+
+        if (string.Equals(executionState.ExecutionStatus, ExecutionStatusProcessing, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessRuleException(MessageExecutionInProgress);
+        }
+
+        if (string.Equals(executionState.ExecutionStatus, ExecutionStatusCompleted, StringComparison.OrdinalIgnoreCase)
+            && executionState.Result is not null)
+        {
+            return executionState.Result with
+            {
+                SessionId = sessionId,
+                IsReplay = true
+            };
+        }
+
+        return null;
+    }
+
+    private async Task<StockImportExecuteResponseDto> ExecuteWithConsumedSessionAsync(
+        ExecuteStockImportRequest request,
+        Domain.Entities.Portfolio portfolio,
+        Guid userId,
+        StockImportSessionSnapshotDto session,
+        DateTime executionStartedAtUtc,
+        CancellationToken cancellationToken)
+    {
         var sessionRowsByNumber = session.Rows.ToDictionary(r => r.RowNumber);
 
         var results = new List<StockImportExecuteRowResultDto>(request.Rows.Count);
@@ -151,6 +328,7 @@ public sealed class ExecuteStockImportUseCase(
 
         var insertedRows = 0;
         var failedRows = 0;
+        var hasBrokerStatementBalanceActionRequiredFailure = false;
 
         var boundLedger = await currencyLedgerRepository.GetByIdAsync(portfolio.BoundCurrencyLedgerId, cancellationToken)
             ?? throw new EntityNotFoundException("CurrencyLedger", portfolio.BoundCurrencyLedgerId);
@@ -170,11 +348,23 @@ public sealed class ExecuteStockImportUseCase(
                 boundLedger.Id,
                 cancellationToken)).ToList();
 
+            var sessionBaselineAnchorDate = ResolveSessionBaselineAnchorDate(
+                session.SelectedFormat,
+                session,
+                request.Rows,
+                sessionRowsByNumber);
+
+            var isBrokerStatementImport = string.Equals(
+                session.SelectedFormat,
+                StockImportParser.FormatBrokerStatement,
+                StringComparison.Ordinal);
+
             var openingLedgerTransaction = BuildOpeningLedgerBaselineTransaction(
                 session,
                 boundLedger,
                 request.Rows,
-                sessionRowsByNumber);
+                sessionRowsByNumber,
+                sessionBaselineAnchorDate);
 
             if (openingLedgerTransaction is not null)
             {
@@ -243,7 +433,11 @@ public sealed class ExecuteStockImportUseCase(
                         message: "此列不屬於目前預覽 Session。",
                         correctionGuidance: "請重新預覽後再執行。",
                         confirmedTradeSide: NormalizeConfirmedTradeSide(row.ConfirmedTradeSide),
-                        logger: logger);
+                        logger: logger,
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable));
                     failedRows++;
                     continue;
                 }
@@ -259,7 +453,12 @@ public sealed class ExecuteStockImportUseCase(
                         RowNumber = row.RowNumber,
                         Success = true,
                         Message = MessageExcluded,
-                        ConfirmedTradeSide = normalizedTradeSide
+                        ConfirmedTradeSide = normalizedTradeSide,
+                        TransactionId = null,
+                        SellBeforeBuyDecision = BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable)
                     });
                     continue;
                 }
@@ -277,7 +476,11 @@ public sealed class ExecuteStockImportUseCase(
                         message: "此列尚未解析股票代號。",
                         correctionGuidance: "請先填入 ticker，或將此列排除後再執行。",
                         confirmedTradeSide: normalizedTradeSide,
-                        logger: logger);
+                        logger: logger,
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable));
                     failedRows++;
                     continue;
                 }
@@ -294,7 +497,11 @@ public sealed class ExecuteStockImportUseCase(
                         message: "此列尚未確認買賣方向。",
                         correctionGuidance: "請先確認此列為 buy 或 sell，或將此列排除後再執行。",
                         confirmedTradeSide: null,
-                        logger: logger);
+                        logger: logger,
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable));
                     failedRows++;
                     continue;
                 }
@@ -311,7 +518,11 @@ public sealed class ExecuteStockImportUseCase(
                         message: "此列在預覽結果中為無效列，無法執行。",
                         correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
                         confirmedTradeSide: normalizedTradeSide,
-                        logger: logger);
+                        logger: logger,
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable));
                     failedRows++;
                     continue;
                 }
@@ -328,7 +539,11 @@ public sealed class ExecuteStockImportUseCase(
                         message: "此列缺少建立交易所需資料。",
                         correctionGuidance: "請修正資料後重新預覽，或將此列排除。",
                         confirmedTradeSide: normalizedTradeSide,
-                        logger: logger);
+                        logger: logger,
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable));
                     failedRows++;
                     continue;
                 }
@@ -339,6 +554,7 @@ public sealed class ExecuteStockImportUseCase(
                         portfolio,
                         boundLedger,
                         session,
+                        sessionBaselineAnchorDate,
                         sessionRow,
                         normalizedTicker,
                         normalizedTradeSide,
@@ -377,7 +593,8 @@ public sealed class ExecuteStockImportUseCase(
                         Success = true,
                         TransactionId = createdTransaction.Id,
                         Message = MessageCreated,
-                        ConfirmedTradeSide = normalizedTradeSide
+                        ConfirmedTradeSide = normalizedTradeSide,
+                        SellBeforeBuyDecision = creationResult.SellBeforeBuyDecision
                     });
                 }
                 catch (StockImportRowFailureException ex)
@@ -393,8 +610,15 @@ public sealed class ExecuteStockImportUseCase(
                         correctionGuidance: ex.CorrectionGuidance,
                         confirmedTradeSide: normalizedTradeSide,
                         balanceDecision: ex.BalanceDecision ?? BuildBalanceDecisionContext(request.DefaultBalanceAction, row),
+                        sellBeforeBuyDecision: ex.SellBeforeBuyDecision,
                         logger: logger);
                     failedRows++;
+
+                    if (isBrokerStatementImport
+                        && string.Equals(ex.ErrorCode, ErrorCodeBalanceActionRequired, StringComparison.Ordinal))
+                    {
+                        hasBrokerStatementBalanceActionRequiredFailure = true;
+                    }
                 }
                 catch (BusinessRuleException ex)
                 {
@@ -412,21 +636,47 @@ public sealed class ExecuteStockImportUseCase(
                         correctionGuidance: correctionGuidance,
                         confirmedTradeSide: normalizedTradeSide,
                         balanceDecision: BuildBalanceDecisionContext(request.DefaultBalanceAction, row),
+                        sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                            SellBeforeBuyAction.None,
+                            null,
+                            SellBeforeBuyReasonNotApplicable),
                         logger: logger);
                     failedRows++;
                 }
             }
 
-            if (insertedRows > 0)
+            var shouldRollbackForBrokerStatementBalanceFailure =
+                isBrokerStatementImport && hasBrokerStatementBalanceActionRequiredFailure;
+
+            if (shouldRollbackForBrokerStatementBalanceFailure || insertedRows == 0)
             {
-                await tx.CommitAsync(cancellationToken);
+                await tx.RollbackAsync(cancellationToken);
+
+                if (shouldRollbackForBrokerStatementBalanceFailure)
+                {
+                    insertedRows = 0;
+
+                    for (var i = 0; i < results.Count; i++)
+                    {
+                        if (results[i].TransactionId.HasValue)
+                        {
+                            results[i] = results[i] with
+                            {
+                                TransactionId = null,
+                                Message = MessageBrokerStatementAtomicRollbackDueToBalanceAction
+                            };
+                        }
+                    }
+                }
             }
             else
             {
-                await tx.RollbackAsync(cancellationToken);
+                await tx.CommitAsync(cancellationToken);
             }
 
-            var status = ResolveStatus(insertedRows, failedRows);
+            var status = shouldRollbackForBrokerStatementBalanceFailure
+                ? StatusRejected
+                : ResolveStatus(insertedRows, failedRows);
 
             logger.LogInformation(
                 "Stock import execute completed. PortfolioId={PortfolioId}, SessionId={SessionId}, Status={Status}, RequestedRows={RequestedRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}, ErrorCount={ErrorCount}",
@@ -438,8 +688,10 @@ public sealed class ExecuteStockImportUseCase(
                 failedRows,
                 diagnostics.Count);
 
-            return new StockImportExecuteResponseDto
+            var response = new StockImportExecuteResponseDto
             {
+                SessionId = request.SessionId,
+                IsReplay = false,
                 Status = status,
                 Summary = new StockImportExecuteSummaryDto
                 {
@@ -451,6 +703,22 @@ public sealed class ExecuteStockImportUseCase(
                 Results = results,
                 Errors = diagnostics
             };
+
+            await stockImportSessionStore.SaveExecutionResultAsync(
+                new StockImportExecuteSessionStateDto
+                {
+                    SessionId = request.SessionId,
+                    UserId = userId,
+                    PortfolioId = request.PortfolioId,
+                    ExecutionStatus = ExecutionStatusCompleted,
+                    Message = null,
+                    StartedAtUtc = executionStartedAtUtc,
+                    CompletedAtUtc = DateTime.UtcNow,
+                    Result = response
+                },
+                cancellationToken);
+
+            return response;
         }
         catch (Exception ex)
         {
@@ -464,7 +732,27 @@ public sealed class ExecuteStockImportUseCase(
                 failedRows);
 
             await tx.RollbackAsync(cancellationToken);
-            throw;
+
+            await stockImportSessionStore.SaveExecutionResultAsync(
+                new StockImportExecuteSessionStateDto
+                {
+                    SessionId = request.SessionId,
+                    UserId = userId,
+                    PortfolioId = request.PortfolioId,
+                    ExecutionStatus = ExecutionStatusFailed,
+                    Message = MessageExecutionFailedSafe,
+                    StartedAtUtc = executionStartedAtUtc,
+                    CompletedAtUtc = DateTime.UtcNow,
+                    Result = null
+                },
+                cancellationToken);
+
+            if (ex is BusinessRuleException or EntityNotFoundException or AccessDeniedException)
+            {
+                throw;
+            }
+
+            throw new InvalidOperationException(MessageExecutionFailedSafe, ex);
         }
     }
 
@@ -472,6 +760,7 @@ public sealed class ExecuteStockImportUseCase(
         Domain.Entities.Portfolio portfolio,
         Domain.Entities.CurrencyLedger boundLedger,
         StockImportSessionSnapshotDto sessionSnapshot,
+        DateTime sessionBaselineAnchorDate,
         StockImportSessionRowSnapshotDto sessionRow,
         string normalizedTicker,
         string normalizedTradeSide,
@@ -486,7 +775,8 @@ public sealed class ExecuteStockImportUseCase(
     {
         var transactionType = ResolveTransactionType(normalizedTradeSide);
         var balanceDecision = ResolveBalanceDecision(requestRow, defaultBalanceDecision, boundLedger);
-        var sellBeforeBuyAction = ResolveSellBeforeBuyAction(requestRow, baselineDecision);
+        var sellBeforeBuyDecision = ResolveSellBeforeBuyDecision(requestRow, baselineDecision);
+        var sellBeforeBuyAction = sellBeforeBuyDecision.Action;
 
         var transactionsForPosition = persistedTransactions
             .Concat(importedTransactionsInBatch)
@@ -531,8 +821,11 @@ public sealed class ExecuteStockImportUseCase(
         decimal? exchangeRate;
         decimal? marketRate = null;
         IReadOnlyList<CurrencyTransaction>? ledgerTransactions = null;
+        var fxFromCurrency = boundLedger.CurrencyCode;
+        var fxToCurrency = boundLedger.HomeCurrency;
+        var requiresFxConversion = !string.Equals(fxFromCurrency, fxToCurrency, StringComparison.OrdinalIgnoreCase);
 
-        if (currency == Currency.TWD)
+        if (!requiresFxConversion)
         {
             exchangeRate = 1.0m;
         }
@@ -554,8 +847,8 @@ public sealed class ExecuteStockImportUseCase(
             else
             {
                 var fxResult = await txDateFxService.GetOrFetchAsync(
-                    portfolio.BaseCurrency,
-                    portfolio.HomeCurrency,
+                    fxFromCurrency,
+                    fxToCurrency,
                     tradeDate,
                     cancellationToken);
 
@@ -584,21 +877,12 @@ public sealed class ExecuteStockImportUseCase(
             {
                 if (currentPosition.TotalShares <= 0m)
                 {
-                    EnsureSellBeforeBuyActionResolved(
-                        sellBeforeBuyAction,
-                        baselineDecision,
-                        requestRow,
-                        normalizedTicker,
-                        market,
-                        shares,
-                        currentPosition.TotalShares);
-
                     var seededOpeningPosition = await BuildOpeningAdjustmentFromBaselineAsync(
                         boundLedger,
                         sessionSnapshot,
+                        sessionBaselineAnchorDate,
                         normalizedTicker,
                         market,
-                        tradeDate,
                         currency,
                         sellBeforeBuyAction,
                         requiredShares: shares,
@@ -645,9 +929,38 @@ public sealed class ExecuteStockImportUseCase(
                                 homeAmount: openingHomeAmount,
                                 exchangeRate: openingExchangeRate,
                                 relatedStockTransactionId: seededOpeningPosition.Id,
-                                notes: "import-execute-opening-initial-balance");
+                                notes: ImportExecuteOpeningInitialBalanceNote);
 
                             pendingCurrencyTransactions.Add(openingInitialBalanceTransaction);
+
+                            if (string.Equals(
+                                sessionSnapshot.SelectedFormat,
+                                StockImportParser.FormatBrokerStatement,
+                                StringComparison.Ordinal))
+                            {
+                                var openingOffsetExchangeRate = openingExchangeRate ?? seededOpeningPosition.ExchangeRate;
+                                var openingOffsetHomeAmount = openingHomeAmount;
+
+                                if (!openingOffsetHomeAmount.HasValue && openingOffsetExchangeRate.HasValue)
+                                {
+                                    openingOffsetHomeAmount = Math.Round(
+                                        openingMarketValueAtImport * openingOffsetExchangeRate.Value,
+                                        2,
+                                        MidpointRounding.AwayFromZero);
+                                }
+
+                                var openingInitialBalanceOffsetTransaction = new CurrencyTransaction(
+                                    boundLedger.Id,
+                                    seededOpeningPosition.TransactionDate,
+                                    CurrencyTransactionType.Spend,
+                                    openingMarketValueAtImport,
+                                    homeAmount: openingOffsetHomeAmount,
+                                    exchangeRate: openingOffsetExchangeRate,
+                                    relatedStockTransactionId: seededOpeningPosition.Id,
+                                    notes: ImportExecuteOpeningInitialBalanceOffsetNote);
+
+                                pendingCurrencyTransactions.Add(openingInitialBalanceOffsetTransaction);
+                            }
                         }
 
                         var seededAffectedFromMonth = new DateOnly(
@@ -676,7 +989,9 @@ public sealed class ExecuteStockImportUseCase(
                             market,
                             shares,
                             currentPosition.TotalShares,
-                            ResolveSellBeforeBuyDecisionScope(baselineDecision, requestRow));
+                            sellBeforeBuyDecision.DecisionScope,
+                            sellBeforeBuyDecision.Reason,
+                            sellBeforeBuyDecision.Action);
                     }
                 }
                 else
@@ -783,12 +1098,19 @@ public sealed class ExecuteStockImportUseCase(
                         {
                             if (marketRate == null)
                             {
-                                var fxResult = await txDateFxService.GetOrFetchAsync(
-                                    portfolio.BaseCurrency,
-                                    portfolio.HomeCurrency,
-                                    tradeDate,
-                                    cancellationToken);
-                                marketRate = fxResult?.Rate;
+                                if (!requiresFxConversion)
+                                {
+                                    marketRate = 1.0m;
+                                }
+                                else
+                                {
+                                    var fxResult = await txDateFxService.GetOrFetchAsync(
+                                        fxFromCurrency,
+                                        fxToCurrency,
+                                        tradeDate,
+                                        cancellationToken);
+                                    marketRate = fxResult?.Rate;
+                                }
                             }
 
                             var marginMarketRate = marketRate ?? exchangeRate;
@@ -957,11 +1279,22 @@ public sealed class ExecuteStockImportUseCase(
         var usesPartialHistoryAssumptionForWarning = usesPartialHistoryAssumption &&
             transactionType is TransactionType.Buy or TransactionType.Sell;
 
+        var sellBeforeBuyDecisionContext = usesPartialHistoryAssumption
+            ? BuildSellBeforeBuyDecisionContext(
+                sellBeforeBuyAction,
+                sellBeforeBuyDecision.DecisionScope,
+                sellBeforeBuyDecision.Reason)
+            : BuildSellBeforeBuyDecisionContext(
+                SellBeforeBuyAction.None,
+                null,
+                SellBeforeBuyReasonNotApplicable);
+
         return new ImportedStockTransactionCreationResult(
             Transaction: transaction,
             SeededTransactions: pendingSeededStockTransactions,
             CreatedCurrencyTransactions: pendingCurrencyTransactions,
-            UsesPartialHistoryAssumption: usesPartialHistoryAssumptionForWarning);
+            UsesPartialHistoryAssumption: usesPartialHistoryAssumptionForWarning,
+            SellBeforeBuyDecision: sellBeforeBuyDecisionContext);
     }
 
     private static (BalanceAction Action, CurrencyTransactionType? TopUpTransactionType) ResolveBalanceDecision(
@@ -992,61 +1325,57 @@ public sealed class ExecuteStockImportUseCase(
         return (action, topUpType);
     }
 
-    private static SellBeforeBuyAction ResolveSellBeforeBuyAction(
+    private static (SellBeforeBuyAction Action, string DecisionScope, string Reason) ResolveSellBeforeBuyDecision(
         ExecuteStockImportRowRequest row,
         StockImportBaselineExecutionDecisionRequest? baselineDecision)
-        => row.SellBeforeBuyAction
-            ?? baselineDecision?.SellBeforeBuyAction
-            ?? SellBeforeBuyAction.None;
-
-    private static string? ResolveSellBeforeBuyDecisionScope(
-        StockImportBaselineExecutionDecisionRequest? baselineDecision,
-        ExecuteStockImportRowRequest row)
     {
         if (row.SellBeforeBuyAction.HasValue)
         {
-            return "row_override";
+            return (
+                row.SellBeforeBuyAction.Value,
+                DecisionScopeRowOverride,
+                SellBeforeBuyReasonRowOverride);
         }
 
         if (baselineDecision?.SellBeforeBuyAction.HasValue == true)
         {
-            return "global_default";
+            return (
+                baselineDecision.SellBeforeBuyAction.Value,
+                DecisionScopeGlobalDefault,
+                SellBeforeBuyReasonGlobalDefault);
         }
 
-        return null;
+        return (
+            SellBeforeBuyAction.CreateAdjustment,
+            DecisionScopeAutoDefault,
+            SellBeforeBuyReasonAutoDefault);
     }
 
-    private static void EnsureSellBeforeBuyActionResolved(
-        SellBeforeBuyAction resolvedAction,
-        StockImportBaselineExecutionDecisionRequest? baselineDecision,
-        ExecuteStockImportRowRequest row,
-        string normalizedTicker,
-        StockMarket market,
-        decimal requiredShares,
-        decimal availableShares)
-    {
-        if (resolvedAction is SellBeforeBuyAction.UseOpeningPosition or SellBeforeBuyAction.CreateAdjustment)
+    private static StockImportSellBeforeBuyDecisionContextDto BuildSellBeforeBuyDecisionContext(
+        SellBeforeBuyAction action,
+        string? decisionScope,
+        string? reason)
+        => new()
         {
-            return;
-        }
+            Strategy = MapSellBeforeBuyStrategy(action),
+            DecisionScope = decisionScope,
+            Reason = reason
+        };
 
-        var decisionScope = ResolveSellBeforeBuyDecisionScope(baselineDecision, row);
-
-        throw CreateSellBeforeBuyActionFailure(
-            row,
-            normalizedTicker,
-            market,
-            requiredShares,
-            availableShares,
-            decisionScope);
-    }
+    private static string MapSellBeforeBuyStrategy(SellBeforeBuyAction action)
+        => action switch
+        {
+            SellBeforeBuyAction.UseOpeningPosition => SellBeforeBuyStrategyUseOpeningPosition,
+            SellBeforeBuyAction.CreateAdjustment => SellBeforeBuyStrategyCreateAdjustment,
+            _ => SellBeforeBuyStrategyNone
+        };
 
     private async Task<StockTransaction?> BuildOpeningAdjustmentFromBaselineAsync(
         Domain.Entities.CurrencyLedger boundLedger,
         StockImportSessionSnapshotDto sessionSnapshot,
+        DateTime sessionBaselineAnchorDate,
         string normalizedTicker,
         StockMarket market,
-        DateTime tradeDate,
         Currency currency,
         SellBeforeBuyAction resolvedAction,
         decimal requiredShares,
@@ -1060,7 +1389,7 @@ public sealed class ExecuteStockImportUseCase(
         }
 
         var openingPosition = ResolveOpeningPosition(sessionSnapshot, normalizedTicker);
-        var baselineDate = ResolveBaselineDate(sessionSnapshot, tradeDate);
+        var baselineDate = sessionBaselineAnchorDate;
 
         if (resolvedAction == SellBeforeBuyAction.UseOpeningPosition)
         {
@@ -1164,13 +1493,26 @@ public sealed class ExecuteStockImportUseCase(
         StockImportSessionSnapshotDto sessionSnapshot,
         string normalizedTicker)
     {
-        var explicitOpeningPosition = sessionSnapshot.Baseline.OpeningPositions
+        var holdings = ResolveBaselineHoldings(sessionSnapshot.Baseline);
+
+        var explicitOpeningPosition = holdings
             .FirstOrDefault(position =>
                 !string.IsNullOrWhiteSpace(position.Ticker)
                 && string.Equals(position.Ticker, normalizedTicker, StringComparison.OrdinalIgnoreCase)
                 && position.Quantity is > 0m);
 
         return explicitOpeningPosition;
+    }
+
+    private static IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto> ResolveBaselineHoldings(
+        StockImportSessionBaselineSnapshotDto baseline)
+    {
+        if (baseline.CurrentHoldings.Count > 0)
+        {
+            return baseline.CurrentHoldings;
+        }
+
+        return baseline.OpeningPositions;
     }
 
     private async Task<decimal> ResolveOpeningExchangeRateAsync(
@@ -1347,23 +1689,12 @@ public sealed class ExecuteStockImportUseCase(
         return baseTicker.Length > 0 && char.IsDigit(baseTicker[0]);
     }
 
-    private static CurrencyTransaction? BuildOpeningLedgerBaselineTransaction(
+    private static DateTime ResolveSessionBaselineAnchorDate(
+        string selectedFormat,
         StockImportSessionSnapshotDto sessionSnapshot,
-        Domain.Entities.CurrencyLedger boundLedger,
         IReadOnlyList<ExecuteStockImportRowRequest> requestRows,
         IReadOnlyDictionary<int, StockImportSessionRowSnapshotDto> sessionRowsByNumber)
     {
-        if (sessionSnapshot.Baseline.OpeningLedgerBalance is not decimal openingLedgerBalance || openingLedgerBalance <= 0m)
-        {
-            return null;
-        }
-
-        var hasIncludedRow = requestRows.Any(row => !row.Exclude && sessionRowsByNumber.ContainsKey(row.RowNumber));
-        if (!hasIncludedRow)
-        {
-            return null;
-        }
-
         var earliestTradeDate = requestRows
             .Where(row => !row.Exclude)
             .Select(row =>
@@ -1376,9 +1707,40 @@ public sealed class ExecuteStockImportUseCase(
             .DefaultIfEmpty(DateTime.UtcNow.Date)
             .Min();
 
-        var baselineDate = ResolveBaselineDate(
+        var tradeDate = DateTime.SpecifyKind(earliestTradeDate, DateTimeKind.Utc);
+
+        if (string.Equals(selectedFormat, StockImportParser.FormatBrokerStatement, StringComparison.Ordinal))
+        {
+            return ResolveBrokerBaselineAnchorDate(tradeDate);
+        }
+
+        return ResolveBaselineDate(
             sessionSnapshot,
-            DateTime.SpecifyKind(earliestTradeDate, DateTimeKind.Utc));
+            tradeDate);
+    }
+
+    private static DateTime ResolveBrokerBaselineAnchorDate(DateTime tradeDate)
+        => DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
+
+    private static CurrencyTransaction? BuildOpeningLedgerBaselineTransaction(
+        StockImportSessionSnapshotDto sessionSnapshot,
+        Domain.Entities.CurrencyLedger boundLedger,
+        IReadOnlyList<ExecuteStockImportRowRequest> requestRows,
+        IReadOnlyDictionary<int, StockImportSessionRowSnapshotDto> sessionRowsByNumber,
+        DateTime sessionBaselineAnchorDate)
+    {
+        if (sessionSnapshot.Baseline.OpeningLedgerBalance is not decimal openingLedgerBalance || openingLedgerBalance <= 0m)
+        {
+            return null;
+        }
+
+        var hasIncludedRow = requestRows.Any(row => !row.Exclude && sessionRowsByNumber.ContainsKey(row.RowNumber));
+        if (!hasIncludedRow)
+        {
+            return null;
+        }
+
+        var baselineDate = sessionBaselineAnchorDate;
 
         decimal? homeAmount = null;
         decimal? exchangeRate = null;
@@ -1404,7 +1766,9 @@ public sealed class ExecuteStockImportUseCase(
         StockImportSessionSnapshotDto sessionSnapshot,
         DateTime tradeDate)
     {
-        var resolvedBaselineDate = sessionSnapshot.Baseline.BaselineDate is DateTime baselineDate
+        var explicitBaselineDate = sessionSnapshot.Baseline.AsOfDate ?? sessionSnapshot.Baseline.BaselineDate;
+
+        var resolvedBaselineDate = explicitBaselineDate is DateTime baselineDate
             ? DateTime.SpecifyKind(baselineDate.Date, DateTimeKind.Utc)
             : DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
 
@@ -1428,7 +1792,9 @@ public sealed class ExecuteStockImportUseCase(
         StockMarket market,
         decimal requiredShares,
         decimal availableShares,
-        string? decisionScope)
+        string? decisionScope,
+        string? reason,
+        SellBeforeBuyAction resolvedAction)
     {
         var requiredText = requiredShares.ToString("0.####", CultureInfo.InvariantCulture);
         var availableText = availableShares.ToString("0.####", CultureInfo.InvariantCulture);
@@ -1444,10 +1810,14 @@ public sealed class ExecuteStockImportUseCase(
         return new StockImportRowFailureException(
             errorCode: ErrorCodeSellBeforeBuyActionRequired,
             fieldName: FieldSellBeforeBuyAction,
-            message: $"此列為 sell-before-buy / 零持股賣出情境（可用股數 {availableText}，欲賣出 {requiredText}），需先指定處理方式。",
-            correctionGuidance: "請在 execute 請求提供 baselineDecision.sellBeforeBuyAction 或 rows[].sellBeforeBuyAction（UseOpeningPosition / CreateAdjustment）。",
+            message: $"此列為 sell-before-buy / 零持股賣出情境（可用股數 {availableText}，欲賣出 {requiredText}），無法套用策略。",
+            correctionGuidance: "請補齊 baseline currentHoldings/openingPositions 與成本資訊，或提供可用的歷史價格來源後重試。",
             invalidValue: invalidValue,
-            balanceDecision: null);
+            balanceDecision: null,
+            sellBeforeBuyDecision: BuildSellBeforeBuyDecisionContext(
+                resolvedAction,
+                decisionScope,
+                reason));
     }
 
     private static bool IsTwdLedger(Domain.Entities.CurrencyLedger boundLedger)
@@ -1694,7 +2064,8 @@ public sealed class ExecuteStockImportUseCase(
         string correctionGuidance,
         string? confirmedTradeSide,
         ILogger<ExecuteStockImportUseCase> logger,
-        StockImportBalanceDecisionContextDto? balanceDecision = null)
+        StockImportBalanceDecisionContextDto? balanceDecision = null,
+        StockImportSellBeforeBuyDecisionContextDto? sellBeforeBuyDecision = null)
     {
         var normalizedInvalidValue = string.IsNullOrWhiteSpace(invalidValue) ? null : invalidValue;
 
@@ -1705,7 +2076,11 @@ public sealed class ExecuteStockImportUseCase(
             ErrorCode = errorCode,
             Message = message,
             ConfirmedTradeSide = confirmedTradeSide,
-            BalanceDecision = balanceDecision
+            BalanceDecision = balanceDecision,
+            SellBeforeBuyDecision = sellBeforeBuyDecision ?? BuildSellBeforeBuyDecisionContext(
+                SellBeforeBuyAction.None,
+                null,
+                SellBeforeBuyReasonNotApplicable)
         });
 
         diagnostics.Add(new StockImportDiagnosticDto

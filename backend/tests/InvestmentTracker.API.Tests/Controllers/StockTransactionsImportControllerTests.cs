@@ -10,8 +10,10 @@ using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Interfaces;
 using InvestmentTracker.Domain.Services;
+using InvestmentTracker.API.Middleware;
 using InvestmentTracker.API.Tests.Integration;
 using InvestmentTracker.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,8 +25,11 @@ namespace InvestmentTracker.API.Tests.Controllers;
 public class StockTransactionsImportControllerTests(CustomWebApplicationFactory factory)
     : IntegrationTestBase(factory)
 {
+    private readonly CustomWebApplicationFactory _factory = factory;
+
     private const string PreviewEndpoint = "/api/stocktransactions/import/preview";
     private const string ExecuteEndpoint = "/api/stocktransactions/import/execute";
+    private const string StatusEndpointPrefix = "/api/stocktransactions/import/status";
     private const string SampleBrokerStatementFixtureFileName = "SampleBrokerStatement.csv";
     private const string SourceBrokerStatementFixtureAbsolutePath = "/workspaces/InvestmentTracker/證券app匯出範例.csv";
 
@@ -157,8 +162,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             executePayload,
             ApiJsonOptions);
         executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
 
-        var executeSummary = executeDto!.Summary;
+        var executeSummary = executeDto.Summary;
         var executeResultRows = executeDto.Results;
 
         executeSummary.InsertedRows.Should().BeGreaterThan(0);
@@ -199,6 +205,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         failedResultRows.Should().OnlyContain(row =>
             !row.TransactionId.HasValue && !string.IsNullOrWhiteSpace(row.ErrorCode));
 
+        var hasSellBeforeBuyTrace = executeResultRows.Any(row =>
+            string.Equals(row.SellBeforeBuyDecision?.Strategy, "create_adjustment", StringComparison.Ordinal)
+            && string.Equals(row.SellBeforeBuyDecision?.DecisionScope, "auto_default", StringComparison.Ordinal));
+        hasSellBeforeBuyTrace.Should().BeTrue(
+            "sample CSV includes sell-before-buy scenarios and execute result should expose decision trace");
+
         // Act 3: list imported transactions to assert net holdings semantics through API-observable data
         var transactionsResponse = await Client.GetAsync($"/api/stocktransactions?portfolioId={twdPortfolio.Id}");
         transactionsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -206,7 +218,18 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         var importedTransactions = await transactionsResponse.Content.ReadFromJsonAsync<List<StockTransactionDto>>();
         importedTransactions.Should().NotBeNull();
         importedTransactions!.Should().NotBeEmpty();
-        importedTransactions.Count.Should().Be(executeSummary.InsertedRows);
+
+        var seededAdjustmentCount = importedTransactions.Count(transaction =>
+            transaction.TransactionType == TransactionType.Adjustment
+            && !string.IsNullOrWhiteSpace(transaction.Notes)
+            && transaction.Notes!.Contains("import-execute-adjustment", StringComparison.Ordinal));
+
+        seededAdjustmentCount.Should().BeGreaterThan(0,
+            "sample CSV includes sell-before-buy rows and should leave traceable auto-adjustment artifacts");
+
+        importedTransactions.Count.Should().Be(
+            executeSummary.InsertedRows + seededAdjustmentCount,
+            "execute summary tracks requested rows while persisted transactions also include seeded sell-before-buy adjustments");
 
         var netSharesByTicker = importedTransactions
             .GroupBy(transaction => transaction.Ticker, StringComparer.OrdinalIgnoreCase)
@@ -737,6 +760,24 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         expectedTwrPctSource.Should().NotBeNull("snapshot chain should produce a deterministic TWR for 2025 margin data path");
         yearPerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(expectedTwrPctSource!.Value, 0.0001d);
         yearPerformance.TimeWeightedReturnPercentage.Should().BeApproximately(expectedTwrPctSource.Value, 0.0001d);
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d,
+            "sample broker margin path should not regress to TWR -100% after import baseline handling");
+
+        if (yearPerformance.ModifiedDietzPercentageSource.HasValue)
+        {
+            yearPerformance.ModifiedDietzPercentageSource.Should().NotBeApproximately(469.02d, 0.01d,
+                "sample broker margin path should not regress to MD 469.02% blow-up");
+            yearPerformance.ModifiedDietzPercentageSource.Value.Should().BeGreaterThan(-100d);
+            yearPerformance.ModifiedDietzPercentageSource.Value.Should().BeLessThan(200d,
+                "MD should stay within a reasonable guardrail for this regression fixture");
+        }
+
+        if (yearPerformance.ModifiedDietzPercentage.HasValue)
+        {
+            yearPerformance.ModifiedDietzPercentage.Value.Should().BeGreaterThan(-100d);
+            yearPerformance.ModifiedDietzPercentage.Value.Should().BeLessThan(200d);
+        }
+
         yearPerformance.HasRecentLargeInflowWarning.Should().BeFalse();
         yearPerformance.RecentLargeInflowWarningMessage.Should().BeNull();
 
@@ -782,6 +823,153 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             expectedTotalReturnPctSource.Should().NotBeNull();
             aggregatePerformance.TotalReturnPercentage!.Value.Should().BeApproximately(expectedTotalReturnPctSource!.Value, 0.0001d);
         }
+    }
+
+    [Fact]
+    public async Task RegisterPreviewExecuteAndPerformance_UsingSampleCsv_DefaultUiPathWithoutBalanceDefaults_ShouldExpose2025RegressionSignal()
+    {
+        // Arrange: fresh account + default broker import path (no DefaultBalanceAction / no custom remediation)
+        var registerRequest = new RegisterRequest
+        {
+            Email = $"import-default-path-2025-{Guid.NewGuid():N}@example.com",
+            Password = "Password123!",
+            DisplayName = "Import Default Path 2025"
+        };
+
+        var registerResponse = await Client.PostAsJsonAsync("/api/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        auth.Should().NotBeNull();
+        auth!.AccessToken.Should().NotBeNullOrWhiteSpace();
+
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        Factory.TestUserId = auth.User.Id;
+
+        var portfoliosResponse = await Client.GetAsync("/api/portfolios");
+        portfoliosResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var portfolios = await portfoliosResponse.Content.ReadFromJsonAsync<List<PortfolioDto>>();
+        portfolios.Should().NotBeNullOrEmpty();
+
+        var twdPortfolio = portfolios!
+            .SingleOrDefault(p => string.Equals(p.BaseCurrency, "TWD", StringComparison.OrdinalIgnoreCase));
+        twdPortfolio.Should().NotBeNull();
+
+        var sampleFixture = await LoadSampleBrokerStatementFixtureAsync();
+
+        var previewResponse = await Client.PostAsJsonAsync(
+            PreviewEndpoint,
+            new PreviewStockImportRequest
+            {
+                PortfolioId = twdPortfolio!.Id,
+                CsvContent = sampleFixture.CsvContent,
+                SelectedFormat = "broker_statement"
+            });
+
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var previewRoot = previewJson.RootElement;
+
+        var previewDto = JsonSerializer.Deserialize<StockImportPreviewResponseDto>(previewPayload, ApiJsonOptions);
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().HaveCount(sampleFixture.DataRowCount);
+
+        var previewRowsByRowNumber = previewRoot.GetProperty("rows")
+            .EnumerateArray()
+            .ToDictionary(row => row.GetProperty("rowNumber").GetInt32());
+
+        var executeRows = previewDto.Rows
+            .Where(row => !string.Equals(row.Status, "invalid", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ConfirmedTradeSide))
+            .Select(row =>
+            {
+                var resolvedTicker = ResolveTickerForExecute(row);
+                return new ExecuteStockImportRowRequest
+                {
+                    RowNumber = row.RowNumber,
+                    Ticker = resolvedTicker,
+                    ConfirmedTradeSide = row.ConfirmedTradeSide,
+                    Exclude = string.IsNullOrWhiteSpace(resolvedTicker)
+                };
+            })
+            .ToList();
+
+        executeRows.Should().Contain(row => !row.Exclude);
+
+        var executeResponse = await Client.PostAsJsonAsync(
+            ExecuteEndpoint,
+            new ExecuteStockImportRequest
+            {
+                SessionId = previewDto.SessionId,
+                PortfolioId = twdPortfolio.Id,
+                Rows = executeRows
+            });
+
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executePayload = await executeResponse.Content.ReadAsStringAsync();
+        using var executeJson = JsonDocument.Parse(executePayload);
+        var executeRoot = executeJson.RootElement;
+
+        var executeDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(executePayload, ApiJsonOptions);
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("rejected",
+            "broker_statement default path should rollback atomically when any row fails with BALANCE_ACTION_REQUIRED");
+        executeDto.Summary.InsertedRows.Should().Be(0,
+            "atomic rollback should avoid partial commit that can poison performance metrics");
+
+        var balanceActionRequiredRowNumbers = executeRoot.GetProperty("results")
+            .EnumerateArray()
+            .Where(result => string.Equals(
+                result.GetProperty("errorCode").GetString(),
+                "BALANCE_ACTION_REQUIRED",
+                StringComparison.Ordinal))
+            .Select(result => result.GetProperty("rowNumber").GetInt32())
+            .Distinct()
+            .ToList();
+
+        var missingBalanceDecisionSignalRows = new List<int>();
+
+        foreach (var rowNumber in balanceActionRequiredRowNumbers)
+        {
+            previewRowsByRowNumber.Should().ContainKey(rowNumber,
+                $"execute row {rowNumber} failed with BALANCE_ACTION_REQUIRED but preview row should exist");
+
+            var previewRow = previewRowsByRowNumber[rowNumber];
+            var actionsRequired = previewRow.GetProperty("actionsRequired")
+                .EnumerateArray()
+                .Select(action => action.GetString())
+                .Where(action => !string.IsNullOrWhiteSpace(action))
+                .Select(action => action!)
+                .ToList();
+
+            var hasSelectBalanceAction = actionsRequired.Contains("select_balance_action", StringComparer.Ordinal);
+            var hasBalanceDecisionObject = previewRow.TryGetProperty("balanceDecision", out var balanceDecision)
+                && balanceDecision.ValueKind == JsonValueKind.Object;
+
+            if (!hasSelectBalanceAction && !hasBalanceDecisionObject)
+            {
+                missingBalanceDecisionSignalRows.Add(rowNumber);
+            }
+        }
+
+        balanceActionRequiredRowNumbers.Should().NotBeEmpty(
+            "this regression fixture should still surface rows requiring balance decisions on default path");
+
+        if (balanceActionRequiredRowNumbers.Count > 0)
+        {
+            missingBalanceDecisionSignalRows.Should().NotBeEmpty(
+                "rows that later require balance decision should expose reproducible preview evidence when signal is missing");
+        }
+
+        executeDto.Results.Should().NotContain(result => result.TransactionId.HasValue,
+            "rejected broker_statement execute should not expose committed transaction ids after atomic rollback");
+
+        // Note: integration tests use EF Core InMemory provider and AppDbTransactionManager falls back to a no-op transaction,
+        // so we validate rollback semantics through API contract (status/summary/result ids) instead of DB persistence state here.
     }
 
     [Fact]
@@ -895,6 +1083,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         persistedSession.Should().NotBeNull();
         persistedSession!.Baseline.OpeningCashBalance.Should().Be(120000m);
         persistedSession.Baseline.OpeningLedgerBalance.Should().Be(120000m, "OpeningLedgerBalance should fall back to OpeningCashBalance when omitted");
+        persistedSession.Baseline.AsOfDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        persistedSession.Baseline.BaselineDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        persistedSession.Baseline.CurrentHoldings.Should().ContainSingle();
+        persistedSession.Baseline.CurrentHoldings.Single().Ticker.Should().Be("2330");
         persistedSession.Baseline.OpeningPositions.Should().ContainSingle();
         persistedSession.Baseline.OpeningPositions.Single().Ticker.Should().Be("2330");
 
@@ -919,6 +1111,66 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var consumedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
         consumedSession.Should().BeNull("execute should consume preview session atomically");
+    }
+
+    [Fact]
+    public async Task Preview_AcceptsCurrentHoldingsAsOfContract_AndPersistsLegacyCompatibleSnapshot()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Current Holdings Contract");
+        var request = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                AsOfDate = new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                OpeningCashBalance = 120000m,
+                OpeningLedgerBalance = null,
+                CurrentHoldings =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 1000m,
+                        TotalCost = 500000m,
+                        HistoricalTotalCost = 490000m
+                    }
+                ]
+            }
+        };
+
+        // Act
+        var response = await Client.PostAsJsonAsync(PreviewEndpoint, request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(payload);
+        json.RootElement.TryGetProperty("sessionId", out _).Should().BeTrue();
+
+        var sessionId = json.RootElement.GetProperty("sessionId").GetGuid();
+
+        using var scope = Factory.Services.CreateScope();
+        var sessionStore = scope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+
+        var persistedSession = await sessionStore.GetAsync(sessionId, CancellationToken.None);
+        persistedSession.Should().NotBeNull();
+        persistedSession!.Baseline.AsOfDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        persistedSession.Baseline.BaselineDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        persistedSession.Baseline.CurrentHoldings.Should().ContainSingle();
+        persistedSession.Baseline.CurrentHoldings.Single().Ticker.Should().Be("2330");
+        persistedSession.Baseline.CurrentHoldings.Single().Quantity.Should().Be(1000m);
+        persistedSession.Baseline.CurrentHoldings.Single().TotalCost.Should().Be(500000m);
+        persistedSession.Baseline.CurrentHoldings.Single().HistoricalTotalCost.Should().Be(490000m);
+
+        persistedSession.Baseline.OpeningPositions.Should().ContainSingle();
+        persistedSession.Baseline.OpeningPositions.Single().Ticker.Should().Be("2330");
+        persistedSession.Baseline.OpeningPositions.Single().Quantity.Should().Be(1000m);
+        persistedSession.Baseline.OpeningPositions.Single().TotalCost.Should().Be(500000m);
+        persistedSession.Baseline.OpeningPositions.Single().HistoricalTotalCost.Should().Be(490000m);
     }
 
     [Fact]
@@ -1189,9 +1441,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     {
         // Arrange
         var portfolio = await CreateTestPortfolioAsync("Stock Import Unknown Session Blocking");
+        var unknownSessionId = Guid.NewGuid();
         var request = new ExecuteStockImportRequest
         {
-            SessionId = Guid.NewGuid(),
+            SessionId = unknownSessionId,
             PortfolioId = portfolio.Id,
             Rows =
             [
@@ -1213,6 +1466,289 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         var payload = await response.Content.ReadAsStringAsync();
         payload.Should().Contain("Import session not found, expired, or already consumed");
+
+        using var scope = Factory.Services.CreateScope();
+        var sessionStore = scope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+        var executionState = await sessionStore.GetExecutionStateAsync(unknownSessionId, CancellationToken.None);
+        executionState.Should().BeNull("unknown session execute should not persist failed execution state");
+    }
+
+    [Fact]
+    public async Task Execute_SecondSubmitSameSession_ShouldReplayPreviousResultWithoutSecondWrite()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Execute Replay Same Session", currencyCode: "TWD");
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var firstRow = previewJson.RootElement.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = firstRow.GetProperty("confirmedTradeSide").GetString(),
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act 1
+        var firstExecuteResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert 1
+        firstExecuteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstBody = await firstExecuteResponse.Content.ReadAsStringAsync();
+        var firstDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(firstBody, ApiJsonOptions);
+        firstDto.Should().NotBeNull();
+        firstDto!.SessionId.Should().Be(sessionId);
+        firstDto.IsReplay.Should().BeFalse();
+        firstDto.Status.Should().Be("committed");
+
+        // Act 2
+        var secondExecuteResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert 2
+        secondExecuteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var secondBody = await secondExecuteResponse.Content.ReadAsStringAsync();
+        var secondDto = JsonSerializer.Deserialize<StockImportExecuteResponseDto>(secondBody, ApiJsonOptions);
+        secondDto.Should().NotBeNull();
+        secondDto!.SessionId.Should().Be(sessionId);
+        secondDto.IsReplay.Should().BeTrue();
+        secondDto.Status.Should().Be(firstDto.Status);
+        secondDto.Summary.InsertedRows.Should().Be(firstDto.Summary.InsertedRows);
+        secondDto.Results.Should().HaveCount(firstDto.Results.Count);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var importedTransactionsCount = await verifyDbContext.StockTransactions
+            .CountAsync(transaction => transaction.PortfolioId == portfolio.Id);
+        importedTransactionsCount.Should().Be(firstDto.Summary.InsertedRows, "replayed execute must not create additional rows");
+    }
+
+    [Fact]
+    public async Task GetImportStatus_ShouldReturnCompletedWithResult_AfterExecute()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Status Query Completed", currencyCode: "TWD");
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var firstRow = previewJson.RootElement.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = firstRow.GetProperty("confirmedTradeSide").GetString(),
+                    Exclude = false
+                }
+            ]
+        };
+
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Act
+        var statusResponse = await Client.GetAsync($"{StatusEndpointPrefix}/{sessionId}");
+
+        // Assert
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var statusBody = await statusResponse.Content.ReadAsStringAsync();
+        var statusDto = JsonSerializer.Deserialize<StockImportExecuteStatusResponseDto>(statusBody, ApiJsonOptions);
+        statusDto.Should().NotBeNull();
+        statusDto!.SessionId.Should().Be(sessionId);
+        statusDto.PortfolioId.Should().Be(portfolio.Id);
+        statusDto.ExecutionStatus.Should().Be("completed");
+        statusDto.CompletedAtUtc.Should().NotBeNull();
+        statusDto.Result.Should().NotBeNull();
+        statusDto.Result!.SessionId.Should().Be(sessionId);
+        statusDto.Result.IsReplay.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetImportStatus_ShouldReturnFailedWithSanitizedMessage_AfterExecuteInternalException()
+    {
+        // Arrange
+        var forcedFailureMessage = "sensitive-internal-detail";
+        var testUserId = Guid.NewGuid();
+        using var failFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.AddScoped<ICurrentUserService>(_ =>
+                    new StaticCurrentUserService(testUserId));
+                services.AddScoped<ICurrencyTransactionRepository>(_ =>
+                    new ThrowingCurrencyTransactionRepository(forcedFailureMessage));
+            });
+        });
+
+        using var client = failFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", GenerateTestToken(testUserId));
+
+        await EnsureUserExistsAsync(failFactory.Services, testUserId);
+
+        var portfolioRequest = new { Description = "Stock Import Failed Status Sanitization", CurrencyCode = "TWD" };
+        var createPortfolioResponse = await client.PostAsJsonAsync("/api/portfolios", portfolioRequest);
+        createPortfolioResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var portfolio = await createPortfolioResponse.Content.ReadFromJsonAsync<PortfolioDto>();
+        portfolio.Should().NotBeNull();
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio!.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var firstRow = previewJson.RootElement.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = firstRow.GetProperty("confirmedTradeSide").GetString(),
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act 1: execute triggers internal exception
+        var executeResponse = await client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert 1: execute path should also return sanitized message
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var executeError = await executeResponse.Content.ReadFromJsonAsync<ApiErrorResponse>();
+        executeError.Should().NotBeNull();
+        executeError!.Error.Should().Be("Import execution failed. Please retry later.");
+        executeError.Error.Should().NotContain(forcedFailureMessage);
+
+        // Act 2: query status should return sanitized message
+        var statusResponse = await client.GetAsync($"{StatusEndpointPrefix}/{sessionId}");
+
+        // Assert 2
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var statusBody = await statusResponse.Content.ReadAsStringAsync();
+        var statusDto = JsonSerializer.Deserialize<StockImportExecuteStatusResponseDto>(statusBody, ApiJsonOptions);
+        statusDto.Should().NotBeNull();
+        statusDto!.SessionId.Should().Be(sessionId);
+        statusDto.PortfolioId.Should().Be(portfolio.Id);
+        statusDto.ExecutionStatus.Should().Be("failed");
+        statusDto.Message.Should().Be("Import execution failed. Please retry later.");
+        statusDto.Message.Should().NotContain(forcedFailureMessage);
+        statusDto.Result.Should().BeNull();
+        statusDto.CompletedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetImportStatus_ShouldReturnPending_ForPreviewedNotExecutedSession()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Status Query Pending", currencyCode: "TWD");
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        // Act
+        var statusResponse = await Client.GetAsync($"{StatusEndpointPrefix}/{sessionId}");
+
+        // Assert
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var statusBody = await statusResponse.Content.ReadAsStringAsync();
+        var statusDto = JsonSerializer.Deserialize<StockImportExecuteStatusResponseDto>(statusBody, ApiJsonOptions);
+        statusDto.Should().NotBeNull();
+        statusDto!.SessionId.Should().Be(sessionId);
+        statusDto.ExecutionStatus.Should().Be("pending");
+        statusDto.Result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetImportStatus_ShouldReturnNotFound_ForUnknownSession()
+    {
+        // Arrange
+        var unknownSessionId = Guid.NewGuid();
+
+        // Act
+        var statusResponse = await Client.GetAsync($"{StatusEndpointPrefix}/{unknownSessionId}");
+
+        // Assert
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var statusBody = await statusResponse.Content.ReadAsStringAsync();
+        var statusDto = JsonSerializer.Deserialize<StockImportExecuteStatusResponseDto>(statusBody, ApiJsonOptions);
+        statusDto.Should().NotBeNull();
+        statusDto!.SessionId.Should().Be(unknownSessionId);
+        statusDto.ExecutionStatus.Should().Be("not_found");
+        statusDto.Result.Should().BeNull();
     }
 
     [Fact]
@@ -1581,7 +2117,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
-    public async Task Execute_PartialPeriodSellWithoutHoldings_WithoutDecision_ShouldRejectWithSellBeforeBuyActionRequired()
+    public async Task Execute_PartialPeriodSellWithoutHoldings_WithoutDecision_ShouldAutoCommitWithTraceableSellBeforeBuyDecision()
     {
         // Arrange
         var portfolio = await CreateTestPortfolioAsync("Stock Import Sell No Holdings", currencyCode: "TWD");
@@ -1601,9 +2137,14 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         var root = previewJson.RootElement;
 
         var firstRow = root.GetProperty("rows").EnumerateArray().Single();
-        firstRow.GetProperty("status").GetString().Should().Be("requires_user_action");
+        firstRow.GetProperty("status").GetString().Should().Be("valid");
         firstRow.GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeTrue();
         firstRow.GetProperty("actionsRequired").EnumerateArray().Select(x => x.GetString()).Should().Contain("choose_sell_before_buy_handling");
+
+        var previewSellBeforeBuyDecision = firstRow.GetProperty("sellBeforeBuyDecision");
+        previewSellBeforeBuyDecision.GetProperty("strategy").GetString().Should().Be("create_adjustment");
+        previewSellBeforeBuyDecision.GetProperty("decisionScope").GetString().Should().Be("auto_default");
+        previewSellBeforeBuyDecision.GetProperty("reason").GetString().Should().Be("auto_default_for_sell_before_buy");
 
         var sessionId = root.GetProperty("sessionId").GetGuid();
         var executeRequest = new ExecuteStockImportRequest
@@ -1632,15 +2173,16 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         using var json = JsonDocument.Parse(payload);
         var executeRoot = json.RootElement;
 
-        executeRoot.GetProperty("status").GetString().Should().Be("rejected");
+        executeRoot.GetProperty("status").GetString().Should().Be("committed");
 
         var result = executeRoot.GetProperty("results").EnumerateArray().Single();
-        result.GetProperty("success").GetBoolean().Should().BeFalse();
-        result.GetProperty("errorCode").GetString().Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+        result.GetProperty("success").GetBoolean().Should().BeTrue();
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("strategy").GetString().Should().Be("create_adjustment");
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("decisionScope").GetString().Should().Be("auto_default");
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("reason").GetString().Should().Be("auto_default_for_sell_before_buy");
 
-        var error = executeRoot.GetProperty("errors").EnumerateArray().Single();
-        error.GetProperty("fieldName").GetString().Should().Be("sellBeforeBuyAction");
-        error.GetProperty("errorCode").GetString().Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+        var warning = executeRoot.GetProperty("errors").EnumerateArray().Single();
+        warning.GetProperty("errorCode").GetString().Should().Be("PARTIAL_PERIOD_ASSUMPTION");
     }
 
     [Fact]
@@ -1701,6 +2243,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         result.GetProperty("success").GetBoolean().Should().BeTrue();
         result.TryGetProperty("errorCode", out var errorCodeElement).Should().BeTrue();
         errorCodeElement.ValueKind.Should().Be(JsonValueKind.Null);
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("strategy").GetString().Should().Be("create_adjustment");
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("decisionScope").GetString().Should().Be("row_override");
+        result.GetProperty("sellBeforeBuyDecision").GetProperty("reason").GetString().Should().Be("row_override");
 
         var warnings = executeRoot.GetProperty("errors").EnumerateArray().ToList();
         warnings.Should().ContainSingle();
@@ -1728,16 +2273,29 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         openingAdjustment.MarketValueAtImport.Should().Be(10000m);
         openingAdjustment.HistoricalTotalCost.Should().BeNull();
 
-        var pairedOpeningInitialBalance = await verifyDbContext.CurrencyTransactions
+        var linkedToOpeningAdjustment = await verifyDbContext.CurrencyTransactions
             .Where(transaction =>
                 transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
-                && transaction.TransactionType == CurrencyTransactionType.InitialBalance
-                && transaction.RelatedStockTransactionId == openingAdjustment.Id
-                && transaction.Notes == "import-execute-opening-initial-balance")
-            .SingleAsync();
+                && transaction.RelatedStockTransactionId == openingAdjustment.Id)
+            .ToListAsync();
+
+        var pairedOpeningInitialBalance = linkedToOpeningAdjustment
+            .Single(transaction =>
+                transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.Notes == "import-execute-opening-initial-balance");
 
         pairedOpeningInitialBalance.ForeignAmount.Should().Be(10000m);
         pairedOpeningInitialBalance.TransactionDate.Should().Be(new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc));
+
+        var openingInitialBalanceOffset = linkedToOpeningAdjustment.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Spend
+            && transaction.ForeignAmount == pairedOpeningInitialBalance.ForeignAmount
+            && transaction.TransactionDate == pairedOpeningInitialBalance.TransactionDate
+            && transaction.Notes == "import-execute-opening-initial-balance-offset").Subject;
+
+        openingInitialBalanceOffset.HomeAmount.Should().NotBeNull();
+        openingInitialBalanceOffset.HomeAmount.Should().Be(pairedOpeningInitialBalance.ForeignAmount);
+        openingInitialBalanceOffset.ExchangeRate.Should().Be(1.0m);
     }
 
     [Fact]
@@ -1826,15 +2384,28 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             openingAdjustment.MarketValueAtImport.Should().Be(10000m);
             openingAdjustment.HistoricalTotalCost.Should().Be(9800m);
 
-            var pairedOpeningInitialBalance = await verifyDbContext.CurrencyTransactions
+            var linkedToOpeningAdjustment = await verifyDbContext.CurrencyTransactions
                 .Where(transaction =>
                     transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
-                    && transaction.TransactionType == CurrencyTransactionType.InitialBalance
-                    && transaction.RelatedStockTransactionId == openingAdjustment.Id
-                    && transaction.Notes == "import-execute-opening-initial-balance")
-                .SingleAsync();
+                    && transaction.RelatedStockTransactionId == openingAdjustment.Id)
+                .ToListAsync();
+
+            var pairedOpeningInitialBalance = linkedToOpeningAdjustment
+                .Single(transaction =>
+                    transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                    && transaction.Notes == "import-execute-opening-initial-balance");
 
             pairedOpeningInitialBalance.ForeignAmount.Should().Be(10000m);
+
+            var openingInitialBalanceOffset = linkedToOpeningAdjustment.Should().ContainSingle(transaction =>
+                transaction.TransactionType == CurrencyTransactionType.Spend
+                && transaction.ForeignAmount == pairedOpeningInitialBalance.ForeignAmount
+                && transaction.TransactionDate == pairedOpeningInitialBalance.TransactionDate
+                && transaction.Notes == "import-execute-opening-initial-balance-offset").Subject;
+
+            openingInitialBalanceOffset.HomeAmount.Should().NotBeNull();
+            openingInitialBalanceOffset.HomeAmount.Should().Be(pairedOpeningInitialBalance.ForeignAmount);
+            openingInitialBalanceOffset.ExchangeRate.Should().Be(1.0m);
         }
 
         var summaryResponse = await Client.GetAsync($"/api/portfolios/{portfolio.Id}/summary");
@@ -1887,9 +2458,14 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(
             yearPerformance.TimeWeightedReturnPercentageSource!.Value,
             0.0001d);
-        aggregatePerformance.ModifiedDietzPercentageSource.Should().BeApproximately(
-            yearPerformance.ModifiedDietzPercentageSource!.Value,
-            0.0001d);
+        aggregatePerformance.ModifiedDietzPercentageSource.HasValue.Should().Be(
+            yearPerformance.ModifiedDietzPercentageSource.HasValue);
+        if (yearPerformance.ModifiedDietzPercentageSource.HasValue)
+        {
+            aggregatePerformance.ModifiedDietzPercentageSource!.Value.Should().BeApproximately(
+                yearPerformance.ModifiedDietzPercentageSource.Value,
+                0.0001d);
+        }
     }
 
     [Fact]
@@ -2406,10 +2982,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             .Where(transaction => transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId)
             .ToListAsync();
 
+        var expectedAnchorDate = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc);
+
         linkedCurrencyTransactions.Should().Contain(transaction =>
             transaction.TransactionType == CurrencyTransactionType.InitialBalance
             && transaction.ForeignAmount == 626425m
-            && transaction.TransactionDate == new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            && transaction.TransactionDate == expectedAnchorDate
             && string.Equals(transaction.Notes, "import-execute-opening-ledger-baseline", StringComparison.Ordinal));
 
         linkedCurrencyTransactions.Should().Contain(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
@@ -2417,6 +2995,425 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             transaction.TransactionType == CurrencyTransactionType.Deposit
             && transaction.Notes != null
             && transaction.Notes.Contains("補足買入", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Execute_WithCrossYearRows_BrokerStatementShouldUseEarliestIncludedTradeMinusOneForOpeningLedgerAndOpeningAdjustment()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Cross-Year Baseline Anchor Consistency", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithCrossYearBuyAndSellRows(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                BaselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                OpeningCashBalance = 200000m,
+                OpeningLedgerBalance = 200000m
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+
+        var rows = previewDto!.Rows
+            .OrderBy(row => row.RowNumber)
+            .ToList();
+        rows.Should().HaveCount(2);
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = portfolio.Id,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment
+            },
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = rows[0].RowNumber,
+                    Ticker = rows[0].Ticker,
+                    ConfirmedTradeSide = rows[0].ConfirmedTradeSide,
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = rows[1].RowNumber,
+                    Ticker = rows[1].Ticker,
+                    ConfirmedTradeSide = rows[1].ConfirmedTradeSide,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executeDto = await executeResponse.Content.ReadFromJsonAsync<StockImportExecuteResponseDto>();
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
+        executeDto.Summary.InsertedRows.Should().Be(2);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var openingLedgerBaseline = await verifyDbContext.CurrencyTransactions
+            .Where(transaction => transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
+                && transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.RelatedStockTransactionId == null
+                && transaction.Notes == "import-execute-opening-ledger-baseline")
+            .SingleAsync();
+
+        var seededAdjustment = await verifyDbContext.StockTransactions
+            .Where(transaction => transaction.PortfolioId == portfolio.Id
+                && transaction.TransactionType == TransactionType.Adjustment
+                && transaction.Notes != null
+                && transaction.Notes.Contains("import-execute-adjustment"))
+            .SingleAsync();
+
+        var seededOpeningInitialBalance = await verifyDbContext.CurrencyTransactions
+            .Where(transaction => transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
+                && transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.RelatedStockTransactionId == seededAdjustment.Id
+                && transaction.Notes == "import-execute-opening-initial-balance")
+            .SingleAsync();
+
+        var expectedAnchorDate = new DateTime(2025, 12, 29, 0, 0, 0, DateTimeKind.Utc);
+
+        openingLedgerBaseline.TransactionDate.Should().Be(
+            expectedAnchorDate,
+            "broker_statement anchor should be earliest included trade date minus one day");
+
+        seededAdjustment.TransactionDate.Should().Be(
+            expectedAnchorDate,
+            "seeded opening adjustment should reuse the same resolved baseline anchor date");
+
+        seededOpeningInitialBalance.TransactionDate.Should().Be(
+            expectedAnchorDate,
+            "seeded opening initial balance should reuse the same resolved baseline anchor date");
+
+        openingLedgerBaseline.TransactionDate.Should().Be(
+            seededAdjustment.TransactionDate,
+            "opening ledger baseline 與 seeded opening adjustment 應使用同一 anchor date");
+
+        seededOpeningInitialBalance.TransactionDate.Should().Be(
+            openingLedgerBaseline.TransactionDate,
+            "opening ledger baseline 與 seeded opening initial balance 應使用同一 anchor date");
+    }
+
+    [Fact]
+    public async Task Preview_PartialPeriodSellWithAsOfDate_BrokerStatementShouldIgnoreUserBaselineDateForAnchorSemantics()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Broker Anchor Preview Ignores BaselineDate", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithReverseDateTwoSells(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                AsOfDate = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                BaselineDate = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 100m,
+                        TotalCost = 10000m
+                    }
+                ]
+            }
+        };
+
+        // Act
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+
+        // Assert
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var rows = previewJson.RootElement
+            .GetProperty("rows")
+            .EnumerateArray()
+            .OrderBy(row => row.GetProperty("rowNumber").GetInt32())
+            .ToList();
+
+        rows.Should().HaveCount(2);
+
+        rows[0].GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeFalse(
+            "first sell can consume the seeded opening position");
+
+        rows[1].GetProperty("usesPartialHistoryAssumption").GetBoolean().Should().BeTrue(
+            "broker_statement preview should evaluate sell-before-buy using earliest trade minus one anchor, not user baseline date");
+        rows[1].GetProperty("actionsRequired").EnumerateArray().Select(x => x.GetString()).Should().Contain("choose_sell_before_buy_handling");
+    }
+
+    [Fact]
+    public async Task Execute_BrokerStatementEarliestIncludedTradeJan2_ShouldAnchorToJan1InsteadOfDec31()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync("Stock Import Broker Anchor Jan2 Should Resolve To Jan1", currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithSingleSellOnJan2(),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                AsOfDate = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                BaselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                OpeningLedgerBalance = 200000m,
+                OpeningPositions =
+                [
+                    new StockImportOpeningPositionRequest
+                    {
+                        Ticker = "2330",
+                        Quantity = 100m,
+                        TotalCost = 10000m
+                    }
+                ]
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().ContainSingle();
+
+        var previewRow = previewDto.Rows.Single();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = portfolio.Id,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.UseOpeningPosition
+            },
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = previewRow.RowNumber,
+                    Ticker = previewRow.Ticker,
+                    ConfirmedTradeSide = previewRow.ConfirmedTradeSide,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        // Assert
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executeDto = await executeResponse.Content.ReadFromJsonAsync<StockImportExecuteResponseDto>();
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
+        executeDto.Summary.InsertedRows.Should().Be(1);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var openingLedgerBaseline = await verifyDbContext.CurrencyTransactions
+            .Where(transaction => transaction.CurrencyLedgerId == portfolio.BoundCurrencyLedgerId
+                && transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.RelatedStockTransactionId == null
+                && transaction.Notes == "import-execute-opening-ledger-baseline")
+            .SingleAsync();
+
+        var seededOpeningAdjustment = await verifyDbContext.StockTransactions
+            .Where(transaction => transaction.PortfolioId == portfolio.Id
+                && transaction.TransactionType == TransactionType.Adjustment
+                && transaction.Notes == "import-execute-opening-baseline")
+            .SingleAsync();
+
+        var expectedAnchorDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var guardedDate = new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        openingLedgerBaseline.TransactionDate.Should().Be(expectedAnchorDate,
+            "broker_statement execute anchor should be earliest included trade date minus one day");
+        openingLedgerBaseline.TransactionDate.Should().NotBe(guardedDate,
+            "broker_statement execute anchor should not apply Jan-1 guard");
+
+        seededOpeningAdjustment.TransactionDate.Should().Be(expectedAnchorDate,
+            "seeded opening adjustment should reuse broker_statement strict anchor date");
+    }
+
+    [Fact]
+    public async Task RegisterPreviewExecuteAndPerformance_UsingSampleCsv_ShouldReturnCalculableDashboardAndPortfolioXirrAfterImport()
+    {
+        // Arrange
+        var registerRequest = new RegisterRequest
+        {
+            Email = $"import-xirr-calculable-{Guid.NewGuid():N}@example.com",
+            Password = "Password123!",
+            DisplayName = "Import XIRR Calculable"
+        };
+
+        var registerResponse = await Client.PostAsJsonAsync("/api/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>();
+        auth.Should().NotBeNull();
+        auth!.AccessToken.Should().NotBeNullOrWhiteSpace();
+
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        Factory.TestUserId = auth.User.Id;
+
+        var portfoliosResponse = await Client.GetAsync("/api/portfolios");
+        portfoliosResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var portfolios = await portfoliosResponse.Content.ReadFromJsonAsync<List<PortfolioDto>>();
+        portfolios.Should().NotBeNullOrEmpty();
+
+        var twdPortfolio = portfolios!
+            .SingleOrDefault(p => string.Equals(p.BaseCurrency, "TWD", StringComparison.OrdinalIgnoreCase));
+        twdPortfolio.Should().NotBeNull();
+
+        var sampleFixture = await LoadSampleBrokerStatementFixtureAsync();
+
+        var previewResponse = await Client.PostAsJsonAsync(
+            PreviewEndpoint,
+            new PreviewStockImportRequest
+            {
+                PortfolioId = twdPortfolio!.Id,
+                CsvContent = sampleFixture.CsvContent,
+                SelectedFormat = "broker_statement"
+            });
+
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().HaveCount(sampleFixture.DataRowCount);
+
+        var executeRows = previewDto.Rows
+            .Where(row => !string.Equals(row.Status, "invalid", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(row.ConfirmedTradeSide))
+            .Select(row =>
+            {
+                var resolvedTicker = ResolveTickerForExecute(row);
+                return new ExecuteStockImportRowRequest
+                {
+                    RowNumber = row.RowNumber,
+                    Ticker = resolvedTicker,
+                    ConfirmedTradeSide = row.ConfirmedTradeSide,
+                    SellBeforeBuyAction = row.UsesPartialHistoryAssumption
+                        ? SellBeforeBuyAction.CreateAdjustment
+                        : null,
+                    Exclude = string.IsNullOrWhiteSpace(resolvedTicker)
+                };
+            })
+            .ToList();
+
+        executeRows.Should().Contain(row => !row.Exclude);
+
+        var executeResponse = await Client.PostAsJsonAsync(
+            ExecuteEndpoint,
+            new ExecuteStockImportRequest
+            {
+                SessionId = previewDto.SessionId,
+                PortfolioId = twdPortfolio.Id,
+                BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+                {
+                    SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment
+                },
+                DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+                {
+                    Action = BalanceAction.Margin
+                },
+                Rows = executeRows
+            });
+
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executeDto = await executeResponse.Content.ReadFromJsonAsync<StockImportExecuteResponseDto>();
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
+        executeDto.Summary.InsertedRows.Should().BeGreaterThan(0);
+
+        var summaryResponse = await Client.GetAsync($"/api/portfolios/{twdPortfolio.Id}/summary");
+        summaryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<PortfolioSummaryDto>();
+        summary.Should().NotBeNull();
+        summary!.Positions.Should().NotBeEmpty();
+
+        var currentPrices = BuildCurrentPriceRequestFromSummaryPositions(summary.Positions);
+        currentPrices.Should().NotBeEmpty();
+
+        // Act: Portfolio page XIRR API path
+        var portfolioXirrResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{twdPortfolio.Id}/xirr",
+            new CalculateXirrRequest
+            {
+                CurrentPrices = currentPrices,
+                AsOfDate = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        portfolioXirrResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var portfolioXirr = await portfolioXirrResponse.Content.ReadFromJsonAsync<XirrResultDto>();
+        portfolioXirr.Should().NotBeNull();
+
+        // Act: Dashboard aggregate XIRR API path
+        var aggregateXirrResponse = await Client.PostAsJsonAsync(
+            "/api/portfolios/aggregate/xirr",
+            new CalculateXirrRequest
+            {
+                CurrentPrices = currentPrices,
+                AsOfDate = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        aggregateXirrResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var aggregateXirr = await aggregateXirrResponse.Content.ReadFromJsonAsync<XirrResultDto>();
+        aggregateXirr.Should().NotBeNull();
+
+        portfolioXirr!.CashFlowCount.Should().BeGreaterThanOrEqualTo(2,
+            "匯入後應包含買賣/初始化調整與期末市值現金流，才可計算 XIRR");
+        aggregateXirr!.CashFlowCount.Should().BeGreaterThanOrEqualTo(2,
+            "Dashboard aggregate XIRR 應與 Portfolio XIRR 一樣具備足夠現金流");
+
+        portfolioXirr.Xirr.Should().NotBeNull(
+            $"Portfolio XIRR should be calculable after import. cashFlowCount={portfolioXirr.CashFlowCount}");
+        aggregateXirr.Xirr.Should().NotBeNull(
+            $"Aggregate XIRR should be calculable after import. cashFlowCount={aggregateXirr.CashFlowCount}");
+
+        double.IsNaN(portfolioXirr.Xirr!.Value).Should().BeFalse();
+        double.IsInfinity(portfolioXirr.Xirr.Value).Should().BeFalse();
+        double.IsNaN(aggregateXirr.Xirr!.Value).Should().BeFalse();
+        double.IsInfinity(aggregateXirr.Xirr.Value).Should().BeFalse();
     }
 
     [Fact]
@@ -2517,6 +3514,60 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         depositLinkedToSell.Should().BeFalse("賣出列不應觸發補足 deposit");
     }
 
+    private static async Task EnsureUserExistsAsync(IServiceProvider services, Guid userId)
+    {
+        using var scope = services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var existingUser = await context.Users.FindAsync(userId);
+        if (existingUser is not null)
+        {
+            return;
+        }
+
+        var user = new User("test@example.com", "password", "Test User");
+        typeof(User).GetProperty("Id")!.SetValue(user, userId);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+    }
+
+    private sealed class StaticCurrentUserService(Guid userId) : ICurrentUserService
+    {
+        public Guid? UserId => userId;
+        public string? Email => "test@example.com";
+        public bool IsAuthenticated => true;
+    }
+
+    private sealed class ThrowingCurrencyTransactionRepository(string errorMessage) : ICurrencyTransactionRepository
+    {
+        public Task<CurrencyTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<CurrencyTransaction?> GetByStockTransactionIdAsync(Guid stockTransactionId, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<CurrencyTransaction>> GetByStockTransactionIdAllAsync(Guid stockTransactionId, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdAsync(Guid ledgerId, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<CurrencyTransaction>> GetByLedgerIdOrderedAsync(Guid ledgerId, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(errorMessage);
+
+        public Task<CurrencyTransaction> AddAsync(CurrencyTransaction transaction, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task UpdateAsync(CurrencyTransaction transaction, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+    }
+
     private static async Task<SampleBrokerStatementFixture> LoadSampleBrokerStatementFixtureAsync()
     {
         var fixturePath = ResolveSampleBrokerStatementFixturePath();
@@ -2613,6 +3664,45 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         }
 
         return prices;
+    }
+
+    private static Dictionary<string, CurrentPriceInfo> BuildCurrentPriceRequestFromSummaryPositions(
+        IReadOnlyList<StockPositionDto> positions)
+    {
+        Dictionary<string, CurrentPriceInfo> prices = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var position in positions)
+        {
+            if (string.IsNullOrWhiteSpace(position.Ticker))
+            {
+                continue;
+            }
+
+            var normalizedTicker = position.Ticker.Trim().ToUpperInvariant();
+            var resolvedPrice = position.CurrentPrice.HasValue && position.CurrentPrice.Value > 0m
+                ? position.CurrentPrice.Value
+                : Math.Max(position.AverageCostPerShareSource, 1m);
+
+            var resolvedExchangeRate = position.CurrentExchangeRate.HasValue && position.CurrentExchangeRate.Value > 0m
+                ? position.CurrentExchangeRate.Value
+                : 1m;
+
+            prices[normalizedTicker] = new CurrentPriceInfo
+            {
+                Price = resolvedPrice,
+                ExchangeRate = resolvedExchangeRate
+            };
+        }
+
+        return prices;
+    }
+
+    private static string BuildBrokerStatementCsvWithOneLateYearBuyRow()
+    {
+        return """
+股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
+"台積電","2330","2025/12/30","1,000","-100,000","100","100,000","0","0","0","MD0001","台幣",""
+""";
     }
 
     private static void AssertYearPerformanceCoverageSignalContract(JsonElement yearPerformanceRoot)
@@ -2716,11 +3806,29 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 """;
     }
 
-    private static string BuildBrokerStatementCsvWithOneLateYearBuyRow()
+    private static string BuildBrokerStatementCsvWithSingleSellOnJan2()
     {
         return """
 股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
-"台積電","2330","2025/12/30","1,000","-100,000","100","100,000","0","0","0","MD0001","台幣",""
+"台積電","2330","2026/01/02","100","16,544","165.5","16,550","6","0","0","JN0201","台幣",""
+""";
+    }
+
+    private static string BuildBrokerStatementCsvWithCrossYearBuyAndSellRows()
+    {
+        return """
+股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
+"鴻海","2317","2025/12/30","1","-10","10","10","0","0","0","CY0001","台幣",""
+"台積電","2330","2026/01/07","100","16,544","165.5","16,550","6","0","0","CY0002","台幣",""
+""";
+    }
+
+    private static string BuildBrokerStatementCsvWithReverseDateTwoSells()
+    {
+        return """
+股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
+"台積電","2330","2026/01/22","100","16,544","165.5","16,550","6","0","0","RV0001","台幣",""
+"台積電","2330","2026/01/21","100","16,544","165.5","16,550","6","0","0","RV0002","台幣",""
 """;
     }
 

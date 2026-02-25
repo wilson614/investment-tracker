@@ -256,6 +256,12 @@
 - [x] T175 [P] Add provider regressions to verify same-currency FX returns 1 and makes no HTTP call in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/YahooHistoricalPriceServiceTests.cs` and `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/StooqHistoricalPriceServiceTests.cs`
 - [x] T176 Run focused QA verification for same-currency FX short-circuit and fallback hardening across infrastructure/application/API regression suites
 - [x] T177 Complete code-review gate for same-currency FX short-circuit and null-FX fallback hardening across service and provider layers
+- [x] T178 Ensure `CurrencyTransactionType.InitialBalance` remains external cash flow regardless of import notes prefix and lock behavior with regression in `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs`
+- [x] T179 Set broker opening offset `CurrencyTransactionType.Spend` home amount/exchange rate explicitly in `backend/src/InvestmentTracker.Application/UseCases/StockTransactions/ExecuteStockImportUseCase.cs`
+- [x] T180 [P] Add application regression assertions for broker opening offset spend `HomeAmount` and `ExchangeRate` in `backend/tests/InvestmentTracker.Application.Tests/UseCases/StockTransactions/ExecuteStockImportBalanceActionTests.cs`
+- [x] T181 [P] Add API regression assertions for broker opening offset spend `HomeAmount` and `ExchangeRate` in `backend/tests/InvestmentTracker.API.Tests/Controllers/StockTransactionsImportControllerTests.cs`
+- [x] T182 Run focused QA verification for InitialBalance/offset-spend denominator guard across domain/application/API suites
+- [x] T183 Complete code-review gate for InitialBalance/offset-spend denominator guard closure
 
 ---
 

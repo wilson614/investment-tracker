@@ -261,6 +261,8 @@ public class ReturnCalculatorTests
         var toDate = new DateTime(2025, 12, 31);
 
         var txInitial = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 1, 5), CurrencyTransactionType.InitialBalance, 1000m, createdAt: new DateTime(2025, 1, 5, 1, 0, 0, DateTimeKind.Utc));
+        var txImportOpeningLedgerBaseline = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 1, 6), CurrencyTransactionType.InitialBalance, 500m, notes: "import-execute-opening-ledger-baseline", createdAt: new DateTime(2025, 1, 6, 1, 0, 0, DateTimeKind.Utc));
+        var txImportOpeningInitialBalance = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 1, 7), CurrencyTransactionType.InitialBalance, 700m, notes: "import-execute-opening-initial-balance", createdAt: new DateTime(2025, 1, 7, 1, 0, 0, DateTimeKind.Utc));
         var txDeposit = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 2, 5), CurrencyTransactionType.Deposit, 200m, createdAt: new DateTime(2025, 2, 5, 1, 0, 0, DateTimeKind.Utc));
         var txWithdraw = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 3, 5), CurrencyTransactionType.Withdraw, 50m, createdAt: new DateTime(2025, 3, 5, 1, 0, 0, DateTimeKind.Utc));
         var txOtherIncomeExternal = CreateCurrencyTransaction(boundLedgerId, new DateTime(2025, 4, 5), CurrencyTransactionType.OtherIncome, 30m, notes: "broker rebate", createdAt: new DateTime(2025, 4, 5, 1, 0, 0, DateTimeKind.Utc));
@@ -286,6 +288,8 @@ public class ReturnCalculatorTests
             currencyTransactions:
             [
                 txInitial,
+                txImportOpeningLedgerBaseline,
+                txImportOpeningInitialBalance,
                 txDeposit,
                 txWithdraw,
                 txOtherIncomeExternal,
@@ -303,6 +307,8 @@ public class ReturnCalculatorTests
         events.Select(e => e.TransactionId).Should().Equal(
         [
             txInitial.Id,
+            txImportOpeningLedgerBaseline.Id,
+            txImportOpeningInitialBalance.Id,
             txDeposit.Id,
             txWithdraw.Id,
             txOtherIncomeExternal.Id,
@@ -325,6 +331,54 @@ public class ReturnCalculatorTests
         events.Single(e => e.TransactionId == txTopUp.Id).Amount.Should().Be(60m);
 
         events.Should().OnlyContain(e => e.CurrencyCode == "USD");
+    }
+
+    [Fact]
+    public void CurrencyLedgerStrategy_GetCashFlowEvents_WithImportOpeningInitialBalancePrefixAndOffsetSpend_IncludesInitialBalanceButExcludesOffsetSpend()
+    {
+        // Arrange
+        var portfolio = CreatePortfolio(baseCurrency: "TWD");
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId;
+        var relatedStockId = Guid.NewGuid();
+
+        var ledger = CreateLedger(portfolio.UserId, boundLedgerId, "TWD", homeCurrency: "TWD");
+        var strategy = new CurrencyLedgerCashFlowStrategy();
+
+        var txImportOpeningInitialBalance = CreateCurrencyTransaction(
+            boundLedgerId,
+            new DateTime(2025, 12, 30),
+            CurrencyTransactionType.InitialBalance,
+            100000m,
+            homeAmount: 100000m,
+            exchangeRate: 1m,
+            relatedStockTransactionId: relatedStockId,
+            notes: "import-execute-opening-initial-balance",
+            createdAt: new DateTime(2025, 12, 30, 1, 0, 0, DateTimeKind.Utc));
+
+        var txImportOpeningOffsetSpend = CreateCurrencyTransaction(
+            boundLedgerId,
+            new DateTime(2025, 12, 30),
+            CurrencyTransactionType.Spend,
+            100000m,
+            relatedStockTransactionId: relatedStockId,
+            notes: "import-execute-opening-initial-balance-offset",
+            createdAt: new DateTime(2025, 12, 30, 2, 0, 0, DateTimeKind.Utc));
+
+        // Act
+        var events = strategy.GetCashFlowEvents(
+            portfolio,
+            fromDate: new DateTime(2025, 1, 1),
+            toDate: new DateTime(2025, 12, 31),
+            stockTransactions: [],
+            ledgers: [ledger],
+            currencyTransactions: [txImportOpeningInitialBalance, txImportOpeningOffsetSpend]);
+
+        // Assert
+        events.Select(e => e.TransactionId).Should().Equal([txImportOpeningInitialBalance.Id]);
+        events.Should().ContainSingle();
+        events.Single().Amount.Should().Be(100000m);
+        events.Single().CurrencyCode.Should().Be("TWD");
+        events.Single().Source.Should().Be(ReturnCashFlowEventSource.CurrencyLedger);
     }
 
     [Fact]

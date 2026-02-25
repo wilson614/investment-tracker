@@ -1,8 +1,10 @@
+using System.Diagnostics;
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
 using InvestmentTracker.Application.UseCases.StockTransactions;
-using System.ComponentModel.DataAnnotations;
 using InvestmentTracker.Domain.Entities;
 using InvestmentTracker.Domain.Enums;
 using InvestmentTracker.Domain.Exceptions;
@@ -51,6 +53,45 @@ public class ExecuteStockImportBalanceActionTests
         rowResult.BalanceDecision.Action.Should().Be(BalanceAction.None);
         rowResult.BalanceDecision.TopUpTransactionType.Should().BeNull();
         rowResult.BalanceDecision.DecisionScope.Should().Be("row_override");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BuyRows500_PerformanceBaseline_ShouldEmitTimingMetrics()
+    {
+        // Arrange
+        const int benchmarkRowCount = 500;
+        const int measuredRuns = 3;
+
+        // Warm-up run to reduce one-time JIT effects.
+        var warmupRun = await MeasureExecuteImportPerformanceRunAsync(benchmarkRowCount);
+        AssertExecutePerformanceResult(warmupRun.Response, benchmarkRowCount);
+
+        var measurements = new List<TimeSpan>(capacity: measuredRuns);
+
+        // Act
+        for (var i = 0; i < measuredRuns; i++)
+        {
+            var run = await MeasureExecuteImportPerformanceRunAsync(benchmarkRowCount);
+            AssertExecutePerformanceResult(run.Response, benchmarkRowCount);
+            measurements.Add(run.Elapsed);
+        }
+
+        var medianElapsed = GetMedian(measurements);
+        var minElapsed = measurements.Min();
+        var maxElapsed = measurements.Max();
+        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        Console.WriteLine(
+            "[PerfBaseline][ExecuteStockImport] rows={0}; runs={1}; minMs={2:F2}; medianMs={3:F2}; maxMs={4:F2}; samplesMs=[{5}]",
+            benchmarkRowCount,
+            measurements.Count,
+            minElapsed.TotalMilliseconds,
+            medianElapsed.TotalMilliseconds,
+            maxElapsed.TotalMilliseconds,
+            sampleSeries);
+
+        // Assert
+        medianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
     }
 
     [Fact]
@@ -119,6 +160,8 @@ public class ExecuteStockImportBalanceActionTests
         rowResult.Success.Should().BeFalse();
         rowResult.ErrorCode.Should().Be("SESSION_ROW_MISMATCH");
         rowResult.Message.Should().Be("此列不屬於目前預覽 Session。");
+        rowResult.SellBeforeBuyDecision.Should().NotBeNull();
+        rowResult.SellBeforeBuyDecision!.Strategy.Should().Be("none");
 
         var diagnostic = result.Errors.Should().ContainSingle().Subject;
         diagnostic.RowNumber.Should().Be(missingRowNumber);
@@ -128,7 +171,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_SellWithoutHoldings_WithoutDecision_ShouldReturnSellBeforeBuyActionRequired()
+    public async Task ExecuteAsync_SellWithoutHoldings_WithoutDecision_ShouldAutoApplyCreateAdjustment()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -158,20 +201,22 @@ public class ExecuteStockImportBalanceActionTests
         var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
-        result.Status.Should().Be("rejected");
-        result.Summary.InsertedRows.Should().Be(0);
-        result.Summary.FailedRows.Should().Be(1);
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+        result.Summary.FailedRows.Should().Be(0);
 
         var rowResult = result.Results.Should().ContainSingle().Subject;
         rowResult.RowNumber.Should().Be(42);
-        rowResult.Success.Should().BeFalse();
-        rowResult.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+        rowResult.Success.Should().BeTrue();
+        rowResult.ErrorCode.Should().BeNull();
+        rowResult.SellBeforeBuyDecision.Should().NotBeNull();
+        rowResult.SellBeforeBuyDecision!.Strategy.Should().Be("create_adjustment");
+        rowResult.SellBeforeBuyDecision.DecisionScope.Should().Be("auto_default");
+        rowResult.SellBeforeBuyDecision.Reason.Should().Be("auto_default_for_sell_before_buy");
 
-        var diagnostic = result.Errors.Should().ContainSingle().Subject;
-        diagnostic.RowNumber.Should().Be(42);
-        diagnostic.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
-        diagnostic.FieldName.Should().Be("sellBeforeBuyAction");
-        diagnostic.Message.Should().Contain("sell-before-buy");
+        var warning = result.Errors.Should().ContainSingle().Subject;
+        warning.RowNumber.Should().Be(42);
+        warning.ErrorCode.Should().Be("PARTIAL_PERIOD_ASSUMPTION");
     }
 
     [Fact]
@@ -213,6 +258,10 @@ public class ExecuteStockImportBalanceActionTests
         var rowResult = result.Results.Should().ContainSingle().Subject;
         rowResult.Success.Should().BeTrue();
         rowResult.ErrorCode.Should().BeNull();
+        rowResult.SellBeforeBuyDecision.Should().NotBeNull();
+        rowResult.SellBeforeBuyDecision!.Strategy.Should().Be("create_adjustment");
+        rowResult.SellBeforeBuyDecision.DecisionScope.Should().Be("row_override");
+        rowResult.SellBeforeBuyDecision.Reason.Should().Be("row_override");
 
         result.Errors.Should().ContainSingle();
         result.Errors.Single().ErrorCode.Should().Be("PARTIAL_PERIOD_ASSUMPTION");
@@ -493,6 +542,126 @@ public class ExecuteStockImportBalanceActionTests
         fixture.StockTransactionRepositoryMock.Verify(
             x => x.AddAsync(It.IsAny<StockTransaction>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BuyShortfall_OnNonTwdLedgerFxFallback_ShouldUseLedgerCurrencyPairInsteadOfTwdPair()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var sessionRows = new List<StockImportSessionRowSnapshotDto>
+        {
+            Fixture.BuildSessionRow(
+                rowNumber: 71,
+                ticker: "VOD",
+                unitPrice: 80m,
+                tradeDate: tradeDate,
+                quantity: 1000m,
+                fees: 100m,
+                taxes: 0m,
+                tradeSide: "buy",
+                currencyCode: "GBP")
+        };
+
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows: sessionRows,
+            boundLedgerCurrencyCode: "GBP",
+            boundLedgerHomeCurrency: "USD");
+
+        fixture.FxServiceMock
+            .Setup(x => x.GetOrFetchAsync("GBP", "USD", tradeDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionDateExchangeRateResult
+            {
+                Rate = 1.27m,
+                CurrencyPair = "GBPUSD",
+                RequestedDate = tradeDate,
+                ActualDate = tradeDate,
+                Source = "test",
+                FromCache = true
+            });
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: BalanceAction.Margin,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 71,
+            ticker: "VOD");
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        fixture.FxServiceMock.Verify(
+            x => x.GetOrFetchAsync("GBP", "USD", tradeDate, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        fixture.FxServiceMock.Verify(
+            x => x.GetOrFetchAsync("USD", "TWD", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        var createdTransaction = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single();
+
+        createdTransaction.ExchangeRate.Should().Be(1.27m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BuyShortfall_WhenLedgerCurrencyEqualsHomeCurrency_ShouldUseOneAndSkipFxLookup()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var sessionRows = new List<StockImportSessionRowSnapshotDto>
+        {
+            Fixture.BuildSessionRow(
+                rowNumber: 72,
+                ticker: "AAPL",
+                unitPrice: 100m,
+                tradeDate: tradeDate,
+                quantity: 1000m,
+                fees: 100m,
+                taxes: 0m,
+                tradeSide: "buy",
+                currencyCode: "USD")
+        };
+
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows: sessionRows,
+            boundLedgerCurrencyCode: "USD",
+            boundLedgerHomeCurrency: "USD");
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: BalanceAction.Margin,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 72,
+            ticker: "AAPL");
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        fixture.FxServiceMock.Verify(
+            x => x.GetOrFetchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        var createdTransaction = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single();
+
+        createdTransaction.ExchangeRate.Should().Be(1.0m);
     }
 
     [Fact]
@@ -882,7 +1051,9 @@ public class ExecuteStockImportBalanceActionTests
             .ToList();
 
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.OtherIncome);
-        addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
+        addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Spend
+            && transaction.Notes != "import-execute-opening-initial-balance-offset");
         addedCurrencyTransactions.Should().NotContain(
             transaction => transaction.TransactionType == CurrencyTransactionType.Deposit,
             "同日 buy-first / sell-later（rowNumber buy < sell）應優先使用賣出入帳，不應產生補足交易");
@@ -978,7 +1149,9 @@ public class ExecuteStockImportBalanceActionTests
             .ToList();
 
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.OtherIncome);
-        addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
+        addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Spend
+            && transaction.Notes != "import-execute-opening-initial-balance-offset");
         addedCurrencyTransactions.Should().NotContain(
             transaction => transaction.TransactionType == CurrencyTransactionType.Deposit,
             "CSV 新到舊時，較早賣出應支應較晚買入，不應再建立補足交易");
@@ -1031,6 +1204,12 @@ public class ExecuteStockImportBalanceActionTests
         result.Status.Should().Be("committed");
         result.Summary.InsertedRows.Should().Be(1);
 
+        var rowResult = result.Results.Should().ContainSingle().Subject;
+        rowResult.SellBeforeBuyDecision.Should().NotBeNull();
+        rowResult.SellBeforeBuyDecision!.Strategy.Should().Be("use_opening_position");
+        rowResult.SellBeforeBuyDecision.DecisionScope.Should().Be("row_override");
+        rowResult.SellBeforeBuyDecision.Reason.Should().Be("row_override");
+
         var createdTransactions = fixture.StockTransactionRepositoryMock.Invocations
             .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
             .Select(invocation => invocation.Arguments[0])
@@ -1047,6 +1226,328 @@ public class ExecuteStockImportBalanceActionTests
 
         seededOpeningTransaction.MarketValueAtImport.Should().Be(6000m);
         seededOpeningTransaction.HistoricalTotalCost.Should().Be(5800m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BrokerStatementPartialPeriodSell_CurrentHoldingsAsOfWithoutBaselineDate_ShouldUseTradeMinusOneAndCurrentHoldings()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 811,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineCurrentHoldings:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 6000m,
+                    HistoricalTotalCost = 5800m
+                }
+            ],
+            baselineOpeningPositions: [],
+            baselineAsOfDate: new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            baselineDate: null);
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 811,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.UseOpeningPosition);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var seededOpeningTransaction = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededOpeningTransaction.TransactionDate.Should().Be(new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc));
+        seededOpeningTransaction.MarketValueAtImport.Should().Be(6000m);
+        seededOpeningTransaction.HistoricalTotalCost.Should().Be(5800m);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BrokerStatementPartialPeriodSell_EarliestTradeJan2_ShouldAnchorToJan1WithoutJan1Guard()
+    {
+        // Arrange
+        var firstIncludedTradeDate = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 813,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: firstIncludedTradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineCurrentHoldings:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 6000m,
+                    HistoricalTotalCost = 5800m
+                }
+            ],
+            baselineOpeningPositions: [],
+            baselineAsOfDate: new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            baselineDate: null,
+            baselineOpeningLedgerBalance: 200000m);
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 813,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.UseOpeningPosition);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var addedStockTransactions = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .ToList();
+
+        var seededOpeningTransaction = addedStockTransactions
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededOpeningTransaction.TransactionDate.Should().Be(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            "broker_statement should anchor at earliest included trade date minus one day");
+        seededOpeningTransaction.TransactionDate.Should().NotBe(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            "broker_statement anchor should not be shifted by Jan-1 guard");
+
+        var openingLedgerBaseline = fixture.CurrencyTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<CurrencyTransaction>()
+            .Single(transaction => transaction.TransactionType == CurrencyTransactionType.InitialBalance
+                && transaction.RelatedStockTransactionId == null
+                && string.Equals(transaction.Notes, "import-execute-opening-ledger-baseline", StringComparison.Ordinal));
+
+        openingLedgerBaseline.TransactionDate.Should().Be(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LegacyCsvPartialPeriodSell_CurrentHoldingsAsOfWithoutBaselineDate_ShouldUseAsOfDate()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var explicitAsOfDate = new DateTime(2026, 1, 25, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 812,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineCurrentHoldings:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 6000m,
+                    HistoricalTotalCost = 5800m
+                }
+            ],
+            baselineOpeningPositions: [],
+            baselineAsOfDate: explicitAsOfDate,
+            baselineDate: null,
+            selectedFormat: "legacy_csv");
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 812,
+            ticker: "2330",
+            confirmedTradeSide: "sell",
+            sellBeforeBuyAction: SellBeforeBuyAction.UseOpeningPosition);
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(1);
+
+        var seededOpeningTransaction = fixture.StockTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IStockTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<StockTransaction>()
+            .Single(transaction => transaction.TransactionType == TransactionType.Adjustment);
+
+        seededOpeningTransaction.TransactionDate.Should().Be(explicitAsOfDate,
+            "legacy_csv should continue honoring explicit baseline AsOfDate/BaselineDate semantics");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BrokerStatementCreateAdjustment_SellThenBuyNetZeroCash_ShouldKeepLedgerBalanceZero()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 832,
+                    ticker: "2330",
+                    unitPrice: 165.5m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 6m,
+                    taxes: 0m,
+                    tradeSide: "sell"),
+                Fixture.BuildSessionRow(
+                    rowNumber: 833,
+                    ticker: "2330",
+                    unitPrice: 165.44m,
+                    tradeDate: tradeDate,
+                    quantity: 100m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "buy")
+            ],
+            baselineCurrentHoldings: [],
+            baselineOpeningPositions:
+            [
+                new StockImportSessionOpeningPositionSnapshotDto
+                {
+                    Ticker = "2330",
+                    Quantity = 100m,
+                    TotalCost = 7000m,
+                    HistoricalTotalCost = 6800m
+                }
+            ],
+            baselineOpeningCashBalance: 0m,
+            baselineOpeningLedgerBalance: null,
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            selectedFormat: "broker_statement");
+
+        fixture.YahooHistoricalPriceServiceMock
+            .Setup(x => x.GetHistoricalPriceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YahooHistoricalPriceResult?)null);
+
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            BaselineDecision = new StockImportBaselineExecutionDecisionRequest
+            {
+                SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment
+            },
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 832,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "sell",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 833,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(2);
+
+        var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<CurrencyTransaction>()
+            .ToList();
+
+        var openingInitialBalance = addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.InitialBalance
+            && transaction.Notes == "import-execute-opening-initial-balance").Subject;
+
+        var openingInitialBalanceOffset = addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Spend
+            && transaction.RelatedStockTransactionId == openingInitialBalance.RelatedStockTransactionId
+            && transaction.ForeignAmount == openingInitialBalance.ForeignAmount
+            && transaction.TransactionDate == openingInitialBalance.TransactionDate
+            && transaction.Notes == "import-execute-opening-initial-balance-offset").Subject;
+
+        openingInitialBalanceOffset.HomeAmount.Should().NotBeNull();
+        openingInitialBalanceOffset.HomeAmount.Should().Be(openingInitialBalance.ForeignAmount);
+        openingInitialBalanceOffset.ExchangeRate.Should().Be(1.0m);
+
+        addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.OtherIncome
+            && transaction.ForeignAmount == 16544m);
+        addedCurrencyTransactions.Should().ContainSingle(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Spend
+            && transaction.Notes != "import-execute-opening-initial-balance-offset"
+            && transaction.ForeignAmount == 16544m);
+        addedCurrencyTransactions.Should().NotContain(transaction =>
+            transaction.TransactionType == CurrencyTransactionType.Deposit
+            && transaction.Notes != null
+            && transaction.Notes.Contains("補足買入", StringComparison.Ordinal));
+
+        var asOfExecuteDateBalance = new CurrencyLedgerService().CalculateBalance(
+            addedCurrencyTransactions.Where(transaction => transaction.TransactionDate.Date <= tradeDate.Date));
+        asOfExecuteDateBalance.Should().Be(0m,
+            "idle cash = 0 時，broker seeded opening initial balance 應由 offset spend 抵消，避免 phantom cash");
     }
 
     [Fact]
@@ -1108,7 +1609,7 @@ public class ExecuteStockImportBalanceActionTests
 
         seededAdjustment.MarketValueAtImport.Should().Be(7000m);
         seededAdjustment.HistoricalTotalCost.Should().Be(6800m);
-        seededAdjustment.TransactionDate.Should().Be(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        seededAdjustment.TransactionDate.Should().Be(new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc));
 
         fixture.CurrencyTransactionRepositoryMock.Verify(
             x => x.AddAsync(
@@ -1116,18 +1617,18 @@ public class ExecuteStockImportBalanceActionTests
                     tx.TransactionType == CurrencyTransactionType.InitialBalance
                     && tx.RelatedStockTransactionId == seededAdjustment.Id
                     && tx.ForeignAmount == 7000m
-                    && tx.TransactionDate == new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc)),
+                    && tx.TransactionDate == new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc)),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
     [Fact]
-    public async Task ExecuteAsync_WithCreateAdjustmentOnCrossCurrencyLedger_ShouldUseBaselineDateFxForSeededAdjustmentAndInitialBalance()
+    public async Task ExecuteAsync_WithCreateAdjustmentOnCrossCurrencyLedger_ShouldUseAnchorDateFxForSeededAdjustmentAndInitialBalance()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
         var baselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var expectedFxDate = baselineDate.AddDays(-1);
+        var expectedFxDate = tradeDate.AddDays(-1);
         var fixture = new Fixture(
             seedLedgerTransactions: [],
             sessionRows:
@@ -1143,7 +1644,7 @@ public class ExecuteStockImportBalanceActionTests
                     tradeSide: "sell",
                     currencyCode: "USD")
             ],
-            baselineOpeningPositions:
+            baselineCurrentHoldings:
             [
                 new StockImportSessionOpeningPositionSnapshotDto
                 {
@@ -1153,7 +1654,9 @@ public class ExecuteStockImportBalanceActionTests
                     HistoricalTotalCost = 6800m
                 }
             ],
-            baselineDate: baselineDate,
+            baselineOpeningPositions: [],
+            baselineAsOfDate: new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            baselineDate: null,
             boundLedgerCurrencyCode: "USD",
             boundLedgerHomeCurrency: "TWD");
 
@@ -1221,7 +1724,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WithCreateAdjustmentAndNoBaselineCost_ShouldSkipSeedingAndFailAsSellBeforeBuyActionRequired()
+    public async Task ExecuteAsync_WithCreateAdjustmentAndNoBaselineCost_ShouldSkipSeedingAndReturnSellBeforeBuyActionRequiredWithTraceContext()
     {
         // Arrange
         var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
@@ -1265,6 +1768,10 @@ public class ExecuteStockImportBalanceActionTests
         var rowResult = result.Results.Should().ContainSingle().Subject;
         rowResult.Success.Should().BeFalse();
         rowResult.ErrorCode.Should().Be("SELL_BEFORE_BUY_ACTION_REQUIRED");
+        rowResult.SellBeforeBuyDecision.Should().NotBeNull();
+        rowResult.SellBeforeBuyDecision!.Strategy.Should().Be("create_adjustment");
+        rowResult.SellBeforeBuyDecision.DecisionScope.Should().Be("row_override");
+        rowResult.SellBeforeBuyDecision.Reason.Should().Be("row_override");
 
         fixture.StockTransactionRepositoryMock.Verify(
             x => x.AddAsync(
@@ -1318,11 +1825,96 @@ public class ExecuteStockImportBalanceActionTests
         addedCurrencyTransactions.Should().ContainSingle(transaction =>
             transaction.TransactionType == CurrencyTransactionType.InitialBalance
             && transaction.ForeignAmount == 626425m
-            && transaction.TransactionDate == new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+            && transaction.TransactionDate == new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc)
             && transaction.RelatedStockTransactionId == null);
 
         addedCurrencyTransactions.Should().ContainSingle(transaction => transaction.TransactionType == CurrencyTransactionType.Spend);
         addedCurrencyTransactions.Should().NotContain(transaction => transaction.TransactionType == CurrencyTransactionType.Deposit);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCrossYearRows_OpeningLedgerBaselineAndSeededAdjustmentShouldShareSameAnchorDate()
+    {
+        // Arrange
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows:
+            [
+                Fixture.BuildSessionRow(
+                    rowNumber: 201,
+                    ticker: "2317",
+                    unitPrice: 10m,
+                    tradeDate: new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                    quantity: 1m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "buy"),
+                Fixture.BuildSessionRow(
+                    rowNumber: 202,
+                    ticker: "2330",
+                    unitPrice: 100m,
+                    tradeDate: new DateTime(2026, 1, 7, 0, 0, 0, DateTimeKind.Utc),
+                    quantity: 100m,
+                    fees: 0m,
+                    taxes: 0m,
+                    tradeSide: "sell")
+            ],
+            baselineOpeningLedgerBalance: 200000m,
+            baselineDate: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 201,
+                    Ticker = "2317",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 202,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "sell",
+                    SellBeforeBuyAction = SellBeforeBuyAction.CreateAdjustment,
+                    Exclude = false
+                }
+            ]
+        };
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("committed");
+        result.Summary.InsertedRows.Should().Be(2);
+
+        var addedCurrencyTransactions = fixture.CurrencyTransactionRepositoryMock.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(ICurrencyTransactionRepository.AddAsync))
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<CurrencyTransaction>()
+            .ToList();
+
+        var openingLedgerBaseline = addedCurrencyTransactions
+            .Should().ContainSingle(transaction => transaction.Notes == "import-execute-opening-ledger-baseline")
+            .Subject;
+
+        var openingInitialBalance = addedCurrencyTransactions
+            .Should().ContainSingle(transaction => transaction.Notes == "import-execute-opening-initial-balance")
+            .Subject;
+
+        openingLedgerBaseline.TransactionDate.Should().Be(
+            openingInitialBalance.TransactionDate,
+            "期初帳本基準與期初持股調整應使用同一基準日期，避免同一批匯入同時落在起始日與起始日前一天");
     }
 
     [Fact]
@@ -1586,12 +2178,13 @@ public class ExecuteStockImportBalanceActionTests
         var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
-        result.Status.Should().Be("partially_committed");
-        result.Summary.InsertedRows.Should().Be(1);
+        result.Status.Should().Be("rejected");
+        result.Summary.InsertedRows.Should().Be(0);
         result.Summary.FailedRows.Should().Be(1);
 
         var successRow = result.Results.Single(r => r.RowNumber == 21);
-        successRow.Success.Should().BeTrue("未覆寫列應使用 default TopUp 並成功");
+        successRow.Success.Should().BeTrue("逐列結果仍應保留成功判定，方便前端顯示需補決策後可重試的上下文");
+        successRow.TransactionId.Should().BeNull("broker_statement 發生 BALANCE_ACTION_REQUIRED 時應整批回滾，不應保留已建立交易 ID");
 
         var failedRow = result.Results.Single(r => r.RowNumber == 22);
         failedRow.Success.Should().BeFalse("逐列覆寫為 None 應阻擋");
@@ -1604,6 +2197,62 @@ public class ExecuteStockImportBalanceActionTests
         fixture.CurrencyTransactionRepositoryMock.Verify(
             x => x.AddAsync(It.Is<CurrencyTransaction>(tx => tx.TransactionType == CurrencyTransactionType.Deposit), It.IsAny<CancellationToken>()),
             Times.Once);
+        fixture.AppDbTransactionMock.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.AppDbTransactionMock.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DefaultAndRowOverride_OnLegacyCsv_ShouldRemainPartiallyCommitted()
+    {
+        // Arrange
+        var fixture = new Fixture(selectedFormat: "legacy_csv");
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 21,
+                    Ticker = "2330",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                },
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = 22,
+                    Ticker = "2317",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false,
+                    BalanceAction = BalanceAction.None
+                }
+            ]
+        };
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("partially_committed");
+        result.Summary.InsertedRows.Should().Be(1);
+        result.Summary.FailedRows.Should().Be(1);
+
+        var successRow = result.Results.Single(r => r.RowNumber == 21);
+        successRow.Success.Should().BeTrue();
+        successRow.TransactionId.Should().NotBeNull();
+
+        var failedRow = result.Results.Single(r => r.RowNumber == 22);
+        failedRow.Success.Should().BeFalse();
+        failedRow.ErrorCode.Should().Be("BALANCE_ACTION_REQUIRED");
+
+        fixture.AppDbTransactionMock.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.AppDbTransactionMock.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -1781,6 +2430,225 @@ public class ExecuteStockImportBalanceActionTests
             v.ErrorMessage == "Rows[0].TopUpTransactionType must be one of Deposit, InitialBalance, Interest, or OtherIncome when resolved BalanceAction is TopUp.");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_UnknownSession_ShouldThrowAndNotPersistFailedExecutionState()
+    {
+        // Arrange
+        var fixture = new Fixture(hasPreviewSession: false);
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        // Act
+        var act = () => fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("Import session not found, expired, or already consumed.");
+
+        fixture.SessionStoreMock.Verify(
+            store => store.TryStartExecutionAsync(
+                fixture.SessionId,
+                fixture.UserId,
+                fixture.PortfolioId,
+                It.IsAny<CancellationToken>()),
+            Times.Never,
+            "unknown session should be rejected before entering execution-state processing");
+
+        fixture.SessionStoreMock.Verify(
+            store => store.SaveExecutionResultAsync(
+                It.IsAny<StockImportExecuteSessionStateDto>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never,
+            "unknown session should not persist failed execution state");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InternalException_ShouldPersistSanitizedFailedMessage()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        fixture.StockTransactionRepositoryMock
+            .Setup(repository => repository.GetByPortfolioIdAsync(fixture.PortfolioId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("sensitive-internal-detail"));
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        // Act
+        var act = () => fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Import execution failed. Please retry later.");
+
+        fixture.LastSavedExecutionState.Should().NotBeNull();
+        fixture.LastSavedExecutionState!.ExecutionStatus.Should().Be("failed");
+        fixture.LastSavedExecutionState.Message.Should().Be("Import execution failed. Please retry later.");
+        fixture.LastSavedExecutionState.Message.Should().NotContain("sensitive-internal-detail");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SecondSubmitSameSession_ShouldReturnReplayResult()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        // Act
+        var first = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+        var second = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        first.IsReplay.Should().BeFalse();
+        second.IsReplay.Should().BeTrue();
+        second.SessionId.Should().Be(fixture.SessionId);
+        second.Status.Should().Be(first.Status);
+        second.Summary.InsertedRows.Should().Be(first.Summary.InsertedRows);
+        second.Results.Should().HaveCount(first.Results.Count);
+
+        fixture.StockTransactionRepositoryMock.Verify(
+            repository => repository.AddAsync(It.IsAny<StockTransaction>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(first.Summary.InsertedRows));
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_WhenPreviewSessionExistsButNotExecuted_ShouldReturnPending()
+    {
+        // Arrange
+        var fixture = new Fixture();
+
+        // Act
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+
+        // Assert
+        status.SessionId.Should().Be(fixture.SessionId);
+        status.ExecutionStatus.Should().Be("pending");
+        status.Result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_WhenExecuteCompleted_ShouldReturnCompletedWithResult()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Act
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+
+        // Assert
+        status.ExecutionStatus.Should().Be("completed");
+        status.CompletedAtUtc.Should().NotBeNull();
+        status.Result.Should().NotBeNull();
+        status.Result!.SessionId.Should().Be(fixture.SessionId);
+    }
+
+    private static async Task<(StockImportExecuteResponseDto Response, TimeSpan Elapsed)> MeasureExecuteImportPerformanceRunAsync(int rowCount)
+    {
+        var sessionRows = Enumerable.Range(1, rowCount)
+            .Select(index => Fixture.BuildSessionRow(
+                rowNumber: index,
+                ticker: "2330",
+                unitPrice: 625m + (index % 7),
+                tradeDate: new DateTime(2026, 1, (index % 28) + 1, 0, 0, 0, DateTimeKind.Utc),
+                quantity: 200m + (index % 5) * 10m,
+                fees: 20m + (index % 3),
+                taxes: 0m,
+                tradeSide: "buy",
+                currencyCode: "TWD"))
+            .ToList();
+
+        var fixture = new Fixture(sessionRows: sessionRows);
+
+        var request = new ExecuteStockImportRequest
+        {
+            SessionId = fixture.SessionId,
+            PortfolioId = fixture.PortfolioId,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows = sessionRows.Select(row => new ExecuteStockImportRowRequest
+            {
+                RowNumber = row.RowNumber,
+                Ticker = row.Ticker,
+                ConfirmedTradeSide = "buy",
+                Exclude = false,
+                BalanceAction = null,
+                TopUpTransactionType = null,
+                SellBeforeBuyAction = null
+            }).ToList()
+        };
+
+        var stopwatch = Stopwatch.StartNew();
+        var response = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+        stopwatch.Stop();
+
+        return (response, stopwatch.Elapsed);
+    }
+
+    private static IReadOnlyList<CurrencyTransaction> BuildExecuteSeedLedgerTransactions(Guid fixtureLedgerId, decimal requiredBalance)
+    {
+        return
+        [
+            Fixture.CreateCurrencyTransaction(
+                currencyLedgerId: fixtureLedgerId,
+                transactionDate: new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+                transactionType: CurrencyTransactionType.Deposit,
+                foreignAmount: requiredBalance,
+                homeAmount: requiredBalance,
+                exchangeRate: 1.0m,
+                notes: "perf-seed")
+        ];
+    }
+
+    private static void AssertExecutePerformanceResult(StockImportExecuteResponseDto response, int expectedRows)
+    {
+        response.Status.Should().Be("committed");
+        response.Summary.TotalRows.Should().Be(expectedRows);
+        response.Summary.InsertedRows.Should().Be(expectedRows);
+        response.Summary.FailedRows.Should().Be(0);
+        response.Results.Should().HaveCount(expectedRows);
+        response.Results.All(result => result.Success).Should().BeTrue();
+        response.Errors.Should().BeEmpty();
+    }
+
+    private static TimeSpan GetMedian(IReadOnlyCollection<TimeSpan> values)
+    {
+        values.Should().NotBeEmpty();
+
+        var ordered = values
+            .OrderBy(value => value)
+            .ToArray();
+
+        return ordered[ordered.Length / 2];
+    }
+
     private static IReadOnlyList<ValidationResult> Validate(ExecuteStockImportRequest request)
     {
         var validationContext = new ValidationContext(request);
@@ -1800,6 +2668,7 @@ public class ExecuteStockImportBalanceActionTests
         public Guid PortfolioId { get; } = Guid.NewGuid();
         public Guid BoundLedgerId { get; } = Guid.NewGuid();
         public Guid SessionId { get; } = Guid.NewGuid();
+        public StockImportExecuteSessionStateDto? LastSavedExecutionState { get; private set; }
 
         public Mock<IPortfolioRepository> PortfolioRepositoryMock { get; } = new();
         public Mock<ICurrentUserService> CurrentUserServiceMock { get; } = new();
@@ -1819,17 +2688,22 @@ public class ExecuteStockImportBalanceActionTests
         private readonly Portfolio _portfolio;
         private readonly Domain.Entities.CurrencyLedger _boundLedger;
         private readonly List<StockImportSessionRowSnapshotDto> _sessionRows;
+        private StockImportExecuteSessionStateDto? _executionState;
 
         public Fixture(
             IReadOnlyList<CurrencyTransaction>? seedLedgerTransactions = null,
             IReadOnlyList<StockImportSessionRowSnapshotDto>? sessionRows = null,
             IReadOnlyList<StockTransaction>? seedStockTransactions = null,
+            IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto>? baselineCurrentHoldings = null,
             IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto>? baselineOpeningPositions = null,
+            DateTime? baselineAsOfDate = null,
             DateTime? baselineDate = null,
             decimal? baselineOpeningCashBalance = null,
             decimal? baselineOpeningLedgerBalance = null,
             string boundLedgerCurrencyCode = "TWD",
-            string boundLedgerHomeCurrency = "TWD")
+            string boundLedgerHomeCurrency = "TWD",
+            bool hasPreviewSession = true,
+            string selectedFormat = "broker_statement")
         {
             _portfolio = new Portfolio(UserId, BoundLedgerId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "US Portfolio");
             typeof(Portfolio).GetProperty(nameof(Portfolio.Id))!.SetValue(_portfolio, PortfolioId);
@@ -1857,48 +2731,87 @@ public class ExecuteStockImportBalanceActionTests
                 .Setup(x => x.GetByIdAsync(PortfolioId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(_portfolio);
 
+            var previewSessionSnapshot = hasPreviewSession
+                ? new StockImportSessionSnapshotDto
+                {
+                    SessionId = SessionId,
+                    UserId = UserId,
+                    PortfolioId = PortfolioId,
+                    SelectedFormat = selectedFormat,
+                    DetectedFormat = selectedFormat,
+                    Baseline = new StockImportSessionBaselineSnapshotDto
+                    {
+                        AsOfDate = baselineAsOfDate ?? baselineDate,
+                        BaselineDate = baselineDate ?? baselineAsOfDate,
+                        CurrentHoldings = baselineCurrentHoldings?.ToList()
+                            ?? baselineOpeningPositions?.ToList()
+                            ?? [],
+                        OpeningPositions = baselineOpeningPositions?.ToList()
+                            ?? baselineCurrentHoldings?.ToList()
+                            ?? [],
+                        OpeningCashBalance = baselineOpeningCashBalance,
+                        OpeningLedgerBalance = baselineOpeningLedgerBalance
+                    },
+                    Rows = _sessionRows
+                }
+                : null;
+
             SessionStoreMock
                 .Setup(x => x.TryConsumeForOwnerAsync(
                     SessionId,
                     UserId,
                     PortfolioId,
                     It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new StockImportSessionSnapshotDto
-                {
-                    SessionId = SessionId,
-                    UserId = UserId,
-                    PortfolioId = PortfolioId,
-                    SelectedFormat = "broker_statement",
-                    DetectedFormat = "broker_statement",
-                    Baseline = new StockImportSessionBaselineSnapshotDto
-                    {
-                        BaselineDate = baselineDate,
-                        OpeningPositions = baselineOpeningPositions?.ToList()
-                            ?? [],
-                        OpeningCashBalance = baselineOpeningCashBalance,
-                        OpeningLedgerBalance = baselineOpeningLedgerBalance
-                    },
-                    Rows = _sessionRows
-                });
+                .ReturnsAsync(() => previewSessionSnapshot);
 
             SessionStoreMock
                 .Setup(x => x.GetAsync(SessionId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new StockImportSessionSnapshotDto
+                .ReturnsAsync(previewSessionSnapshot);
+
+            SessionStoreMock
+                .Setup(x => x.TryStartExecutionAsync(
+                    SessionId,
+                    UserId,
+                    PortfolioId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() =>
                 {
-                    SessionId = SessionId,
-                    UserId = UserId,
-                    PortfolioId = PortfolioId,
-                    SelectedFormat = "broker_statement",
-                    DetectedFormat = "broker_statement",
-                    Baseline = new StockImportSessionBaselineSnapshotDto
+                    var isBlocked = _executionState is not null
+                        && string.Equals(_executionState.ExecutionStatus, "processing", StringComparison.OrdinalIgnoreCase)
+                        && _executionState.UserId == UserId
+                        && _executionState.PortfolioId == PortfolioId;
+
+                    if (isBlocked)
                     {
-                        BaselineDate = baselineDate,
-                        OpeningPositions = baselineOpeningPositions?.ToList()
-                            ?? [],
-                        OpeningCashBalance = baselineOpeningCashBalance,
-                        OpeningLedgerBalance = baselineOpeningLedgerBalance
-                    },
-                    Rows = _sessionRows
+                        return false;
+                    }
+
+                    _executionState = new StockImportExecuteSessionStateDto
+                    {
+                        SessionId = SessionId,
+                        UserId = UserId,
+                        PortfolioId = PortfolioId,
+                        ExecutionStatus = "processing",
+                        Message = null,
+                        StartedAtUtc = DateTime.UtcNow,
+                        CompletedAtUtc = null,
+                        Result = null
+                    };
+
+                    return true;
+                });
+
+            SessionStoreMock
+                .Setup(x => x.GetExecutionStateAsync(SessionId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => _executionState);
+
+            SessionStoreMock
+                .Setup(x => x.SaveExecutionResultAsync(It.IsAny<StockImportExecuteSessionStateDto>(), It.IsAny<CancellationToken>()))
+                .Returns((StockImportExecuteSessionStateDto state, CancellationToken _) =>
+                {
+                    _executionState = state;
+                    LastSavedExecutionState = state;
+                    return Task.CompletedTask;
                 });
 
             CurrencyLedgerRepositoryMock
