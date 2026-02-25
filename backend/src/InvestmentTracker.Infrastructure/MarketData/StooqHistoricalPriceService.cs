@@ -329,6 +329,12 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
     {
         try
         {
+            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                var normalizedCurrency = fromCurrency.ToUpperInvariant();
+                return new StooqExchangeRateResult(1m, date, normalizedCurrency, normalizedCurrency);
+            }
+
             var symbol = $"{fromCurrency.ToLowerInvariant()}{toCurrency.ToLowerInvariant()}";
 
             // 抓取以指定日期結尾的 10 天區間，處理週末／假日

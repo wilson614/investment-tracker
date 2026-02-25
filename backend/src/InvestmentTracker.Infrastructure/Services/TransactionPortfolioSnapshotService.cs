@@ -7,6 +7,7 @@ using InvestmentTracker.Domain.Services;
 using InvestmentTracker.Infrastructure.MarketData;
 using InvestmentTracker.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace InvestmentTracker.Infrastructure.Services;
 
@@ -26,7 +27,8 @@ public class TransactionPortfolioSnapshotService(
     ICurrentUserService currentUserService,
     IYahooHistoricalPriceService yahooService,
     IStooqHistoricalPriceService stooqService,
-    ITwseStockHistoricalPriceService twseStockService)
+    ITwseStockHistoricalPriceService twseStockService,
+    ILogger<TransactionPortfolioSnapshotService>? logger = null)
     : ITransactionPortfolioSnapshotService
 {
     public async Task<IReadOnlyList<TransactionPortfolioSnapshot>> GetSnapshotsAsync(
@@ -476,7 +478,7 @@ public class TransactionPortfolioSnapshotService(
         var backfillContext = new SnapshotBackfillComputationContext(
             allTransactions,
             boundLedger,
-            string.Equals(portfolio.BaseCurrency, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase));
+            AreSameCurrency(portfolio.BaseCurrency, portfolio.HomeCurrency));
 
         var externalLedgerTx = boundLedger != null
             ? boundLedger.Transactions
@@ -882,7 +884,7 @@ public class TransactionPortfolioSnapshotService(
         CancellationToken cancellationToken,
         IReadOnlyList<StockTransaction>? allTransactions = null)
     {
-        if (string.Equals(sourceCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+        if (AreSameCurrency(sourceCurrency, homeCurrency))
         {
             return await CalculatePortfolioValueHomeAsync(
                 portfolioId,
@@ -967,7 +969,27 @@ public class TransactionPortfolioSnapshotService(
 
         var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, homeCurrency, priceInfo.ActualDate, cancellationToken);
         if (exchangeRate == null)
-            return null;
+        {
+            var costFallback = ResolveCostFallbackHome(position, positionTransactions, homeCurrency);
+            if (costFallback > 0m)
+            {
+                logger?.LogWarning(
+                    "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; falling back to home cost basis.",
+                    position.Ticker,
+                    priceInfo.Currency,
+                    homeCurrency,
+                    priceInfo.ActualDate);
+                return costFallback;
+            }
+
+            logger?.LogWarning(
+                "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; no cost fallback available and valuation is zeroed.",
+                position.Ticker,
+                priceInfo.Currency,
+                homeCurrency,
+                priceInfo.ActualDate);
+            return 0m;
+        }
 
         return position.TotalShares * priceInfo.Price * exchangeRate.Value;
     }
@@ -994,7 +1016,34 @@ public class TransactionPortfolioSnapshotService(
 
         var exchangeRate = await GetExchangeRateAsync(priceInfo.Currency, sourceCurrency, priceInfo.ActualDate, cancellationToken);
         if (exchangeRate == null)
-            return null;
+        {
+            var costFallback = await ResolveCostFallbackSourceAsync(
+                position,
+                positionTransactions,
+                valuationDate,
+                sourceCurrency,
+                homeCurrency,
+                cancellationToken);
+
+            if (costFallback is > 0m)
+            {
+                logger?.LogWarning(
+                    "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; falling back to source cost basis.",
+                    position.Ticker,
+                    priceInfo.Currency,
+                    sourceCurrency,
+                    priceInfo.ActualDate);
+                return costFallback;
+            }
+
+            logger?.LogWarning(
+                "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; no source cost fallback available and valuation is zeroed.",
+                position.Ticker,
+                priceInfo.Currency,
+                sourceCurrency,
+                priceInfo.ActualDate);
+            return 0m;
+        }
 
         return position.TotalShares * priceInfo.Price * exchangeRate.Value;
     }
@@ -1068,7 +1117,7 @@ public class TransactionPortfolioSnapshotService(
         if (transaction.TotalCostHome is > 0m)
             return transaction.TotalCostHome.Value;
 
-        return string.Equals(transaction.Currency.ToString(), homeCurrency, StringComparison.OrdinalIgnoreCase)
+        return AreSameCurrency(transaction.Currency.ToString(), homeCurrency)
             ? transaction.TotalCostSource
             : 0m;
     }
@@ -1085,7 +1134,7 @@ public class TransactionPortfolioSnapshotService(
         if (transaction.ExchangeRate is > 0m)
             return sourceCost * transaction.ExchangeRate.Value;
 
-        return string.Equals(transaction.Currency.ToString(), homeCurrency, StringComparison.OrdinalIgnoreCase)
+        return AreSameCurrency(transaction.Currency.ToString(), homeCurrency)
             ? sourceCost
             : 0m;
     }
@@ -1104,7 +1153,7 @@ public class TransactionPortfolioSnapshotService(
 
         if (sourceCostBasis > 0m && !string.IsNullOrWhiteSpace(position.Currency))
         {
-            if (string.Equals(position.Currency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+            if (AreSameCurrency(position.Currency, sourceCurrency))
                 return sourceCostBasis;
 
             var rateFromPositionCurrency = await GetExchangeRateAsync(position.Currency, sourceCurrency, valuationDate, cancellationToken);
@@ -1116,7 +1165,7 @@ public class TransactionPortfolioSnapshotService(
         if (homeCostBasis <= 0m)
             return 0m;
 
-        if (string.Equals(homeCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+        if (AreSameCurrency(homeCurrency, sourceCurrency))
             return homeCostBasis;
 
         var homeToSourceRate = await GetExchangeRateAsync(homeCurrency, sourceCurrency, valuationDate, cancellationToken);
@@ -1132,14 +1181,23 @@ public class TransactionPortfolioSnapshotService(
         DateOnly date,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+        var normalizedFromCurrency = NormalizeCurrencyCode(fromCurrency);
+        var normalizedToCurrency = NormalizeCurrencyCode(toCurrency);
+
+        if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
+            || string.IsNullOrWhiteSpace(normalizedToCurrency))
+        {
+            return null;
+        }
+
+        if (AreSameCurrency(normalizedFromCurrency, normalizedToCurrency))
         {
             return 1m;
         }
 
         try
         {
-            var result = await yahooService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
+            var result = await yahooService.GetExchangeRateAsync(normalizedFromCurrency, normalizedToCurrency, date, cancellationToken);
             if (result is { Rate: > 0m })
                 return result.Rate;
         }
@@ -1154,7 +1212,7 @@ public class TransactionPortfolioSnapshotService(
 
         try
         {
-            var stooq = await stooqService.GetExchangeRateAsync(fromCurrency, toCurrency, date, cancellationToken);
+            var stooq = await stooqService.GetExchangeRateAsync(normalizedFromCurrency, normalizedToCurrency, date, cancellationToken);
             return stooq is { Rate: > 0m } ? stooq.Rate : null;
         }
         catch (OperationCanceledException)
@@ -1166,6 +1224,21 @@ public class TransactionPortfolioSnapshotService(
             // 保守處理：外部 FX provider 例外不應讓 snapshot 流程崩潰。
             return null;
         }
+    }
+
+    private static string? NormalizeCurrencyCode(string? currencyCode)
+        => string.IsNullOrWhiteSpace(currencyCode)
+            ? null
+            : currencyCode.Trim().ToUpperInvariant();
+
+    private static bool AreSameCurrency(string? leftCurrencyCode, string? rightCurrencyCode)
+    {
+        var normalizedLeft = NormalizeCurrencyCode(leftCurrencyCode);
+        var normalizedRight = NormalizeCurrencyCode(rightCurrencyCode);
+
+        return !string.IsNullOrWhiteSpace(normalizedLeft)
+               && !string.IsNullOrWhiteSpace(normalizedRight)
+               && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<HistoricalPriceInfo?> GetHistoricalPriceAsync(
@@ -1266,7 +1339,7 @@ public class TransactionPortfolioSnapshotService(
         var balance = currencyLedgerService.CalculateBalance(
             ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
 
-        if (string.Equals(ledger.CurrencyCode, homeCurrency, StringComparison.OrdinalIgnoreCase))
+        if (AreSameCurrency(ledger.CurrencyCode, homeCurrency))
             return Math.Round(balance, 4);
 
         var exchangeRate = await GetExchangeRateAsync(ledger.CurrencyCode, homeCurrency, valuationDate, cancellationToken);
@@ -1286,7 +1359,7 @@ public class TransactionPortfolioSnapshotService(
         var balance = currencyLedgerService.CalculateBalance(
             ledger.Transactions.Where(t => DateOnly.FromDateTime(t.TransactionDate) <= valuationDate));
 
-        if (string.Equals(ledger.CurrencyCode, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+        if (AreSameCurrency(ledger.CurrencyCode, sourceCurrency))
             return Math.Round(balance, 4);
 
         // 以 Home 作為中介：ledgerCurrency -> home -> source
@@ -1294,7 +1367,7 @@ public class TransactionPortfolioSnapshotService(
         if (toHomeRate == null)
             return 0m;
 
-        if (string.Equals(homeCurrency, sourceCurrency, StringComparison.OrdinalIgnoreCase))
+        if (AreSameCurrency(homeCurrency, sourceCurrency))
             return Math.Round(balance * toHomeRate.Value, 4);
 
         var homeToSourceRate = await GetExchangeRateAsync(homeCurrency, sourceCurrency, valuationDate, cancellationToken);

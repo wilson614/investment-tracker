@@ -250,6 +250,12 @@
 - [x] T169 [P] Strengthen application regression assertions for positive Day-1 seeded baseline and TWR non-`-100%` guard in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
 - [x] T170 Run focused QA verification for strict Day-1 zero-value fallback guard across snapshot/performance/import regressions in backend test projects
 - [x] T171 Complete code-review gate for strict Day-1 zero-value fallback guard closure in snapshot service and regression tests
+- [x] T172 Harden same-currency FX handling and null-FX fallback behavior in `backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs`
+- [x] T173 Add provider-level same-currency short-circuit guards in `backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs` and `backend/src/InvestmentTracker.Infrastructure/MarketData/StooqHistoricalPriceService.cs`
+- [x] T174 [P] Add snapshot regressions for same-currency FX normalization and buy-only missing-price null-FX fallback in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/TransactionPortfolioSnapshotServiceTests.cs`
+- [x] T175 [P] Add provider regressions to verify same-currency FX returns 1 and makes no HTTP call in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/YahooHistoricalPriceServiceTests.cs` and `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/StooqHistoricalPriceServiceTests.cs`
+- [x] T176 Run focused QA verification for same-currency FX short-circuit and fallback hardening across infrastructure/application/API regression suites
+- [x] T177 Complete code-review gate for same-currency FX short-circuit and null-FX fallback hardening across service and provider layers
 
 ---
 

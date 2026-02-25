@@ -180,6 +180,29 @@ public class YahooHistoricalPriceServiceTests
         result.PriceReturnPercent.Should().BeNull();
     }
 
+    [Fact]
+    public async Task GetExchangeRateAsync_SameCurrency_ReturnsOne_AndDoesNotCallHttp()
+    {
+        // Arrange
+        var date = new DateOnly(2024, 1, 31);
+        var handler = new StubHttpMessageHandler((_, _) =>
+            throw new InvalidOperationException("HTTP should not be called for same-currency FX lookup."));
+
+        var httpClient = new HttpClient(handler);
+        var logger = new Mock<ILogger<YahooHistoricalPriceService>>().Object;
+        var sut = new YahooHistoricalPriceService(httpClient, logger);
+
+        // Act
+        var result = await sut.GetExchangeRateAsync("usd", "USD", date, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Rate.Should().Be(1m);
+        result.ActualDate.Should().Be(date);
+        result.CurrencyPair.Should().Be("USDUSD");
+        handler.CallCount.Should().Be(0);
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

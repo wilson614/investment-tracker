@@ -443,6 +443,17 @@ public class YahooHistoricalPriceService(
     {
         try
         {
+            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                var normalizedCurrency = fromCurrency.ToUpperInvariant();
+                return new YahooExchangeRateResult
+                {
+                    Rate = 1m,
+                    ActualDate = date,
+                    CurrencyPair = $"{normalizedCurrency}{normalizedCurrency}"
+                };
+            }
+
             // Yahoo Finance 匯率符號格式：USDTWD=X
             var yahooSymbol = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}=X";
 

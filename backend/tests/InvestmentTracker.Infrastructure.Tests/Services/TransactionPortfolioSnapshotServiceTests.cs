@@ -256,6 +256,98 @@ public class TransactionPortfolioSnapshotServiceTests
     }
 
     [Fact]
+    public async Task UpsertSnapshotAsync_SameCurrencyFxWithWhitespace_DoesNotCallFxProviders_AndWritesSnapshot()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "TWD", homeCurrency: "TWD", displayName: "Same Currency FX Whitespace");
+
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(x => x.UserId).Returns(userId);
+
+        var dbContext = CreateInMemoryDbContext(currentUserService.Object);
+        dbContext.Portfolios.Add(portfolio);
+        await dbContext.SaveChangesAsync();
+
+        var date = new DateTime(2024, 3, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        var tx = new StockTransaction(
+            portfolioId: portfolio.Id,
+            transactionDate: date,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 1m,
+            pricePerShare: 500m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        var portfolioRepository = new Mock<IPortfolioRepository>(MockBehavior.Strict);
+        portfolioRepository
+            .Setup(x => x.GetByIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var transactionRepository = new Mock<IStockTransactionRepository>(MockBehavior.Strict);
+        transactionRepository
+            .Setup(x => x.GetByIdAsync(tx.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tx);
+        transactionRepository
+            .Setup(x => x.GetByPortfolioIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([tx]);
+
+        var currencyLedgerRepository = new Mock<ICurrencyLedgerRepository>(MockBehavior.Strict);
+        currencyLedgerRepository
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("2330.TW", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 620m,
+                ActualDate = new DateOnly(2024, 3, 15),
+                Currency = "  twd  "
+            });
+
+        var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
+        var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
+
+        var sut = new TransactionPortfolioSnapshotService(
+            dbContext,
+            portfolioRepository.Object,
+            transactionRepository.Object,
+            currencyLedgerRepository.Object,
+            new CurrencyLedgerService(),
+            new PortfolioCalculator(),
+            currentUserService.Object,
+            yahoo.Object,
+            stooq.Object,
+            twse.Object);
+
+        // Act
+        await sut.UpsertSnapshotAsync(portfolio.Id, tx.Id, tx.TransactionDate, CancellationToken.None);
+
+        // Assert
+        var snapshot = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .SingleAsync(s => s.PortfolioId == portfolio.Id && s.TransactionId == tx.Id);
+
+        snapshot.PortfolioValueBeforeHome.Should().Be(0m);
+        snapshot.PortfolioValueAfterHome.Should().Be(620m);
+        snapshot.PortfolioValueBeforeSource.Should().Be(0m);
+        snapshot.PortfolioValueAfterSource.Should().Be(620m);
+
+        yahoo.Verify(
+            x => x.GetExchangeRateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        stooq.Verify(
+            x => x.GetExchangeRateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task UpsertSnapshotAsync_TaiwanTicker_YahooMiss_FallsBackToTwse()
     {
         // Arrange
@@ -968,6 +1060,7 @@ public class TransactionPortfolioSnapshotServiceTests
 
         snapshot.PortfolioValueBeforeHome.Should().Be(0m);
         snapshot.PortfolioValueAfterHome.Should().Be(4000m);
+        snapshot.PortfolioValueAfterHome.Should().BeGreaterThan(0m);
         snapshot.PortfolioValueBeforeSource.Should().Be(0m);
         snapshot.PortfolioValueAfterSource.Should().Be(0m);
 
