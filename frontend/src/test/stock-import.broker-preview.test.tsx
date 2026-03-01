@@ -4,11 +4,13 @@ import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useState } from 'react';
 import { StockImportButton } from '../components/import/StockImportButton';
+import { formatDateISO } from '../utils/csvParser';
 import { portfolioApi, transactionApi } from '../services/api';
 import type {
   StockImportDiagnostic,
   StockImportExecuteRequest,
   StockImportExecuteResponse,
+  StockImportExecuteStatusResponse,
   StockImportPreviewRequest,
   StockImportPreviewResponse,
   StockImportPreviewRow,
@@ -25,6 +27,7 @@ vi.mock('../services/api', () => ({
     create: vi.fn(),
     previewImport: vi.fn(),
     executeImport: vi.fn(),
+    getImportStatus: vi.fn(),
   },
 }));
 
@@ -129,6 +132,21 @@ function buildExecuteResponse(overrides: Partial<StockImportExecuteResponse> = {
       },
     ],
     errors: [],
+    ...overrides,
+  };
+}
+
+function buildExecuteStatusResponse(
+  overrides: Partial<StockImportExecuteStatusResponse> = {},
+): StockImportExecuteStatusResponse {
+  return {
+    sessionId: overrides.sessionId ?? 'session-status',
+    portfolioId: overrides.portfolioId ?? TEST_PORTFOLIO_ID,
+    executionStatus: overrides.executionStatus ?? 'completed',
+    message: overrides.message ?? null,
+    startedAtUtc: overrides.startedAtUtc ?? '2026-02-01T00:00:00Z',
+    completedAtUtc: overrides.completedAtUtc ?? '2026-02-01T00:00:10Z',
+    result: overrides.result ?? buildExecuteResponse(),
     ...overrides,
   };
 }
@@ -339,27 +357,27 @@ async function addBaselineOpeningPosition(
   user: ReturnType<typeof userEvent.setup>,
   params: {
     baselineDate?: string;
-    openingCashBalance?: string;
+    openingLedgerBalance?: string;
     ticker: string;
     quantity: string;
     totalCost: string;
   },
 ) {
   if (params.baselineDate) {
-    fireEvent.change(screen.getByLabelText('期初基準日期'), {
+    fireEvent.change(screen.getByLabelText('目前持倉基準日'), {
       target: { value: params.baselineDate },
     });
   }
 
-  if (params.openingCashBalance) {
-    await user.type(screen.getByLabelText('期初現金餘額'), params.openingCashBalance);
+  if (params.openingLedgerBalance) {
+    await user.type(screen.getByLabelText('目前用於投資的閒置資金（帳本餘額）'), params.openingLedgerBalance);
   }
 
   await user.click(screen.getByRole('button', { name: '新增持倉' }));
 
-  await user.type(await screen.findByLabelText('期初持倉 1 ticker'), params.ticker);
-  await user.type(screen.getByLabelText('期初持倉 1 quantity'), params.quantity);
-  await user.type(screen.getByLabelText('期初持倉 1 total cost'), params.totalCost);
+  await user.type(await screen.findByLabelText('目前持倉 1 ticker'), params.ticker);
+  await user.type(screen.getByLabelText('目前持倉 1 quantity'), params.quantity);
+  await user.type(screen.getByLabelText('目前持倉 1 total cost'), params.totalCost);
 }
 
 function expectVisibleTextOrder(textsInExpectedOrder: string[]) {
@@ -464,6 +482,7 @@ describe('Stock import broker preview flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('alert', vi.fn());
+    localStorage.clear();
 
     mockedPortfolioApi.getAvailableYears.mockResolvedValue({
       years: [new Date().getFullYear()],
@@ -471,9 +490,11 @@ describe('Stock import broker preview flow', () => {
       currentYear: new Date().getFullYear(),
     });
     mockedPortfolioApi.calculateYearPerformance.mockResolvedValue(buildYearPerformance());
+    mockedTransactionApi.getImportStatus.mockResolvedValue(buildExecuteStatusResponse());
   });
 
   afterEach(() => {
+    localStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -919,7 +940,105 @@ describe('Stock import broker preview flow', () => {
     expect(within(performanceSummary).queryByText('-', { exact: true })).not.toBeInTheDocument();
   });
 
-  it('sends baseline openingPositions with historicalTotalCost while keeping legacy totalCost compatibility', async () => {
+  it('uses today-only current holdings date in broker mode and keeps baseline aliases in preview payload', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-baseline-default-today',
+        detectedFormat: 'broker_statement',
+        selectedFormat: 'broker_statement',
+        rows: [buildPreviewRow({ rawSecurityName: 'ROW-BASELINE-DEFAULT-TODAY' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    const today = formatDateISO(new Date());
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+
+    expect(screen.queryByText('目前持倉日期（預設今天）')).not.toBeInTheDocument();
+    expect(screen.queryByText('券商模式下由系統自動使用今天作為目前持倉快照日期顯示。')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
+    ).toBeInTheDocument();
+
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.baseline).toEqual(
+      expect.objectContaining({
+        asOfDate: today,
+        baselineDate: today,
+      }),
+    );
+  });
+
+  it('keeps editable baseline date semantics after switching to legacy format in the same modal session', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-baseline-format-switch',
+        detectedFormat: 'legacy_csv',
+        selectedFormat: 'legacy_csv',
+        rows: [buildPreviewRow({ rawSecurityName: 'ROW-BASELINE-FORMAT-SWITCH' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    const today = formatDateISO(new Date());
+
+    await openImportModalAndUploadCsv(
+      user,
+      buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
+    );
+    await moveToPreviewStep(user);
+
+    expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
+
+    await selectImportFormat(user, 'legacy_csv');
+
+    const editableInput = await waitFor(() => screen.getByLabelText('目前持倉基準日') as HTMLInputElement);
+    expect(editableInput.value).toBe(today);
+    expect(editableInput).not.toHaveAttribute('readonly');
+
+    fireEvent.change(editableInput, { target: { value: '2026-01-15' } });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('目前持倉基準日') as HTMLInputElement).value).toBe('2026-01-15');
+    });
+
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.selectedFormat).toBe('legacy_csv');
+    expect(previewRequest.baseline).toEqual(
+      expect.objectContaining({
+        asOfDate: '2026-01-15',
+        baselineDate: '2026-01-15',
+      }),
+    );
+  });
+
+  it('sends baseline asOfDate/currentHoldings while keeping legacy baselineDate/openingPositions compatibility in broker mode', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-baseline-openings-compat',
@@ -946,15 +1065,21 @@ describe('Stock import broker preview flow', () => {
     );
 
     const user = userEvent.setup();
+    const today = formatDateISO(new Date());
 
     await openImportModalAndUploadCsv(
       user,
       buildBrokerStatementCsvFile([], '證券app匯出範例.csv'),
     );
     await moveToPreviewStep(user);
+
+    expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
+
+    expect(screen.queryByLabelText('目前持倉現金餘額')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('目前用於投資的閒置資金（帳本餘額）')).toBeInTheDocument();
+
     await addBaselineOpeningPosition(user, {
-      baselineDate: '2026-01-01',
-      openingCashBalance: '1000',
+      openingLedgerBalance: '1000',
       ticker: '2330',
       quantity: '100',
       totalCost: '62500',
@@ -965,13 +1090,25 @@ describe('Stock import broker preview flow', () => {
     const previewRequest = getLatestPreviewRequest();
     expect(previewRequest.baseline).toEqual(
       expect.objectContaining({
-        baselineDate: '2026-01-01',
-        openingCashBalance: 1000,
+        asOfDate: today,
+        baselineDate: today,
+        openingLedgerBalance: 1000,
+      }),
+    );
+    expect(previewRequest.baseline?.openingCashBalance).toBeUndefined();
+
+    const canonicalOpeningPosition = previewRequest.baseline?.currentHoldings?.[0];
+    expect(canonicalOpeningPosition).toEqual(
+      expect.objectContaining({
+        ticker: '2330',
+        quantity: 100,
+        historicalTotalCost: 62500,
+        totalCost: 62500,
       }),
     );
 
-    const openingPosition = previewRequest.baseline?.openingPositions?.[0];
-    expect(openingPosition).toEqual(
+    const legacyOpeningPosition = previewRequest.baseline?.openingPositions?.[0];
+    expect(legacyOpeningPosition).toEqual(
       expect.objectContaining({
         ticker: '2330',
         quantity: 100,
@@ -1121,6 +1258,41 @@ describe('Stock import broker preview flow', () => {
     expect(within(performanceSummary).getByText('低信度年度')).toBeInTheDocument();
     expect(within(performanceSummary).getByText('Low confidence performance: insufficient coverage period.')).toBeInTheDocument();
     expect(within(performanceSummary).getByText('22,222 USD')).toBeInTheDocument();
+  });
+
+  it('restores pending import status on mount and shows processing notice while polling recovery endpoint', async () => {
+    localStorage.setItem(
+      `stock_import_pending_session_${TEST_PORTFOLIO_ID}`,
+      JSON.stringify({
+        sessionId: 'session-broker-recovery-pending',
+        portfolioId: TEST_PORTFOLIO_ID,
+        updatedAt: '2026-02-01T00:00:00Z',
+      }),
+    );
+
+    mockedTransactionApi.getImportStatus.mockResolvedValue(
+      buildExecuteStatusResponse({
+        sessionId: 'session-broker-recovery-pending',
+        executionStatus: 'processing',
+        result: null,
+        completedAtUtc: null,
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.getImportStatus).toHaveBeenCalledWith('session-broker-recovery-pending');
+    });
+
+    expect(localStorage.getItem(`stock_import_pending_session_${TEST_PORTFOLIO_ID}`)).not.toBeNull();
+    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
   });
 
   it('preview row ordering remains stable after per-row confirmation interaction', async () => {

@@ -3,10 +3,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { StockImportButton } from '../components/import/StockImportButton';
+import { formatDateISO } from '../utils/csvParser';
 import { transactionApi } from '../services/api';
 import type {
   StockImportExecuteRequest,
   StockImportExecuteResponse,
+  StockImportExecuteStatusResponse,
   StockImportPreviewRequest,
   StockImportPreviewResponse,
   StockImportPreviewRow,
@@ -18,6 +20,7 @@ vi.mock('../services/api', () => ({
     create: vi.fn(),
     previewImport: vi.fn(),
     executeImport: vi.fn(),
+    getImportStatus: vi.fn(),
   },
 }));
 
@@ -107,6 +110,21 @@ function buildExecuteResponse(overrides: Partial<StockImportExecuteResponse> = {
   };
 }
 
+function buildExecuteStatusResponse(
+  overrides: Partial<StockImportExecuteStatusResponse> = {},
+): StockImportExecuteStatusResponse {
+  return {
+    sessionId: overrides.sessionId ?? 'session-status',
+    portfolioId: overrides.portfolioId ?? TEST_PORTFOLIO_ID,
+    executionStatus: overrides.executionStatus ?? 'completed',
+    message: overrides.message ?? null,
+    startedAtUtc: overrides.startedAtUtc ?? '2026-02-01T00:00:00Z',
+    completedAtUtc: overrides.completedAtUtc ?? '2026-02-01T00:00:10Z',
+    result: overrides.result ?? buildExecuteResponse(),
+    ...overrides,
+  };
+}
+
 async function openImportModalAndUploadCsv(user: ReturnType<typeof userEvent.setup>, file: File) {
   await user.click(screen.getByRole('button', { name: /匯入|import/i }));
   await screen.findByText('上傳 CSV 檔案');
@@ -167,21 +185,6 @@ function getLatestExecuteRequest(): StockImportExecuteRequest {
   return latestCall[0] as StockImportExecuteRequest;
 }
 
-function findGlobalSellBeforeBuyActionSelector(): HTMLSelectElement | null {
-  const labeled = screen.queryByRole('combobox', {
-    name: /賣先買後預設處理方式|賣在買前時，預設怎麼處理/i,
-  });
-  if (labeled instanceof HTMLSelectElement) {
-    return labeled;
-  }
-
-  const byId = document.getElementById('global-sell-before-buy-action-selector');
-  if (byId instanceof HTMLSelectElement) {
-    return byId;
-  }
-
-  return null;
-}
 
 function findGlobalBalanceActionSelector(): HTMLSelectElement | null {
   const labeled = screen.queryByLabelText(/餘額不足預設處理方式/i);
@@ -211,24 +214,6 @@ function findGlobalTopUpTypeSelector(): HTMLSelectElement | null {
   return null;
 }
 
-async function selectGlobalSellBeforeBuyAction(
-  user: ReturnType<typeof userEvent.setup>,
-  action: 'UseOpeningPosition' | 'CreateAdjustment' | null,
-) {
-  const selector = await waitFor(() => {
-    const control = findGlobalSellBeforeBuyActionSelector();
-    expect(control).not.toBeNull();
-    return control as HTMLSelectElement;
-  });
-
-  const targetValue = action ?? '';
-  const option = Array.from(selector.options).find((candidate) => candidate.value === targetValue);
-  if (!option) {
-    throw new Error(`找不到全域賣先買後處理方式選項: ${String(action)}`);
-  }
-
-  await user.selectOptions(selector, option.value);
-}
 
 async function selectGlobalBalanceAction(
   user: ReturnType<typeof userEvent.setup>,
@@ -279,23 +264,6 @@ function getRowContainer(rowMarker: string): HTMLElement {
   );
 }
 
-function findRowSellBeforeBuyActionSelector(rowMarker: string): HTMLSelectElement {
-  const rowContainer = getRowContainer(rowMarker);
-
-  const selectors = within(rowContainer)
-    .queryAllByRole('combobox')
-    .filter((node): node is HTMLSelectElement => node instanceof HTMLSelectElement);
-
-  const selector = selectors.find((select) =>
-    Array.from(select.options).some((option) => option.value === 'UseOpeningPosition'),
-  );
-
-  if (!selector) {
-    throw new Error(`找不到列 ${rowMarker} 的賣先買後處理方式下拉`);
-  }
-
-  return selector;
-}
 
 function findRowBalanceActionSelector(rowMarker: string): HTMLSelectElement {
   const rowContainer = getRowContainer(rowMarker);
@@ -346,20 +314,6 @@ function queryRowTopUpTypeSelector(rowMarker: string): HTMLSelectElement | null 
   ) ?? null;
 }
 
-async function selectRowSellBeforeBuyActionSelection(
-  user: ReturnType<typeof userEvent.setup>,
-  rowMarker: string,
-  value: 'default' | 'UseOpeningPosition' | 'CreateAdjustment',
-) {
-  const selector = findRowSellBeforeBuyActionSelector(rowMarker);
-  const option = Array.from(selector.options).find((candidate) => candidate.value === value);
-
-  if (!option) {
-    throw new Error(`找不到列 ${rowMarker} 的賣先買後處理方式選項: ${value}`);
-  }
-
-  await user.selectOptions(selector, option.value);
-}
 
 async function selectRowBalanceActionSelection(
   user: ReturnType<typeof userEvent.setup>,
@@ -395,27 +349,33 @@ async function addBaselineOpeningPosition(
   user: ReturnType<typeof userEvent.setup>,
   params: {
     baselineDate?: string;
-    openingCashBalance?: string;
+    openingLedgerBalance?: string;
     ticker: string;
     quantity: string;
     totalCost: string;
   },
 ) {
   if (params.baselineDate) {
-    fireEvent.change(screen.getByLabelText('期初基準日期'), {
+    fireEvent.change(screen.getByLabelText('目前持倉基準日'), {
       target: { value: params.baselineDate },
     });
   }
 
-  if (params.openingCashBalance) {
-    await user.type(screen.getByLabelText('期初現金餘額'), params.openingCashBalance);
+  if (params.openingLedgerBalance) {
+    await user.type(screen.getByLabelText('目前用於投資的閒置資金（帳本餘額）'), params.openingLedgerBalance);
   }
 
   await user.click(screen.getByRole('button', { name: '新增持倉' }));
 
-  await user.type(await screen.findByLabelText('期初持倉 1 ticker'), params.ticker);
-  await user.type(screen.getByLabelText('期初持倉 1 quantity'), params.quantity);
-  await user.type(screen.getByLabelText('期初持倉 1 total cost'), params.totalCost);
+  await user.type(await screen.findByLabelText('目前持倉 1 ticker'), params.ticker);
+  await user.type(screen.getByLabelText('目前持倉 1 quantity'), params.quantity);
+  await user.type(screen.getByLabelText('目前持倉 1 total cost'), params.totalCost);
+}
+
+function expectNoSellBeforeBuyControls() {
+  expect(screen.queryByText('賣先買後預設處理方式')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('欄位說明：賣先買後預設處理方式')).not.toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: '賣先買後處理' })).not.toBeInTheDocument();
 }
 
 async function executeImport(user: ReturnType<typeof userEvent.setup>) {
@@ -430,19 +390,23 @@ describe('Stock import balance action flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('alert', vi.fn());
+    localStorage.clear();
 
     mockedTransactionApi.previewImport.mockResolvedValue(buildPreviewResponse());
     mockedTransactionApi.executeImport.mockResolvedValue(buildExecuteResponse());
+    mockedTransactionApi.getImportStatus.mockResolvedValue(buildExecuteStatusResponse());
   });
 
   afterEach(() => {
+    localStorage.clear();
     vi.unstubAllGlobals();
   });
 
-  it('sets global default balance action and sends execute payload with defaultBalanceAction', async () => {
+  it('sets global default balance action in legacy mode and sends execute payload with defaultBalanceAction', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-global-default',
+        selectedFormat: 'legacy_csv',
         rows: [
           buildPreviewRow({
             rowNumber: 11,
@@ -486,11 +450,16 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+
+    const formatSelector = await screen.findByLabelText(/匯入類型/i);
+    expect(formatSelector).toBeInTheDocument();
+    await user.selectOptions(formatSelector, 'legacy_csv');
+
     await requestPreview(user);
 
     const previewRequest = getLatestPreviewRequest();
     expect(previewRequest.portfolioId).toBe(TEST_PORTFOLIO_ID);
-    expect(previewRequest.selectedFormat).toBe('broker_statement');
+    expect(previewRequest.selectedFormat).toBe('legacy_csv');
 
     await selectGlobalBalanceAction(user, 'Margin');
 
@@ -517,7 +486,7 @@ describe('Stock import balance action flow', () => {
     );
   });
 
-  it('includes baseline openingPositions historicalTotalCost while preserving legacy totalCost compatibility', async () => {
+  it('includes baseline asOfDate/currentHoldings while preserving legacy baselineDate/openingPositions compatibility in broker mode and hides broker balance selectors', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-baseline-balance-compat',
@@ -550,13 +519,15 @@ describe('Stock import balance action flow', () => {
     );
 
     const user = userEvent.setup();
+    const today = formatDateISO(new Date());
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
 
+    expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
+
     await addBaselineOpeningPosition(user, {
-      baselineDate: '2026-01-01',
-      openingCashBalance: '5000',
+      openingLedgerBalance: '5000',
       ticker: '2330',
       quantity: '10',
       totalCost: '6250',
@@ -564,10 +535,23 @@ describe('Stock import balance action flow', () => {
 
     await requestPreview(user);
 
-    const previewRequest = getLatestPreviewRequest();
-    const openingPosition = previewRequest.baseline?.openingPositions?.[0];
+    expect(findGlobalBalanceActionSelector()).toBeNull();
+    expect(() => findRowBalanceActionSelector('ROW-BASELINE-COMPAT')).toThrow(
+      '找不到列 ROW-BASELINE-COMPAT 的餘額處理方式下拉',
+    );
 
-    expect(openingPosition).toEqual(
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.baseline).toEqual(
+      expect.objectContaining({
+        asOfDate: today,
+        baselineDate: today,
+        openingLedgerBalance: 5000,
+      }),
+    );
+    expect(previewRequest.baseline?.openingCashBalance).toBeUndefined();
+
+    const canonicalOpeningPosition = previewRequest.baseline?.currentHoldings?.[0];
+    expect(canonicalOpeningPosition).toEqual(
       expect.objectContaining({
         ticker: '2330',
         quantity: 10,
@@ -576,7 +560,16 @@ describe('Stock import balance action flow', () => {
       }),
     );
 
-    await selectGlobalBalanceAction(user, 'Margin');
+    const legacyOpeningPosition = previewRequest.baseline?.openingPositions?.[0];
+    expect(legacyOpeningPosition).toEqual(
+      expect.objectContaining({
+        ticker: '2330',
+        quantity: 10,
+        historicalTotalCost: 6250,
+        totalCost: 6250,
+      }),
+    );
+
     await executeImport(user);
 
     await waitFor(() => {
@@ -585,22 +578,25 @@ describe('Stock import balance action flow', () => {
 
     const executeRequest = getLatestExecuteRequest();
     expect(executeRequest.defaultBalanceAction).toEqual({
-      action: 'Margin',
+      action: 'TopUp',
+      topUpTransactionType: 'Deposit',
     });
     expect(executeRequest.rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           rowNumber: 15,
-          balanceAction: 'Margin',
+          balanceAction: 'TopUp',
+          topUpTransactionType: 'Deposit',
         }),
       ]),
     );
   });
 
-  it('applies per-row override over global default in execute payload', async () => {
+  it('applies per-row override over global default in execute payload for legacy mode', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-row-override',
+        selectedFormat: 'legacy_csv',
         rows: [
           buildPreviewRow({
             rowNumber: 21,
@@ -659,6 +655,11 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+
+    const formatSelector = await screen.findByLabelText(/匯入類型/i);
+    expect(formatSelector).toBeInTheDocument();
+    await user.selectOptions(formatSelector, 'legacy_csv');
+
     await requestPreview(user);
 
     await selectGlobalBalanceAction(user, 'Margin');
@@ -696,7 +697,7 @@ describe('Stock import balance action flow', () => {
     );
   });
 
-  it('hides topup type selector when bound ledger currency is TWD and allows execute without selecting type', async () => {
+  it('hides topup type selector when bound ledger currency is TWD and broker mode hardcodes TopUp', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-twd-topup',
@@ -736,11 +737,13 @@ describe('Stock import balance action flow', () => {
     await moveToPreviewStep(user);
     await requestPreview(user);
 
-    await selectGlobalBalanceAction(user, 'TopUp');
+    expect(findGlobalBalanceActionSelector()).toBeNull();
+    expect(() => findRowBalanceActionSelector('ROW-TWD-TOPUP')).toThrow(
+      '找不到列 ROW-TWD-TOPUP 的餘額處理方式下拉',
+    );
 
     expect(findGlobalTopUpTypeSelector()).toBeNull();
     expect(queryRowTopUpTypeSelector('ROW-TWD-TOPUP')).toBeNull();
-    expect(screen.getAllByText('台幣投組匯入補足一律使用存入（Deposit）。').length).toBeGreaterThan(0);
 
     const executeButton = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
@@ -768,10 +771,11 @@ describe('Stock import balance action flow', () => {
     expect(row).not.toHaveProperty('topUpTransactionType');
   });
 
-  it('TopUp type selector excludes ExchangeBuy and prevents forcing it via raw select event', async () => {
+  it('TopUp type selector excludes ExchangeBuy and prevents forcing it via raw select event in legacy mode', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-topup-validation',
+        selectedFormat: 'legacy_csv',
         rows: [
           buildPreviewRow({
             rowNumber: 31,
@@ -806,6 +810,11 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+
+    const formatSelector = await screen.findByLabelText(/匯入類型/i);
+    expect(formatSelector).toBeInTheDocument();
+    await user.selectOptions(formatSelector, 'legacy_csv');
+
     await requestPreview(user);
 
     await selectGlobalBalanceAction(user, 'TopUp');
@@ -863,10 +872,11 @@ describe('Stock import balance action flow', () => {
     );
   });
 
-  it('shows clear none-option semantics and blocks execute until every shortage row is decided', async () => {
+  it('shows clear none-option semantics and blocks execute until every shortage row is decided in legacy mode', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-none-semantics',
+        selectedFormat: 'legacy_csv',
         rows: [
           buildPreviewRow({
             rowNumber: 41,
@@ -914,6 +924,11 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+
+    const formatSelector = await screen.findByLabelText(/匯入類型/i);
+    expect(formatSelector).toBeInTheDocument();
+    await user.selectOptions(formatSelector, 'legacy_csv');
+
     await requestPreview(user);
 
     const globalSelector = await waitFor(() => {
@@ -975,6 +990,184 @@ describe('Stock import balance action flow', () => {
     );
   });
 
+  it('hardcodes TopUp as broker default, hides balance-action selectors, and still sends defaultBalanceAction', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-default-broker-row-only-actions',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 91,
+            rawSecurityName: 'ROW-SHORTFALL-SIGNALED',
+            actionsRequired: ['select_balance_action'],
+            status: 'requires_user_action',
+            balanceDecision: {
+              requiredAmount: 500,
+              availableBalance: 300,
+              shortfall: 200,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+          buildPreviewRow({
+            rowNumber: 92,
+            rawSecurityName: 'ROW-SHORTFALL-UNSIGNALED',
+            ticker: '2317',
+            actionsRequired: [],
+            status: 'valid',
+            balanceDecision: null,
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(
+      buildExecuteResponse({
+        summary: {
+          totalRows: 2,
+          insertedRows: 2,
+          failedRows: 0,
+          errorCount: 0,
+        },
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.selectedFormat).toBe('broker_statement');
+
+    expect(findGlobalBalanceActionSelector()).toBeNull();
+    expect(() => findRowBalanceActionSelector('ROW-SHORTFALL-SIGNALED')).toThrow(
+      '找不到列 ROW-SHORTFALL-SIGNALED 的餘額處理方式下拉',
+    );
+    expect(screen.getByText('補足餘額')).toBeInTheDocument();
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeEnabled();
+
+    await user.click(executeButton);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest.defaultBalanceAction).toEqual({
+      action: 'TopUp',
+      topUpTransactionType: 'Deposit',
+    });
+
+    const signaledRow = executeRequest.rows.find((row) => row.rowNumber === 91);
+    const unsignaledRow = executeRequest.rows.find((row) => row.rowNumber === 92);
+
+    expect(signaledRow).toEqual(
+      expect.objectContaining({
+        rowNumber: 91,
+        balanceAction: 'TopUp',
+        topUpTransactionType: 'Deposit',
+      }),
+    );
+
+    expect(unsignaledRow).toEqual(
+      expect.objectContaining({
+        rowNumber: 92,
+        ticker: '2317',
+        confirmedTradeSide: 'buy',
+      }),
+    );
+    expect(unsignaledRow).not.toHaveProperty('balanceAction');
+    expect(unsignaledRow).not.toHaveProperty('topUpTransactionType');
+  });
+
+  it('uses hardcoded TopUp default even when broker preview omits shortfall signal', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-default-broker-missing-shortfall-signal',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 93,
+            rawSecurityName: 'ROW-SHORTFALL-SIGNAL-MISSING',
+            actionsRequired: [],
+            status: 'valid',
+            // Simulate inconsistent preview context: requiredAmount > availableBalance but shortfall signal is omitted.
+            balanceDecision: {
+              requiredAmount: 600,
+              availableBalance: 100,
+              shortfall: 0,
+              action: null,
+              topUpTransactionType: null,
+              decisionScope: null,
+            },
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(buildExecuteResponse());
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.selectedFormat).toBe('broker_statement');
+    expect(findGlobalBalanceActionSelector()).toBeNull();
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeEnabled();
+
+    await user.click(executeButton);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
+    });
+
+    const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest.defaultBalanceAction).toEqual({
+      action: 'TopUp',
+      topUpTransactionType: 'Deposit',
+    });
+
+    const row = executeRequest.rows.find((candidate) => candidate.rowNumber === 93);
+    expect(row).toEqual(
+      expect.objectContaining({
+        rowNumber: 93,
+        confirmedTradeSide: 'buy',
+      }),
+    );
+    expect(row).not.toHaveProperty('balanceAction');
+    expect(row).not.toHaveProperty('topUpTransactionType');
+  });
+
   it('blocks execute when row requires ticker input but ticker remains unresolved', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
@@ -1015,14 +1208,14 @@ describe('Stock import balance action flow', () => {
     expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
   });
 
-  it('blocks execute when sell-before-buy handling is required but no global or row action is selected', async () => {
+  it('does not block execute for choose_sell_before_buy_handling rows and omits sell-before-buy payload fields', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
-        sessionId: 'session-sbb-block',
+        sessionId: 'session-sbb-auto',
         rows: [
           buildPreviewRow({
             rowNumber: 61,
-            rawSecurityName: 'ROW-SBB-BLOCK',
+            rawSecurityName: 'ROW-SBB-AUTO',
             status: 'requires_user_action',
             usesPartialHistoryAssumption: true,
             actionsRequired: ['choose_sell_before_buy_handling'],
@@ -1030,6 +1223,8 @@ describe('Stock import balance action flow', () => {
         ],
       }),
     );
+
+    mockedTransactionApi.executeImport.mockResolvedValue(buildExecuteResponse());
 
     render(
       <StockImportButton
@@ -1045,106 +1240,158 @@ describe('Stock import balance action flow', () => {
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
     await requestPreview(user);
+
+    expectNoSellBeforeBuyControls();
 
     const executeButton = await screen.findByRole('button', {
       name: /確認匯入|執行匯入|開始匯入/i,
     });
-    expect(executeButton).toBeDisabled();
-    expect(
-      screen.getByText('仍有列需要指定賣先買後處理方式，請先選擇全域預設或逐列設定'),
-    ).toBeInTheDocument();
+    expect(executeButton).toBeEnabled();
 
-    expect(mockedTransactionApi.executeImport).not.toHaveBeenCalled();
-  });
-
-  it('sends global baselineDecision and row override for sell-before-buy actions', async () => {
-    mockedTransactionApi.previewImport.mockResolvedValue(
-      buildPreviewResponse({
-        sessionId: 'session-sbb-global-row-override',
-        rows: [
-          buildPreviewRow({
-            rowNumber: 71,
-            rawSecurityName: 'ROW-SBB-1',
-            ticker: '2330',
-            status: 'requires_user_action',
-            usesPartialHistoryAssumption: true,
-            actionsRequired: ['choose_sell_before_buy_handling'],
-          }),
-          buildPreviewRow({
-            rowNumber: 72,
-            rawSecurityName: 'ROW-SBB-2',
-            ticker: '2317',
-            status: 'requires_user_action',
-            usesPartialHistoryAssumption: true,
-            actionsRequired: ['choose_sell_before_buy_handling'],
-          }),
-        ],
-      }),
-    );
-
-    mockedTransactionApi.executeImport.mockResolvedValue(
-      buildExecuteResponse({
-        summary: {
-          totalRows: 2,
-          insertedRows: 2,
-          failedRows: 0,
-          errorCount: 0,
-        },
-      }),
-    );
-
-    render(
-      <StockImportButton
-        portfolioId={TEST_PORTFOLIO_ID}
-        boundLedgerCurrencyCode="USD"
-        onImportComplete={vi.fn()}
-        onImportSuccess={vi.fn()}
-      />,
-    );
-
-    const user = userEvent.setup();
-
-    await openImportModalAndUploadCsv(user, buildImportCsvFile());
-    await moveToPreviewStep(user);
-    await requestPreview(user);
-
-    await selectGlobalSellBeforeBuyAction(user, 'CreateAdjustment');
-    await selectRowSellBeforeBuyActionSelection(user, 'ROW-SBB-2', 'UseOpeningPosition');
-
-    await executeImport(user);
+    await user.click(executeButton);
 
     await waitFor(() => {
       expect(mockedTransactionApi.executeImport).toHaveBeenCalledTimes(1);
     });
 
     const executeRequest = getLatestExecuteRequest();
+    expect(executeRequest).not.toHaveProperty('baselineDecision');
 
-    expect(executeRequest.baselineDecision).toEqual({
-      sellBeforeBuyAction: 'CreateAdjustment',
-    });
-
-    const row1 = executeRequest.rows.find((row) => row.rowNumber === 71);
-    const row2 = executeRequest.rows.find((row) => row.rowNumber === 72);
-
-    expect(row1).toEqual(
-      expect.objectContaining({
-        rowNumber: 71,
-      }),
-    );
-    expect(row1).not.toHaveProperty('sellBeforeBuyAction');
-
-    expect(row2).toEqual(
-      expect.objectContaining({
-        rowNumber: 72,
-        sellBeforeBuyAction: 'UseOpeningPosition',
-      }),
-    );
+    const row = executeRequest.rows.find((candidate) => candidate.rowNumber === 61);
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty('sellBeforeBuyAction');
   });
 
-  it('shows updated Chinese-only balance action copy and removes tax-alias hint text', async () => {
+  it('keeps preview state and status notice when execute timeout recovers to processing status', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-recover-processing',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 70,
+            rawSecurityName: 'ROW-RECOVER-PROCESSING',
+            ticker: '2330',
+            status: 'valid',
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockRejectedValue(new Error('execute timeout'));
+    mockedTransactionApi.getImportStatus.mockResolvedValue(
+      buildExecuteStatusResponse({
+        sessionId: 'session-recover-processing',
+        executionStatus: 'processing',
+        completedAtUtc: null,
+        result: null,
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    await executeImport(user);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.getImportStatus).toHaveBeenCalledWith('session-recover-processing');
+    });
+
+    expect(screen.getByText('匯入處理中，請稍候...')).toBeInTheDocument();
+    expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('匯入完成')).not.toBeInTheDocument();
+    expect(screen.queryByText('匯入完成（部分成功）')).not.toBeInTheDocument();
+
+    const executeButton = await screen.findByRole('button', {
+      name: /確認匯入|執行匯入|開始匯入/i,
+    });
+    expect(executeButton).toBeEnabled();
+
+    expect(localStorage.getItem(`stock_import_pending_session_${TEST_PORTFOLIO_ID}`)).not.toBeNull();
+  });
+
+  it('recovers completed status via getImportStatus after execute failure and clears pending session', async () => {
+    const onImportComplete = vi.fn();
+    const onImportSuccess = vi.fn();
+
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-recover-completed',
+        rows: [
+          buildPreviewRow({
+            rowNumber: 71,
+            rawSecurityName: 'ROW-RECOVER-COMPLETED',
+            ticker: '2330',
+            status: 'valid',
+          }),
+        ],
+      }),
+    );
+
+    mockedTransactionApi.executeImport.mockRejectedValue(new Error('execute timeout'));
+    mockedTransactionApi.getImportStatus.mockResolvedValue(
+      buildExecuteStatusResponse({
+        sessionId: 'session-recover-completed',
+        executionStatus: 'completed',
+        result: buildExecuteResponse({
+          sessionId: 'session-recover-completed',
+          status: 'committed',
+          summary: {
+            totalRows: 1,
+            insertedRows: 1,
+            failedRows: 0,
+            errorCount: 0,
+          },
+        }),
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        boundLedgerCurrencyCode="USD"
+        onImportComplete={onImportComplete}
+        onImportSuccess={onImportSuccess}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildImportCsvFile());
+    await moveToPreviewStep(user);
+    await requestPreview(user);
+
+    await executeImport(user);
+
+    await waitFor(() => {
+      expect(mockedTransactionApi.getImportStatus).toHaveBeenCalledWith('session-recover-completed');
+    });
+
+    await waitFor(() => {
+      expect(onImportComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onImportSuccess).toHaveBeenCalledTimes(1);
+
+    expect(localStorage.getItem(`stock_import_pending_session_${TEST_PORTFOLIO_ID}`)).toBeNull();
+    expect(await screen.findByText('匯入完成')).toBeInTheDocument();
+  });
+
+  it('shows updated Chinese-only balance action copy and removes tax-alias hint text for legacy mode selectors', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-copy-update',
+        selectedFormat: 'legacy_csv',
         rows: [
           buildPreviewRow({
             rowNumber: 51,
@@ -1177,6 +1424,11 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+
+    const formatSelector = await screen.findByLabelText(/匯入類型/i);
+    expect(formatSelector).toBeInTheDocument();
+    await user.selectOptions(formatSelector, 'legacy_csv');
+
     await requestPreview(user);
 
     expect(screen.getByText('餘額不足預設處理方式')).toBeInTheDocument();
@@ -1208,7 +1460,7 @@ describe('Stock import balance action flow', () => {
     expect(within(rowSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
   });
 
-  it('connects tooltip triggers to tooltip semantics for keyboard and screen reader access', async () => {
+  it('connects baseline tooltip trigger to tooltip semantics for keyboard and screen reader access', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-tooltip-a11y',
@@ -1238,7 +1490,7 @@ describe('Stock import balance action flow', () => {
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
 
-    const baselineHint = screen.getByLabelText('欄位說明：期初基準');
+    const baselineHint = screen.getByLabelText('欄位說明：目前持倉基準');
     expect(baselineHint.tagName).toBe('BUTTON');
 
     let tabGuard = 0;
@@ -1254,21 +1506,10 @@ describe('Stock import balance action flow', () => {
     expect(baselineTooltip).toBeInTheDocument();
     expect(baselineTooltip).toHaveAttribute('role', 'tooltip');
 
-    await requestPreview(user);
-
-    const sellBeforeBuyHint = screen.getByLabelText('欄位說明：賣先買後預設處理方式');
-    expect(sellBeforeBuyHint.tagName).toBe('BUTTON');
-    sellBeforeBuyHint.focus();
-    expect(sellBeforeBuyHint).toHaveFocus();
-
-    const sellBeforeBuyTooltipId = sellBeforeBuyHint.getAttribute('aria-describedby');
-    expect(sellBeforeBuyTooltipId).toBeTruthy();
-    const sellBeforeBuyTooltip = document.getElementById(sellBeforeBuyTooltipId as string);
-    expect(sellBeforeBuyTooltip).toBeInTheDocument();
-    expect(sellBeforeBuyTooltip).toHaveAttribute('role', 'tooltip');
+    expectNoSellBeforeBuyControls();
   });
 
-  it('updates baseline and sell-before-buy copy, uses custom tooltip style, and keeps wider preview layout classes', async () => {
+  it('updates baseline copy and keeps wider preview layout classes without sell-before-buy UI', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-copy-layout',
@@ -1297,42 +1538,36 @@ describe('Stock import balance action flow', () => {
 
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
+    await requestPreview(user);
 
-    const openingCashInput = screen.getByLabelText('期初現金餘額');
-    const openingLedgerInput = screen.getByLabelText('期初帳本餘額');
+    expect(screen.queryByLabelText('目前持倉現金餘額')).not.toBeInTheDocument();
+    const openingLedgerInput = screen.getByLabelText('目前用於投資的閒置資金（帳本餘額）');
 
-    expect(openingCashInput).toHaveAttribute('placeholder', '可空');
     expect(openingLedgerInput).toHaveAttribute('placeholder', '可空');
-    expect(screen.getByText('期初持倉')).toBeInTheDocument();
-    expect(screen.getByText('期初基準')).toBeInTheDocument();
-    expect(screen.queryByText('期初基準（節錄匯入）')).not.toBeInTheDocument();
+    expect(screen.getByText('目前持倉')).toBeInTheDocument();
+    expect(screen.getByText('目前持倉基準')).toBeInTheDocument();
+    expect(screen.queryByText('目前持倉日期（預設今天）')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
+    expect(screen.getByText('目前用於投資的閒置資金（帳本餘額）')).toBeInTheDocument();
+    expect(
+      screen.getByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
+    ).toBeInTheDocument();
 
-    const baselineHint = screen.getByLabelText('欄位說明：期初基準');
+    const baselineHint = screen.getByLabelText('欄位說明：目前持倉基準');
     expect(baselineHint).toBeInTheDocument();
 
     expect(screen.queryByText('期初現金餘額（可空）')).not.toBeInTheDocument();
     expect(screen.queryByText('期初帳本餘額（可空）')).not.toBeInTheDocument();
     expect(screen.queryByText('期初持倉（可多筆）')).not.toBeInTheDocument();
 
-    await requestPreview(user);
-
-    expect(screen.getByText('賣先買後預設處理方式')).toBeInTheDocument();
-    expect(screen.queryByText('賣在買前時，預設怎麼處理')).not.toBeInTheDocument();
-
-    const hint = screen.getByLabelText('欄位說明：賣先買後預設處理方式');
-    expect(hint).toBeInTheDocument();
-    expect(hint).not.toHaveAttribute('title');
+    expectNoSellBeforeBuyControls();
 
     const modalHeading = screen.getByRole('heading', { name: '匯入股票交易' });
     const modalContainer = modalHeading.closest('.card-dark');
     expect(modalContainer).not.toBeNull();
     expect(modalContainer as HTMLElement).toHaveClass('max-w-6xl');
 
-    const sellBeforeBuyHeader = screen.getByRole('columnheader', { name: '賣先買後處理' });
-    expect(sellBeforeBuyHeader).toHaveClass('w-[200px]');
-
-    const remediationTable = sellBeforeBuyHeader.closest('table');
-    expect(remediationTable).not.toBeNull();
-    expect(remediationTable as HTMLElement).toHaveClass('min-w-[1080px]');
+    const remediationTable = screen.getByRole('table');
+    expect(remediationTable).toHaveClass('min-w-[960px]');
   });
 });
