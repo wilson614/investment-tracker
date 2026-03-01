@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
@@ -463,8 +465,9 @@ public class CalculateAggregateYearPerformanceUseCaseTests
             .ReturnsAsync([portfolioA, portfolioB]);
 
         var year = DateTime.UtcNow.Year;
-        var yearStart = new DateTime(year, 1, 1);
-        var expectedCoverageDays = (DateTime.UtcNow.Date - yearStart.Date).Days + 1;
+        var today = DateTime.UtcNow.Date;
+        const int expectedCoverageDays = 30;
+        var coverageStartDate = today.AddDays(-(expectedCoverageDays - 1));
 
         _historicalPerformanceServiceMock
             .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
@@ -480,9 +483,9 @@ public class CalculateAggregateYearPerformanceUseCaseTests
                 NetContributionsHome = 0m,
                 XirrSource = 0.10d,
                 Xirr = 0.10d,
-                EarliestTransactionDateInYear = yearStart,
+                EarliestTransactionDateInYear = coverageStartDate,
                 TransactionCount = 1,
-                CoverageStartDate = yearStart,
+                CoverageStartDate = coverageStartDate,
                 CoverageDays = expectedCoverageDays,
                 HasOpeningBaseline = true,
                 UsesPartialHistoryAssumption = false,
@@ -502,9 +505,9 @@ public class CalculateAggregateYearPerformanceUseCaseTests
                 EndValueHome = 0m,
                 NetContributionsSource = 0m,
                 NetContributionsHome = 0m,
-                EarliestTransactionDateInYear = yearStart,
+                EarliestTransactionDateInYear = coverageStartDate,
                 TransactionCount = 1,
-                CoverageStartDate = yearStart,
+                CoverageStartDate = coverageStartDate,
                 CoverageDays = expectedCoverageDays,
                 HasOpeningBaseline = true,
                 UsesPartialHistoryAssumption = false,
@@ -977,6 +980,128 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         {
             result.ModifiedDietzPercentageSource!.Value.Should().NotBeApproximately(expectedFixed365Pct, 0.0001d);
         }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AggregateYearPerformance100Portfolios_PerformanceBaseline_ShouldEmitTimingMetrics()
+    {
+        // Arrange
+        const int benchmarkPortfolioCount = 100;
+        const int measuredRuns = 3;
+        const int year = 2025;
+
+        SetupAggregatePerformanceBenchmarkScenario(benchmarkPortfolioCount, year);
+        var useCase = CreateUseCase();
+        var request = new CalculateYearPerformanceRequest { Year = year };
+
+        // Warm-up run to reduce one-time JIT effects.
+        var warmupResult = await useCase.ExecuteAsync(request, CancellationToken.None);
+        AssertAggregatePerformanceResult(warmupResult, benchmarkPortfolioCount, year);
+
+        var measurements = new List<TimeSpan>(capacity: measuredRuns);
+
+        // Act
+        for (var i = 0; i < measuredRuns; i++)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var result = await useCase.ExecuteAsync(request, CancellationToken.None);
+            stopwatch.Stop();
+
+            AssertAggregatePerformanceResult(result, benchmarkPortfolioCount, year);
+            measurements.Add(stopwatch.Elapsed);
+        }
+
+        var medianElapsed = GetMedian(measurements);
+        var minElapsed = measurements.Min();
+        var maxElapsed = measurements.Max();
+        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        Console.WriteLine(
+            "[PerfBaseline][CalculateAggregateYearPerformance] portfolios={0}; runs={1}; minMs={2:F2}; medianMs={3:F2}; maxMs={4:F2}; samplesMs=[{5}]",
+            benchmarkPortfolioCount,
+            measurements.Count,
+            minElapsed.TotalMilliseconds,
+            medianElapsed.TotalMilliseconds,
+            maxElapsed.TotalMilliseconds,
+            sampleSeries);
+
+        // Assert
+        medianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
+    }
+
+    private void SetupAggregatePerformanceBenchmarkScenario(int portfolioCount, int year)
+    {
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolios = Enumerable.Range(1, portfolioCount)
+            .Select(_ => CreatePortfolio(userId, "USD"))
+            .ToList();
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolios);
+
+        foreach (var (portfolio, index) in portfolios.Select((value, i) => (value, i)))
+        {
+            var seed = index + 1;
+            var startValue = 10000m + seed * 17m;
+            var contribution = 2000m + seed * 3m;
+            var endValue = startValue + contribution + 500m + seed;
+            var eventDate = new DateTime(year, (seed % 12) + 1, (seed % 28) + 1);
+
+            _historicalPerformanceServiceMock
+                .Setup(x => x.CalculateYearPerformanceAsync(portfolio.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new YearPerformanceDto
+                {
+                    Year = year,
+                    SourceCurrency = "USD",
+                    StartValueSource = startValue,
+                    EndValueSource = endValue,
+                    StartValueHome = startValue * 31m,
+                    EndValueHome = endValue * 31m,
+                    NetContributionsSource = contribution,
+                    NetContributionsHome = contribution * 31m,
+                    TimeWeightedReturnPercentageSource = 8d + (seed % 5),
+                    TimeWeightedReturnPercentage = 8d + (seed % 5),
+                    XirrSource = 0.07d,
+                    Xirr = 0.07d,
+                    EarliestTransactionDateInYear = eventDate,
+                    TransactionCount = 5,
+                    CashFlowCount = 3,
+                    CoverageStartDate = new DateTime(year, 1, 1),
+                    CoverageDays = 365,
+                    HasOpeningBaseline = true,
+                    UsesPartialHistoryAssumption = false,
+                    XirrReliability = "High",
+                    MissingPrices = []
+                });
+        }
+    }
+
+    private static void AssertAggregatePerformanceResult(YearPerformanceDto result, int expectedPortfolioCount, int expectedYear)
+    {
+        result.Year.Should().Be(expectedYear);
+        result.TransactionCount.Should().Be(expectedPortfolioCount * 5);
+        result.CashFlowCount.Should().BeGreaterThan(0);
+        result.MissingPrices.Should().BeEmpty();
+        result.SourceCurrency.Should().Be("USD");
+        result.XirrReliability.Should().Be("High");
+        result.StartValueSource.Should().BeGreaterThan(0m);
+        result.EndValueSource.Should().BeGreaterThan(result.StartValueSource!.Value);
+        result.NetContributionsSource.Should().BeGreaterThan(0m);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+    }
+
+    private static TimeSpan GetMedian(IReadOnlyCollection<TimeSpan> values)
+    {
+        values.Should().NotBeEmpty();
+
+        var ordered = values
+            .OrderBy(value => value)
+            .ToArray();
+
+        return ordered[ordered.Length / 2];
     }
 
     private CalculateAggregateYearPerformanceUseCase CreateUseCase()

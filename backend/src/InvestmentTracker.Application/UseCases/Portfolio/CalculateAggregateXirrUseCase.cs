@@ -24,6 +24,8 @@ public class CalculateAggregateXirrUseCase(
     ICurrentUserService currentUserService,
     ILogger<CalculateAggregateXirrUseCase> logger)
 {
+    private const string ImportExecuteOpeningBaselineNote = "import-execute-opening-baseline";
+    private const string ImportExecuteAdjustmentNote = "import-execute-adjustment";
     public async Task<XirrResultDto> ExecuteAsync(
         CalculateXirrRequest request,
         CancellationToken cancellationToken = default)
@@ -34,6 +36,9 @@ public class CalculateAggregateXirrUseCase(
         var portfolios = await portfolioRepository.GetByUserIdAsync(userId, cancellationToken);
         var stockSplits = await stockSplitRepository.GetAllAsync(cancellationToken);
 
+        var asOfDate = (request.AsOfDate ?? DateTime.UtcNow.Date).Date;
+        var portfolioHomeCurrencyMap = portfolios.ToDictionary(p => p.Id, p => p.HomeCurrency.ToUpperInvariant());
+
         var allTransactions = new List<StockTransaction>();
         foreach (var portfolio in portfolios)
         {
@@ -41,50 +46,47 @@ public class CalculateAggregateXirrUseCase(
             allTransactions.AddRange(transactions);
         }
 
-        // 建立現金流清單（包含所有未刪除的交易）
+        // 建立現金流清單（包含截至 asOfDate 的有效交易）
         // US9：自動補齊缺漏匯率
         var cashFlows = new List<CashFlow>();
         var missingFxDates = new List<MissingExchangeRateDto>();
 
-        var orderedTransactions = allTransactions
-            .Where(t => !t.IsDeleted)
+        var scopedTransactions = allTransactions
+            .Where(t => !t.IsDeleted && t.TransactionDate.Date <= asOfDate)
+            .ToList();
+
+        var orderedTransactions = scopedTransactions
             .OrderBy(t => t.TransactionDate)
             .ToList();
 
         foreach (var tx in orderedTransactions)
         {
-            var fxRate = await GetExchangeRateForTransactionAsync(tx, cancellationToken);
+            var txCurrency = tx.Currency.ToString().ToUpperInvariant();
+            if (!portfolioHomeCurrencyMap.TryGetValue(tx.PortfolioId, out var homeCurrency))
+                continue;
+
+            var fxRate = await GetExchangeRateForTransactionAsync(tx, homeCurrency, cancellationToken);
 
             if (!fxRate.HasValue)
             {
                 // 紀錄缺漏匯率（用於回報給前端）
-                var currency = tx.IsTaiwanStock ? "TWD" : "USD"; // Default assumption
                 missingFxDates.Add(new MissingExchangeRateDto
                 {
                     TransactionDate = tx.TransactionDate,
-                    Currency = currency
+                    Currency = txCurrency
                 });
-                logger.LogWarning("Aggregate XIRR: Missing exchange rate for transaction {TxId} on {Date}",
-                    tx.Id, tx.TransactionDate.ToString("yyyy-MM-dd"));
+                logger.LogWarning(
+                    "Aggregate XIRR: Missing exchange rate for transaction {TxId} on {Date} ({FromCurrency}->{ToCurrency})",
+                    tx.Id,
+                    tx.TransactionDate.ToString("yyyy-MM-dd"),
+                    txCurrency,
+                    homeCurrency);
                 continue; // XIRR 計算中略過此交易
             }
 
-            switch (tx.TransactionType)
+            if (TryBuildCashFlowAmount(tx, fxRate.Value, out var cashFlowAmount))
             {
-                case TransactionType.Buy:
-                {
-                    // 使用本位幣成本（TotalCostSource × ExchangeRate）
-                    var homeCost = tx.TotalCostSource * fxRate.Value;
-                    cashFlows.Add(new CashFlow(-homeCost, tx.TransactionDate));
-                    break;
-                }
-                case TransactionType.Sell:
-                {
-                    // 使用本位幣賣出收入（台股小計 floor + fees 由 NetProceedsSource 統一處理）
-                    var proceeds = tx.NetProceedsSource * fxRate.Value;
-                    cashFlows.Add(new CashFlow(proceeds, tx.TransactionDate));
-                    break;
-                }
+                cashFlows.Add(new CashFlow(cashFlowAmount, tx.TransactionDate));
             }
         }
 
@@ -99,7 +101,7 @@ public class CalculateAggregateXirrUseCase(
 
             // 使用拆股調整後的持倉，確保與現價比較一致
             var positions = portfolioCalculator.RecalculateAllPositionsWithSplitAdjustments(
-                orderedTransactions, stockSplits, splitAdjustmentService).ToList();
+                scopedTransactions, stockSplits, splitAdjustmentService).ToList();
 
             logger.LogDebug("Aggregate XIRR: Found {Count} positions", positions.Count);
 
@@ -132,7 +134,7 @@ public class CalculateAggregateXirrUseCase(
 
             if (currentValue > 0)
             {
-                cashFlows.Add(new CashFlow(currentValue, request.AsOfDate ?? DateTime.UtcNow.Date));
+                cashFlows.Add(new CashFlow(currentValue, asOfDate));
             }
         }
         else
@@ -153,38 +155,99 @@ public class CalculateAggregateXirrUseCase(
             Xirr = xirr,
             XirrPercentage = xirr * 100,
             CashFlowCount = cashFlows.Count,
-            AsOfDate = request.AsOfDate ?? DateTime.UtcNow.Date,
+            AsOfDate = asOfDate,
             EarliestTransactionDate = earliestDate,
             MissingExchangeRates = missingFxDates.Count > 0 ? missingFxDates : null
         };
     }
 
+    private static bool TryBuildCashFlowAmount(
+        StockTransaction tx,
+        decimal fxRate,
+        out decimal amount)
+    {
+        switch (tx.TransactionType)
+        {
+            case TransactionType.Buy:
+                // 使用本位幣成本（TotalCostSource × ExchangeRate）
+                amount = -(tx.TotalCostSource * fxRate);
+                return true;
+
+            case TransactionType.Sell:
+                // 使用本位幣賣出收入（台股小計 floor + fees 由 NetProceedsSource 統一處理）
+                amount = tx.NetProceedsSource * fxRate;
+                return true;
+
+            case TransactionType.Adjustment:
+                if (!IsImportInitializationAdjustment(tx))
+                {
+                    amount = 0m;
+                    return false;
+                }
+
+                // 匯入初始化 Adjustment（import-execute-opening-baseline / import-execute-adjustment）
+                // 需視為期初外部投入，否則只有賣出/現值正向現金流時 XIRR 會因缺少負向現金流而為 null。
+                amount = -(ResolveAdjustmentCostSource(tx) * fxRate);
+                return amount != 0m;
+
+            default:
+                amount = 0m;
+                return false;
+        }
+    }
+
+    private static bool IsImportInitializationAdjustment(StockTransaction tx)
+    {
+        if (tx.TransactionType != TransactionType.Adjustment)
+        {
+            return false;
+        }
+
+        var note = tx.Notes?.Trim();
+        return string.Equals(note, ImportExecuteOpeningBaselineNote, StringComparison.Ordinal)
+            || string.Equals(note, ImportExecuteAdjustmentNote, StringComparison.Ordinal);
+    }
+
+    private static decimal ResolveAdjustmentCostSource(StockTransaction tx)
+    {
+        if (tx.HistoricalTotalCost.HasValue)
+        {
+            return tx.HistoricalTotalCost.Value;
+        }
+
+        if (tx.MarketValueAtImport.HasValue)
+        {
+            return tx.MarketValueAtImport.Value;
+        }
+
+        return tx.TotalCostSource;
+    }
+
     /// <summary>
-    /// 取得單筆交易的匯率：
-    /// 1. 若交易本身已有 ExchangeRate，直接使用
-    /// 2. 若為台股（IsTaiwanStock），回傳 1.0
+    /// 取得單筆交易換算到目標幣別的匯率：
+    /// 1. 若交易原幣別與目標幣別相同，回傳 1.0
+    /// 2. 若交易本身已有 ExchangeRate，直接使用
     /// 3. 否則嘗試從交易日 FX cache 取得
     /// </summary>
     private async Task<decimal?> GetExchangeRateForTransactionAsync(
         StockTransaction tx,
+        string homeCurrency,
         CancellationToken cancellationToken)
     {
-        // 若交易本身已有匯率，直接使用
+        var txCurrency = tx.Currency.ToString().ToUpperInvariant();
+        var normalizedHomeCurrency = homeCurrency.ToUpperInvariant();
+
+        if (string.Equals(txCurrency, normalizedHomeCurrency, StringComparison.OrdinalIgnoreCase))
+            return 1m;
+
         if (tx.HasExchangeRate)
-        {
             return tx.ExchangeRate!.Value;
-        }
 
-        // 台股以 TWD 計價，不需要換匯
-        if (tx.IsTaiwanStock)
-        {
-            return 1.0m;
-        }
-
-        // 嘗試從交易日 FX cache 取得
-        // 非台股預設以 USD 為外幣（最常見外幣）
         var fxResult = await txDateFxService.GetOrFetchAsync(
-            "USD", "TWD", tx.TransactionDate, cancellationToken);
+            txCurrency,
+            normalizedHomeCurrency,
+            tx.TransactionDate,
+            cancellationToken);
 
         return fxResult?.Rate;
     }
