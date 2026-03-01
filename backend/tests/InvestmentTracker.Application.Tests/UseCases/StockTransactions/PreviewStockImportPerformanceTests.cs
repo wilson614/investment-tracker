@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
@@ -21,7 +22,50 @@ public class PreviewStockImportPerformanceTests
     private static readonly TimeSpan PreviewTarget = TimeSpan.FromSeconds(3);
 
     [Fact]
-    public async Task ExecuteAsync_BrokerPreview500Rows_MedianElapsedShouldBeWithin3Seconds()
+    public void ResolveSessionBaselineAnchorDate_BrokerStatementEarliestTradeJan2_ShouldAnchorToJan1WithoutJan1Guard()
+    {
+        // Arrange
+        var method = typeof(PreviewStockImportUseCase).GetMethod(
+            "ResolveSessionBaselineAnchorDate",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull();
+
+        var baseline = new StockImportSessionBaselineSnapshotDto
+        {
+            AsOfDate = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            BaselineDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+
+        IReadOnlyList<StockImportParsedRow> orderedRows =
+        [
+            new(
+                RowNumber: 1,
+                TradeDate: new DateTime(2026, 1, 2, 13, 30, 0, DateTimeKind.Utc),
+                RawSecurityName: "台積電",
+                Ticker: "2330",
+                TradeSide: "sell",
+                Quantity: 100m,
+                UnitPrice: 165.5m,
+                Fees: 6m,
+                Taxes: 0m,
+                NetSettlement: 16544m,
+                Currency: "TWD",
+                IsInvalid: false,
+                ActionsRequired: [])
+        ];
+
+        // Act
+        var anchor = (DateTime)method!.Invoke(null, [StockImportParser.FormatBrokerStatement, baseline, orderedRows])!;
+
+        // Assert
+        anchor.Should().Be(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        anchor.Should().NotBe(new DateTime(2025, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        anchor.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BrokerPreview500Rows_PerformanceBaseline_MedianElapsedShouldBeWithin3Seconds()
     {
         // Arrange
         var fixture = new Fixture();
@@ -51,6 +95,18 @@ public class PreviewStockImportPerformanceTests
         }
 
         var medianElapsed = GetMedian(measurements);
+        var minElapsed = measurements.Min();
+        var maxElapsed = measurements.Max();
+        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        Console.WriteLine(
+            "[PerfBaseline][PreviewStockImport] rows={0}; runs={1}; minMs={2:F2}; medianMs={3:F2}; maxMs={4:F2}; samplesMs=[{5}]",
+            BenchmarkRowCount,
+            measurements.Count,
+            minElapsed.TotalMilliseconds,
+            medianElapsed.TotalMilliseconds,
+            maxElapsed.TotalMilliseconds,
+            sampleSeries);
 
         // Assert
         medianElapsed.Should().BeLessThanOrEqualTo(

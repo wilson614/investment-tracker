@@ -21,8 +21,26 @@ public record StockImportSessionSnapshotDto
 /// </summary>
 public record StockImportSessionBaselineSnapshotDto
 {
+    /// <summary>
+    /// 目前持倉快照基準日（as-of，canonical）。
+    /// </summary>
+    public DateTime? AsOfDate { get; init; }
+
+    /// <summary>
+    /// 匯入基準日（舊欄位，向後相容別名）。
+    /// </summary>
     public DateTime? BaselineDate { get; init; }
+
+    /// <summary>
+    /// 目前持倉快照清單（canonical）。
+    /// </summary>
+    public IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto> CurrentHoldings { get; init; } = [];
+
+    /// <summary>
+    /// 期初持倉（舊欄位，向後相容別名）。
+    /// </summary>
     public IReadOnlyList<StockImportSessionOpeningPositionSnapshotDto> OpeningPositions { get; init; } = [];
+
     public decimal? OpeningCashBalance { get; init; }
     public decimal? OpeningLedgerBalance { get; init; }
 }
@@ -133,6 +151,11 @@ public record StockImportPreviewRowDto
     /// 若為餘額不足列，回傳決策上下文供前端顯示與帶入執行參數。
     /// </summary>
     public StockImportBalanceDecisionContextDto? BalanceDecision { get; init; }
+
+    /// <summary>
+    /// Sell-before-buy 自動/顯式策略追蹤資訊（逐列）。
+    /// </summary>
+    public StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision { get; init; }
 }
 
 /// <summary>
@@ -140,6 +163,13 @@ public record StockImportPreviewRowDto
 /// </summary>
 public record StockImportExecuteResponseDto
 {
+    public Guid SessionId { get; init; }
+
+    /// <summary>
+    /// Indicates the response is replayed from cached execution result for the same session.
+    /// </summary>
+    public bool IsReplay { get; init; }
+
     /// <summary>
     /// committed | partially_committed | rejected
     /// </summary>
@@ -150,6 +180,45 @@ public record StockImportExecuteResponseDto
     public IReadOnlyList<StockImportExecuteRowResultDto> Results { get; init; } = [];
 
     public IReadOnlyList<StockImportDiagnosticDto> Errors { get; init; } = [];
+}
+
+/// <summary>
+/// 股票匯入執行狀態查詢回應。
+/// </summary>
+public record StockImportExecuteStatusResponseDto
+{
+    public Guid SessionId { get; init; }
+    public Guid? PortfolioId { get; init; }
+
+    /// <summary>
+    /// pending | processing | completed | failed | not_found
+    /// </summary>
+    public string ExecutionStatus { get; init; } = string.Empty;
+
+    public string? Message { get; init; }
+    public DateTime? StartedAtUtc { get; init; }
+    public DateTime? CompletedAtUtc { get; init; }
+    public StockImportExecuteResponseDto? Result { get; init; }
+}
+
+/// <summary>
+/// In-memory execute state snapshot for replay/status query.
+/// </summary>
+public record StockImportExecuteSessionStateDto
+{
+    public Guid SessionId { get; init; }
+    public Guid UserId { get; init; }
+    public Guid PortfolioId { get; init; }
+
+    /// <summary>
+    /// processing | completed | failed
+    /// </summary>
+    public string ExecutionStatus { get; init; } = string.Empty;
+
+    public string? Message { get; init; }
+    public DateTime StartedAtUtc { get; init; }
+    public DateTime? CompletedAtUtc { get; init; }
+    public StockImportExecuteResponseDto? Result { get; init; }
 }
 
 /// <summary>
@@ -180,6 +249,11 @@ public record StockImportExecuteRowResultDto
     public string? ConfirmedTradeSide { get; init; }
 
     public StockImportBalanceDecisionContextDto? BalanceDecision { get; init; }
+
+    /// <summary>
+    /// Sell-before-buy 自動/顯式策略追蹤資訊（逐列）。
+    /// </summary>
+    public StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision { get; init; }
 }
 
 /// <summary>
@@ -211,4 +285,25 @@ public record StockImportBalanceDecisionContextDto
 
     public BalanceAction? Action { get; init; }
     public CurrencyTransactionType? TopUpTransactionType { get; init; }
+}
+
+/// <summary>
+/// Sell-before-buy 決策上下文（預覽提示 + 執行回顯）。
+/// </summary>
+public record StockImportSellBeforeBuyDecisionContextDto
+{
+    /// <summary>
+    /// none | use_opening_position | create_adjustment
+    /// </summary>
+    public string Strategy { get; init; } = "none";
+
+    /// <summary>
+    /// auto_default | global_default | row_override
+    /// </summary>
+    public string? DecisionScope { get; init; }
+
+    /// <summary>
+    /// 自動/顯式決策原因，供前端顯示追蹤。
+    /// </summary>
+    public string? Reason { get; init; }
 }

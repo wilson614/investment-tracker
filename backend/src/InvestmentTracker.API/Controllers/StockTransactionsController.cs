@@ -287,6 +287,20 @@ public class StockTransactionsController(
     }
 
     /// <summary>
+    /// 查詢指定匯入 Session 的執行狀態與最後結果。
+    /// </summary>
+    [HttpGet("import/status/{sessionId:guid}")]
+    [ProducesResponseType(typeof(StockImportExecuteStatusResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<StockImportExecuteStatusResponseDto>> GetImportStatus(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        var result = await executeStockImportUseCase.GetStatusAsync(sessionId, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// 更新股票交易。
     /// </summary>
     /// <remarks>

@@ -143,24 +143,36 @@ public record PreviewStockImportRequest
     public required string SelectedFormat { get; init; }
 
     /// <summary>
-    /// Optional baseline scaffold for import context.
-    /// Group A foundation only: no execution enforcement yet.
+    /// Optional current-holdings snapshot scaffold for import context.
+    /// Keeps backward compatibility with legacy baseline payload.
     /// </summary>
     public StockImportBaselineRequest? Baseline { get; init; }
 }
 
 /// <summary>
-/// 股票匯入基準輸入（Group A 基礎契約）。
+/// 股票匯入基準輸入（目前持倉快照語義；保留舊欄位相容）。
 /// </summary>
 public record StockImportBaselineRequest
 {
     /// <summary>
-    /// 匯入基準日。
+    /// 目前持倉快照基準日（as-of，canonical 欄位）。
+    /// 若未提供則回退使用 BaselineDate（舊欄位）。
+    /// </summary>
+    public DateTime? AsOfDate { get; init; }
+
+    /// <summary>
+    /// 匯入基準日（舊欄位，向後相容別名）。
     /// </summary>
     public DateTime? BaselineDate { get; init; }
 
     /// <summary>
-    /// 期初持倉清單（含股數與成本）。
+    /// 目前持倉快照清單（as-of + quantity + cost）。
+    /// 若未提供則回退使用 OpeningPositions（舊欄位）。
+    /// </summary>
+    public IReadOnlyList<StockImportOpeningPositionRequest> CurrentHoldings { get; init; } = [];
+
+    /// <summary>
+    /// 期初持倉清單（舊欄位，向後相容別名；語義視為 as-of 持倉快照）。
     /// </summary>
     public IReadOnlyList<StockImportOpeningPositionRequest> OpeningPositions { get; init; } = [];
 
@@ -177,7 +189,7 @@ public record StockImportBaselineRequest
 }
 
 /// <summary>
-/// 股票匯入期初持倉（Group A 基礎契約）。
+/// 股票匯入持倉快照（as-of；保留舊名稱相容）。
 /// </summary>
 public record StockImportOpeningPositionRequest
 {
@@ -185,12 +197,12 @@ public record StockImportOpeningPositionRequest
     public string? Ticker { get; init; }
 
     /// <summary>
-    /// 期初股數（可選）。
+    /// 持倉股數（可選；舊語義為期初股數）。
     /// </summary>
     public decimal? Quantity { get; init; }
 
     /// <summary>
-    /// 期初總成本（可選）。
+    /// 持倉快照總成本（可選；舊語義為期初總成本）。
     /// </summary>
     public decimal? TotalCost { get; init; }
 

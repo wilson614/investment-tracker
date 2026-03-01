@@ -34,6 +34,24 @@ public interface IStockImportSessionStore
         Guid portfolioId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Tries to mark execute flow as processing for a given session.
+    /// Returns false when already processing/completed or owner/portfolio mismatches existing execution state.
+    /// </summary>
+    Task<bool> TryStartExecutionAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        CancellationToken cancellationToken = default);
+
+    Task SaveExecutionResultAsync(
+        StockImportExecuteSessionStateDto executionState,
+        CancellationToken cancellationToken = default);
+
+    Task<StockImportExecuteSessionStateDto?> GetExecutionStateAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
+
     Task RemoveAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default);

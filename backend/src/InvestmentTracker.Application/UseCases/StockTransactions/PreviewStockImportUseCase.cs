@@ -34,6 +34,12 @@ public sealed class PreviewStockImportUseCase(
     private const string TradeSideBuy = "buy";
     private const string TradeSideSell = "sell";
 
+    private const string SellBeforeBuyStrategyNone = "none";
+    private const string SellBeforeBuyStrategyCreateAdjustment = "create_adjustment";
+    private const string DecisionScopeAutoDefault = "auto_default";
+    private const string SellBeforeBuyReasonNotApplicable = "not_sell_before_buy_or_has_position";
+    private const string SellBeforeBuyReasonAutoDefault = "auto_default_for_sell_before_buy";
+
     public async Task<StockImportPreviewResponseDto> ExecuteAsync(
         PreviewStockImportRequest request,
         CancellationToken cancellationToken = default)
@@ -73,6 +79,7 @@ public sealed class PreviewStockImportUseCase(
         var rows = await BuildPreviewRowsAsync(
             symbolResolution.Rows,
             request.PortfolioId,
+            parseResult.SelectedFormat,
             previewBaseline,
             cancellationToken);
 
@@ -130,6 +137,7 @@ public sealed class PreviewStockImportUseCase(
     private async Task<IReadOnlyList<StockImportPreviewRowDto>> BuildPreviewRowsAsync(
         IReadOnlyList<StockImportParsedRow> parsedRows,
         Guid portfolioId,
+        string selectedFormat,
         StockImportSessionBaselineSnapshotDto baseline,
         CancellationToken cancellationToken)
     {
@@ -146,6 +154,7 @@ public sealed class PreviewStockImportUseCase(
             portfolioId,
             cancellationToken);
 
+        var sessionBaselineAnchorDate = ResolveSessionBaselineAnchorDate(selectedFormat, baseline, orderedRows);
         var baselinePositions = BuildBaselinePositionsByTickerAndMarket(baseline);
         var runningSyntheticTransactionsByTicker = new Dictionary<string, List<StockTransaction>>(StringComparer.OrdinalIgnoreCase);
 
@@ -166,6 +175,7 @@ public sealed class PreviewStockImportUseCase(
                     allPortfolioTransactions,
                     runningSyntheticTransactionsByTicker,
                     baselinePositions,
+                    sessionBaselineAnchorDate,
                     out var resolvedMarket,
                     out _);
 
@@ -177,7 +187,12 @@ public sealed class PreviewStockImportUseCase(
                         ActionsRequired = AppendAction(
                             previewRow.ActionsRequired,
                             ActionChooseSellBeforeBuyHandling),
-                        Status = StatusRequiresUserAction
+                        SellBeforeBuyDecision = new StockImportSellBeforeBuyDecisionContextDto
+                        {
+                            Strategy = SellBeforeBuyStrategyCreateAdjustment,
+                            DecisionScope = DecisionScopeAutoDefault,
+                            Reason = SellBeforeBuyReasonAutoDefault
+                        }
                     };
                 }
 
@@ -216,7 +231,13 @@ public sealed class PreviewStockImportUseCase(
             Currency = row.Currency,
             Status = status,
             UsesPartialHistoryAssumption = false,
-            ActionsRequired = row.ActionsRequired
+            ActionsRequired = row.ActionsRequired,
+            SellBeforeBuyDecision = new StockImportSellBeforeBuyDecisionContextDto
+            {
+                Strategy = SellBeforeBuyStrategyNone,
+                DecisionScope = null,
+                Reason = SellBeforeBuyReasonNotApplicable
+            }
         };
     }
 
@@ -225,6 +246,7 @@ public sealed class PreviewStockImportUseCase(
         IReadOnlyList<StockTransaction> persistedTransactions,
         IReadOnlyDictionary<string, List<StockTransaction>> runningSyntheticTransactionsByTicker,
         IReadOnlyDictionary<(string Ticker, StockMarket Market), decimal> baselinePositions,
+        DateTime sessionBaselineAnchorDate,
         out StockMarket? resolvedMarket,
         out decimal availableShares)
     {
@@ -258,10 +280,11 @@ public sealed class PreviewStockImportUseCase(
         if (seededShares > 0m)
         {
             var syntheticOpening = BuildSyntheticOpeningAdjustmentTransaction(
-                previewRow,
                 ticker,
                 market,
-                seededShares);
+                seededShares,
+                sessionBaselineAnchorDate,
+                ParseCurrency(previewRow.Currency));
             transactionsForPosition.Insert(0, syntheticOpening);
         }
 
@@ -335,17 +358,17 @@ public sealed class PreviewStockImportUseCase(
     }
 
     private static StockTransaction BuildSyntheticOpeningAdjustmentTransaction(
-        StockImportPreviewRowDto previewRow,
         string ticker,
         StockMarket market,
-        decimal openingShares)
+        decimal openingShares,
+        DateTime sessionBaselineAnchorDate,
+        Currency? parsedCurrency)
     {
-        var baselineDate = DateTime.SpecifyKind(previewRow.TradeDate!.Value.Date.AddDays(-1), DateTimeKind.Utc);
-        var currency = ParseCurrency(previewRow.Currency) ?? StockTransaction.GuessCurrencyFromMarket(market);
+        var currency = parsedCurrency ?? StockTransaction.GuessCurrencyFromMarket(market);
 
         return new StockTransaction(
             portfolioId: Guid.NewGuid(),
-            transactionDate: baselineDate,
+            transactionDate: sessionBaselineAnchorDate,
             ticker: ticker,
             transactionType: TransactionType.Adjustment,
             shares: openingShares,
@@ -396,6 +419,52 @@ public sealed class PreviewStockImportUseCase(
         return StockTransaction.GuessMarketFromTicker(ticker);
     }
 
+    private static DateTime ResolveSessionBaselineAnchorDate(
+        string selectedFormat,
+        StockImportSessionBaselineSnapshotDto baseline,
+        IReadOnlyList<StockImportParsedRow> orderedRows)
+    {
+        var earliestTradeDate = orderedRows
+            .Select(row => row.TradeDate)
+            .Where(date => date.HasValue)
+            .Select(date => date!.Value.Date)
+            .DefaultIfEmpty(DateTime.UtcNow.Date)
+            .Min();
+
+        var tradeDate = DateTime.SpecifyKind(earliestTradeDate, DateTimeKind.Utc);
+
+        if (string.Equals(selectedFormat, StockImportParser.FormatBrokerStatement, StringComparison.Ordinal))
+        {
+            return ResolveBrokerBaselineAnchorDate(tradeDate);
+        }
+
+        return ResolveBaselineDate(
+            baseline.AsOfDate ?? baseline.BaselineDate,
+            tradeDate);
+    }
+
+    private static DateTime ResolveBrokerBaselineAnchorDate(DateTime tradeDate)
+        => DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
+
+    private static DateTime ResolveBaselineDate(
+        DateTime? baselineDate,
+        DateTime tradeDate)
+    {
+        var resolvedBaselineDate = baselineDate is DateTime explicitBaselineDate
+            ? DateTime.SpecifyKind(explicitBaselineDate.Date, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(tradeDate.Date.AddDays(-1), DateTimeKind.Utc);
+
+        if (resolvedBaselineDate.Month == 1
+            && resolvedBaselineDate.Day == 1
+            && tradeDate.Year == resolvedBaselineDate.Year
+            && tradeDate.Date >= resolvedBaselineDate.Date)
+        {
+            return DateTime.SpecifyKind(resolvedBaselineDate.AddDays(-1).Date, DateTimeKind.Utc);
+        }
+
+        return resolvedBaselineDate;
+    }
+
     private static Currency? ParseCurrency(string? currencyCode)
     {
         if (string.IsNullOrWhiteSpace(currencyCode))
@@ -420,14 +489,18 @@ public sealed class PreviewStockImportUseCase(
     private static IReadOnlyDictionary<(string Ticker, StockMarket Market), decimal> BuildBaselinePositionsByTickerAndMarket(
         StockImportSessionBaselineSnapshotDto baseline)
     {
-        if (baseline.OpeningPositions.Count == 0)
+        var holdings = baseline.CurrentHoldings.Count > 0
+            ? baseline.CurrentHoldings
+            : baseline.OpeningPositions;
+
+        if (holdings.Count == 0)
         {
             return new Dictionary<(string Ticker, StockMarket Market), decimal>();
         }
 
         var result = new Dictionary<(string Ticker, StockMarket Market), decimal>();
 
-        foreach (var openingPosition in baseline.OpeningPositions)
+        foreach (var openingPosition in holdings)
         {
             if (openingPosition is null
                 || string.IsNullOrWhiteSpace(openingPosition.Ticker)
@@ -507,9 +580,11 @@ public sealed class PreviewStockImportUseCase(
             return new StockImportSessionBaselineSnapshotDto();
         }
 
-        var openingPositions = baseline.OpeningPositions ?? [];
+        var rawHoldings = baseline.CurrentHoldings.Count > 0
+            ? baseline.CurrentHoldings
+            : baseline.OpeningPositions;
 
-        var normalizedPositions = openingPositions
+        var normalizedPositions = rawHoldings
             .Select(position => position is null
                 ? null
                 : new StockImportSessionOpeningPositionSnapshotDto
@@ -527,9 +602,13 @@ public sealed class PreviewStockImportUseCase(
         var openingCashBalance = baseline.OpeningCashBalance;
         var openingLedgerBalance = baseline.OpeningLedgerBalance ?? openingCashBalance;
 
+        var resolvedAsOfDate = baseline.AsOfDate ?? baseline.BaselineDate;
+
         return new StockImportSessionBaselineSnapshotDto
         {
-            BaselineDate = baseline.BaselineDate,
+            AsOfDate = resolvedAsOfDate,
+            BaselineDate = baseline.BaselineDate ?? resolvedAsOfDate,
+            CurrentHoldings = normalizedPositions,
             OpeningPositions = normalizedPositions,
             OpeningCashBalance = openingCashBalance,
             OpeningLedgerBalance = openingLedgerBalance
