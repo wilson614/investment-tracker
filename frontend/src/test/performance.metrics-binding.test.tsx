@@ -163,6 +163,12 @@ type BenchmarkReturnsResponse = {
   dataSources: Record<string, string | null>;
 };
 
+type HistoricalPricesResponse = Record<string, {
+  price: number;
+  currency: string;
+  actualDate: string;
+}>;
+
 const mockPortfolio: Portfolio = {
   id: 'portfolio-1',
   baseCurrency: 'USD',
@@ -660,6 +666,63 @@ describe('PerformancePage metrics binding regression', () => {
     await waitFor(() => {
       expectPerformanceCardsLoadingGate();
     });
+
+    expect(screen.getAllByText(/目前階段：準備資料。正在整理/).length).toBeGreaterThan(0);
+  });
+
+  it('shows staged loading feedback and long-wait reminder for performance calculation', async () => {
+    vi.useFakeTimers();
+
+    try {
+      localStorage.setItem('performance_currency_mode', 'home');
+
+      mockedUsePortfolio.mockReturnValue({
+        currentPortfolio: mockPortfolio,
+        currentPortfolioId: mockPortfolio.id,
+        isAllPortfolios: false,
+        portfolios: [mockPortfolio],
+        isLoading: false,
+        selectPortfolio: vi.fn(),
+        refreshPortfolios: vi.fn(async () => undefined),
+        clearPerformanceState: vi.fn(),
+        invalidateSharedCaches: vi.fn(),
+        performanceVersion: 1,
+      });
+
+      mockedUseHistoricalPerformance.mockReturnValue({
+        availableYears: mockAvailableYears,
+        selectedYear: currentYear,
+        performance: null,
+        isLoadingYears: false,
+        isLoadingPerformance: true,
+        error: null,
+        setSelectedYear: vi.fn(),
+        calculatePerformance: vi.fn(async () => undefined),
+        refresh: vi.fn(async () => undefined),
+      });
+
+      render(<PerformancePage />);
+
+      expect(screen.getByText('計算績效中...')).toBeInTheDocument();
+      expect(screen.getByText('準備資料 → 補齊價格 → 計算中 → 較久等待提醒')).toBeInTheDocument();
+      expect(screen.getByText('目前階段：準備資料')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(screen.getByText('目前階段：計算中')).toBeInTheDocument();
+      expect(screen.getByText('正在重算報酬率與年度摘要，完成後會自動更新畫面。')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(13000);
+      });
+
+      expect(screen.getByText('目前階段：較久等待提醒')).toBeInTheDocument();
+      expect(screen.getByText('這次等待時間較長，可能是資料量較多或外部價格來源較慢，請稍候。')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('transitions from loading gate to bound values after rerender when key fields become ready', async () => {
@@ -790,7 +853,7 @@ describe('PerformancePage metrics binding regression', () => {
       isStale: true,
       needsMigration: false,
     });
-    mockedGetYtdData.mockRejectedValueOnce(new Error('ytd unavailable'));
+    mockedGetYtdData.mockResolvedValueOnce(null as any);
     mockedMarketDataApi.getBenchmarkReturns.mockResolvedValueOnce(
       buildBenchmarkResponse(currentYear, fallbackReturns)
     );
@@ -965,6 +1028,115 @@ describe('PerformancePage metrics binding regression', () => {
     });
 
     expect(mockedStockPriceApi.getQuoteWithRate).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale auto price-fetch response when switching years quickly', async () => {
+    localStorage.setItem('performance_currency_mode', 'home');
+
+    const historicalYearsOnly: AvailableYears = {
+      years: [previousYear, currentYear],
+      earliestYear: previousYear,
+      currentYear: currentYear + 1,
+    };
+
+    const previousYearDeferred = createDeferred<HistoricalPricesResponse>();
+    const currentYearDeferred = createDeferred<HistoricalPricesResponse>();
+
+    mockedMarketDataApi.getHistoricalPrices.mockImplementation(async (_tickers, date) => {
+      if (date === `${previousYear}-12-31`) {
+        return previousYearDeferred.promise;
+      }
+
+      if (date === `${currentYear}-12-31`) {
+        return currentYearDeferred.promise;
+      }
+
+      return {};
+    });
+
+    let selectedYearState = previousYear;
+    const setSelectedYearMock = vi.fn((year: number) => {
+      selectedYearState = year;
+    });
+
+    const calculatePerformanceMock = vi.fn(async () => undefined);
+
+    const rerenderWithYear = () => {
+      setupPageMocks(
+        createPerformanceMock({
+          year: selectedYearState,
+          missingPrices: [createMissingPrice('AAPL', { market: StockMarket.US })],
+        }),
+        {
+          selectedYear: selectedYearState,
+          availableYears: historicalYearsOnly,
+          setSelectedYear: setSelectedYearMock,
+          calculatePerformance: calculatePerformanceMock,
+        }
+      );
+    };
+
+    rerenderWithYear();
+    const { rerender } = render(<PerformancePage />);
+
+    await waitFor(() => {
+      expect(mockedMarketDataApi.getHistoricalPrices).toHaveBeenCalledWith(
+        ['AAPL'],
+        `${previousYear}-12-31`,
+        { AAPL: StockMarket.US },
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('year-selector-current'));
+      rerenderWithYear();
+      rerender(<PerformancePage />);
+    });
+
+    await waitFor(() => {
+      expect(setSelectedYearMock).toHaveBeenCalledWith(currentYear);
+      expect(mockedMarketDataApi.getHistoricalPrices).toHaveBeenCalledWith(
+        ['AAPL'],
+        `${currentYear}-12-31`,
+        { AAPL: StockMarket.US },
+      );
+    });
+
+    previousYearDeferred.resolve({});
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('button', { name: '重新抓取' })).not.toBeInTheDocument();
+
+    currentYearDeferred.resolve({
+      AAPL: {
+        price: 321,
+        currency: 'USD',
+        actualDate: `${currentYear}-12-31`,
+      },
+    });
+
+    await waitFor(() => {
+      expect(calculatePerformanceMock).toHaveBeenCalledWith(
+        currentYear,
+        expect.objectContaining({
+          AAPL: {
+            price: 321,
+            exchangeRate: 1,
+          },
+        }),
+        expect.any(Object),
+      );
+    });
+
+    expect(calculatePerformanceMock).not.toHaveBeenCalledWith(
+      previousYear,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(screen.queryByRole('button', { name: '重新抓取' })).not.toBeInTheDocument();
   });
 
   it('ignores stale benchmark response when switching years quickly', async () => {
