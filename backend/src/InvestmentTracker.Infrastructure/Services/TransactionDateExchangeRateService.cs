@@ -23,6 +23,20 @@ public class TransactionDateExchangeRateService(
         DateTime transactionDate,
         CancellationToken cancellationToken = default)
     {
+        if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogDebug("Same-currency short-circuit for {From}/{To}, returning rate=1", fromCurrency, toCurrency);
+            return new TransactionDateExchangeRateResult
+            {
+                Rate = 1.0m,
+                CurrencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}",
+                RequestedDate = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc),
+                ActualDate = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc),
+                Source = "SameCurrency",
+                FromCache = false
+            };
+        }
+
         var currencyPair = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}";
         // 確保日期為 UTC Kind，以相容 PostgreSQL
         var dateOnly = DateTime.SpecifyKind(transactionDate.Date, DateTimeKind.Utc);

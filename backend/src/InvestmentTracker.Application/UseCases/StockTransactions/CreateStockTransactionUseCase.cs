@@ -87,14 +87,21 @@ public class CreateStockTransactionUseCase(
             }
             else
             {
-                var fxResult = await txDateFxService.GetOrFetchAsync(
-                    portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+                if (string.Equals(portfolio.BaseCurrency, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase))
+                {
+                    exchangeRate = 1.0m;
+                }
+                else
+                {
+                    var fxResult = await txDateFxService.GetOrFetchAsync(
+                        portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
 
-                if (fxResult == null)
-                    throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
+                    if (fxResult == null)
+                        throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
-                marketRate = fxResult.Rate;
-                exchangeRate = marketRate;
+                    marketRate = fxResult.Rate;
+                    exchangeRate = marketRate;
+                }
             }
         }
 
