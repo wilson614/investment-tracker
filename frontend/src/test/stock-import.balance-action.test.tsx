@@ -1460,7 +1460,7 @@ describe('Stock import balance action flow', () => {
     expect(within(rowSelector).queryByRole('option', { name: '補足餘額（Top-up）' })).not.toBeInTheDocument();
   });
 
-  it('connects baseline tooltip trigger to tooltip semantics for keyboard and screen reader access', async () => {
+  it('hides baseline tooltip heading and trigger in broker mode while keeping sell-before-buy UI hidden', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({
         sessionId: 'session-tooltip-a11y',
@@ -1490,21 +1490,11 @@ describe('Stock import balance action flow', () => {
     await openImportModalAndUploadCsv(user, buildImportCsvFile());
     await moveToPreviewStep(user);
 
-    const baselineHint = screen.getByLabelText('欄位說明：目前持倉基準');
-    expect(baselineHint.tagName).toBe('BUTTON');
-
-    let tabGuard = 0;
-    while (document.activeElement !== baselineHint && tabGuard < 25) {
-      await user.tab();
-      tabGuard += 1;
-    }
-    expect(baselineHint).toHaveFocus();
-
-    const baselineTooltipId = baselineHint.getAttribute('aria-describedby');
-    expect(baselineTooltipId).toBeTruthy();
-    const baselineTooltip = document.getElementById(baselineTooltipId as string);
-    expect(baselineTooltip).toBeInTheDocument();
-    expect(baselineTooltip).toHaveAttribute('role', 'tooltip');
+    expect(screen.queryByText('目前持倉基準')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('欄位說明：目前持倉基準')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
+    ).not.toBeInTheDocument();
 
     expectNoSellBeforeBuyControls();
   });
@@ -1545,16 +1535,15 @@ describe('Stock import balance action flow', () => {
 
     expect(openingLedgerInput).toHaveAttribute('placeholder', '可空');
     expect(screen.getByText('目前持倉')).toBeInTheDocument();
-    expect(screen.getByText('目前持倉基準')).toBeInTheDocument();
+    expect(screen.queryByText('目前持倉基準')).not.toBeInTheDocument();
     expect(screen.queryByText('目前持倉日期（預設今天）')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
     expect(screen.getByText('目前用於投資的閒置資金（帳本餘額）')).toBeInTheDocument();
     expect(
-      screen.getByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
-    ).toBeInTheDocument();
+      screen.queryByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
+    ).not.toBeInTheDocument();
 
-    const baselineHint = screen.getByLabelText('欄位說明：目前持倉基準');
-    expect(baselineHint).toBeInTheDocument();
+    expect(screen.queryByLabelText('欄位說明：目前持倉基準')).not.toBeInTheDocument();
 
     expect(screen.queryByText('期初現金餘額（可空）')).not.toBeInTheDocument();
     expect(screen.queryByText('期初帳本餘額（可空）')).not.toBeInTheDocument();

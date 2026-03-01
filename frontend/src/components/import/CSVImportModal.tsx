@@ -544,28 +544,30 @@ export function CSVImportModal({
                 || previewExtensions?.onChangeOpeningPosition
                 || previewExtensions?.onAddOpeningPosition) && (
                 <div className="bg-[var(--bg-secondary)] p-4 rounded-lg space-y-4">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-[var(--text-primary)]">目前持倉基準</h4>
-                    <div className="relative group">
-                      <button
-                        type="button"
-                        className="inline-flex items-center justify-center p-0 border-0 bg-transparent text-[var(--text-muted)] cursor-help"
-                        aria-label="欄位說明：目前持倉基準"
-                        aria-describedby={baselineTooltipId}
-                      >
-                        <Info className="w-4 h-4" />
-                      </button>
-                      <div
-                        id={baselineTooltipId}
-                        role="tooltip"
-                        className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10"
-                      >
-                        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                          此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。
+                  {!isBrokerStatementMode && (
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium text-[var(--text-primary)]">目前持倉基準</h4>
+                      <div className="relative group">
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center p-0 border-0 bg-transparent text-[var(--text-muted)] cursor-help"
+                          aria-label="欄位說明：目前持倉基準"
+                          aria-describedby={baselineTooltipId}
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                        <div
+                          id={baselineTooltipId}
+                          role="tooltip"
+                          className="absolute left-0 bottom-full mb-2 hidden group-hover:block group-focus-within:block z-10"
+                        >
+                          <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className={`grid grid-cols-1 ${isBrokerStatementMode ? 'md:grid-cols-1' : 'md:grid-cols-3'} gap-3`}>
                     {!isBrokerStatementMode && (

@@ -176,6 +176,7 @@ export function PortfolioPage() {
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [boundLedgerCurrencyCode, setBoundLedgerCurrencyCode] = useState<string | null>(null);
+  const [boundLedgerBalance, setBoundLedgerBalance] = useState<number | null>(null);
 
   // Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -201,6 +202,7 @@ export function PortfolioPage() {
       setXirrResult(null);
       setTransactions([]);
       setBoundLedgerCurrencyCode(null);
+      setBoundLedgerBalance(null);
 
       const currentPortfolio = await portfolioApi.getById(portfolioId);
       setPortfolio(currentPortfolio);
@@ -212,6 +214,7 @@ export function PortfolioPage() {
       ]);
       const boundLedger = ledgers.find((ledger) => ledger.ledger.id === currentPortfolio.boundCurrencyLedgerId);
       setBoundLedgerCurrencyCode(boundLedger?.ledger.currencyCode ?? null);
+      setBoundLedgerBalance(boundLedger?.balance ?? null);
       setTransactions(txData);
 
       // Load cached prices for all positions (using position with market info)
@@ -252,6 +255,7 @@ export function PortfolioPage() {
       setIsLoading(true);
       setError(null);
       setBoundLedgerCurrencyCode(null);
+      setBoundLedgerBalance(null);
 
       // Get or create user's portfolio
       const portfolios = await portfolioApi.getAll();
@@ -281,6 +285,7 @@ export function PortfolioPage() {
       ]);
       const boundLedger = ledgers.find((ledger) => ledger.ledger.id === currentPortfolio.boundCurrencyLedgerId);
       setBoundLedgerCurrencyCode(boundLedger?.ledger.currencyCode ?? null);
+      setBoundLedgerBalance(boundLedger?.balance ?? null);
       setTransactions(txData);
 
       // Load cached prices for all positions (using position with market info)
@@ -873,6 +878,8 @@ export function PortfolioPage() {
                   setShowForm(false);
                   setEditingTransaction(null);
                 }}
+                boundLedgerCurrencyCode={boundLedgerCurrencyCode}
+                boundLedgerBalance={boundLedgerBalance ?? undefined}
               />
             </div>
           </div>

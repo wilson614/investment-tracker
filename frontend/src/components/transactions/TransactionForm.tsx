@@ -15,7 +15,6 @@ import type {
   CreateStockTransactionRequest,
   StockTransaction,
   TransactionType,
-  CurrencyLedgerSummary,
   StockMarket,
   Currency,
   Portfolio,
@@ -61,14 +60,15 @@ interface TransactionFormProps {
   initialData?: StockTransaction;
   onSubmit: (data: CreateStockTransactionRequest) => Promise<void>;
   onCancel?: () => void;
+  boundLedgerCurrencyCode?: string | null;
+  boundLedgerBalance?: number;
 }
 
 import { getErrorMessage } from '../../utils/errorMapping';
 
-export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel }: TransactionFormProps) {
+export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit, onCancel, boundLedgerCurrencyCode, boundLedgerBalance }: TransactionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [boundLedger, setBoundLedger] = useState<CurrencyLedgerSummary | null>(null);
   const [isDetectingMarket, setIsDetectingMarket] = useState(false);
   const [userSelectedMarket, setUserSelectedMarket] = useState(false);
   const detectMarketTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,7 +83,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
 
-  const isBoundLedgerTwd = (boundLedger?.ledger.currencyCode ?? '').toUpperCase() === 'TWD';
+  const isBoundLedgerTwd = (boundLedgerCurrencyCode ?? '').toUpperCase() === 'TWD';
   const boundCurrencyLedgerId = portfolio?.boundCurrencyLedgerId;
 
   const [formData, setFormData] = useState(() => {
@@ -103,26 +103,6 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
       currency: normalizedCurrency as Currency,
     };
   });
-
-  // Load bound ledger info
-  useEffect(() => {
-    const loadBoundLedger = async () => {
-      setBoundLedger(null);
-
-      if (!boundCurrencyLedgerId) {
-        return;
-      }
-
-      try {
-        const ledgers = await currencyLedgerApi.getAll();
-        const bound = ledgers.find(l => l.ledger.id === boundCurrencyLedgerId);
-        setBoundLedger(bound || null);
-      } catch {
-        console.error('Failed to load bound ledger');
-      }
-    };
-    loadBoundLedger();
-  }, [boundCurrencyLedgerId]);
 
   const isTwdPortfolio = isBoundLedgerTwd;
 
@@ -367,10 +347,10 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
     const originalAmount = initialData
       ? (initialData.shares * initialData.pricePerShare + initialData.fees)
       : 0;
-    const effectiveBalance = boundLedger
-      ? boundLedger.balance + originalAmount
+    const effectiveBalance = boundLedgerBalance !== undefined
+      ? boundLedgerBalance + originalAmount
       : 0;
-    const hasInsufficientBalance = boundLedger
+    const hasInsufficientBalance = boundLedgerBalance !== undefined
       && Number(formData.transactionType) === 1
       && requiredAmount > effectiveBalance;
 
@@ -623,7 +603,7 @@ export function TransactionForm({ portfolioId, portfolio, initialData, onSubmit,
           <div className="relative bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">帳本餘額不足</h3>
             <p className="text-sm text-[var(--text-secondary)] mb-4">
-              差額: {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedger?.ledger.currencyCode}
+              差額: {insufficientAmount.toLocaleString('zh-TW', { maximumFractionDigits: 4 })} {boundLedgerCurrencyCode ?? ''}
             </p>
 
             <div className="space-y-3">

@@ -969,10 +969,12 @@ describe('Stock import broker preview flow', () => {
 
     expect(screen.queryByText('目前持倉日期（預設今天）')).not.toBeInTheDocument();
     expect(screen.queryByText('券商模式下由系統自動使用今天作為目前持倉快照日期顯示。')).not.toBeInTheDocument();
+    expect(screen.queryByText('目前持倉基準')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('欄位說明：目前持倉基準')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('目前持倉基準日')).not.toBeInTheDocument();
     expect(
-      screen.getByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
-    ).toBeInTheDocument();
+      screen.queryByText('此日期僅用於描述目前持倉快照（預設今天）；券商匯入錨點會由系統依最早成交日自動回推 1 天。'),
+    ).not.toBeInTheDocument();
 
     await requestPreview(user);
 
