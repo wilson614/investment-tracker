@@ -40,6 +40,7 @@ import type {
   StockImportPreviewResponse,
   StockImportExecuteRequest,
   StockImportExecuteResponse,
+  StockImportExecuteStatusResponse,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -86,7 +87,13 @@ function clearAuthData(): void {
   localStorage.removeItem(USER_KEY);
 
   // 清除所有使用者相關的快取資料，防止帳號間資料洩漏
-  removeLocalStorageByPrefixes(['quote_cache_', 'perf_cache_', 'xirr_cache_', 'rate_cache_']);
+  removeLocalStorageByPrefixes([
+    'quote_cache_',
+    'perf_cache_',
+    'xirr_cache_',
+    'rate_cache_',
+    'stock_import_pending_session_',
+  ]);
 
   // 清除使用者專屬市場資料快取
   localStorage.removeItem('custom_benchmark_ytd_cache');
@@ -372,6 +379,10 @@ export const transactionApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  /** 查詢匯入執行狀態 */
+  getImportStatus: (sessionId: string) =>
+    fetchApi<StockImportExecuteStatusResponse>(`/stocktransactions/import/status/${encodeURIComponent(sessionId)}`),
 };
 
 // ============================================================================

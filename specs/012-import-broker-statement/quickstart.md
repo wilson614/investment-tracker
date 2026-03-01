@@ -769,3 +769,70 @@ dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Appli
 | T143 | `HistoricalPerformanceServiceReturnTests` Day-1 seeded finite-return assertion strengthening | Group L affected-test table and 50-pass command summary |
 | T144 | QA/review/commit evidence recording in quickstart | Group L execution log, command list, and code-review conclusion |
 | T145 | Speckit checklist completion marker update | `specs/012-import-broker-statement/tasks.md` now includes checked T145 |
+
+## Verification Notes (Group M Import Recovery, Auto Sell-Before-Buy, and Performance Recheck)
+
+- Updated for Group M closure and verification backfill (date: **2026-02-23**).
+- This round completed selected runtime fixes across backend and frontend for:
+  - execute-path FX fallback correctness (non-TWD ledgers and `from == to` short-circuit),
+  - resumable import status query + frontend recovery flow,
+  - current-holdings import baseline UX (canonical `asOfDate/currentHoldings` + legacy aliases kept),
+  - automatic sell-before-buy handling (traceable, no longer a required manual UI step),
+  - import-to-performance XIRR display/state continuity after sample CSV import.
+- Performance was re-checked with automated timing tests/logs. Current baselines do not show an urgent regression, but dedicated execute benchmark coverage and threshold-based optimization tasks remain open (T152-T154).
+
+## Verification Evidence (Group M Execution Log)
+
+### Backend Fix QA / Review (Group E final blocker: FX fallback)
+
+- **QA**: PASS
+  - `dotnet build "/workspaces/InvestmentTracker/backend/InvestmentTracker.sln" -v minimal`
+  - `dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~ExecuteStockImportBalanceActionTests" -v minimal`
+  - `dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.API.Tests/InvestmentTracker.API.Tests.csproj" --filter "FullyQualifiedName~StockTransactionsImportControllerTests&(FullyQualifiedName~PreviewThenExecute_|FullyQualifiedName~RegisterPreviewExecuteAndPerformance_)" -v minimal`
+- **Code review**: PASS
+  - Verified execute-path FX pair selection uses ledger currency pair and skips FX lookup when `from == to`.
+
+### Frontend UX / Recovery QA / Review (Group F)
+
+- **QA**: PASS (after follow-up fix for non-final recovery state handling)
+  - `npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- "src/test/stock-import.balance-action.test.tsx" "src/test/stock-import.broker-preview.test.tsx" "src/test/performance.metrics-binding.test.tsx"`
+  - `npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run`
+  - `npm --prefix "/workspaces/InvestmentTracker/frontend" run type-check`
+  - `npm --prefix "/workspaces/InvestmentTracker/frontend" run build`
+  - `npm --prefix "/workspaces/InvestmentTracker/frontend" run lint`
+- **Code review**: PASS
+  - Verified `processing/pending` recovery returns non-final UI state (no result-step settlement display), `successCount` is not guessed, and logout clears `stock_import_pending_session_` keys.
+
+### Performance Recheck (Group G)
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~PreviewStockImportPerformanceTests.ExecuteAsync_BrokerPreview500Rows_PerformanceBaseline_MedianElapsedShouldBeWithin3Seconds|FullyQualifiedName~ExecuteStockImportBalanceActionTests.ExecuteAsync_BuyRows500_PerformanceBaseline_ShouldEmitTimingMetrics|FullyQualifiedName~CalculateAggregateYearPerformanceUseCaseTests.ExecuteAsync_AggregateYearPerformance100Portfolios_PerformanceBaseline_ShouldEmitTimingMetrics" --logger "console;verbosity=detailed"
+
+npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- "/workspaces/InvestmentTracker/frontend/src/test/useHistoricalPerformance.test.ts" "/workspaces/InvestmentTracker/frontend/src/test/performance.metrics-binding.test.tsx"
+```
+
+### Performance Recheck Outcome Summary
+
+| Scope | Result | Evidence |
+|---|---|---|
+| Preview import performance baseline (500 rows) | PASS | `PerfBaseline` median **2.08ms** (threshold test remains PASS, <= 3s median guard) |
+| Execute import performance timing (500 rows, substitute test) | PASS (timing-only) | `PerfBaseline` median **388.16ms** (`ExecuteStockImportBalanceActionTests` perf baseline case) |
+| Aggregate year performance timing (100 portfolios) | PASS (timing-only) | `PerfBaseline` median **1.33ms** |
+| Frontend long-wait/stale-response regressions | PASS | `useHistoricalPerformance.test.ts` + `performance.metrics-binding.test.tsx` |
+
+### Group M Traceability (Backfilled / Closed This Round)
+
+| Task(s) | Coverage | Evidence |
+|---|---|---|
+| T151 | Resumable import status query API + contract tests | `GET /api/stocktransactions/import/status/{sessionId}` + controller tests |
+| T157-T158 | Automatic sell-before-buy behavior + regression coverage | Backend execute/API tests expose auto decision trace (`create_adjustment`, `auto_default`) |
+| T160 | Frontend import/performance UX refactor (recovery state, auto handling guidance, **frontend XIRR status messaging continuity only**) | `StockImportButton.tsx`, `CSVImportModal.tsx`, `Performance.tsx` + frontend regressions (timeline-calculation fix remains T159) |
+| T161 | Verification evidence backfill in quickstart/tasks | This Group M notes/evidence section + checked task markers in `tasks.md` + cross-reference to Group L date-consistency evidence |
+
+### Known Limitations / Follow-up Notes (Group M)
+
+- T146-T148 remain open in Speckit checklist status (date-canonicalization consolidation + explicit regression grouping), while related runtime behavior/regressions were partially covered across Group L and this round.
+- T149/T150 remain open: current implementation provides a practical **status-based resumable query** (`pending/processing/completed/failed/not_found`) rather than checkpoint-cursor reconstruction.
+- T152-T154 remain open: performance was re-measured and no urgent regression was found, but dedicated execute benchmark file (`ExecuteStockImportPerformanceTests`) and threshold-based optimization closure are still pending.
+- T155-T156 remain open: current-holdings projection/performance composition refactor tasks are not fully closed in the Speckit task list.
+- T159 remains open in Speckit task list because the delivered XIRR fixes were implemented via current use-case paths (`CalculateXirrUseCase` / `CalculateAggregateXirrUseCase`) rather than the exact task file targets (`HistoricalPerformanceService` / `ReturnCalculator`).

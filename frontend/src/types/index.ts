@@ -139,7 +139,13 @@ export interface StockImportOpeningPositionRequest {
 }
 
 export interface StockImportBaselineRequest {
+  /** Canonical baseline date for current holdings model */
+  asOfDate?: string;
+  /** Backward compatibility alias */
   baselineDate?: string;
+  /** Canonical holdings payload */
+  currentHoldings?: StockImportOpeningPositionRequest[];
+  /** Backward compatibility alias */
   openingPositions?: StockImportOpeningPositionRequest[];
   openingCashBalance?: number;
   openingLedgerBalance?: number;
@@ -215,7 +221,6 @@ export interface StockImportExecuteRowRequest {
   ticker: string;
   confirmedTradeSide: StockImportTradeSide;
   exclude: boolean;
-  sellBeforeBuyAction?: StockImportSelectedSellBeforeBuyAction;
   balanceAction?: StockImportExecuteBalanceAction;
   topUpTransactionType?: StockImportTopUpTransactionType;
 }
@@ -256,10 +261,24 @@ export interface StockImportExecuteResult {
 }
 
 export interface StockImportExecuteResponse {
+  sessionId?: string;
+  isReplay?: boolean;
   status: StockImportExecuteStatus;
   summary: StockImportExecuteSummary;
   results: StockImportExecuteResult[];
   errors: StockImportDiagnostic[];
+}
+
+export type StockImportExecutionState = 'pending' | 'processing' | 'completed' | 'failed' | 'not_found';
+
+export interface StockImportExecuteStatusResponse {
+  sessionId: string;
+  portfolioId: string | null;
+  executionStatus: StockImportExecutionState;
+  message: string | null;
+  startedAtUtc: string | null;
+  completedAtUtc: string | null;
+  result: StockImportExecuteResponse | null;
 }
 
 export interface StockPosition {

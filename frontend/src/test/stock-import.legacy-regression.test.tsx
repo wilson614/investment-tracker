@@ -426,6 +426,51 @@ describe('Stock import legacy regression flow', () => {
     expect(await screen.findByText('LEGACY-FORMAT-ROW')).toBeInTheDocument();
   });
 
+  it('legacy mode keeps opening cash/ledger inputs and sends both balances in preview baseline payload', async () => {
+    mockedTransactionApi.previewImport.mockResolvedValue(
+      buildPreviewResponse({
+        sessionId: 'session-legacy-baseline-balances',
+        detectedFormat: 'legacy_csv',
+        selectedFormat: 'legacy_csv',
+        rows: [buildPreviewRow({ rowNumber: 9, rawSecurityName: 'LEGACY-BASELINE-ROW', ticker: '2330' })],
+      }),
+    );
+
+    render(
+      <StockImportButton
+        portfolioId={TEST_PORTFOLIO_ID}
+        onImportComplete={vi.fn()}
+        onImportSuccess={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+
+    await openImportModalAndUploadCsv(user, buildLegacyCsvFile());
+    await moveToPreviewStep(user);
+    await selectImportFormat(user, 'legacy_csv');
+
+    const openingCashInput = screen.getByLabelText('目前持倉現金餘額');
+    const openingLedgerInput = screen.getByLabelText('目前持倉帳本餘額');
+
+    expect(openingCashInput).toBeInTheDocument();
+    expect(openingLedgerInput).toBeInTheDocument();
+
+    await user.type(openingCashInput, '1234');
+    await user.type(openingLedgerInput, '5678');
+
+    await requestPreview(user);
+
+    const previewRequest = getLatestPreviewRequest();
+    expect(previewRequest.selectedFormat).toBe('legacy_csv');
+    expect(previewRequest.baseline).toEqual(
+      expect.objectContaining({
+        openingCashBalance: 1234,
+        openingLedgerBalance: 5678,
+      }),
+    );
+  });
+
   it('legacy execute result preserves row-level error mapping assumptions', async () => {
     mockedTransactionApi.previewImport.mockResolvedValue(
       buildPreviewResponse({

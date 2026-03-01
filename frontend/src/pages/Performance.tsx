@@ -54,6 +54,61 @@ const RETURN_DISPLAY_DEGRADE_REASON_COPY: Record<string, string> = {
   LOW_CONFIDENCE_NO_OPENING_BASELINE_AND_LOW_COVERAGE: '此年度同時缺少期初基準且資料覆蓋不足，資金加權報酬率（MD）信度偏低。',
 };
 
+const PERFORMANCE_LOADING_STAGE_FLOW_COPY = '準備資料 → 補齊價格 → 計算中 → 較久等待提醒';
+
+interface PerformanceLoadingStageFeedback {
+  currentStage: string;
+  hint: string;
+}
+
+function getPerformanceLoadingStageFeedback({
+  elapsedMs,
+  selectedYear,
+  currentYear,
+  hasMissingPrices,
+  isFetchingPrices,
+}: {
+  elapsedMs: number;
+  selectedYear: number | null;
+  currentYear: number | null;
+  hasMissingPrices: boolean;
+  isFetchingPrices: boolean;
+}): PerformanceLoadingStageFeedback {
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  const yearLabel = selectedYear != null ? `${selectedYear} 年` : '本年度';
+  const isCurrentYear = selectedYear != null && currentYear != null && selectedYear === currentYear;
+
+  if (safeElapsedMs < 2500) {
+    return {
+      currentStage: '準備資料',
+      hint: `正在整理 ${yearLabel} 績效資料與快取結果。`,
+    };
+  }
+
+  if (isFetchingPrices || hasMissingPrices) {
+    if (safeElapsedMs < 8000) {
+      return {
+        currentStage: '補齊價格',
+        hint: isCurrentYear
+          ? '偵測到缺漏價格，正在補抓即時報價後重新計算。'
+          : `偵測到缺漏價格，正在補抓 ${yearLabel} 歷史價格後重新計算。`,
+      };
+    }
+  }
+
+  if (safeElapsedMs < 15000) {
+    return {
+      currentStage: '計算中',
+      hint: '正在重算報酬率與年度摘要，完成後會自動更新畫面。',
+    };
+  }
+
+  return {
+    currentStage: '較久等待提醒',
+    hint: '這次等待時間較長，可能是資料量較多或外部價格來源較慢，請稍候。',
+  };
+}
+
 /**
  * 從 localStorage 讀取使用者選擇的 benchmark（與 Dashboard 同步，fallback 用）。
  *
@@ -368,10 +423,14 @@ function PerformancePageContent({
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceFetchFailed, setPriceFetchFailed] = useState(false);
   const [dismissMissingPricesOverlay, setDismissMissingPricesOverlay] = useState(false);
+  const [performanceLoadingElapsedMs, setPerformanceLoadingElapsedMs] = useState(0);
   const hasFetchedForYearRef = useRef<number | null>(null);
   const fetchRetryCountRef = useRef<number>(0); // 限制自動重試次數以防止無限迴圈
   const benchmarkRequestIdRef = useRef(0);
   const customBenchmarkRequestIdRef = useRef(0);
+  const autoFetchPricesRequestIdRef = useRef(0);
+  const performanceLoadingStartedAtRef = useRef<number | null>(null);
+  const performanceLoadingYearRef = useRef<number | null>(null);
 
   const displayHomeCurrency = portfolio?.homeCurrency ?? 'TWD';
 
@@ -597,9 +656,46 @@ function PerformancePageContent({
   useEffect(() => {
     hasFetchedForYearRef.current = null;
     fetchRetryCountRef.current = 0;
+    autoFetchPricesRequestIdRef.current += 1;
     setPriceFetchFailed(false);
     setIsFetchingPrices(false);
   }, []);
+
+  // 追蹤績效主區塊 loading 時間，提供分段等待回饋文案
+  useEffect(() => {
+    if (isLoadingPerformance) {
+      const hasNewLoadingCycle =
+        performanceLoadingStartedAtRef.current == null ||
+        performanceLoadingYearRef.current !== selectedYear;
+
+      if (hasNewLoadingCycle) {
+        performanceLoadingStartedAtRef.current = Date.now();
+        performanceLoadingYearRef.current = selectedYear;
+        setPerformanceLoadingElapsedMs(0);
+      }
+
+      const tick = () => {
+        if (performanceLoadingStartedAtRef.current == null) {
+          return;
+        }
+
+        setPerformanceLoadingElapsedMs(Date.now() - performanceLoadingStartedAtRef.current);
+      };
+
+      tick();
+      const timer = window.setInterval(tick, 1000);
+
+      return () => {
+        window.clearInterval(timer);
+      };
+    }
+
+    performanceLoadingStartedAtRef.current = null;
+    performanceLoadingYearRef.current = null;
+    setPerformanceLoadingElapsedMs(0);
+
+    return undefined;
+  }, [isLoadingPerformance, selectedYear]);
 
   // 載入當年度 YTD 基準資料
   // 快取已透過 lazy init 載入，這裡只在背景抓取最新資料
@@ -1344,19 +1440,27 @@ function PerformancePageContent({
       }
       if (hasFetchedForYearRef.current === selectedYear) return; // 該年度已抓取過
 
-      // 限制自動重試次數以防止無限迴圈（最多 2 次）
-      if (fetchRetryCountRef.current >= 2) {
-        setPriceFetchFailed(true);
-        return;
-      }
-
       // 標記為抓取中（使用負數表示進行中）
       const fetchingMarker = -selectedYear;
       if (hasFetchedForYearRef.current === fetchingMarker) return; // 已在抓取中
+
+      const requestId = ++autoFetchPricesRequestIdRef.current;
+      const isLatestRequest = () => autoFetchPricesRequestIdRef.current === requestId;
+
+      // 限制自動重試次數以防止無限迴圈（最多 2 次）
+      if (fetchRetryCountRef.current >= 2) {
+        if (isLatestRequest()) {
+          setPriceFetchFailed(true);
+        }
+        return;
+      }
+
       hasFetchedForYearRef.current = fetchingMarker;
       fetchRetryCountRef.current += 1;
 
-      setPriceFetchFailed(false);
+      if (isLatestRequest()) {
+        setPriceFetchFailed(false);
+      }
 
       try {
         const isCurrentYear = selectedYear === availableYears.currentYear;
@@ -1383,8 +1487,14 @@ function PerformancePageContent({
           // 只在需要抓取價格時顯示 loading spinner
           let fetchedPrices: Record<string, YearEndPriceInfo> = {};
           if (stillMissing.length > 0) {
-            setIsFetchingPrices(true);
+            if (isLatestRequest()) {
+              setIsFetchingPrices(true);
+            }
             fetchedPrices = await fetchCurrentPrices(stillMissing, displayHomeCurrency);
+
+            if (!isLatestRequest()) {
+              return;
+            }
           }
 
           const allPrices = { ...cachedPrices, ...fetchedPrices };
@@ -1401,17 +1511,23 @@ function PerformancePageContent({
             mp => mp.priceType === 'YearEnd' && Boolean(allPrices[mp.ticker])
           ).length;
           allFetched = fetchedKeyCount >= uniqueMissingPrices.length;
-          if (!allFetched) {
+          if (!allFetched && isLatestRequest()) {
             setPriceFetchFailed(true);
           }
         } else {
           // 歷史年度：使用 Stooq 取得國際股價格
-          setIsFetchingPrices(true);
+          if (isLatestRequest()) {
+            setIsFetchingPrices(true);
+          }
           const { yearStartPrices, yearEndPrices } = await fetchHistoricalPrices(
             effectiveMissingPrices,
             selectedYear,
             displayHomeCurrency
           );
+
+          if (!isLatestRequest()) {
+            return;
+          }
 
           const hasPrices = Object.keys(yearEndPrices).length > 0 || Object.keys(yearStartPrices).length > 0;
           if (hasPrices) {
@@ -1427,9 +1543,13 @@ function PerformancePageContent({
             return Boolean(yearEndPrices[missingPrice.ticker]);
           }).length;
           allFetched = fetchedKeyCount >= effectiveMissingPrices.length;
-          if (!allFetched) {
+          if (!allFetched && isLatestRequest()) {
             setPriceFetchFailed(true);
           }
+        }
+
+        if (!isLatestRequest()) {
+          return;
         }
 
         // 只在成功抓取所有價格時標記為已抓取
@@ -1437,16 +1557,21 @@ function PerformancePageContent({
         if (allFetched) {
           hasFetchedForYearRef.current = selectedYear;
         } else {
-          // 重設以允許重試（清除抓取中標記）
           hasFetchedForYearRef.current = null;
         }
       } catch (err) {
+        if (!isLatestRequest()) {
+          return;
+        }
+
         console.error('自動抓取價格失敗:', err);
         setPriceFetchFailed(true);
         // 錯誤時重設以允許重試
         hasFetchedForYearRef.current = null;
       } finally {
-        setIsFetchingPrices(false);
+        if (isLatestRequest()) {
+          setIsFetchingPrices(false);
+        }
       }
     };
 
@@ -1495,6 +1620,7 @@ function PerformancePageContent({
   };
 
   const handleYearChange = (year: number) => {
+    autoFetchPricesRequestIdRef.current += 1;
     setSelectedYear(year);
     setPriceFetchFailed(false);
     setDismissMissingPricesOverlay(false); // 新年度重設 overlay dismiss 狀態
@@ -1656,6 +1782,23 @@ function PerformancePageContent({
     startValue != null &&
     endValue != null &&
     netContributionValue != null
+  );
+
+  const performanceLoadingStageFeedback = useMemo(
+    () => getPerformanceLoadingStageFeedback({
+      elapsedMs: performanceLoadingElapsedMs,
+      selectedYear,
+      currentYear: availableYears?.currentYear ?? null,
+      hasMissingPrices: effectiveMissingPrices.length > 0,
+      isFetchingPrices,
+    }),
+    [
+      performanceLoadingElapsedMs,
+      selectedYear,
+      availableYears?.currentYear,
+      effectiveMissingPrices.length,
+      isFetchingPrices,
+    ],
   );
 
   const selectedCustomBenchmarkIds = useMemo(
@@ -1837,9 +1980,20 @@ function PerformancePageContent({
 
         {/* 績效卡片 */}
         {isLoadingPerformance && !performance ? (
-          <div className="card-dark p-8 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-            <span className="ml-2 text-[var(--text-muted)]">計算績效中...</span>
+          <div className="card-dark p-8" role="status" aria-live="polite">
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+              <span className="text-[var(--text-muted)]">計算績效中...</span>
+            </div>
+            <div className="mt-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-tertiary)]/60 p-4">
+              <p className="text-xs text-[var(--text-muted)]">{PERFORMANCE_LOADING_STAGE_FLOW_COPY}</p>
+              <p className="mt-2 text-sm text-[var(--text-primary)]">
+                目前階段：{performanceLoadingStageFeedback.currentStage}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                {performanceLoadingStageFeedback.hint}
+              </p>
+            </div>
           </div>
         ) : performance ? (
           <>
@@ -1974,9 +2128,15 @@ function PerformancePageContent({
                 </div>
 
                 {!isPerformanceValueReady ? (
-                  <div className="flex items-center gap-2 py-2">
-                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                    <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
+                  <div className="py-2" role="status" aria-live="polite">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                      <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
+                    </div>
+                    <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                      目前階段：{performanceLoadingStageFeedback.currentStage}。
+                      {performanceLoadingStageFeedback.hint}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -2098,9 +2258,15 @@ function PerformancePageContent({
                 </div>
               )}
               {!isPerformanceValueReady ? (
-                <div className="flex items-center gap-2 py-2">
-                  <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
-                  <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
+                <div className="py-2" role="status" aria-live="polite">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-peach)]" />
+                    <span className="text-lg text-[var(--text-muted)]">計算績效中...</span>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    目前階段：{performanceLoadingStageFeedback.currentStage}。
+                    {performanceLoadingStageFeedback.hint}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

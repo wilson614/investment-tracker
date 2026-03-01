@@ -627,6 +627,67 @@ describe('useHistoricalPerformance', () => {
     });
   });
 
+  it('ignores stale available-years response when refresh is triggered rapidly', async () => {
+    const oldYearsDeferred = createDeferred<AvailableYears>();
+    const latestYearsDeferred = createDeferred<AvailableYears>();
+
+    mockedPortfolioApi.getAvailableYears
+      .mockImplementationOnce(() => oldYearsDeferred.promise)
+      .mockImplementationOnce(() => latestYearsDeferred.promise);
+
+    const { result } = renderHook(() =>
+      useHistoricalPerformance({
+        portfolioId: 'portfolio-years-race',
+        isAggregate: false,
+        autoFetch: true,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledWith('portfolio-years-race');
+    });
+
+    await act(async () => {
+      void result.current.refresh();
+    });
+
+    await waitFor(() => {
+      expect(mockedPortfolioApi.getAvailableYears).toHaveBeenCalledTimes(2);
+    });
+
+    const latestYears: AvailableYears = {
+      years: [previousYear],
+      earliestYear: previousYear,
+      currentYear,
+    };
+
+    const staleYears: AvailableYears = {
+      years: [twoYearsAgo],
+      earliestYear: twoYearsAgo,
+      currentYear,
+    };
+
+    await act(async () => {
+      latestYearsDeferred.resolve(latestYears);
+      await latestYearsDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.availableYears).toEqual(latestYears);
+      expect(result.current.selectedYear).toBe(previousYear);
+    });
+
+    await act(async () => {
+      oldYearsDeferred.resolve(staleYears);
+      await oldYearsDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.availableYears).toEqual(latestYears);
+      expect(result.current.selectedYear).toBe(previousYear);
+    });
+  });
+
   it('keeps current-year response when stale-year request starts later', async () => {
     mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce({
       years: [currentYear, previousYear],

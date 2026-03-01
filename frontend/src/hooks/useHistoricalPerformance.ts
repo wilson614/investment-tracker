@@ -193,6 +193,9 @@ export function useHistoricalPerformance({
   // 追蹤歷史年度是否已自動重算，避免 isComplete=false 時迴圈重算
   const fetchedHistoricalYearRef = useRef<number | null>(null);
 
+  // 追蹤最新的年份清單請求，避免舊回應覆寫最新狀態（例如連續 refresh）
+  const yearsRequestIdRef = useRef<number>(0);
+
   // 追蹤最新的績效請求，避免舊回應覆寫最新年度資料
   const performanceRequestIdRef = useRef<number>(0);
 
@@ -219,6 +222,8 @@ export function useHistoricalPerformance({
   const fetchAvailableYears = useCallback(async () => {
     if (!isAggregate && !portfolioId) return;
 
+    const requestId = ++yearsRequestIdRef.current;
+
     setIsLoadingYears(true);
     setError(null);
 
@@ -226,6 +231,10 @@ export function useHistoricalPerformance({
       const years = isAggregate
         ? await portfolioApi.getAggregateYears()
         : await portfolioApi.getAvailableYears(portfolioId!);
+
+      if (requestId !== yearsRequestIdRef.current) {
+        return;
+      }
 
       setAvailableYears(years);
 
@@ -281,6 +290,10 @@ export function useHistoricalPerformance({
         return resolvedYear;
       });
     } catch (err) {
+      if (requestId !== yearsRequestIdRef.current) {
+        return;
+      }
+
       if (isLegacyAggregateEmptyStateError(err, isAggregate)) {
         setAvailableYears(createEmptyAvailableYears());
         selectedYearRef.current = null;
@@ -291,7 +304,9 @@ export function useHistoricalPerformance({
 
       setError(err instanceof Error ? err.message : '無法載入可用年份');
     } finally {
-      setIsLoadingYears(false);
+      if (requestId === yearsRequestIdRef.current) {
+        setIsLoadingYears(false);
+      }
     }
   }, [
     isAggregate,
