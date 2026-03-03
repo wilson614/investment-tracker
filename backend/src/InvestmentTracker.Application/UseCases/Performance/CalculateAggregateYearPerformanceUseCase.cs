@@ -13,7 +13,6 @@ public class CalculateAggregateYearPerformanceUseCase(
     IPortfolioRepository portfolioRepository,
     IHistoricalPerformanceService historicalPerformanceService,
     ICurrentUserService currentUserService,
-    PortfolioCalculator portfolioCalculator,
     IReturnCalculator returnCalculator)
 {
     private const int MinimumReliableCoverageDays = 90;
@@ -135,20 +134,7 @@ public class CalculateAggregateYearPerformanceUseCase(
         var endValueSource = relevantPortfolioResults.Sum(r => r.EndValueSource ?? 0m);
         var netContributionsSource = relevantPortfolioResults.Sum(r => r.NetContributionsSource ?? 0m);
 
-        var aggregateCashFlowsHome = BuildDerivedCashFlows(
-            relevantPortfolioResults,
-            yearStart,
-            yearEnd,
-            useSourceValues: false);
-
-        var aggregateCashFlowsSource = BuildDerivedCashFlows(
-            relevantPortfolioResults,
-            yearStart,
-            yearEnd,
-            useSourceValues: true);
-
-        var xirrHome = portfolioCalculator.CalculateXirr(aggregateCashFlowsHome);
-        var xirrSource = portfolioCalculator.CalculateXirr(aggregateCashFlowsSource);
+        // Annual performance no longer computes aggregate XIRR.
 
         var totalReturnHome = CalculateTotalReturnPercentage(startValueHome, endValueHome, netContributionsHome);
         var totalReturnSource = CalculateTotalReturnPercentage(startValueSource, endValueSource, netContributionsSource);
@@ -189,15 +175,12 @@ public class CalculateAggregateYearPerformanceUseCase(
             primaryWeightSelector: r => r.StartValueSource,
             fallbackWeightSelector: r => r.EndValueSource);
 
-        var xirrPercentageHome = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
-        var xirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
-
         return ApplyAggregateXirrSuppression(new YearPerformanceDto
         {
             Year = request.Year,
             // Home currency
-            Xirr = xirrHome,
-            XirrPercentage = xirrPercentageHome,
+            Xirr = null,
+            XirrPercentage = null,
             TotalReturnPercentage = totalReturnHome,
             ModifiedDietzPercentage = modifiedDietzHome.HasValue ? (double)(modifiedDietzHome.Value * 100m) : null,
             TimeWeightedReturnPercentage = twrHome,
@@ -206,8 +189,8 @@ public class CalculateAggregateYearPerformanceUseCase(
             NetContributionsHome = netContributionsHome,
             // Source currency
             SourceCurrency = ResolveSourceCurrency(relevantPortfolioResults),
-            XirrSource = xirrSource,
-            XirrPercentageSource = xirrPercentageSource,
+            XirrSource = null,
+            XirrPercentageSource = null,
             TotalReturnPercentageSource = totalReturnSource,
             ModifiedDietzPercentageSource = modifiedDietzSource.HasValue ? (double)(modifiedDietzSource.Value * 100m) : null,
             TimeWeightedReturnPercentageSource = twrSource,
@@ -215,7 +198,7 @@ public class CalculateAggregateYearPerformanceUseCase(
             EndValueSource = endValueSource,
             NetContributionsSource = netContributionsSource,
             // Common
-            CashFlowCount = aggregateCashFlowsSource.Count,
+            CashFlowCount = 0,
             TransactionCount = relevantPortfolioResults.Sum(r => r.TransactionCount),
             EarliestTransactionDateInYear = earliestTransactionDateInYear,
             CoverageStartDate = resolvedCoverageStartDate,
@@ -230,45 +213,6 @@ public class CalculateAggregateYearPerformanceUseCase(
             RecentLargeInflowWarningMessage = recentLargeInflowWarning.WarningMessage,
             MissingPrices = []
         });
-    }
-
-    private static List<CashFlow> BuildDerivedCashFlows(
-        IReadOnlyList<YearPerformanceDto> portfolioResults,
-        DateTime yearStart,
-        DateTime yearEnd,
-        bool useSourceValues)
-    {
-        var cashFlows = new List<CashFlow>();
-
-        foreach (var result in portfolioResults)
-        {
-            var startValue = useSourceValues
-                ? result.StartValueSource ?? 0m
-                : result.StartValueHome ?? 0m;
-
-            var endValue = useSourceValues
-                ? result.EndValueSource ?? 0m
-                : result.EndValueHome ?? 0m;
-
-            var netContribution = useSourceValues
-                ? result.NetContributionsSource ?? 0m
-                : result.NetContributionsHome;
-
-            var contributionDate = result.EarliestTransactionDateInYear?.Date ?? yearStart.AddDays(1);
-
-            if (startValue > 0)
-                cashFlows.Add(new CashFlow(-startValue, yearStart));
-
-            if (netContribution != 0)
-                cashFlows.Add(new CashFlow(-netContribution, contributionDate));
-
-            if (endValue > 0)
-                cashFlows.Add(new CashFlow(endValue, yearEnd));
-        }
-
-        return cashFlows
-            .OrderBy(cf => cf.Date)
-            .ToList();
     }
 
     private static IReadOnlyList<ReturnCashFlow> BuildDietzCashFlows(

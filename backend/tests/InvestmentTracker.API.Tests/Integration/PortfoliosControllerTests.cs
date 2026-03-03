@@ -501,7 +501,8 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.TimeWeightedReturnPercentageSource.Should().Be(single.TimeWeightedReturnPercentageSource);
 
         aggregate.TransactionCount.Should().Be(single.TransactionCount);
-        aggregate.CashFlowCount.Should().Be(single.CashFlowCount);
+        aggregate.CashFlowCount.Should().Be(0);
+        single.CashFlowCount.Should().Be(0);
         aggregate.EarliestTransactionDateInYear.Should().Be(single.EarliestTransactionDateInYear);
         aggregate.CoverageStartDate.Should().Be(single.CoverageStartDate);
         aggregate.CoverageDays.Should().Be(single.CoverageDays);
@@ -510,21 +511,14 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.XirrReliability.Should().Be(single.XirrReliability);
         aggregate.MissingPrices.Should().BeEmpty();
 
-        if (string.Equals(single.XirrReliability, "Low", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(single.XirrReliability, "Unavailable", StringComparison.OrdinalIgnoreCase))
-        {
-            aggregate.Xirr.Should().BeNull();
-            aggregate.XirrPercentage.Should().BeNull();
-            aggregate.XirrSource.Should().BeNull();
-            aggregate.XirrPercentageSource.Should().BeNull();
-        }
-        else
-        {
-            aggregate.Xirr.Should().Be(single.Xirr);
-            aggregate.XirrPercentage.Should().Be(single.XirrPercentage);
-            aggregate.XirrSource.Should().Be(single.XirrSource);
-            aggregate.XirrPercentageSource.Should().Be(single.XirrPercentageSource);
-        }
+        aggregate.Xirr.Should().BeNull();
+        aggregate.XirrPercentage.Should().BeNull();
+        aggregate.XirrSource.Should().BeNull();
+        aggregate.XirrPercentageSource.Should().BeNull();
+        single.Xirr.Should().BeNull();
+        single.XirrPercentage.Should().BeNull();
+        single.XirrSource.Should().BeNull();
+        single.XirrPercentageSource.Should().BeNull();
     }
 
     [Fact]

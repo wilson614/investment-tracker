@@ -1338,15 +1338,15 @@ public class HistoricalPerformanceServiceReturnTests
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(result.ModifiedDietzPercentageSource.Value, 0.0001d);
 
         result.XirrReliability.Should().Be("High");
-        result.XirrSource.Should().NotBeNull();
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
 
         double.IsInfinity(result.TimeWeightedReturnPercentageSource.Value).Should().BeFalse();
         double.IsNaN(result.TimeWeightedReturnPercentageSource.Value).Should().BeFalse();
         double.IsInfinity(result.ModifiedDietzPercentageSource.Value).Should().BeFalse();
         double.IsNaN(result.ModifiedDietzPercentageSource.Value).Should().BeFalse();
-        result.XirrSource.HasValue.Should().BeTrue();
-        double.IsInfinity(result.XirrSource!.Value).Should().BeFalse();
-        double.IsNaN(result.XirrSource.Value).Should().BeFalse();
     }
 
     [Fact]
@@ -1498,7 +1498,7 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
-    public async Task CalculateYearPerformanceAsync_HistoricalTotalCostShouldAffectCostBasisOnly_NotTwrMdOrXirr()
+    public async Task CalculateYearPerformanceAsync_HistoricalTotalCostShouldAffectCostBasisOnly_NotTwrOrMd()
     {
         // Arrange
         var year = DateTime.UtcNow.Year - 1;
@@ -1711,11 +1711,13 @@ public class HistoricalPerformanceServiceReturnTests
 
         resultLowCost.TimeWeightedReturnPercentageSource.Should().BeApproximately(resultHighCost.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
         resultLowCost.ModifiedDietzPercentageSource.Should().BeApproximately(resultHighCost.ModifiedDietzPercentageSource!.Value, 0.0001d);
-        resultLowCost.XirrSource.Should().BeApproximately(resultHighCost.XirrSource!.Value, 0.0000001d);
 
         resultLowCost.TimeWeightedReturnPercentageSource.Should().NotBeNull();
         resultLowCost.ModifiedDietzPercentageSource.Should().NotBeNull();
-        resultLowCost.XirrSource.Should().NotBeNull();
+        resultLowCost.Xirr.Should().BeNull();
+        resultLowCost.XirrSource.Should().BeNull();
+        resultHighCost.Xirr.Should().BeNull();
+        resultHighCost.XirrSource.Should().BeNull();
 
         sellA.RealizedPnlHome.Should().Be(expectedRealizedLowCost);
         sellB.RealizedPnlHome.Should().Be(expectedRealizedHighCost);

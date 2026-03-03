@@ -326,12 +326,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.Should().NotBeNull();
         yearPerformance!.Year.Should().Be(2026);
         yearPerformance.SourceCurrency.Should().NotBeNullOrWhiteSpace();
-        yearPerformance.CashFlowCount.Should().BeGreaterThan(0);
+        yearPerformance.CashFlowCount.Should().Be(0);
         yearPerformance.TransactionCount.Should().BeGreaterThan(0);
         yearPerformance.NetContributionsHome.Should().BeInRange(-1_000_000_000m, 1_000_000_000m);
 
-        AssertFiniteIfHasValue(yearPerformance.Xirr, nameof(YearPerformanceDto.Xirr));
-        AssertFiniteIfHasValue(yearPerformance.XirrPercentage, nameof(YearPerformanceDto.XirrPercentage));
+        yearPerformance.Xirr.Should().BeNull();
+        yearPerformance.XirrPercentage.Should().BeNull();
         AssertFiniteIfHasValue(yearPerformance.TotalReturnPercentage, nameof(YearPerformanceDto.TotalReturnPercentage));
         AssertFiniteIfHasValue(yearPerformance.ModifiedDietzPercentage, nameof(YearPerformanceDto.ModifiedDietzPercentage));
         AssertFiniteIfHasValue(yearPerformance.TimeWeightedReturnPercentage, nameof(YearPerformanceDto.TimeWeightedReturnPercentage));
@@ -490,7 +490,7 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.Should().NotBeNull();
 
         yearPerformance!.TransactionCount.Should().Be(1);
-        yearPerformance.CashFlowCount.Should().BeGreaterThanOrEqualTo(2);
+        yearPerformance.CashFlowCount.Should().Be(0);
 
         yearPerformance.StartValueSource.Should().Be(0m);
         yearPerformance.EndValueSource.Should().BeApproximately(105686.84m, 0.001m);
@@ -500,7 +500,9 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         yearPerformance.NetContributionsHome.Should().Be(100000m);
 
         yearPerformance.Xirr.Should().BeNull();
+        yearPerformance.XirrPercentage.Should().BeNull();
         yearPerformance.XirrSource.Should().BeNull();
+        yearPerformance.XirrPercentageSource.Should().BeNull();
 
         var periodStart = new DateTime(2025, 1, 1);
         var periodEnd = new DateTime(2025, 12, 31);
@@ -2435,7 +2437,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         AssertFiniteIfHasValue(yearPerformance!.TimeWeightedReturnPercentageSource, nameof(yearPerformance.TimeWeightedReturnPercentageSource));
         AssertFiniteIfHasValue(yearPerformance.ModifiedDietzPercentageSource, nameof(yearPerformance.ModifiedDietzPercentageSource));
-        AssertFiniteIfHasValue(yearPerformance.XirrSource, nameof(yearPerformance.XirrSource));
+        yearPerformance.Xirr.Should().BeNull();
+        yearPerformance.XirrPercentage.Should().BeNull();
+        yearPerformance.XirrSource.Should().BeNull();
+        yearPerformance.XirrPercentageSource.Should().BeNull();
 
 
         var aggregateResponse = await Client.PostAsJsonAsync(
@@ -2453,7 +2458,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentageSource, nameof(aggregatePerformance.TimeWeightedReturnPercentageSource));
         AssertFiniteIfHasValue(aggregatePerformance.ModifiedDietzPercentageSource, nameof(aggregatePerformance.ModifiedDietzPercentageSource));
-        AssertFiniteIfHasValue(aggregatePerformance.XirrSource, nameof(aggregatePerformance.XirrSource));
+        aggregatePerformance.Xirr.Should().BeNull();
+        aggregatePerformance.XirrPercentage.Should().BeNull();
+        aggregatePerformance.XirrSource.Should().BeNull();
+        aggregatePerformance.XirrPercentageSource.Should().BeNull();
 
         aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(
             yearPerformance.TimeWeightedReturnPercentageSource!.Value,

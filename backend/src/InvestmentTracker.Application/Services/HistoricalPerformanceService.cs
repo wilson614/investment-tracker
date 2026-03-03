@@ -330,11 +330,7 @@ public class HistoricalPerformanceService(
         {
             logger.LogWarning("Missing {Count} prices for year {Year} performance calculation", missingPrices.Count, year);
 
-            var reliabilityOnMissingPrices = ResolveXirrReliability(
-                hasOpeningBaseline,
-                usesPartialHistoryAssumption,
-                coverageDays,
-                hasXirrValue: false);
+            var reliabilityOnMissingPrices = XirrReliabilityUnavailable;
             var degradeSignalOnMissingPrices = ResolveReturnDisplayDegradeSignal(
                 reliabilityOnMissingPrices,
                 hasOpeningBaseline,
@@ -360,7 +356,6 @@ public class HistoricalPerformanceService(
         }
 
         // ===== Calculate Source Currency (portfolio.BaseCurrency) Performance =====
-        var cashFlowsSource = new List<CashFlow>();
 
         string GetTickerCurrency(string ticker)
         {
@@ -493,8 +488,7 @@ public class HistoricalPerformanceService(
 
         if (startValueSource > 0)
         {
-            cashFlowsSource.Add(new CashFlow(-startValueSource, yearStart));
-            logger.LogDebug("  Added year-start cash flow: {Amount} on {Date}", -startValueSource, yearStart);
+            logger.LogDebug("  Year-start valuation (no annual XIRR cash-flow): {Amount} on {Date}", startValueSource, yearStart);
         }
 
         // Transactions in source currency
@@ -524,7 +518,6 @@ public class HistoricalPerformanceService(
                         sourceCurrency,
                         tx.TransactionDate);
 
-                    cashFlowsSource.Add(new CashFlow(-costInSource, tx.TransactionDate));
                     break;
                 }
                 case TransactionType.Sell:
@@ -547,7 +540,6 @@ public class HistoricalPerformanceService(
                         sourceCurrency,
                         tx.TransactionDate);
 
-                    cashFlowsSource.Add(new CashFlow(proceedsInSource, tx.TransactionDate));
                     break;
                 }
             }
@@ -573,22 +565,7 @@ public class HistoricalPerformanceService(
 
         if (endValueSource > 0)
         {
-            cashFlowsSource.Add(new CashFlow(endValueSource, yearEnd));
-            logger.LogDebug("  Added year-end cash flow: {Amount} on {Date}", endValueSource, yearEnd);
-        }
-
-        // Log all cash flows before XIRR calculation
-        logger.LogDebug("  === All Source Currency Cash Flows ({Count} total) ===", cashFlowsSource.Count);
-        foreach (var cf in cashFlowsSource.OrderBy(c => c.Date))
-        {
-            logger.LogDebug("    {Date}: {Amount:N2} {SourceCurrency}", cf.Date.ToString("yyyy-MM-dd"), cf.Amount, sourceCurrency);
-        }
-
-        // Calculate source currency XIRR
-        double? rawXirrSource = null;
-        if (cashFlowsSource.Count >= 2)
-        {
-            rawXirrSource = portfolioCalculator.CalculateXirr(cashFlowsSource);
+            logger.LogDebug("  Year-end valuation (no annual XIRR cash-flow): {Amount} on {Date}", endValueSource, yearEnd);
         }
 
         // ===== US1: Cash Flow Strategy (StockTransaction vs CurrencyLedger) =====
@@ -801,8 +778,6 @@ public class HistoricalPerformanceService(
             cashFlowSnapshots: closedLoopSourceSnapshots);
 
         // ===== Calculate Home Currency Performance =====
-        var cashFlowsHome = new List<CashFlow>();
-
         logger.LogDebug("  === Home Currency Calculation ({HomeCurrency}) ===", homeCurrency);
 
         // Year-start portfolio value in home currency
@@ -821,7 +796,7 @@ public class HistoricalPerformanceService(
 
         if (startValueHome > 0)
         {
-            cashFlowsHome.Add(new CashFlow(-startValueHome, yearStart));
+            logger.LogDebug("  Year-start home valuation (no annual XIRR cash-flow): {Amount} on {Date}", startValueHome, yearStart);
         }
 
         // Transactions in home currency
@@ -830,12 +805,9 @@ public class HistoricalPerformanceService(
             switch (tx.TransactionType)
             {
                 case TransactionType.Buy:
-                    cashFlowsHome.Add(new CashFlow(-tx.TotalCostHome!.Value, tx.TransactionDate));
                     break;
                 case TransactionType.Sell:
                 {
-                    var proceeds = tx.NetProceedsSource * tx.ExchangeRate!.Value;
-                    cashFlowsHome.Add(new CashFlow(proceeds, tx.TransactionDate));
                     break;
                 }
             }
@@ -853,14 +825,7 @@ public class HistoricalPerformanceService(
 
         if (endValueHome > 0)
         {
-            cashFlowsHome.Add(new CashFlow(endValueHome, yearEnd));
-        }
-
-        // Calculate home currency XIRR
-        double? rawXirrHome = null;
-        if (cashFlowsHome.Count >= 2)
-        {
-            rawXirrHome = portfolioCalculator.CalculateXirr(cashFlowsHome);
+            logger.LogDebug("  Year-end home valuation (no annual XIRR cash-flow): {Amount} on {Date}", endValueHome, yearEnd);
         }
 
         var closedLoopStartValueHome = startValueHome + ledgerStartValueHome;
@@ -910,25 +875,15 @@ public class HistoricalPerformanceService(
             homeStartValue: closedLoopStartValueHome,
             homeEndValue: closedLoopEndValueHome);
 
-        var hasXirrValue = rawXirrHome.HasValue || rawXirrSource.HasValue;
         var xirrReliability = ResolveXirrReliability(
             hasOpeningBaseline,
             usesPartialHistoryAssumption,
-            coverageDays,
-            hasXirrValue);
+            coverageDays);
 
-        var xirrHome = rawXirrHome;
-        var xirrSource = rawXirrSource;
-
-        if (string.Equals(xirrReliability, XirrReliabilityUnavailable, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(xirrReliability, XirrReliabilityLow, StringComparison.OrdinalIgnoreCase))
-        {
-            xirrHome = null;
-            xirrSource = null;
-        }
-
-        var xirrPercentageHome = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
-        var xirrPercentageSource = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
+        double? xirrHome = null;
+        double? xirrSource = null;
+        double? xirrPercentageHome = null;
+        double? xirrPercentageSource = null;
 
         var returnDisplayDegradeSignal = ResolveReturnDisplayDegradeSignal(
             xirrReliability,
@@ -943,10 +898,7 @@ public class HistoricalPerformanceService(
             hasOpeningBaseline,
             usesPartialHistoryAssumption);
 
-        var sourceXirrPctForLog = xirrSource.HasValue ? xirrSource.Value * 100 : (double?)null;
-        var homeXirrPctForLog = xirrHome.HasValue ? xirrHome.Value * 100 : (double?)null;
-        logger.LogInformation("Year {Year} performance: Source XIRR={XirrSource}%, Home XIRR={XirrHome}%",
-            year, sourceXirrPctForLog, homeXirrPctForLog);
+        logger.LogInformation("Year {Year} performance: annual XIRR disabled for yearly analysis", year);
 
         return new YearPerformanceDto
         {
@@ -971,7 +923,7 @@ public class HistoricalPerformanceService(
             EndValueSource = closedLoopEndValueSource,
             NetContributionsSource = netContributionsSource,
             // Common
-            CashFlowCount = cashFlowsSource.Count,
+            CashFlowCount = 0,
             TransactionCount = yearTransactions.Count,
             EarliestTransactionDateInYear = earliestTransactionDateInYear,
             CoverageStartDate = coverageStartDate,
@@ -1067,12 +1019,8 @@ public class HistoricalPerformanceService(
     private static string ResolveXirrReliability(
         bool hasOpeningBaseline,
         bool usesPartialHistoryAssumption,
-        int? coverageDays,
-        bool hasXirrValue)
+        int? coverageDays)
     {
-        if (!hasXirrValue)
-            return XirrReliabilityUnavailable;
-
         if (!hasOpeningBaseline)
             return XirrReliabilityUnavailable;
 

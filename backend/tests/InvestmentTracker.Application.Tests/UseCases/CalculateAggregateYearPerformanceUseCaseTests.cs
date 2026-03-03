@@ -17,7 +17,6 @@ public class CalculateAggregateYearPerformanceUseCaseTests
     private readonly Mock<IHistoricalPerformanceService> _historicalPerformanceServiceMock = new();
     private readonly Mock<ICurrentUserService> _currentUserServiceMock = new();
 
-    private readonly PortfolioCalculator _portfolioCalculator = new();
     private readonly IReturnCalculator _returnCalculator = new ReturnCalculator();
 
     [Fact]
@@ -634,6 +633,10 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.CoverageStartDate.Should().Be(new DateTime(year, 1, 1));
         result.CoverageDays.Should().Be((periodEnd - periodStart).Days + 1);
         result.XirrReliability.Should().Be("High");
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
     }
 
     [Fact]
@@ -791,7 +794,7 @@ public class CalculateAggregateYearPerformanceUseCaseTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_AggregateHistoricalTotalCostVariants_ShouldNotChangeAggregateTwrMdOrXirr()
+    public async Task ExecuteAsync_AggregateHistoricalTotalCostVariants_ShouldNotChangeAggregateTwrOrMd()
     {
         // Arrange
         var userId = Guid.NewGuid();
@@ -871,10 +874,10 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.ModifiedDietzPercentageSource.Should().BeApproximately(13.3333333333d, 0.0001d);
         result.ModifiedDietzPercentage.Should().BeApproximately(13.3333333333d, 0.0001d);
 
-        result.XirrSource.Should().NotBeNull();
-        result.XirrPercentageSource.Should().NotBeNull();
-        result.XirrSource!.Value.Should().BeGreaterThan(0d);
-        result.XirrPercentageSource!.Value.Should().BeGreaterThan(0d);
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
 
         result.HasOpeningBaseline.Should().BeTrue();
         result.UsesPartialHistoryAssumption.Should().BeFalse();
@@ -1064,11 +1067,9 @@ public class CalculateAggregateYearPerformanceUseCaseTests
                     NetContributionsHome = contribution * 31m,
                     TimeWeightedReturnPercentageSource = 8d + (seed % 5),
                     TimeWeightedReturnPercentage = 8d + (seed % 5),
-                    XirrSource = 0.07d,
-                    Xirr = 0.07d,
                     EarliestTransactionDateInYear = eventDate,
                     TransactionCount = 5,
-                    CashFlowCount = 3,
+                    CashFlowCount = 0,
                     CoverageStartDate = new DateTime(year, 1, 1),
                     CoverageDays = 365,
                     HasOpeningBaseline = true,
@@ -1083,10 +1084,14 @@ public class CalculateAggregateYearPerformanceUseCaseTests
     {
         result.Year.Should().Be(expectedYear);
         result.TransactionCount.Should().Be(expectedPortfolioCount * 5);
-        result.CashFlowCount.Should().BeGreaterThan(0);
+        result.CashFlowCount.Should().Be(0);
         result.MissingPrices.Should().BeEmpty();
         result.SourceCurrency.Should().Be("USD");
         result.XirrReliability.Should().Be("High");
+        result.Xirr.Should().BeNull();
+        result.XirrPercentage.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+        result.XirrPercentageSource.Should().BeNull();
         result.StartValueSource.Should().BeGreaterThan(0m);
         result.EndValueSource.Should().BeGreaterThan(result.StartValueSource!.Value);
         result.NetContributionsSource.Should().BeGreaterThan(0m);
@@ -1110,7 +1115,6 @@ public class CalculateAggregateYearPerformanceUseCaseTests
             _portfolioRepositoryMock.Object,
             _historicalPerformanceServiceMock.Object,
             _currentUserServiceMock.Object,
-            _portfolioCalculator,
             _returnCalculator);
     }
 

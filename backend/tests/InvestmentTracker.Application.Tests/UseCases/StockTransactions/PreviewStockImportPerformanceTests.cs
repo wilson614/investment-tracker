@@ -118,6 +118,67 @@ public class PreviewStockImportPerformanceTests
             Times.Exactly(4)); // 1 warm-up + 3 measured runs
     }
 
+    [Theory]
+    [InlineData(500)]
+    [InlineData(2000)]
+    public async Task ExecuteAsync_BrokerPreviewBenchmark_ShouldRecordColdAndWarmPathObservations(int rowCount)
+    {
+        // Arrange
+        var fixture = new Fixture();
+        var request = new PreviewStockImportRequest
+        {
+            PortfolioId = fixture.PortfolioId,
+            CsvContent = BuildBrokerStatementCsv(rowCount),
+            SelectedFormat = "broker_statement"
+        };
+
+        // Act
+        var coldRun = await MeasurePreviewRunAsync(fixture.UseCase, request);
+        AssertValidPreview(coldRun.Response, rowCount);
+
+        var warmMeasurements = new List<TimeSpan>(capacity: 3);
+        for (var i = 0; i < 3; i++)
+        {
+            var run = await MeasurePreviewRunAsync(fixture.UseCase, request);
+            AssertValidPreview(run.Response, rowCount);
+            warmMeasurements.Add(run.Elapsed);
+        }
+
+        var warmMedianElapsed = GetMedian(warmMeasurements);
+        var warmMinElapsed = warmMeasurements.Min();
+        var warmMaxElapsed = warmMeasurements.Max();
+        var warmSampleSeries = string.Join(", ", warmMeasurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        Console.WriteLine(
+            "[PerfObservation][PreviewStockImport] rows={0}; coldMs={1:F2}; warmRuns={2}; warmMinMs={3:F2}; warmMedianMs={4:F2}; warmMaxMs={5:F2}; warmSamplesMs=[{6}]",
+            rowCount,
+            coldRun.Elapsed.TotalMilliseconds,
+            warmMeasurements.Count,
+            warmMinElapsed.TotalMilliseconds,
+            warmMedianElapsed.TotalMilliseconds,
+            warmMaxElapsed.TotalMilliseconds,
+            warmSampleSeries);
+
+        // Assert
+        coldRun.Elapsed.Should().BeGreaterThan(TimeSpan.Zero);
+        warmMedianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
+
+        fixture.SessionStoreMock.Verify(
+            store => store.SaveAsync(It.IsAny<StockImportSessionSnapshotDto>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(4)); // 1 cold + 3 warm observations
+    }
+
+    private static async Task<(StockImportPreviewResponseDto Response, TimeSpan Elapsed)> MeasurePreviewRunAsync(
+        PreviewStockImportUseCase useCase,
+        PreviewStockImportRequest request)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var response = await useCase.ExecuteAsync(request, CancellationToken.None);
+        stopwatch.Stop();
+
+        return (response, stopwatch.Elapsed);
+    }
+
     private static void AssertValidPreview(StockImportPreviewResponseDto response, int expectedRows)
     {
         response.Rows.Should().HaveCount(expectedRows);

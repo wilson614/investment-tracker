@@ -578,8 +578,9 @@ export interface EuronextQuoteResponse {
 export interface YearPerformance {
   year: number;
   // Home currency (TWD)
-  xirr: number | null;
-  xirrPercentage: number | null;
+  // Legacy compatibility: annual XIRR fields may be omitted by backend.
+  xirr?: number | null;
+  xirrPercentage?: number | null;
   totalReturnPercentage: number | null;
   modifiedDietzPercentage: number | null;
   timeWeightedReturnPercentage: number | null;
@@ -588,8 +589,8 @@ export interface YearPerformance {
   netContributionsHome: number;
   // Source currency (e.g., USD)
   sourceCurrency: string | null;
-  xirrSource: number | null;
-  xirrPercentageSource: number | null;
+  xirrSource?: number | null;
+  xirrPercentageSource?: number | null;
   totalReturnPercentageSource: number | null;
   modifiedDietzPercentageSource: number | null;
   timeWeightedReturnPercentageSource: number | null;
@@ -604,7 +605,7 @@ export interface YearPerformance {
   coverageDays: number | null;
   hasOpeningBaseline: boolean | null;
   usesPartialHistoryAssumption: boolean | null;
-  xirrReliability: 'High' | 'Medium' | 'Low' | 'Unavailable' | null;
+  xirrReliability?: 'High' | 'Medium' | 'Low' | 'Unavailable' | null;
   shouldDegradeReturnDisplay: boolean;
   returnDisplayDegradeReasonCode: string | null;
   returnDisplayDegradeReasonMessage: string | null;
