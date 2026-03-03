@@ -68,8 +68,11 @@ public class CreateStockTransactionUseCase(
         IReadOnlyList<CurrencyTransaction>? ledgerTransactions = null;
         decimal? exchangeRate;
         decimal? marketRate = null;
+        var fxFromCurrency = boundLedger.CurrencyCode;
+        var fxToCurrency = boundLedger.HomeCurrency;
+        var requiresFxConversion = !string.Equals(fxFromCurrency, fxToCurrency, StringComparison.OrdinalIgnoreCase);
 
-        if (resolvedCurrency == Currency.TWD)
+        if (!requiresFxConversion)
         {
             exchangeRate = 1.0m;
         }
@@ -87,21 +90,14 @@ public class CreateStockTransactionUseCase(
             }
             else
             {
-                if (string.Equals(portfolio.BaseCurrency, portfolio.HomeCurrency, StringComparison.OrdinalIgnoreCase))
-                {
-                    exchangeRate = 1.0m;
-                }
-                else
-                {
-                    var fxResult = await txDateFxService.GetOrFetchAsync(
-                        portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
+                var fxResult = await txDateFxService.GetOrFetchAsync(
+                    fxFromCurrency, fxToCurrency, request.TransactionDate, cancellationToken);
 
-                    if (fxResult == null)
-                        throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
+                if (fxResult == null)
+                    throw new BusinessRuleException("無法計算匯率，請先在帳本中建立換匯紀錄");
 
-                    marketRate = fxResult.Rate;
-                    exchangeRate = marketRate;
-                }
+                marketRate = fxResult.Rate;
+                exchangeRate = marketRate;
             }
         }
 
@@ -109,11 +105,11 @@ public class CreateStockTransactionUseCase(
         decimal? realizedPnlHome = null;
         if (request.TransactionType == TransactionType.Sell)
         {
-            var existingTransactions = await transactionRepository.GetByPortfolioIdAsync(
-                request.PortfolioId, cancellationToken);
+            var existingTickerTransactions = await transactionRepository.GetByTickerAsync(
+                request.PortfolioId, request.Ticker, cancellationToken);
 
             var currentPosition = portfolioCalculator.CalculatePosition(
-                request.Ticker, existingTransactions);
+                request.Ticker, existingTickerTransactions);
 
             if (currentPosition.TotalShares < request.Shares)
                 throw new BusinessRuleException(
@@ -171,6 +167,7 @@ public class CreateStockTransactionUseCase(
             // 使用 shared helper 產生連動的 CurrencyTransaction 規格
             var linkedSpec = StockTransactionLinking.BuildLinkedCurrencyTransactionSpec(
                 request.TransactionType, transaction, boundLedger);
+            CurrencyTransaction? topUpTransactionForSnapshot = null;
 
             if (linkedSpec != null)
             {
@@ -200,9 +197,16 @@ public class CreateStockTransactionUseCase(
                             {
                                 if (marketRate == null)
                                 {
-                                    var fxResult = await txDateFxService.GetOrFetchAsync(
-                                        portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
-                                    marketRate = fxResult?.Rate;
+                                    if (!requiresFxConversion)
+                                    {
+                                        marketRate = 1.0m;
+                                    }
+                                    else
+                                    {
+                                        var fxResult = await txDateFxService.GetOrFetchAsync(
+                                            fxFromCurrency, fxToCurrency, request.TransactionDate, cancellationToken);
+                                        marketRate = fxResult?.Rate;
+                                    }
                                 }
 
                                 var marginMarketRate = marketRate ?? exchangeRate
@@ -245,9 +249,16 @@ public class CreateStockTransactionUseCase(
                                 {
                                     if (marketRate == null)
                                     {
-                                        var fxResult = await txDateFxService.GetOrFetchAsync(
-                                            portfolio.BaseCurrency, portfolio.HomeCurrency, request.TransactionDate, cancellationToken);
-                                        marketRate = fxResult?.Rate;
+                                        if (!requiresFxConversion)
+                                        {
+                                            marketRate = 1.0m;
+                                        }
+                                        else
+                                        {
+                                            var fxResult = await txDateFxService.GetOrFetchAsync(
+                                                fxFromCurrency, fxToCurrency, request.TransactionDate, cancellationToken);
+                                            marketRate = fxResult?.Rate;
+                                        }
                                     }
 
                                     if (marketRate == null)
@@ -268,12 +279,7 @@ public class CreateStockTransactionUseCase(
                                     notes: $"補足買入 {request.Ticker} 差額");
 
                                 await currencyTransactionRepository.AddAsync(topUpTransaction, cancellationToken);
-
-                                await txSnapshotService.UpsertSnapshotAsync(
-                                    request.PortfolioId,
-                                    topUpTransaction.Id,
-                                    topUpTransaction.TransactionDate,
-                                    cancellationToken);
+                                topUpTransactionForSnapshot = topUpTransaction;
 
                                 ledgerTransactions = await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                                     boundLedger.Id, cancellationToken);
@@ -316,6 +322,15 @@ public class CreateStockTransactionUseCase(
                     notes: $"{noteAction} {request.Ticker} × {request.Shares}");
 
                 await currencyTransactionRepository.AddAsync(currencyTransaction, cancellationToken);
+
+                if (topUpTransactionForSnapshot is not null)
+                {
+                    await txSnapshotService.UpsertSnapshotAsync(
+                        request.PortfolioId,
+                        topUpTransactionForSnapshot.Id,
+                        topUpTransactionForSnapshot.TransactionDate,
+                        cancellationToken);
+                }
             }
 
             // US1: 寫入交易日快照

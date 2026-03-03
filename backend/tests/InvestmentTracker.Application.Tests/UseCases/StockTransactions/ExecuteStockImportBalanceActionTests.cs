@@ -668,7 +668,10 @@ public class ExecuteStockImportBalanceActionTests
     public async Task ExecuteAsync_BuyShortfall_WithTopUpDecision_ShouldWriteSnapshotForTopUpOnly()
     {
         // Arrange
-        var fixture = new Fixture();
+        var eventLog = new List<string>();
+        var fixture = new Fixture(
+            currencyTransactionAdded: tx => eventLog.Add($"currency:{tx.TransactionType}:{tx.Id}"),
+            snapshotUpserted: (_, transactionId, _, _) => eventLog.Add($"snapshot:{transactionId}"));
         var request = fixture.BuildExecuteRequest(
             rowAction: BalanceAction.TopUp,
             rowTopUpType: CurrencyTransactionType.Deposit,
@@ -716,6 +719,60 @@ public class ExecuteStockImportBalanceActionTests
                 It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(2));
+
+        eventLog.IndexOf($"currency:{topUpTx.TransactionType}:{topUpTx.Id}").Should().BeLessThan(
+            eventLog.IndexOf($"currency:{linkedSpendTx.TransactionType}:{linkedSpendTx.Id}"));
+        eventLog.IndexOf($"currency:{linkedSpendTx.TransactionType}:{linkedSpendTx.Id}").Should().BeLessThan(
+            eventLog.IndexOf($"snapshot:{topUpTx.Id}"),
+            "TopUp snapshot 應在同日連動 Spend 寫入後再建立");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BuyShortfall_WithTopUpExchangeBuyOnForeignLedger_ShouldReturnBalanceActionRequired()
+    {
+        // Arrange
+        var tradeDate = new DateTime(2026, 1, 22, 0, 0, 0, DateTimeKind.Utc);
+        var sessionRows = new List<StockImportSessionRowSnapshotDto>
+        {
+            Fixture.BuildSessionRow(
+                rowNumber: 31,
+                ticker: "AAPL",
+                unitPrice: 100m,
+                tradeDate: tradeDate,
+                quantity: 30m,
+                fees: 5m,
+                taxes: 0m,
+                tradeSide: "buy",
+                currencyCode: "USD")
+        };
+
+        var fixture = new Fixture(
+            seedLedgerTransactions: [],
+            sessionRows: sessionRows,
+            boundLedgerCurrencyCode: "USD",
+            boundLedgerHomeCurrency: "TWD");
+        var request = fixture.BuildExecuteRequest(
+            rowAction: BalanceAction.TopUp,
+            rowTopUpType: CurrencyTransactionType.ExchangeBuy,
+            defaultDecision: null,
+            rowNumber: 31,
+            ticker: "AAPL");
+
+        // Act
+        var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        result.Status.Should().Be("rejected");
+
+        var rowResult = result.Results.Should().ContainSingle().Subject;
+        rowResult.Success.Should().BeFalse();
+        rowResult.ErrorCode.Should().Be("BALANCE_ACTION_REQUIRED");
+        rowResult.Message.Should().Be("補足餘額的交易類型必須為入帳類型（限 Deposit / InitialBalance / Interest / OtherIncome）");
+
+        var diagnostic = result.Errors.Should().ContainSingle().Subject;
+        diagnostic.FieldName.Should().Be("topUpTransactionType");
+        diagnostic.InvalidValue.Should().Be(nameof(CurrencyTransactionType.ExchangeBuy));
+        diagnostic.ErrorCode.Should().Be("BALANCE_ACTION_REQUIRED");
     }
 
     [Fact]
@@ -2703,7 +2760,9 @@ public class ExecuteStockImportBalanceActionTests
             string boundLedgerCurrencyCode = "TWD",
             string boundLedgerHomeCurrency = "TWD",
             bool hasPreviewSession = true,
-            string selectedFormat = "broker_statement")
+            string selectedFormat = "broker_statement",
+            Action<CurrencyTransaction>? currencyTransactionAdded = null,
+            Action<Guid, Guid, DateTime, CancellationToken>? snapshotUpserted = null)
         {
             _portfolio = new Portfolio(UserId, BoundLedgerId, baseCurrency: "USD", homeCurrency: "TWD", displayName: "US Portfolio");
             typeof(Portfolio).GetProperty(nameof(Portfolio.Id))!.SetValue(_portfolio, PortfolioId);
@@ -2830,6 +2889,7 @@ public class ExecuteStockImportBalanceActionTests
                 .ReturnsAsync((CurrencyTransaction tx, CancellationToken _) =>
                 {
                     ledgerTransactions.Add(tx);
+                    currencyTransactionAdded?.Invoke(tx);
                     return tx;
                 });
 
@@ -2882,6 +2942,12 @@ public class ExecuteStockImportBalanceActionTests
                         Currency = "TWD"
                     };
                 });
+
+            TxSnapshotServiceMock
+                .Setup(x => x.UpsertSnapshotAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+                .Callback<Guid, Guid, DateTime, CancellationToken>((portfolioId, transactionId, transactionDate, cancellationToken) =>
+                    snapshotUpserted?.Invoke(portfolioId, transactionId, transactionDate, cancellationToken))
+                .Returns(Task.CompletedTask);
 
             TransactionManagerMock
                 .Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))

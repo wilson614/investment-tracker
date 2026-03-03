@@ -42,8 +42,7 @@ public interface IExecuteStockImportUseCase
 
 internal readonly record struct ImportedStockTransactionCreationResult(
     StockTransaction Transaction,
-    IReadOnlyList<StockTransaction> SeededTransactions,
-    IReadOnlyList<CurrencyTransaction> CreatedCurrencyTransactions,
+    IReadOnlyList<StockTransaction> CreatedTransactions,
     bool UsesPartialHistoryAssumption,
     StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision);
 
@@ -337,16 +336,15 @@ public sealed class ExecuteStockImportUseCase(
 
         try
         {
-            var importedTransactionsInBatch = new List<StockTransaction>();
-            var importedCurrencyTransactionsInBatch = new List<CurrencyTransaction>();
-
-            var persistedTransactions = (await stockTransactionRepository.GetByPortfolioIdAsync(
+            var knownTransactionsInExecution = (await stockTransactionRepository.GetByPortfolioIdAsync(
                 portfolio.Id,
                 cancellationToken)).ToList();
 
-            var persistedLedgerTransactions = (await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
+            var knownLedgerTransactionsInExecution = (await currencyTransactionRepository.GetByLedgerIdOrderedAsync(
                 boundLedger.Id,
                 cancellationToken)).ToList();
+
+            DateOnly? earliestAffectedMonth = null;
 
             var sessionBaselineAnchorDate = ResolveSessionBaselineAnchorDate(
                 session.SelectedFormat,
@@ -369,7 +367,7 @@ public sealed class ExecuteStockImportUseCase(
             if (openingLedgerTransaction is not null)
             {
                 await currencyTransactionRepository.AddAsync(openingLedgerTransaction, cancellationToken);
-                importedCurrencyTransactionsInBatch.Add(openingLedgerTransaction);
+                knownLedgerTransactionsInExecution.Add(openingLedgerTransaction);
 
                 await txSnapshotService.UpsertSnapshotAsync(
                     portfolio.Id,
@@ -377,15 +375,9 @@ public sealed class ExecuteStockImportUseCase(
                     openingLedgerTransaction.TransactionDate,
                     cancellationToken);
 
-                var openingMonth = new DateOnly(
-                    openingLedgerTransaction.TransactionDate.Year,
-                    openingLedgerTransaction.TransactionDate.Month,
-                    1);
-
-                await monthlySnapshotService.InvalidateFromMonthAsync(
-                    portfolio.Id,
-                    openingMonth,
-                    cancellationToken);
+                TrackEarliestAffectedMonth(
+                    ref earliestAffectedMonth,
+                    openingLedgerTransaction.TransactionDate);
             }
 
             var rowsToExecute = request.Rows
@@ -561,18 +553,23 @@ public sealed class ExecuteStockImportUseCase(
                         row,
                         request.BaselineDecision,
                         request.DefaultBalanceAction,
-                        persistedTransactions,
-                        persistedLedgerTransactions,
-                        importedTransactionsInBatch,
-                        importedCurrencyTransactionsInBatch,
+                        knownTransactionsInExecution,
+                        knownLedgerTransactionsInExecution,
                         cancellationToken);
 
                     var createdTransaction = creationResult.Transaction;
 
                     insertedRows++;
-                    importedTransactionsInBatch.AddRange(creationResult.SeededTransactions);
-                    importedTransactionsInBatch.Add(createdTransaction);
-                    importedCurrencyTransactionsInBatch.AddRange(creationResult.CreatedCurrencyTransactions);
+                    var createdTransactions = creationResult.CreatedTransactions;
+                    if (createdTransactions.Count > 0)
+                    {
+                        knownTransactionsInExecution.AddRange(createdTransactions);
+
+                        foreach (var createdTx in createdTransactions)
+                        {
+                            TrackEarliestAffectedMonth(ref earliestAffectedMonth, createdTx.TransactionDate);
+                        }
+                    }
 
                     if (creationResult.UsesPartialHistoryAssumption)
                     {
@@ -671,6 +668,14 @@ public sealed class ExecuteStockImportUseCase(
             }
             else
             {
+                if (earliestAffectedMonth is DateOnly invalidationMonth)
+                {
+                    await monthlySnapshotService.InvalidateFromMonthAsync(
+                        portfolio.Id,
+                        invalidationMonth,
+                        cancellationToken);
+                }
+
                 await tx.CommitAsync(cancellationToken);
             }
 
@@ -767,10 +772,8 @@ public sealed class ExecuteStockImportUseCase(
         ExecuteStockImportRowRequest requestRow,
         StockImportBaselineExecutionDecisionRequest? baselineDecision,
         StockImportDefaultBalanceDecisionRequest? defaultBalanceDecision,
-        IReadOnlyList<StockTransaction> persistedTransactions,
-        IReadOnlyList<CurrencyTransaction> persistedLedgerTransactions,
-        IReadOnlyList<StockTransaction> importedTransactionsInBatch,
-        IReadOnlyList<CurrencyTransaction> importedCurrencyTransactionsInBatch,
+        List<StockTransaction> knownTransactionsInExecution,
+        List<CurrencyTransaction> knownLedgerTransactionsInExecution,
         CancellationToken cancellationToken)
     {
         var transactionType = ResolveTransactionType(normalizedTradeSide);
@@ -778,13 +781,7 @@ public sealed class ExecuteStockImportUseCase(
         var sellBeforeBuyDecision = ResolveSellBeforeBuyDecision(requestRow, baselineDecision);
         var sellBeforeBuyAction = sellBeforeBuyDecision.Action;
 
-        var transactionsForPosition = persistedTransactions
-            .Concat(importedTransactionsInBatch)
-            .GroupBy(transaction => transaction.Id)
-            .Select(group => group.First())
-            .OrderByDescending(transaction => transaction.TransactionDate)
-            .ThenByDescending(transaction => transaction.CreatedAt)
-            .ToList();
+        var transactionsForPosition = (IReadOnlyList<StockTransaction>)knownTransactionsInExecution;
 
         var parsedSessionCurrency = ParseCurrency(sessionRow.Currency);
         var marketResolution = ResolveImportMarket(
@@ -820,10 +817,10 @@ public sealed class ExecuteStockImportUseCase(
 
         decimal? exchangeRate;
         decimal? marketRate = null;
-        IReadOnlyList<CurrencyTransaction>? ledgerTransactions = null;
         var fxFromCurrency = boundLedger.CurrencyCode;
         var fxToCurrency = boundLedger.HomeCurrency;
         var requiresFxConversion = !string.Equals(fxFromCurrency, fxToCurrency, StringComparison.OrdinalIgnoreCase);
+        var ledgerTransactions = (IReadOnlyList<CurrencyTransaction>)knownLedgerTransactionsInExecution;
 
         if (!requiresFxConversion)
         {
@@ -831,10 +828,6 @@ public sealed class ExecuteStockImportUseCase(
         }
         else
         {
-            ledgerTransactions = MergeCurrencyTransactions(
-                persistedLedgerTransactions,
-                importedCurrencyTransactionsInBatch);
-
             var lifoRate = currencyLedgerService.CalculateExchangeRateForPurchase(
                 ledgerTransactions,
                 tradeDate,
@@ -892,16 +885,17 @@ public sealed class ExecuteStockImportUseCase(
 
                     if (seededOpeningPosition is not null)
                     {
-                        transactionsForPosition =
-                        [
-                            seededOpeningPosition,
-                            .. transactionsForPosition
-                        ];
+                        var transactionsWithSeededOpeningPosition =
+                            new List<StockTransaction>(transactionsForPosition.Count + 1)
+                            {
+                                seededOpeningPosition
+                            };
+                        transactionsWithSeededOpeningPosition.AddRange(transactionsForPosition);
 
                         currentPosition = portfolioCalculator.CalculatePositionByMarket(
                             normalizedTicker,
                             market,
-                            transactionsForPosition);
+                            transactionsWithSeededOpeningPosition);
 
                         if (currentPosition.TotalShares < shares)
                         {
@@ -962,15 +956,6 @@ public sealed class ExecuteStockImportUseCase(
                                 pendingCurrencyTransactions.Add(openingInitialBalanceOffsetTransaction);
                             }
                         }
-
-                        var seededAffectedFromMonth = new DateOnly(
-                            seededOpeningPosition.TransactionDate.Year,
-                            seededOpeningPosition.TransactionDate.Month,
-                            1);
-                        await monthlySnapshotService.InvalidateFromMonthAsync(
-                            portfolio.Id,
-                            seededAffectedFromMonth,
-                            cancellationToken);
 
                         await txSnapshotService.UpsertSnapshotAsync(
                             portfolio.Id,
@@ -1048,13 +1033,6 @@ public sealed class ExecuteStockImportUseCase(
         {
             if (transactionType == TransactionType.Buy)
             {
-                if (ledgerTransactions is null)
-                {
-                    ledgerTransactions = MergeCurrencyTransactions(
-                        persistedLedgerTransactions,
-                        importedCurrencyTransactionsInBatch);
-                }
-
                 var effectiveLedgerTransactions = ledgerTransactions
                     .Concat(pendingCurrencyTransactions)
                     .ToList();
@@ -1185,6 +1163,41 @@ public sealed class ExecuteStockImportUseCase(
                                 topUpHomeAmount = topUpAmount;
                             }
 
+                            if (topUpTransactionType == CurrencyTransactionType.ExchangeBuy && topUpExchangeRate == null)
+                            {
+                                if (marketRate == null)
+                                {
+                                    if (!requiresFxConversion)
+                                    {
+                                        marketRate = 1.0m;
+                                    }
+                                    else
+                                    {
+                                        var fxResult = await txDateFxService.GetOrFetchAsync(
+                                            fxFromCurrency,
+                                            fxToCurrency,
+                                            tradeDate,
+                                            cancellationToken);
+                                        marketRate = fxResult?.Rate;
+                                    }
+                                }
+
+                                if (marketRate == null)
+                                {
+                                    throw CreateBalanceActionFailure(
+                                        message: "無法取得市場匯率，請選擇其他交易類型或手動在帳本新增換匯紀錄",
+                                        action: balanceDecision.Action,
+                                        topUpTransactionType: balanceDecision.TopUpTransactionType,
+                                        requiredAmount: linkedSpec.Amount,
+                                        availableBalance: currentBalance,
+                                        shortfall: shortfall,
+                                        decisionScope: balanceDecisionContext?.DecisionScope);
+                                }
+
+                                topUpExchangeRate = marketRate;
+                                topUpHomeAmount = Math.Round(topUpAmount * marketRate.Value, 2);
+                            }
+
                             var topUpTransaction = new CurrencyTransaction(
                                 boundLedger.Id,
                                 tradeDate,
@@ -1253,28 +1266,38 @@ public sealed class ExecuteStockImportUseCase(
         foreach (var pendingCurrencyTransaction in pendingCurrencyTransactions)
         {
             await currencyTransactionRepository.AddAsync(pendingCurrencyTransaction, cancellationToken);
-
-            if (pendingTopUpTransactions.Contains(pendingCurrencyTransaction))
-            {
-                await txSnapshotService.UpsertSnapshotAsync(
-                    portfolio.Id,
-                    pendingCurrencyTransaction.Id,
-                    pendingCurrencyTransaction.TransactionDate,
-                    cancellationToken);
-            }
         }
 
-        var affectedFromMonth = new DateOnly(tradeDate.Year, tradeDate.Month, 1);
-        await monthlySnapshotService.InvalidateFromMonthAsync(
-            portfolio.Id,
-            affectedFromMonth,
-            cancellationToken);
+        foreach (var pendingTopUpTransaction in pendingTopUpTransactions)
+        {
+            await txSnapshotService.UpsertSnapshotAsync(
+                portfolio.Id,
+                pendingTopUpTransaction.Id,
+                pendingTopUpTransaction.TransactionDate,
+                cancellationToken);
+        }
 
         await txSnapshotService.UpsertSnapshotAsync(
             portfolio.Id,
             transaction.Id,
             transaction.TransactionDate,
             cancellationToken);
+
+        var createdTransactions = pendingSeededStockTransactions.Count > 0
+            ? new List<StockTransaction>(pendingSeededStockTransactions.Count + 1)
+            : new List<StockTransaction>(1);
+
+        if (pendingSeededStockTransactions.Count > 0)
+        {
+            createdTransactions.AddRange(pendingSeededStockTransactions);
+        }
+
+        createdTransactions.Add(transaction);
+
+        if (pendingCurrencyTransactions.Count > 0)
+        {
+            knownLedgerTransactionsInExecution.AddRange(pendingCurrencyTransactions);
+        }
 
         var usesPartialHistoryAssumptionForWarning = usesPartialHistoryAssumption &&
             transactionType is TransactionType.Buy or TransactionType.Sell;
@@ -1291,8 +1314,7 @@ public sealed class ExecuteStockImportUseCase(
 
         return new ImportedStockTransactionCreationResult(
             Transaction: transaction,
-            SeededTransactions: pendingSeededStockTransactions,
-            CreatedCurrencyTransactions: pendingCurrencyTransactions,
+            CreatedTransactions: createdTransactions,
             UsesPartialHistoryAssumption: usesPartialHistoryAssumptionForWarning,
             SellBeforeBuyDecision: sellBeforeBuyDecisionContext);
     }
@@ -1836,17 +1858,13 @@ public sealed class ExecuteStockImportUseCase(
         return currencyLedgerService.CalculateBalance(transactionsUpToDate);
     }
 
-    private static List<CurrencyTransaction> MergeCurrencyTransactions(
-        IEnumerable<CurrencyTransaction> persisted,
-        IEnumerable<CurrencyTransaction> importedInBatch)
+    private static void TrackEarliestAffectedMonth(ref DateOnly? earliestAffectedMonth, DateTime transactionDate)
     {
-        return persisted
-            .Concat(importedInBatch)
-            .GroupBy(transaction => transaction.Id)
-            .Select(group => group.First())
-            .OrderBy(transaction => transaction.TransactionDate)
-            .ThenBy(transaction => transaction.CreatedAt)
-            .ToList();
+        var month = new DateOnly(transactionDate.Year, transactionDate.Month, 1);
+        if (!earliestAffectedMonth.HasValue || month < earliestAffectedMonth.Value)
+        {
+            earliestAffectedMonth = month;
+        }
     }
 
     private static StockImportBalanceDecisionContextDto? BuildBalanceDecisionContext(
