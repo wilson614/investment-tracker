@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using FluentAssertions;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
@@ -13,11 +14,49 @@ using Moq;
 namespace InvestmentTracker.Application.Tests.UseCases.StockTransactions;
 
 /// <summary>
-/// Performance observation benchmarks for stock import execute path (Speckit T152).
-/// Captures cold/warm behavior for 500 and 2000 rows without hard timing thresholds.
+/// Performance benchmarks and threshold guards for stock import execute path (Speckit T152/T154).
+/// Captures cold/warm behavior for 500 and 2000 rows with post-optimization stability assertions.
 /// </summary>
 public class ExecuteStockImportPerformanceTests
 {
+    private const int BenchmarkRowCount = 500;
+    private const int MeasurementRuns = 3;
+    private static readonly TimeSpan Execute500RowsTarget = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan Execute2000RowsTarget = TimeSpan.FromMilliseconds(4000);
+
+    [Fact]
+    public async Task ExecuteAsync_ExecutePath500Rows_PerformanceBaseline_MedianElapsedShouldBeWithinThreshold()
+    {
+        // Arrange
+        var warmupRun = await MeasureExecuteRunAsync(BenchmarkRowCount);
+        AssertCommittedResult(warmupRun.Response, BenchmarkRowCount);
+
+        var measurements = new List<TimeSpan>(capacity: MeasurementRuns);
+
+        // Act
+        for (var i = 0; i < MeasurementRuns; i++)
+        {
+            var run = await MeasureExecuteRunAsync(BenchmarkRowCount);
+            AssertCommittedResult(run.Response, BenchmarkRowCount);
+            measurements.Add(run.Elapsed);
+        }
+
+        var diagnostics = BuildDiagnostics(
+            scope: "PerfBaseline",
+            component: "ExecuteStockImport",
+            rowCount: BenchmarkRowCount,
+            coldElapsed: null,
+            measurements: measurements,
+            threshold: Execute500RowsTarget);
+
+        EmitDiagnostics(diagnostics);
+
+        // Assert
+        diagnostics.MedianElapsed.Should().BeLessThanOrEqualTo(
+            Execute500RowsTarget,
+            $"500-row execute median elapsed {diagnostics.MedianElapsed.TotalMilliseconds:F0} ms should be <= {Execute500RowsTarget.TotalMilliseconds:F0} ms");
+    }
+
     [Theory]
     [InlineData(500)]
     [InlineData(2000)]
@@ -27,32 +66,32 @@ public class ExecuteStockImportPerformanceTests
         var coldRun = await MeasureExecuteRunAsync(rowCount);
         AssertCommittedResult(coldRun.Response, rowCount);
 
-        var warmMeasurements = new List<TimeSpan>(capacity: 3);
-        for (var i = 0; i < 3; i++)
+        var warmMeasurements = new List<TimeSpan>(capacity: MeasurementRuns);
+        for (var i = 0; i < MeasurementRuns; i++)
         {
             var warmRun = await MeasureExecuteRunAsync(rowCount);
             AssertCommittedResult(warmRun.Response, rowCount);
             warmMeasurements.Add(warmRun.Elapsed);
         }
 
-        var warmMedianElapsed = GetMedian(warmMeasurements);
-        var warmMinElapsed = warmMeasurements.Min();
-        var warmMaxElapsed = warmMeasurements.Max();
-        var warmSampleSeries = string.Join(", ", warmMeasurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+        var diagnostics = BuildDiagnostics(
+            scope: "PerfObservation",
+            component: "ExecuteStockImport",
+            rowCount: rowCount,
+            coldElapsed: coldRun.Elapsed,
+            measurements: warmMeasurements,
+            threshold: null);
 
-        Console.WriteLine(
-            "[PerfObservation][ExecuteStockImport] rows={0}; coldMs={1:F2}; warmRuns={2}; warmMinMs={3:F2}; warmMedianMs={4:F2}; warmMaxMs={5:F2}; warmSamplesMs=[{6}]",
-            rowCount,
-            coldRun.Elapsed.TotalMilliseconds,
-            warmMeasurements.Count,
-            warmMinElapsed.TotalMilliseconds,
-            warmMedianElapsed.TotalMilliseconds,
-            warmMaxElapsed.TotalMilliseconds,
-            warmSampleSeries);
+        EmitDiagnostics(diagnostics);
 
         // Assert
         coldRun.Elapsed.Should().BeGreaterThan(TimeSpan.Zero);
-        warmMedianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
+        diagnostics.MedianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
+
+        var threshold = ResolveThreshold(rowCount);
+        diagnostics.MedianElapsed.Should().BeLessThanOrEqualTo(
+            threshold,
+            $"{rowCount}-row execute warm median elapsed {diagnostics.MedianElapsed.TotalMilliseconds:F0} ms should be <= {threshold.TotalMilliseconds:F0} ms");
     }
 
     private static async Task<(StockImportExecuteResponseDto Response, TimeSpan Elapsed)> MeasureExecuteRunAsync(int rowCount)
@@ -71,6 +110,71 @@ public class ExecuteStockImportPerformanceTests
             Times.Once);
 
         return (response, stopwatch.Elapsed);
+    }
+
+    private static TimeSpan ResolveThreshold(int rowCount)
+    {
+        return rowCount switch
+        {
+            500 => Execute500RowsTarget,
+            2000 => Execute2000RowsTarget,
+            _ => throw new ArgumentOutOfRangeException(nameof(rowCount), rowCount, "No execute performance threshold is defined for this row count.")
+        };
+    }
+
+    private static PerformanceDiagnostics BuildDiagnostics(
+        string scope,
+        string component,
+        int rowCount,
+        IReadOnlyCollection<TimeSpan> measurements,
+        TimeSpan? coldElapsed,
+        TimeSpan? threshold)
+    {
+        measurements.Should().NotBeEmpty();
+
+        var minElapsed = measurements.Min();
+        var medianElapsed = GetMedian(measurements);
+        var maxElapsed = measurements.Max();
+        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        var payload = new StringBuilder()
+            .Append('[').Append(scope).Append(']')
+            .Append("[Evidence]")
+            .Append('[').Append(component).Append(']')
+            .Append(" rows=").Append(rowCount.ToString(CultureInfo.InvariantCulture));
+
+        if (coldElapsed is not null)
+        {
+            payload.Append("; coldMs=").Append(coldElapsed.Value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+        }
+
+        payload
+            .Append("; warmRuns=").Append(measurements.Count.ToString(CultureInfo.InvariantCulture))
+            .Append("; minMs=").Append(minElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture))
+            .Append("; medianMs=").Append(medianElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture))
+            .Append("; maxMs=").Append(maxElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+
+        if (threshold is not null)
+        {
+            payload.Append("; thresholdMs=").Append(threshold.Value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+        }
+
+        payload.Append("; samplesMs=[").Append(sampleSeries).Append(']');
+
+        return new PerformanceDiagnostics(
+            rowCount,
+            measurements.Count,
+            minElapsed,
+            medianElapsed,
+            maxElapsed,
+            coldElapsed,
+            threshold,
+            payload.ToString());
+    }
+
+    private static void EmitDiagnostics(PerformanceDiagnostics diagnostics)
+    {
+        Console.WriteLine(diagnostics.Payload);
     }
 
     private static void AssertCommittedResult(StockImportExecuteResponseDto response, int expectedRows)
@@ -94,6 +198,16 @@ public class ExecuteStockImportPerformanceTests
 
         return ordered[ordered.Length / 2];
     }
+
+    private sealed record PerformanceDiagnostics(
+        int RowCount,
+        int RunCount,
+        TimeSpan MinElapsed,
+        TimeSpan MedianElapsed,
+        TimeSpan MaxElapsed,
+        TimeSpan? ColdElapsed,
+        TimeSpan? Threshold,
+        string Payload);
 
     private sealed class Fixture
     {

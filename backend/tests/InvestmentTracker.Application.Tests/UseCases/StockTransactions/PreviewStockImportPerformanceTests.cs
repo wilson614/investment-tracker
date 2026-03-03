@@ -19,6 +19,7 @@ namespace InvestmentTracker.Application.Tests.UseCases.StockTransactions;
 public class PreviewStockImportPerformanceTests
 {
     private const int BenchmarkRowCount = 500;
+    private const int MeasurementRuns = 3;
     private static readonly TimeSpan PreviewTarget = TimeSpan.FromSeconds(3);
 
     [Fact]
@@ -81,41 +82,34 @@ public class PreviewStockImportPerformanceTests
         var warmUpResult = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
         AssertValidPreview(warmUpResult, BenchmarkRowCount);
 
-        var measurements = new List<TimeSpan>(capacity: 3);
+        var measurements = new List<TimeSpan>(capacity: MeasurementRuns);
 
         // Act
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < MeasurementRuns; i++)
         {
-            var stopwatch = Stopwatch.StartNew();
-            var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
-            stopwatch.Stop();
-
-            AssertValidPreview(result, BenchmarkRowCount);
-            measurements.Add(stopwatch.Elapsed);
+            var run = await MeasurePreviewRunAsync(fixture.UseCase, request);
+            AssertValidPreview(run.Response, BenchmarkRowCount);
+            measurements.Add(run.Elapsed);
         }
 
-        var medianElapsed = GetMedian(measurements);
-        var minElapsed = measurements.Min();
-        var maxElapsed = measurements.Max();
-        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+        var diagnostics = BuildDiagnostics(
+            scope: "PerfBaseline",
+            component: "PreviewStockImport",
+            rowCount: BenchmarkRowCount,
+            coldElapsed: null,
+            measurements: measurements,
+            threshold: PreviewTarget);
 
-        Console.WriteLine(
-            "[PerfBaseline][PreviewStockImport] rows={0}; runs={1}; minMs={2:F2}; medianMs={3:F2}; maxMs={4:F2}; samplesMs=[{5}]",
-            BenchmarkRowCount,
-            measurements.Count,
-            minElapsed.TotalMilliseconds,
-            medianElapsed.TotalMilliseconds,
-            maxElapsed.TotalMilliseconds,
-            sampleSeries);
+        EmitDiagnostics(diagnostics);
 
         // Assert
-        medianElapsed.Should().BeLessThanOrEqualTo(
+        diagnostics.MedianElapsed.Should().BeLessThanOrEqualTo(
             PreviewTarget,
-            $"500-row broker preview median elapsed {medianElapsed.TotalMilliseconds:F0} ms should be <= {PreviewTarget.TotalMilliseconds:F0} ms");
+            $"500-row broker preview median elapsed {diagnostics.MedianElapsed.TotalMilliseconds:F0} ms should be <= {PreviewTarget.TotalMilliseconds:F0} ms");
 
         fixture.SessionStoreMock.Verify(
             store => store.SaveAsync(It.IsAny<StockImportSessionSnapshotDto>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(4)); // 1 warm-up + 3 measured runs
+            Times.Exactly(MeasurementRuns + 1)); // 1 warm-up + 3 measured runs
     }
 
     [Theory]
@@ -136,36 +130,31 @@ public class PreviewStockImportPerformanceTests
         var coldRun = await MeasurePreviewRunAsync(fixture.UseCase, request);
         AssertValidPreview(coldRun.Response, rowCount);
 
-        var warmMeasurements = new List<TimeSpan>(capacity: 3);
-        for (var i = 0; i < 3; i++)
+        var warmMeasurements = new List<TimeSpan>(capacity: MeasurementRuns);
+        for (var i = 0; i < MeasurementRuns; i++)
         {
             var run = await MeasurePreviewRunAsync(fixture.UseCase, request);
             AssertValidPreview(run.Response, rowCount);
             warmMeasurements.Add(run.Elapsed);
         }
 
-        var warmMedianElapsed = GetMedian(warmMeasurements);
-        var warmMinElapsed = warmMeasurements.Min();
-        var warmMaxElapsed = warmMeasurements.Max();
-        var warmSampleSeries = string.Join(", ", warmMeasurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+        var diagnostics = BuildDiagnostics(
+            scope: "PerfObservation",
+            component: "PreviewStockImport",
+            rowCount: rowCount,
+            coldElapsed: coldRun.Elapsed,
+            measurements: warmMeasurements,
+            threshold: null);
 
-        Console.WriteLine(
-            "[PerfObservation][PreviewStockImport] rows={0}; coldMs={1:F2}; warmRuns={2}; warmMinMs={3:F2}; warmMedianMs={4:F2}; warmMaxMs={5:F2}; warmSamplesMs=[{6}]",
-            rowCount,
-            coldRun.Elapsed.TotalMilliseconds,
-            warmMeasurements.Count,
-            warmMinElapsed.TotalMilliseconds,
-            warmMedianElapsed.TotalMilliseconds,
-            warmMaxElapsed.TotalMilliseconds,
-            warmSampleSeries);
+        EmitDiagnostics(diagnostics);
 
         // Assert
         coldRun.Elapsed.Should().BeGreaterThan(TimeSpan.Zero);
-        warmMedianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
+        diagnostics.MedianElapsed.Should().BeGreaterThan(TimeSpan.Zero);
 
         fixture.SessionStoreMock.Verify(
             store => store.SaveAsync(It.IsAny<StockImportSessionSnapshotDto>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(4)); // 1 cold + 3 warm observations
+            Times.Exactly(MeasurementRuns + 1)); // 1 cold + 3 warm observations
     }
 
     private static async Task<(StockImportPreviewResponseDto Response, TimeSpan Elapsed)> MeasurePreviewRunAsync(
@@ -177,6 +166,62 @@ public class PreviewStockImportPerformanceTests
         stopwatch.Stop();
 
         return (response, stopwatch.Elapsed);
+    }
+
+    private static PerformanceDiagnostics BuildDiagnostics(
+        string scope,
+        string component,
+        int rowCount,
+        IReadOnlyCollection<TimeSpan> measurements,
+        TimeSpan? coldElapsed,
+        TimeSpan? threshold)
+    {
+        measurements.Should().NotBeEmpty();
+
+        var minElapsed = measurements.Min();
+        var medianElapsed = GetMedian(measurements);
+        var maxElapsed = measurements.Max();
+
+        var sampleSeries = string.Join(", ", measurements.Select(value => value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)));
+
+        var payload = new StringBuilder()
+            .Append('[').Append(scope).Append(']')
+            .Append("[Evidence]")
+            .Append('[').Append(component).Append(']')
+            .Append(" rows=").Append(rowCount.ToString(CultureInfo.InvariantCulture));
+
+        if (coldElapsed is not null)
+        {
+            payload.Append("; coldMs=").Append(coldElapsed.Value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+        }
+
+        payload
+            .Append("; warmRuns=").Append(measurements.Count.ToString(CultureInfo.InvariantCulture))
+            .Append("; minMs=").Append(minElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture))
+            .Append("; medianMs=").Append(medianElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture))
+            .Append("; maxMs=").Append(maxElapsed.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+
+        if (threshold is not null)
+        {
+            payload.Append("; thresholdMs=").Append(threshold.Value.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture));
+        }
+
+        payload.Append("; samplesMs=[").Append(sampleSeries).Append(']');
+
+        return new PerformanceDiagnostics(
+            rowCount,
+            measurements.Count,
+            minElapsed,
+            medianElapsed,
+            maxElapsed,
+            coldElapsed,
+            threshold,
+            payload.ToString());
+    }
+
+    private static void EmitDiagnostics(PerformanceDiagnostics diagnostics)
+    {
+        Console.WriteLine(diagnostics.Payload);
     }
 
     private static void AssertValidPreview(StockImportPreviewResponseDto response, int expectedRows)
@@ -238,6 +283,16 @@ public class PreviewStockImportPerformanceTests
 
         return builder.ToString();
     }
+
+    private sealed record PerformanceDiagnostics(
+        int RowCount,
+        int RunCount,
+        TimeSpan MinElapsed,
+        TimeSpan MedianElapsed,
+        TimeSpan MaxElapsed,
+        TimeSpan? ColdElapsed,
+        TimeSpan? Threshold,
+        string Payload);
 
     private sealed class Fixture
     {

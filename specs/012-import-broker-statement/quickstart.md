@@ -833,6 +833,49 @@ npm --prefix "/workspaces/InvestmentTracker/frontend" run test:run -- "/workspac
 
 - T146-T148 remain open in Speckit checklist status (date-canonicalization consolidation + explicit regression grouping), while related runtime behavior/regressions were partially covered across Group L and this round.
 - T149/T150 remain open: current implementation provides a practical **status-based resumable query** (`pending/processing/completed/failed/not_found`) rather than checkpoint-cursor reconstruction.
-- T152-T154 remain open: performance was re-measured and no urgent regression was found, but dedicated execute benchmark file (`ExecuteStockImportPerformanceTests`) and threshold-based optimization closure are still pending.
 - T155-T156 remain open: current-holdings projection/performance composition refactor tasks are not fully closed in the Speckit task list.
 - T159 remains open in Speckit task list because the delivered XIRR fixes were implemented via current use-case paths (`CalculateXirrUseCase` / `CalculateAggregateXirrUseCase`) rather than the exact task file targets (`HistoricalPerformanceService` / `ReturnCalculator`).
+
+## Verification Notes (Group C T154: Post-Optimization Performance Thresholds + Diagnostics Hooks)
+
+- Updated for Group C / T154 closure (date: **2026-03-03**).
+- Scope is intentionally limited to performance suites and evidence hooks:
+  - `PreviewStockImportPerformanceTests` keeps the existing <=3s median guard and now emits structured evidence markers through a shared diagnostics builder.
+  - `ExecuteStockImportPerformanceTests` now includes stable post-optimization median thresholds plus the same evidence markers for both baseline and observation runs.
+- Diagnostics markers standardized for CI evidence extraction:
+  - `[PerfBaseline][Evidence][PreviewStockImport] ...`
+  - `[PerfObservation][Evidence][PreviewStockImport] ...`
+  - `[PerfBaseline][Evidence][ExecuteStockImport] ...`
+  - `[PerfObservation][Evidence][ExecuteStockImport] ...`
+
+## Verification Evidence (Group C T154 Execution Log)
+
+### Commands Executed
+
+```bash
+dotnet test "/workspaces/InvestmentTracker/backend/tests/InvestmentTracker.Application.Tests/InvestmentTracker.Application.Tests.csproj" --filter "FullyQualifiedName~PreviewStockImportPerformanceTests|FullyQualifiedName~ExecuteStockImportPerformanceTests" --logger "console;verbosity=detailed"
+```
+
+### Command Outcome Summary
+
+| Command Scope | Result | Outcome |
+|---|---|---|
+| Backend application targeted performance suites (`PreviewStockImportPerformanceTests`, `ExecuteStockImportPerformanceTests`) | PASS | Failed: 0, Passed: 7, Total: 7, Total time: 2.8080s |
+
+### Threshold & Diagnostics Evidence Snapshot
+
+- Preview baseline guard:
+  - `[PerfBaseline][Evidence][PreviewStockImport] rows=500; ...; medianMs=2.23; thresholdMs=3000.00; ...`
+- Execute baseline guard:
+  - `[PerfBaseline][Evidence][ExecuteStockImport] rows=500; ...; medianMs=18.66; thresholdMs=1500.00; ...`
+- Execute warm-path observation threshold checks:
+  - `rows=500` uses threshold `1500ms` (PASS in this run).
+  - `rows=2000` uses threshold `4000ms` (PASS in this run).
+- Evidence hook contract for future runs:
+  - Keep `[PerfBaseline][Evidence]` and `[PerfObservation][Evidence]` prefixes unchanged to allow deterministic grep/CI extraction.
+
+### Group C T154 Traceability
+
+| Task(s) | Coverage | Evidence |
+|---|---|---|
+| T154 | Add post-optimization performance threshold assertions for preview/execute and introduce diagnostics evidence hooks | Targeted performance test command + PASS summary + standardized `[Perf*][Evidence]` output lines in console log |
