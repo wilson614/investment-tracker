@@ -220,6 +220,12 @@ public record ExecuteStockImportRequest : IValidatableObject
     [Required]
     public Guid SessionId { get; init; }
 
+    /// <summary>
+    /// Optional opaque checkpoint cursor for resumable query contract alignment.
+    /// Current backend execute path is atomic and does not resume from checkpoints.
+    /// </summary>
+    public string? CheckpointCursor { get; init; }
+
     [Required]
     public Guid PortfolioId { get; init; }
 

@@ -171,7 +171,7 @@ public record StockImportExecuteResponseDto
     public bool IsReplay { get; init; }
 
     /// <summary>
-    /// committed | partially_committed | rejected
+    /// committed | rejected
     /// </summary>
     public string Status { get; init; } = string.Empty;
 
@@ -198,6 +198,22 @@ public record StockImportExecuteStatusResponseDto
     public string? Message { get; init; }
     public DateTime? StartedAtUtc { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
+
+    /// <summary>
+    /// Opaque checkpoint cursor for resumable status polling.
+    /// Current backend does not support true checkpoint-resume execution,
+    /// so this field is null for pending/processing/failed and non-null for completed.
+    /// </summary>
+    public string? CheckpointCursor { get; init; }
+
+    /// <summary>
+    /// Row-level status projection for resumable status query.
+    /// Current backend does not support partial-progress checkpoints;
+    /// pending/processing/failed return empty rows.
+    /// completed is reconstructed from persisted execute result.
+    /// </summary>
+    public IReadOnlyList<StockImportStatusRowDto> Rows { get; init; } = [];
+
     public StockImportExecuteResponseDto? Result { get; init; }
 }
 
@@ -254,6 +270,23 @@ public record StockImportExecuteRowResultDto
     /// Sell-before-buy 自動/顯式策略追蹤資訊（逐列）。
     /// </summary>
     public StockImportSellBeforeBuyDecisionContextDto? SellBeforeBuyDecision { get; init; }
+}
+
+/// <summary>
+/// Row-level execution status projection for resumable query contract.
+/// </summary>
+public record StockImportStatusRowDto
+{
+    public int RowNumber { get; init; }
+
+    /// <summary>
+    /// pending | completed | failed
+    /// </summary>
+    public string Status { get; init; } = string.Empty;
+
+    public Guid? TransactionId { get; init; }
+    public string? ErrorCode { get; init; }
+    public string? Message { get; init; }
 }
 
 /// <summary>

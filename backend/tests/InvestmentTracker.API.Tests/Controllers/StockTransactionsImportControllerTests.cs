@@ -1547,6 +1547,12 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         var importedTransactionsCount = await verifyDbContext.StockTransactions
             .CountAsync(transaction => transaction.PortfolioId == portfolio.Id);
         importedTransactionsCount.Should().Be(firstDto.Summary.InsertedRows, "replayed execute must not create additional rows");
+
+        var persistedSession = await verifyDbContext.StockImportSessions
+            .SingleAsync(session => session.SessionId == sessionId);
+        persistedSession.ExecutionStatus.Should().Be("completed");
+        persistedSession.ExecutionResultJson.Should().NotBeNullOrWhiteSpace();
+        persistedSession.SessionSnapshotJson.Should().BeEmpty();
     }
 
     [Fact]
@@ -1604,10 +1610,14 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         statusDto!.SessionId.Should().Be(sessionId);
         statusDto.PortfolioId.Should().Be(portfolio.Id);
         statusDto.ExecutionStatus.Should().Be("completed");
+        statusDto.CheckpointCursor.Should().NotBeNullOrWhiteSpace();
+        statusDto.Rows.Should().NotBeEmpty();
+        statusDto.Rows.Should().OnlyContain(row => row.Status == "completed" || row.Status == "failed");
         statusDto.CompletedAtUtc.Should().NotBeNull();
         statusDto.Result.Should().NotBeNull();
         statusDto.Result!.SessionId.Should().Be(sessionId);
         statusDto.Result.IsReplay.Should().BeFalse();
+        statusDto.Rows.Should().HaveCount(statusDto.Result.Results.Count);
     }
 
     [Fact]
@@ -1696,10 +1706,19 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         statusDto!.SessionId.Should().Be(sessionId);
         statusDto.PortfolioId.Should().Be(portfolio.Id);
         statusDto.ExecutionStatus.Should().Be("failed");
+        statusDto.CheckpointCursor.Should().BeNull();
+        statusDto.Rows.Should().BeEmpty();
         statusDto.Message.Should().Be("Import execution failed. Please retry later.");
         statusDto.Message.Should().NotContain(forcedFailureMessage);
         statusDto.Result.Should().BeNull();
         statusDto.CompletedAtUtc.Should().NotBeNull();
+
+        using var verifyScope = failFactory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persistedSession = await verifyDbContext.StockImportSessions
+            .SingleAsync(session => session.SessionId == sessionId);
+        persistedSession.ExecutionStatus.Should().Be("failed");
+        persistedSession.Message.Should().Be("Import execution failed. Please retry later.");
     }
 
     [Fact]
@@ -1731,7 +1750,109 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         statusDto.Should().NotBeNull();
         statusDto!.SessionId.Should().Be(sessionId);
         statusDto.ExecutionStatus.Should().Be("pending");
+        statusDto.CheckpointCursor.Should().BeNull();
+        statusDto.Rows.Should().BeEmpty();
         statusDto.Result.Should().BeNull();
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persistedSession = await verifyDbContext.StockImportSessions
+            .SingleAsync(session => session.SessionId == sessionId);
+        persistedSession.ExecutionStatus.Should().Be("pending");
+        persistedSession.SessionSnapshotJson.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task GetImportStatus_ShouldReturnProcessing_WhenExecutionMarkerIsStartedBeforeLongTransaction()
+    {
+        // Arrange
+        var testUserId = Guid.NewGuid();
+        using var processingFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.AddScoped<ICurrentUserService>(_ =>
+                    new StaticCurrentUserService(testUserId));
+                services.AddScoped<IStockTransactionRepository, BlockingStockTransactionRepository>();
+            });
+        });
+
+        using var client = processingFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", GenerateTestToken(testUserId));
+
+        await EnsureUserExistsAsync(processingFactory.Services, testUserId);
+
+        var portfolioRequest = new { Description = "Stock Import Status Query Processing", CurrencyCode = "TWD" };
+        var createPortfolioResponse = await client.PostAsJsonAsync("/api/portfolios", portfolioRequest);
+        createPortfolioResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var portfolio = await createPortfolioResponse.Content.ReadFromJsonAsync<PortfolioDto>();
+        portfolio.Should().NotBeNull();
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio!.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewPayload = await previewResponse.Content.ReadAsStringAsync();
+        using var previewJson = JsonDocument.Parse(previewPayload);
+        var firstRow = previewJson.RootElement.GetProperty("rows").EnumerateArray().Single();
+        var sessionId = previewJson.RootElement.GetProperty("sessionId").GetGuid();
+
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = sessionId,
+            PortfolioId = portfolio.Id,
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = firstRow.GetProperty("rowNumber").GetInt32(),
+                    Ticker = firstRow.GetProperty("ticker").GetString(),
+                    ConfirmedTradeSide = firstRow.GetProperty("confirmedTradeSide").GetString(),
+                    Exclude = false
+                }
+            ]
+        };
+
+        BlockingStockTransactionRepository.EnableBlocking();
+
+        var executeTask = client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+
+        await BlockingStockTransactionRepository.WaitUntilEnteredAsync();
+
+        // Act
+        var statusResponse = await client.GetAsync($"{StatusEndpointPrefix}/{sessionId}");
+
+        // Assert
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var statusBody = await statusResponse.Content.ReadAsStringAsync();
+        var statusDto = JsonSerializer.Deserialize<StockImportExecuteStatusResponseDto>(statusBody, ApiJsonOptions);
+        statusDto.Should().NotBeNull();
+        statusDto!.SessionId.Should().Be(sessionId);
+        statusDto.PortfolioId.Should().Be(portfolio.Id);
+        statusDto.ExecutionStatus.Should().Be("processing");
+        statusDto.StartedAtUtc.Should().NotBeNull();
+        statusDto.CompletedAtUtc.Should().BeNull();
+        statusDto.CheckpointCursor.Should().BeNull();
+        statusDto.Rows.Should().BeEmpty();
+        statusDto.Result.Should().BeNull();
+
+        try
+        {
+            BlockingStockTransactionRepository.AllowContinue();
+            var executeResponse = await executeTask;
+            executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            BlockingStockTransactionRepository.DisableBlocking();
+        }
     }
 
     [Fact]
@@ -1750,6 +1871,8 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         statusDto.Should().NotBeNull();
         statusDto!.SessionId.Should().Be(unknownSessionId);
         statusDto.ExecutionStatus.Should().Be("not_found");
+        statusDto.CheckpointCursor.Should().BeNull();
+        statusDto.Rows.Should().BeEmpty();
         statusDto.Result.Should().BeNull();
     }
 
@@ -2456,22 +2579,30 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         var aggregatePerformance = await aggregateResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
         aggregatePerformance.Should().NotBeNull();
 
-        AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentageSource, nameof(aggregatePerformance.TimeWeightedReturnPercentageSource));
-        AssertFiniteIfHasValue(aggregatePerformance.ModifiedDietzPercentageSource, nameof(aggregatePerformance.ModifiedDietzPercentageSource));
+        AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentage, nameof(aggregatePerformance.TimeWeightedReturnPercentage));
+        AssertFiniteIfHasValue(aggregatePerformance.ModifiedDietzPercentage, nameof(aggregatePerformance.ModifiedDietzPercentage));
+        aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeNull();
+        aggregatePerformance.ModifiedDietzPercentageSource.Should().BeNull();
         aggregatePerformance.Xirr.Should().BeNull();
         aggregatePerformance.XirrPercentage.Should().BeNull();
         aggregatePerformance.XirrSource.Should().BeNull();
         aggregatePerformance.XirrPercentageSource.Should().BeNull();
 
-        aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeApproximately(
-            yearPerformance.TimeWeightedReturnPercentageSource!.Value,
-            0.0001d);
-        aggregatePerformance.ModifiedDietzPercentageSource.HasValue.Should().Be(
-            yearPerformance.ModifiedDietzPercentageSource.HasValue);
-        if (yearPerformance.ModifiedDietzPercentageSource.HasValue)
+        aggregatePerformance.TimeWeightedReturnPercentage.HasValue.Should().Be(
+            yearPerformance.TimeWeightedReturnPercentage.HasValue);
+        if (yearPerformance.TimeWeightedReturnPercentage.HasValue)
         {
-            aggregatePerformance.ModifiedDietzPercentageSource!.Value.Should().BeApproximately(
-                yearPerformance.ModifiedDietzPercentageSource.Value,
+            aggregatePerformance.TimeWeightedReturnPercentage!.Value.Should().BeApproximately(
+                yearPerformance.TimeWeightedReturnPercentage.Value,
+                0.0001d);
+        }
+
+        aggregatePerformance.ModifiedDietzPercentage.HasValue.Should().Be(
+            yearPerformance.ModifiedDietzPercentage.HasValue);
+        if (yearPerformance.ModifiedDietzPercentage.HasValue)
+        {
+            aggregatePerformance.ModifiedDietzPercentage!.Value.Should().BeApproximately(
+                yearPerformance.ModifiedDietzPercentage.Value,
                 0.0001d);
         }
     }
@@ -3574,6 +3705,69 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
+    }
+
+    private sealed class BlockingStockTransactionRepository : IStockTransactionRepository
+    {
+        private static TaskCompletionSource<bool> _enteredGate =
+            CreateCompletionSource();
+
+        private static TaskCompletionSource<bool> _continueGate =
+            CreateCompletionSource();
+
+        private static volatile bool _blockingEnabled;
+
+        public static Task WaitUntilEnteredAsync()
+            => _enteredGate.Task;
+
+        public static void EnableBlocking()
+        {
+            _blockingEnabled = true;
+            _enteredGate = CreateCompletionSource();
+            _continueGate = CreateCompletionSource();
+        }
+
+        public static void DisableBlocking()
+        {
+            _blockingEnabled = false;
+            _continueGate.TrySetResult(true);
+        }
+
+        public static void AllowContinue()
+            => _continueGate.TrySetResult(true);
+
+        private static TaskCompletionSource<bool> CreateCompletionSource()
+            => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<StockTransaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.FromResult<StockTransaction?>(null);
+
+        public async Task<IReadOnlyList<StockTransaction>> GetByPortfolioIdAsync(Guid portfolioId, CancellationToken cancellationToken = default)
+        {
+            if (!_blockingEnabled)
+            {
+                return [];
+            }
+
+            _enteredGate.TrySetResult(true);
+            await _continueGate.Task.WaitAsync(cancellationToken);
+            return [];
+        }
+
+        public Task<IReadOnlyList<StockTransaction>> GetByTickerAsync(Guid portfolioId, string ticker, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<StockTransaction>>([]);
+
+        public Task<StockTransaction> AddAsync(StockTransaction transaction, CancellationToken cancellationToken = default)
+            => Task.FromResult(transaction);
+
+        public Task UpdateAsync(StockTransaction transaction, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
     }
 
     private static async Task<SampleBrokerStatementFixture> LoadSampleBrokerStatementFixtureAsync()

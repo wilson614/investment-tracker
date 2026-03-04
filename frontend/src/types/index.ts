@@ -270,6 +270,15 @@ export interface StockImportExecuteResponse {
 }
 
 export type StockImportExecutionState = 'pending' | 'processing' | 'completed' | 'failed' | 'not_found';
+export type StockImportStatusRowState = 'pending' | 'completed' | 'failed';
+
+export interface StockImportStatusRow {
+  rowNumber: number;
+  status: StockImportStatusRowState;
+  transactionId?: string | null;
+  errorCode?: string | null;
+  message?: string | null;
+}
 
 export interface StockImportExecuteStatusResponse {
   sessionId: string;
@@ -278,6 +287,8 @@ export interface StockImportExecuteStatusResponse {
   message: string | null;
   startedAtUtc: string | null;
   completedAtUtc: string | null;
+  checkpointCursor?: string | null;
+  rows?: StockImportStatusRow[] | null;
   result: StockImportExecuteResponse | null;
 }
 

@@ -2259,7 +2259,7 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_DefaultAndRowOverride_OnLegacyCsv_ShouldRemainPartiallyCommitted()
+    public async Task ExecuteAsync_DefaultAndRowOverride_OnLegacyCsv_ShouldRollbackAndReturnRejected()
     {
         // Arrange
         var fixture = new Fixture(selectedFormat: "legacy_csv");
@@ -2296,20 +2296,21 @@ public class ExecuteStockImportBalanceActionTests
         var result = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
-        result.Status.Should().Be("partially_committed");
-        result.Summary.InsertedRows.Should().Be(1);
+        result.Status.Should().Be("rejected");
+        result.Summary.InsertedRows.Should().Be(0);
         result.Summary.FailedRows.Should().Be(1);
 
         var successRow = result.Results.Single(r => r.RowNumber == 21);
         successRow.Success.Should().BeTrue();
-        successRow.TransactionId.Should().NotBeNull();
+        successRow.TransactionId.Should().BeNull();
+        successRow.Message.Should().Be("Import execution failed. Please retry later.");
 
         var failedRow = result.Results.Single(r => r.RowNumber == 22);
         failedRow.Success.Should().BeFalse();
         failedRow.ErrorCode.Should().Be("BALANCE_ACTION_REQUIRED");
 
-        fixture.AppDbTransactionMock.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
-        fixture.AppDbTransactionMock.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Never);
+        fixture.AppDbTransactionMock.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
+        fixture.AppDbTransactionMock.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -2525,6 +2526,82 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_BeginTransactionThrowsAfterStart_ShouldPersistFailedExecutionState()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        fixture.TransactionManagerMock
+            .Setup(manager => manager.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("begin-tx-failed"));
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        // Act
+        var act = () => fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Import execution failed. Please retry later.");
+
+        fixture.LastSavedExecutionState.Should().NotBeNull();
+        fixture.LastSavedExecutionState!.ExecutionStatus.Should().Be("failed");
+        fixture.LastSavedExecutionState.Message.Should().Be("Import execution failed. Please retry later.");
+        fixture.LastSavedExecutionState.Result.Should().BeNull();
+
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+        status.ExecutionStatus.Should().Be("failed");
+        status.CheckpointCursor.Should().BeNull();
+        status.Rows.Should().BeEmpty();
+        status.Result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SessionConsumedMissingAfterStart_ShouldPersistFailedExecutionState()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        fixture.SessionStoreMock
+            .Setup(store => store.TryConsumeForOwnerAsync(
+                fixture.SessionId,
+                fixture.UserId,
+                fixture.PortfolioId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockImportSessionSnapshotDto?)null);
+
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        // Act
+        var act = () => fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("Import session not found, expired, or already consumed.");
+
+        fixture.LastSavedExecutionState.Should().NotBeNull();
+        fixture.LastSavedExecutionState!.ExecutionStatus.Should().Be("failed");
+        fixture.LastSavedExecutionState.Message.Should().Be("Import execution failed. Please retry later.");
+        fixture.LastSavedExecutionState.Result.Should().BeNull();
+
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+        status.ExecutionStatus.Should().Be("failed");
+        status.CheckpointCursor.Should().BeNull();
+        status.Rows.Should().BeEmpty();
+        status.Result.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_InternalException_ShouldPersistSanitizedFailedMessage()
     {
         // Arrange
@@ -2552,6 +2629,12 @@ public class ExecuteStockImportBalanceActionTests
         fixture.LastSavedExecutionState!.ExecutionStatus.Should().Be("failed");
         fixture.LastSavedExecutionState.Message.Should().Be("Import execution failed. Please retry later.");
         fixture.LastSavedExecutionState.Message.Should().NotContain("sensitive-internal-detail");
+
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+        status.ExecutionStatus.Should().Be("failed");
+        status.CheckpointCursor.Should().BeNull();
+        status.Rows.Should().BeEmpty();
+        status.Result.Should().BeNull();
     }
 
     [Fact]
@@ -2585,6 +2668,86 @@ public class ExecuteStockImportBalanceActionTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ShouldStartExecutionBeforeOpeningTransaction()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        var request = fixture.BuildExecuteRequest(
+            rowAction: null,
+            rowTopUpType: null,
+            defaultDecision: null,
+            rowNumber: 10,
+            ticker: "2330",
+            confirmedTradeSide: "buy");
+
+        var startedMarkerWritten = false;
+
+        fixture.SessionStoreMock
+            .Setup(store => store.TryStartExecutionAsync(
+                fixture.SessionId,
+                fixture.UserId,
+                fixture.PortfolioId,
+                It.IsAny<CancellationToken>()))
+            .Callback(() => startedMarkerWritten = true)
+            .ReturnsAsync(true);
+
+        fixture.TransactionManagerMock
+            .Setup(manager => manager.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => startedMarkerWritten.Should().BeTrue(
+                "processing marker must be committed before opening the long-running import transaction"))
+            .ReturnsAsync(fixture.AppDbTransactionMock.Object);
+
+        // Act
+        var response = await fixture.UseCase.ExecuteAsync(request, CancellationToken.None);
+
+        // Assert
+        response.Should().NotBeNull();
+        startedMarkerWritten.Should().BeTrue();
+
+        fixture.TransactionManagerMock.Verify(
+            manager => manager.BeginTransactionAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        fixture.SessionStoreMock.Verify(
+            store => store.TryStartExecutionAsync(
+                fixture.SessionId,
+                fixture.UserId,
+                fixture.PortfolioId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_WhenExecutionInProgress_ShouldReturnProcessingWithEmptyCheckpointPayload()
+    {
+        // Arrange
+        var fixture = new Fixture();
+        fixture.SessionStoreMock
+            .Setup(store => store.GetExecutionStateAsync(fixture.SessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StockImportExecuteSessionStateDto
+            {
+                SessionId = fixture.SessionId,
+                UserId = fixture.UserId,
+                PortfolioId = fixture.PortfolioId,
+                ExecutionStatus = "processing",
+                Message = null,
+                StartedAtUtc = DateTime.UtcNow,
+                CompletedAtUtc = null,
+                Result = null
+            });
+
+        // Act
+        var status = await fixture.UseCase.GetStatusAsync(fixture.SessionId, CancellationToken.None);
+
+        // Assert
+        status.SessionId.Should().Be(fixture.SessionId);
+        status.ExecutionStatus.Should().Be("processing");
+        status.CheckpointCursor.Should().BeNull();
+        status.Rows.Should().BeEmpty();
+        status.Result.Should().BeNull();
+    }
+
+    [Fact]
     public async Task GetStatusAsync_WhenPreviewSessionExistsButNotExecuted_ShouldReturnPending()
     {
         // Arrange
@@ -2596,6 +2759,8 @@ public class ExecuteStockImportBalanceActionTests
         // Assert
         status.SessionId.Should().Be(fixture.SessionId);
         status.ExecutionStatus.Should().Be("pending");
+        status.CheckpointCursor.Should().BeNull();
+        status.Rows.Should().BeEmpty();
         status.Result.Should().BeNull();
     }
 
@@ -2619,9 +2784,17 @@ public class ExecuteStockImportBalanceActionTests
 
         // Assert
         status.ExecutionStatus.Should().Be("completed");
+        status.CheckpointCursor.Should().NotBeNullOrWhiteSpace();
+        status.Rows.Should().HaveCount(1);
+        status.Rows.Single().RowNumber.Should().Be(10);
+
+        var rowStatus = status.Rows.Single().Status;
+        (rowStatus == "completed" || rowStatus == "failed").Should().BeTrue();
+
         status.CompletedAtUtc.Should().NotBeNull();
         status.Result.Should().NotBeNull();
         status.Result!.SessionId.Should().Be(fixture.SessionId);
+        status.Rows.Single().Status.Should().Be(status.Result.Results.Single().Success ? "completed" : "failed");
     }
 
     private static async Task<(StockImportExecuteResponseDto Response, TimeSpan Elapsed)> MeasureExecuteImportPerformanceRunAsync(int rowCount)

@@ -34,10 +34,6 @@ public interface IExecuteStockImportUseCase
     Task<StockImportExecuteResponseDto> ExecuteAsync(
         ExecuteStockImportRequest request,
         CancellationToken cancellationToken = default);
-
-    Task<StockImportExecuteStatusResponseDto> GetStatusAsync(
-        Guid sessionId,
-        CancellationToken cancellationToken = default);
 }
 
 internal readonly record struct ImportedStockTransactionCreationResult(
@@ -63,14 +59,11 @@ public sealed class ExecuteStockImportUseCase(
     ILogger<ExecuteStockImportUseCase> logger) : IExecuteStockImportUseCase
 {
     private const string StatusCommitted = "committed";
-    private const string StatusPartiallyCommitted = "partially_committed";
     private const string StatusRejected = "rejected";
 
-    private const string ExecutionStatusPending = "pending";
-    private const string ExecutionStatusProcessing = "processing";
-    private const string ExecutionStatusCompleted = "completed";
-    private const string ExecutionStatusFailed = "failed";
-    private const string ExecutionStatusNotFound = "not_found";
+    private const string ExecutionStatusProcessing = QueryStockImportSessionUseCase.ProcessingStatus;
+    private const string ExecutionStatusCompleted = QueryStockImportSessionUseCase.CompletedStatus;
+    private const string ExecutionStatusFailed = QueryStockImportSessionUseCase.FailedStatus;
 
     private const string ErrorCodeSymbolUnresolved = "SYMBOL_UNRESOLVED";
     private const string ErrorCodeSessionRowMismatch = "SESSION_ROW_MISMATCH";
@@ -97,6 +90,7 @@ public sealed class ExecuteStockImportUseCase(
     private const string MessageSessionNotFound = "Import session not found, expired, or already consumed.";
     private const string MessageExecutionFailedSafe = "Import execution failed. Please retry later.";
     private const string MessageBrokerStatementAtomicRollbackDueToBalanceAction = "匯入包含需先指定餘額處理方式的列，已整批回滾；請補齊後重試。";
+    private const string MessageAtomicRejectedRollback = MessageExecutionFailedSafe;
     private const string WarningMessagePartialPeriodAssumption = "偵測到匯入可能是部分期間；已依使用者指定方式套用 sell-before-buy 處理。";
     private const string WarningCorrectionGuidancePartialPeriodAssumption = "若要提升帳本成本與績效精準度，建議補匯入更早交易紀錄或提供完整期初持倉基準。";
 
@@ -156,6 +150,8 @@ public sealed class ExecuteStockImportUseCase(
             return replayResponse;
         }
 
+        var executionStartedAtUtc = DateTime.UtcNow;
+
         var previewSessionForOwnership = await stockImportSessionStore.GetAsync(request.SessionId, cancellationToken);
         if (previewSessionForOwnership is null)
         {
@@ -184,91 +180,59 @@ public sealed class ExecuteStockImportUseCase(
             throw new BusinessRuleException(MessageExecutionInProgress);
         }
 
-        var executionStartedAtUtc = DateTime.UtcNow;
-
-        var session = await stockImportSessionStore.TryConsumeForOwnerAsync(
-            request.SessionId,
-            userId,
-            request.PortfolioId,
-            cancellationToken);
-
-        if (session is null)
+        try
         {
-            await stockImportSessionStore.RemoveAsync(request.SessionId, cancellationToken);
+            await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
-            throw new BusinessRuleException(MessageSessionNotFound);
+            var session = await stockImportSessionStore.TryConsumeForOwnerAsync(
+                request.SessionId,
+                userId,
+                request.PortfolioId,
+                cancellationToken);
+
+            if (session is null)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw new BusinessRuleException(MessageSessionNotFound);
+            }
+
+            return await ExecuteWithConsumedSessionAsync(
+                request,
+                portfolio,
+                userId,
+                session,
+                executionStartedAtUtc,
+                tx,
+                cancellationToken);
         }
+        catch (Exception ex)
+        {
+            await PersistFailedExecutionStateIfProcessingAsync(
+                request.SessionId,
+                userId,
+                request.PortfolioId,
+                executionStartedAtUtc);
 
-        return await ExecuteWithConsumedSessionAsync(
-            request,
-            portfolio,
-            userId,
-            session,
-            executionStartedAtUtc,
-            cancellationToken);
+            if (ex is BusinessRuleException or EntityNotFoundException or AccessDeniedException)
+            {
+                throw;
+            }
+
+            if (ex is InvalidOperationException invalidOperationException
+                && string.Equals(invalidOperationException.Message, MessageAtomicRejectedRollback, StringComparison.Ordinal))
+            {
+                throw;
+            }
+
+            throw new InvalidOperationException(MessageAtomicRejectedRollback, ex);
+        }
     }
 
-    public async Task<StockImportExecuteStatusResponseDto> GetStatusAsync(
+    public Task<StockImportExecuteStatusResponseDto> GetStatusAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default)
-    {
-        if (sessionId == Guid.Empty)
-            throw new BusinessRuleException("SessionId is required.");
-
-        var userId = currentUserService.UserId
-            ?? throw new AccessDeniedException("User not authenticated");
-
-        var executionState = await stockImportSessionStore.GetExecutionStateAsync(sessionId, cancellationToken);
-        if (executionState is not null)
-        {
-            if (executionState.UserId != userId)
-            {
-                throw new AccessDeniedException("Import session does not match current user or portfolio.");
-            }
-
-            return new StockImportExecuteStatusResponseDto
-            {
-                SessionId = sessionId,
-                PortfolioId = executionState.PortfolioId,
-                ExecutionStatus = executionState.ExecutionStatus,
-                Message = executionState.Message,
-                StartedAtUtc = executionState.StartedAtUtc,
-                CompletedAtUtc = executionState.CompletedAtUtc,
-                Result = executionState.Result
-            };
-        }
-
-        var previewSession = await stockImportSessionStore.GetAsync(sessionId, cancellationToken);
-        if (previewSession is not null)
-        {
-            if (previewSession.UserId != userId)
-            {
-                throw new AccessDeniedException("Import session does not match current user or portfolio.");
-            }
-
-            return new StockImportExecuteStatusResponseDto
-            {
-                SessionId = sessionId,
-                PortfolioId = previewSession.PortfolioId,
-                ExecutionStatus = ExecutionStatusPending,
-                Message = null,
-                StartedAtUtc = null,
-                CompletedAtUtc = null,
-                Result = null
-            };
-        }
-
-        return new StockImportExecuteStatusResponseDto
-        {
-            SessionId = sessionId,
-            PortfolioId = null,
-            ExecutionStatus = ExecutionStatusNotFound,
-            Message = null,
-            StartedAtUtc = null,
-            CompletedAtUtc = null,
-            Result = null
-        };
-    }
+        => new QueryStockImportSessionUseCase(stockImportSessionStore, currentUserService)
+            .ExecuteAsync(sessionId, cancellationToken);
 
     private async Task<StockImportExecuteResponseDto?> TryResolveReplayResponseAsync(
         Guid sessionId,
@@ -305,12 +269,63 @@ public sealed class ExecuteStockImportUseCase(
         return null;
     }
 
+    private async Task PersistFailedExecutionStateIfProcessingAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        DateTime executionStartedAtUtc)
+    {
+        try
+        {
+            var latestExecutionState = await stockImportSessionStore.GetExecutionStateAsync(
+                sessionId,
+                CancellationToken.None);
+
+            if (latestExecutionState is null)
+            {
+                return;
+            }
+
+            if (latestExecutionState.UserId != userId || latestExecutionState.PortfolioId != portfolioId)
+            {
+                return;
+            }
+
+            if (!string.Equals(latestExecutionState.ExecutionStatus, ExecutionStatusProcessing, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await stockImportSessionStore.SaveExecutionResultAsync(
+                new StockImportExecuteSessionStateDto
+                {
+                    SessionId = sessionId,
+                    UserId = userId,
+                    PortfolioId = portfolioId,
+                    ExecutionStatus = ExecutionStatusFailed,
+                    Message = MessageAtomicRejectedRollback,
+                    StartedAtUtc = executionStartedAtUtc,
+                    CompletedAtUtc = DateTime.UtcNow,
+                    Result = null
+                },
+                CancellationToken.None);
+        }
+        catch (Exception persistEx)
+        {
+            logger.LogError(
+                persistEx,
+                "Stock import execute failed-state persistence failed. SessionId={SessionId}",
+                sessionId);
+        }
+    }
+
     private async Task<StockImportExecuteResponseDto> ExecuteWithConsumedSessionAsync(
         ExecuteStockImportRequest request,
         Domain.Entities.Portfolio portfolio,
         Guid userId,
         StockImportSessionSnapshotDto session,
         DateTime executionStartedAtUtc,
+        IAppDbTransaction tx,
         CancellationToken cancellationToken)
     {
         var sessionRowsByNumber = session.Rows.ToDictionary(r => r.RowNumber);
@@ -331,8 +346,6 @@ public sealed class ExecuteStockImportUseCase(
 
         var boundLedger = await currencyLedgerRepository.GetByIdAsync(portfolio.BoundCurrencyLedgerId, cancellationToken)
             ?? throw new EntityNotFoundException("CurrencyLedger", portfolio.BoundCurrencyLedgerId);
-
-        await using var tx = await transactionManager.BeginTransactionAsync(cancellationToken);
 
         try
         {
@@ -645,24 +658,25 @@ public sealed class ExecuteStockImportUseCase(
             var shouldRollbackForBrokerStatementBalanceFailure =
                 isBrokerStatementImport && hasBrokerStatementBalanceActionRequiredFailure;
 
-            if (shouldRollbackForBrokerStatementBalanceFailure || insertedRows == 0)
+            var shouldRollbackForRejected = shouldRollbackForBrokerStatementBalanceFailure || failedRows > 0;
+
+            if (shouldRollbackForRejected)
             {
                 await tx.RollbackAsync(cancellationToken);
 
-                if (shouldRollbackForBrokerStatementBalanceFailure)
-                {
-                    insertedRows = 0;
+                insertedRows = 0;
 
-                    for (var i = 0; i < results.Count; i++)
+                for (var i = 0; i < results.Count; i++)
+                {
+                    if (results[i].TransactionId.HasValue)
                     {
-                        if (results[i].TransactionId.HasValue)
+                        results[i] = results[i] with
                         {
-                            results[i] = results[i] with
-                            {
-                                TransactionId = null,
-                                Message = MessageBrokerStatementAtomicRollbackDueToBalanceAction
-                            };
-                        }
+                            TransactionId = null,
+                            Message = shouldRollbackForBrokerStatementBalanceFailure
+                                ? MessageBrokerStatementAtomicRollbackDueToBalanceAction
+                                : MessageAtomicRejectedRollback
+                        };
                     }
                 }
             }
@@ -676,12 +690,52 @@ public sealed class ExecuteStockImportUseCase(
                         cancellationToken);
                 }
 
+                var committedResponse = new StockImportExecuteResponseDto
+                {
+                    SessionId = request.SessionId,
+                    IsReplay = false,
+                    Status = StatusCommitted,
+                    Summary = new StockImportExecuteSummaryDto
+                    {
+                        TotalRows = request.Rows.Count,
+                        InsertedRows = insertedRows,
+                        FailedRows = failedRows,
+                        ErrorCount = diagnostics.Count
+                    },
+                    Results = results,
+                    Errors = diagnostics
+                };
+
+                await stockImportSessionStore.SaveExecutionResultAsync(
+                    new StockImportExecuteSessionStateDto
+                    {
+                        SessionId = request.SessionId,
+                        UserId = userId,
+                        PortfolioId = request.PortfolioId,
+                        ExecutionStatus = ExecutionStatusCompleted,
+                        Message = null,
+                        StartedAtUtc = executionStartedAtUtc,
+                        CompletedAtUtc = DateTime.UtcNow,
+                        Result = committedResponse
+                    },
+                    cancellationToken);
+
                 await tx.CommitAsync(cancellationToken);
+
+                logger.LogInformation(
+                    "Stock import execute completed. PortfolioId={PortfolioId}, SessionId={SessionId}, Status={Status}, RequestedRows={RequestedRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}, ErrorCount={ErrorCount}",
+                    request.PortfolioId,
+                    request.SessionId,
+                    committedResponse.Status,
+                    request.Rows.Count,
+                    insertedRows,
+                    failedRows,
+                    diagnostics.Count);
+
+                return committedResponse;
             }
 
-            var status = shouldRollbackForBrokerStatementBalanceFailure
-                ? StatusRejected
-                : ResolveStatus(insertedRows, failedRows);
+            var status = StatusRejected;
 
             logger.LogInformation(
                 "Stock import execute completed. PortfolioId={PortfolioId}, SessionId={SessionId}, Status={Status}, RequestedRows={RequestedRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}, ErrorCount={ErrorCount}",
@@ -745,7 +799,7 @@ public sealed class ExecuteStockImportUseCase(
                     UserId = userId,
                     PortfolioId = request.PortfolioId,
                     ExecutionStatus = ExecutionStatusFailed,
-                    Message = MessageExecutionFailedSafe,
+                    Message = MessageAtomicRejectedRollback,
                     StartedAtUtc = executionStartedAtUtc,
                     CompletedAtUtc = DateTime.UtcNow,
                     Result = null
@@ -757,7 +811,7 @@ public sealed class ExecuteStockImportUseCase(
                 throw;
             }
 
-            throw new InvalidOperationException(MessageExecutionFailedSafe, ex);
+            throw new InvalidOperationException(MessageAtomicRejectedRollback, ex);
         }
     }
 
@@ -2060,16 +2114,6 @@ public sealed class ExecuteStockImportUseCase(
             Currency.EUR => StockMarket.EU,
             _ => null
         };
-
-    private static string ResolveStatus(int insertedRows, int failedRows)
-    {
-        if (failedRows == 0)
-            return StatusCommitted;
-
-        return insertedRows > 0
-            ? StatusPartiallyCommitted
-            : StatusRejected;
-    }
 
     private static void AddFailure(
         ExecuteStockImportRowRequest row,

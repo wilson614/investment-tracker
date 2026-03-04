@@ -1,181 +1,310 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text.Json;
 using InvestmentTracker.Application.DTOs;
 using InvestmentTracker.Application.Interfaces;
-using Microsoft.Extensions.Caching.Memory;
+using InvestmentTracker.Domain.Entities;
+using InvestmentTracker.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace InvestmentTracker.Infrastructure.Services;
 
 /// <summary>
-/// In-memory implementation for stock import preview/execute session binding.
-/// Snapshot is persisted as immutable DTO including baseline scaffold fields.
+/// DB-backed implementation for stock import preview/execute session binding.
 /// </summary>
-public sealed class StockImportSessionStore(IMemoryCache memoryCache) : IStockImportSessionStore
+public sealed class StockImportSessionStore(AppDbContext context) : IStockImportSessionStore
 {
-    private static readonly TimeSpan SessionTtl = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan SessionSlidingExpiration = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan ExecuteResultTtl = TimeSpan.FromHours(24);
-    private static readonly TimeSpan ExecuteResultSlidingExpiration = TimeSpan.FromHours(2);
-    private static readonly object SessionConsumeLock = new();
-    private static readonly object ExecutionStateLock = new();
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
-    public Task SaveAsync(
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SessionLocks = new();
+
+    private const string InMemoryProviderName = "Microsoft.EntityFrameworkCore.InMemory";
+    private const string ExecutionStatusPending = "pending";
+    private const string ExecutionStatusProcessing = "processing";
+    private const string ExecutionStatusCompleted = "completed";
+    private const string ExecutionStatusFailed = "failed";
+
+    public async Task SaveAsync(
         StockImportSessionSnapshotDto session,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        memoryCache.Set(
-            GetCacheKey(session.SessionId),
-            session,
-            new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = SessionTtl,
-                SlidingExpiration = SessionSlidingExpiration
-            });
+        var snapshotJson = Serialize(session);
 
-        return Task.CompletedTask;
-    }
+        var existing = await context.StockImportSessions
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.SessionId == session.SessionId, cancellationToken);
 
-    public Task<StockImportSessionSnapshotDto?> GetAsync(
-        Guid sessionId,
-        CancellationToken cancellationToken = default)
-    {
-        memoryCache.TryGetValue(GetCacheKey(sessionId), out StockImportSessionSnapshotDto? session);
-        return Task.FromResult(session);
-    }
-
-    public Task<StockImportSessionSnapshotDto?> TryConsumeAsync(
-        Guid sessionId,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(TryConsumeInternal(sessionId, static _ => true));
-    }
-
-    public Task<StockImportSessionSnapshotDto?> TryConsumeForOwnerAsync(
-        Guid sessionId,
-        Guid userId,
-        Guid portfolioId,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(TryConsumeInternal(
-            sessionId,
-            session => session.UserId == userId && session.PortfolioId == portfolioId));
-    }
-
-    public Task<bool> TryStartExecutionAsync(
-        Guid sessionId,
-        Guid userId,
-        Guid portfolioId,
-        CancellationToken cancellationToken = default)
-    {
-        var stateKey = GetExecutionStateCacheKey(sessionId);
-
-        lock (ExecutionStateLock)
+        if (existing is null)
         {
-            memoryCache.TryGetValue(stateKey, out StockImportExecuteSessionStateDto? existingState);
-            if (existingState is not null)
-            {
-                if (existingState.UserId != userId || existingState.PortfolioId != portfolioId)
-                {
-                    return Task.FromResult(false);
-                }
+            var entity = StockImportSession.CreatePending(
+                session.SessionId,
+                session.UserId,
+                session.PortfolioId,
+                snapshotJson);
 
-                if (string.Equals(existingState.ExecutionStatus, ExecutionStatusProcessing, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(existingState.ExecutionStatus, ExecutionStatusCompleted, StringComparison.OrdinalIgnoreCase))
-                {
-                    return Task.FromResult(false);
-                }
-            }
-
-            var processingState = new StockImportExecuteSessionStateDto
-            {
-                SessionId = sessionId,
-                UserId = userId,
-                PortfolioId = portfolioId,
-                ExecutionStatus = ExecutionStatusProcessing,
-                Message = null,
-                StartedAtUtc = DateTime.UtcNow,
-                CompletedAtUtc = null,
-                Result = null
-            };
-
-            SaveExecutionStateInternal(processingState);
-            return Task.FromResult(true);
+            await context.StockImportSessions.AddAsync(entity, cancellationToken);
         }
+        else
+        {
+            existing.ReplacePending(
+                session.UserId,
+                session.PortfolioId,
+                snapshotJson);
+
+            context.StockImportSessions.Update(existing);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
-    public Task SaveExecutionResultAsync(
+    public async Task<StockImportSessionSnapshotDto?> GetAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await context.StockImportSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(entity.SessionSnapshotJson))
+            return null;
+
+        if (!string.Equals(entity.ExecutionStatus, "pending", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(entity.ExecutionStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Deserialize<StockImportSessionSnapshotDto>(entity.SessionSnapshotJson);
+    }
+
+    public async Task<StockImportSessionSnapshotDto?> TryConsumeAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await context.StockImportSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null || string.IsNullOrWhiteSpace(entity.SessionSnapshotJson))
+            return null;
+
+        if (string.Equals(entity.ExecutionStatus, ExecutionStatusCompleted, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return Deserialize<StockImportSessionSnapshotDto>(entity.SessionSnapshotJson);
+    }
+
+    public async Task<StockImportSessionSnapshotDto?> TryConsumeForOwnerAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await context.StockImportSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null)
+            return null;
+
+        if (entity.UserId != userId || entity.PortfolioId != portfolioId)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(entity.SessionSnapshotJson))
+            return null;
+
+        if (string.Equals(entity.ExecutionStatus, ExecutionStatusCompleted, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return Deserialize<StockImportSessionSnapshotDto>(entity.SessionSnapshotJson);
+    }
+
+    public async Task<bool> TryStartExecutionAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsInMemoryProvider())
+        {
+            var gate = SessionLocks.GetOrAdd(sessionId, static _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(cancellationToken);
+
+            try
+            {
+                return await TryStartExecutionInternalAsync(sessionId, userId, portfolioId, cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        return await TryStartExecutionAtomicAsync(sessionId, userId, portfolioId, cancellationToken);
+    }
+
+    private async Task<bool> TryStartExecutionInternalAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        CancellationToken cancellationToken)
+    {
+        var entity = await context.StockImportSessions
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null)
+            return false;
+
+        if (entity.UserId != userId || entity.PortfolioId != portfolioId)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(entity.SessionSnapshotJson))
+            return false;
+
+        if (!entity.TryStartProcessing(DateTime.UtcNow))
+            return false;
+
+        await context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> TryStartExecutionAtomicAsync(
+        Guid sessionId,
+        Guid userId,
+        Guid portfolioId,
+        CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTime.UtcNow;
+
+        var affectedRows = await context.StockImportSessions
+            .IgnoreQueryFilters()
+            .Where(x => x.SessionId == sessionId)
+            .Where(x => x.UserId == userId)
+            .Where(x => x.PortfolioId == portfolioId)
+            .Where(x => x.SessionSnapshotJson != string.Empty)
+            .Where(x =>
+                x.ExecutionStatus == ExecutionStatusPending
+                || x.ExecutionStatus == ExecutionStatusFailed)
+            .ExecuteUpdateAsync(
+                updater => updater
+                    .SetProperty(x => x.ExecutionStatus, ExecutionStatusProcessing)
+                    .SetProperty(x => x.Message, (string?)null)
+                    .SetProperty(x => x.StartedAtUtc, nowUtc)
+                    .SetProperty(x => x.CompletedAtUtc, (DateTime?)null)
+                    .SetProperty(x => x.ExecutionResultJson, (string?)null)
+                    .SetProperty(x => x.UpdatedAt, nowUtc),
+                cancellationToken);
+
+        return affectedRows == 1;
+    }
+
+    private bool IsInMemoryProvider()
+        => string.Equals(context.Database.ProviderName, InMemoryProviderName, StringComparison.Ordinal);
+
+    public async Task SaveExecutionResultAsync(
         StockImportExecuteSessionStateDto executionState,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(executionState);
 
-        lock (ExecutionStateLock)
+        var entity = await context.StockImportSessions
+            .FirstOrDefaultAsync(x => x.SessionId == executionState.SessionId, cancellationToken);
+
+        if (entity is null)
         {
-            SaveExecutionStateInternal(executionState);
+            throw new InvalidOperationException($"Stock import session {executionState.SessionId} was not found when saving execution result.");
         }
 
-        return Task.CompletedTask;
+        if (string.Equals(executionState.ExecutionStatus, ExecutionStatusCompleted, StringComparison.OrdinalIgnoreCase)
+            && executionState.Result is not null)
+        {
+            entity.MarkCompleted(
+                executionState.CompletedAtUtc ?? DateTime.UtcNow,
+                Serialize(executionState.Result));
+        }
+        else if (string.Equals(executionState.ExecutionStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.MarkFailed(
+                executionState.CompletedAtUtc ?? DateTime.UtcNow,
+                executionState.Message);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Unsupported stock import execution status '{0}' for session {1}.",
+                    executionState.ExecutionStatus,
+                    executionState.SessionId));
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
-    public Task<StockImportExecuteSessionStateDto?> GetExecutionStateAsync(
+    public async Task<StockImportExecuteSessionStateDto?> GetExecutionStateAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default)
     {
-        memoryCache.TryGetValue(GetExecutionStateCacheKey(sessionId), out StockImportExecuteSessionStateDto? state);
-        return Task.FromResult(state);
+        var entity = await context.StockImportSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null)
+            return null;
+
+        var hasExecutionState = !string.Equals(entity.ExecutionStatus, "pending", StringComparison.OrdinalIgnoreCase)
+            || entity.StartedAtUtc.HasValue
+            || entity.CompletedAtUtc.HasValue
+            || !string.IsNullOrWhiteSpace(entity.Message)
+            || !string.IsNullOrWhiteSpace(entity.ExecutionResultJson);
+
+        if (!hasExecutionState)
+            return null;
+
+        StockImportExecuteResponseDto? result = null;
+        if (!string.IsNullOrWhiteSpace(entity.ExecutionResultJson))
+        {
+            result = Deserialize<StockImportExecuteResponseDto>(entity.ExecutionResultJson);
+        }
+
+        return new StockImportExecuteSessionStateDto
+        {
+            SessionId = entity.SessionId,
+            UserId = entity.UserId,
+            PortfolioId = entity.PortfolioId,
+            ExecutionStatus = entity.ExecutionStatus,
+            Message = entity.Message,
+            StartedAtUtc = entity.StartedAtUtc ?? entity.CreatedAt,
+            CompletedAtUtc = entity.CompletedAtUtc,
+            Result = result
+        };
     }
 
-    public Task RemoveAsync(
+    public async Task RemoveAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default)
     {
-        memoryCache.Remove(GetCacheKey(sessionId));
-        memoryCache.Remove(GetExecutionStateCacheKey(sessionId));
-        return Task.CompletedTask;
+        var entity = await context.StockImportSessions
+            .FirstOrDefaultAsync(x => x.SessionId == sessionId, cancellationToken);
+
+        if (entity is null)
+            return;
+
+        context.StockImportSessions.Remove(entity);
+        await context.SaveChangesAsync(cancellationToken);
     }
 
-    private StockImportSessionSnapshotDto? TryConsumeInternal(
-        Guid sessionId,
-        Func<StockImportSessionSnapshotDto, bool> canConsume)
-    {
-        var cacheKey = GetCacheKey(sessionId);
+    private static string Serialize<T>(T value)
+        => JsonSerializer.Serialize(value, JsonOptions);
 
-        lock (SessionConsumeLock)
-        {
-            memoryCache.TryGetValue(cacheKey, out StockImportSessionSnapshotDto? session);
-            if (session is null)
-            {
-                return null;
-            }
-
-            if (!canConsume(session))
-            {
-                return null;
-            }
-
-            memoryCache.Remove(cacheKey);
-            return session;
-        }
-    }
-
-    private void SaveExecutionStateInternal(StockImportExecuteSessionStateDto executionState)
-    {
-        memoryCache.Set(
-            GetExecutionStateCacheKey(executionState.SessionId),
-            executionState,
-            new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = ExecuteResultTtl,
-                SlidingExpiration = ExecuteResultSlidingExpiration
-            });
-    }
-
-    private static string GetCacheKey(Guid sessionId)
-        => $"stock-import:preview-session:{sessionId:N}";
-
-    private static string GetExecutionStateCacheKey(Guid sessionId)
-        => $"stock-import:execute-state:{sessionId:N}";
-
-    private const string ExecutionStatusProcessing = "processing";
-    private const string ExecutionStatusCompleted = "completed";
+    private static T? Deserialize<T>(string json)
+        => JsonSerializer.Deserialize<T>(json, JsonOptions);
 }
