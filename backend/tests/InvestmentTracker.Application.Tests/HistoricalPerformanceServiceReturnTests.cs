@@ -1082,6 +1082,97 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_MissingYearStartPriceWithSeededBaseline_UsesCostBasisFallbackAndStillReturnsMissingPriceWarning()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Missing price fallback should keep valuation computable");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var seededAdjustment = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        seededAdjustment.SetImportInitialization(
+            marketValueAtImport: 1000m,
+            historicalTotalCost: 980m);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([seededAdjustment]);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("2330", year - 1, StockMarket.TW, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndPriceResult?)null);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>(),
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.IsComplete.Should().BeFalse();
+        result.MissingPrices.Should().ContainSingle(p => p.Ticker == "2330" && p.PriceType == "YearStart");
+
+        // Missing year-start price should now be warning-only; valuation still computed via seeded baseline fallback.
+        result.StartValueSource.Should().Be(980m);
+        result.StartValueHome.Should().Be(980m);
+        result.EndValueSource.Should().Be(1000m);
+        result.EndValueHome.Should().Be(1000m);
+
+        result.TotalReturnPercentageSource.Should().BeApproximately(2.0408163265d, 0.0001d);
+        result.TotalReturnPercentage.Should().BeApproximately(2.0408163265d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(2.0408163265d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(2.0408163265d, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeApproximately(2.0408163265d, 0.0001d);
+        result.ModifiedDietzPercentage.Should().BeApproximately(2.0408163265d, 0.0001d);
+
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.XirrReliability.Should().Be("High");
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_AutoFetchSameTickerForYearStartAndYearEnd_DeduplicatesPriceAndFxCalls()
     {
         // Arrange
@@ -1487,6 +1578,14 @@ public class HistoricalPerformanceServiceReturnTests
         result.EndValueSource.Should().Be(990_000m);
         result.StartValueHome.Should().Be(980_000m);
         result.EndValueHome.Should().Be(990_000m);
+        result.YearStartHoldingProjections.Should().ContainSingle();
+        result.YearEndHoldingProjections.Should().ContainSingle();
+        result.YearStartHoldingProjections[0].MarketValueSource.Should().Be(980_000m);
+        result.YearStartHoldingProjections[0].MarketValueHome.Should().Be(980_000m);
+        result.YearStartHoldingProjections[0].ValuationSource.Should().NotBe(PositionValuationSource.Unavailable);
+        result.YearEndHoldingProjections[0].MarketValueSource.Should().Be(990_000m);
+        result.YearEndHoldingProjections[0].MarketValueHome.Should().Be(990_000m);
+        result.YearEndHoldingProjections[0].ValuationSource.Should().NotBe(PositionValuationSource.Unavailable);
         result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
         result.TimeWeightedReturnPercentageSource.Should().BeApproximately(1.0204081633d, 0.0001d);
         result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);
@@ -1714,6 +1813,25 @@ public class HistoricalPerformanceServiceReturnTests
 
         resultLowCost.TimeWeightedReturnPercentageSource.Should().NotBeNull();
         resultLowCost.ModifiedDietzPercentageSource.Should().NotBeNull();
+        resultLowCost.YearStartHoldingProjections.Should().ContainSingle();
+        resultLowCost.YearEndHoldingProjections.Should().BeEmpty();
+        resultHighCost.YearStartHoldingProjections.Should().ContainSingle();
+        resultHighCost.YearEndHoldingProjections.Should().BeEmpty();
+
+        resultLowCost.YearStartHoldingProjections[0].Ticker.Should().Be("2330");
+        resultLowCost.YearStartHoldingProjections[0].CostSource.Should().Be(9000m);
+        resultLowCost.YearStartHoldingProjections[0].CostHome.Should().Be(9000m);
+        resultLowCost.YearStartHoldingProjections[0].MarketValueSource.Should().Be(10000m);
+        resultLowCost.YearStartHoldingProjections[0].MarketValueHome.Should().Be(10000m);
+        resultLowCost.YearStartHoldingProjections[0].ValuationSource.Should().Be(PositionValuationSource.MarketPrice);
+
+        resultHighCost.YearStartHoldingProjections[0].Ticker.Should().Be("2330");
+        resultHighCost.YearStartHoldingProjections[0].CostSource.Should().Be(11000m);
+        resultHighCost.YearStartHoldingProjections[0].CostHome.Should().Be(11000m);
+        resultHighCost.YearStartHoldingProjections[0].MarketValueSource.Should().Be(10000m);
+        resultHighCost.YearStartHoldingProjections[0].MarketValueHome.Should().Be(10000m);
+        resultHighCost.YearStartHoldingProjections[0].ValuationSource.Should().Be(PositionValuationSource.MarketPrice);
+
         resultLowCost.Xirr.Should().BeNull();
         resultLowCost.XirrSource.Should().BeNull();
         resultHighCost.Xirr.Should().BeNull();

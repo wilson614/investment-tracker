@@ -325,34 +325,16 @@ public class HistoricalPerformanceService(
             }
         }
 
-        // If missing prices, return partial result
-        if (missingPrices.Count > 0)
+        var deduplicatedMissingPrices = missingPrices
+            .DistinctBy(p => (p.Ticker, p.PriceType))
+            .ToList();
+
+        if (deduplicatedMissingPrices.Count > 0)
         {
-            logger.LogWarning("Missing {Count} prices for year {Year} performance calculation", missingPrices.Count, year);
-
-            var reliabilityOnMissingPrices = XirrReliabilityUnavailable;
-            var degradeSignalOnMissingPrices = ResolveReturnDisplayDegradeSignal(
-                reliabilityOnMissingPrices,
-                hasOpeningBaseline,
-                coverageDays);
-
-            return new YearPerformanceDto
-            {
-                Year = year,
-                SourceCurrency = sourceCurrency,
-                MissingPrices = missingPrices.DistinctBy(p => (p.Ticker, p.PriceType)).ToList(),
-                CashFlowCount = 0,
-                TransactionCount = yearTransactions.Count,
-                EarliestTransactionDateInYear = earliestTransactionDateInYear,
-                CoverageStartDate = coverageStartDate,
-                CoverageDays = coverageDays,
-                HasOpeningBaseline = hasOpeningBaseline,
-                UsesPartialHistoryAssumption = usesPartialHistoryAssumption,
-                XirrReliability = reliabilityOnMissingPrices,
-                ShouldDegradeReturnDisplay = degradeSignalOnMissingPrices.ShouldDegrade,
-                ReturnDisplayDegradeReasonCode = degradeSignalOnMissingPrices.ReasonCode,
-                ReturnDisplayDegradeReasonMessage = degradeSignalOnMissingPrices.ReasonMessage
-            };
+            logger.LogWarning(
+                "Missing {Count} prices for year {Year} performance calculation; continuing with internal cost-basis fallback valuation where possible",
+                deduplicatedMissingPrices.Count,
+                year);
         }
 
         // ===== Calculate Source Currency (portfolio.BaseCurrency) Performance =====
@@ -448,6 +430,110 @@ public class HistoricalPerformanceService(
             return 0m;
         }
 
+        async Task<Dictionary<string, decimal>> BuildFallbackTickerToHomeRatesAsync(
+            IReadOnlyCollection<StockPosition> positions,
+            IReadOnlyDictionary<string, YearEndPriceInfo> priceLookup,
+            int targetYear)
+        {
+            var rates = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var ticker in positions
+                         .Where(position => !priceLookup.ContainsKey(position.Ticker))
+                         .Select(position => position.Ticker)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var tickerCurrency = GetTickerCurrency(ticker);
+                rates[ticker] = await ResolveExchangeRateAsync(tickerCurrency, targetYear);
+            }
+
+            return rates;
+        }
+
+        CurrentHoldingProjectionDto ProjectPositionValue(
+            StockPosition position,
+            DateTime valuationDate,
+            IReadOnlyDictionary<string, YearEndPriceInfo> priceLookup,
+            IReadOnlyDictionary<string, decimal> fallbackTickerToHomeRates)
+        {
+            var tickerCurrency = GetTickerCurrency(position.Ticker);
+
+            if (priceLookup.TryGetValue(position.Ticker, out var priceInfo))
+            {
+                var priceInSource = ConvertAmountToSource(
+                    priceInfo.Price,
+                    tickerCurrency,
+                    valuationDate,
+                    priceInfo.ExchangeRate);
+
+                return new CurrentHoldingProjectionDto
+                {
+                    Ticker = position.Ticker,
+                    Shares = position.TotalShares,
+                    CostSource = position.TotalCostSource,
+                    CostHome = position.TotalCostHome,
+                    MarketValueSource = position.TotalShares * priceInSource,
+                    MarketValueHome = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate,
+                    ValuationSource = PositionValuationSource.MarketPrice
+                };
+            }
+
+            fallbackTickerToHomeRates.TryGetValue(position.Ticker, out var fallbackTickerToHomeRate);
+
+            var fallbackSourceValue = position.TotalCostSource > 0m
+                ? ConvertAmountToSource(
+                    position.TotalCostSource,
+                    tickerCurrency,
+                    valuationDate,
+                    fallbackTickerToHomeRate > 0m ? fallbackTickerToHomeRate : (decimal?)null)
+                : 0m;
+
+            var fallbackHomeValue = position.TotalCostHome;
+            if (fallbackHomeValue <= 0m && position.TotalCostSource > 0m)
+            {
+                if (string.Equals(tickerCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                {
+                    fallbackHomeValue = position.TotalCostSource;
+                }
+                else if (fallbackTickerToHomeRate > 0m)
+                {
+                    fallbackHomeValue = position.TotalCostSource * fallbackTickerToHomeRate;
+                }
+            }
+
+            var valuationSource = fallbackSourceValue > 0m || fallbackHomeValue > 0m
+                ? PositionValuationSource.CostBasisFallback
+                : PositionValuationSource.Unavailable;
+
+            return new CurrentHoldingProjectionDto
+            {
+                Ticker = position.Ticker,
+                Shares = position.TotalShares,
+                CostSource = position.TotalCostSource,
+                CostHome = position.TotalCostHome,
+                MarketValueSource = fallbackSourceValue,
+                MarketValueHome = fallbackHomeValue,
+                ValuationSource = valuationSource
+            };
+        }
+
+        var yearStartFallbackTickerToHomeRates = await BuildFallbackTickerToHomeRatesAsync(
+            yearStartPositions,
+            yearStartPrices,
+            yearStartYear);
+
+        var yearEndFallbackTickerToHomeRates = await BuildFallbackTickerToHomeRatesAsync(
+            yearEndPositions,
+            yearEndPrices,
+            year);
+
+        var yearStartProjectedPositions = yearStartPositions
+            .Select(position => ProjectPositionValue(position, yearStart, yearStartPrices, yearStartFallbackTickerToHomeRates))
+            .ToList();
+
+        var yearEndProjectedPositions = yearEndPositions
+            .Select(position => ProjectPositionValue(position, yearEnd, yearEndPrices, yearEndFallbackTickerToHomeRates))
+            .ToList();
+
         logger.LogDebug("=== Year {Year} Performance Calculation Debug ===", year);
         logger.LogDebug("{SourceCurrency}/{HomeCurrency} Rate Start: {RateStart}, End: {RateEnd}",
             sourceCurrency, homeCurrency, sourceToHomeRateStart, sourceToHomeRateEnd);
@@ -467,22 +553,8 @@ public class HistoricalPerformanceService(
                 pos.Ticker, pos.TotalShares, priceInfo?.Price ?? 0, priceInfo?.ExchangeRate ?? 0, hasPrice);
         }
 
-        // Year-start portfolio value in source currency
-        var startValueSource = 0m;
-        foreach (var position in yearStartPositions)
-        {
-            if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
-            {
-                var tickerCurrency = GetTickerCurrency(position.Ticker);
-                var priceInSource = ConvertAmountToSource(
-                    priceInfo.Price,
-                    tickerCurrency,
-                    yearStart,
-                    priceInfo.ExchangeRate);
-
-                startValueSource += position.TotalShares * priceInSource;
-            }
-        }
+        // Year-start portfolio value in source currency (internal projection with cost-basis fallback)
+        var startValueSource = yearStartProjectedPositions.Sum(position => position.MarketValueSource);
 
         logger.LogDebug("  Total startValueSource ({SourceCurrency}): {StartValue}", sourceCurrency, startValueSource);
 
@@ -545,21 +617,8 @@ public class HistoricalPerformanceService(
             }
         }
 
-        // Year-end portfolio value in source currency
-        var endValueSource = 0m;
-        foreach (var position in yearEndPositions)
-        {
-            if (!yearEndPrices.TryGetValue(position.Ticker, out var priceInfo)) continue;
-
-            var tickerCurrency = GetTickerCurrency(position.Ticker);
-            var priceInSource = ConvertAmountToSource(
-                priceInfo.Price,
-                tickerCurrency,
-                yearEnd,
-                priceInfo.ExchangeRate);
-
-            endValueSource += position.TotalShares * priceInSource;
-        }
+        // Year-end portfolio value in source currency (internal projection with cost-basis fallback)
+        var endValueSource = yearEndProjectedPositions.Sum(position => position.MarketValueSource);
 
         logger.LogDebug("  Total endValueSource ({SourceCurrency}): {EndValue}", sourceCurrency, endValueSource);
 
@@ -780,18 +839,23 @@ public class HistoricalPerformanceService(
         // ===== Calculate Home Currency Performance =====
         logger.LogDebug("  === Home Currency Calculation ({HomeCurrency}) ===", homeCurrency);
 
-        // Year-start portfolio value in home currency
+        // Year-start portfolio value in home currency (internal projection with cost-basis fallback)
         var startValueHome = 0m;
-        foreach (var position in yearStartPositions)
+        foreach (var projection in yearStartProjectedPositions)
         {
-            if (yearStartPrices.TryGetValue(position.Ticker, out var priceInfo))
-            {
-                var positionValue = position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
-                logger.LogDebug("    YearStart Home: {Ticker} x {Shares} @ {Price} * ExRate {ExRate} = {Value} {HomeCurrency}",
-                    position.Ticker, position.TotalShares, priceInfo.Price, priceInfo.ExchangeRate, positionValue, homeCurrency);
-                startValueHome += positionValue;
-            }
+            if (projection.ValuationSource == PositionValuationSource.Unavailable)
+                continue;
+
+            logger.LogDebug(
+                "    YearStart Home ({ValuationSource}): {Ticker} x {Shares} => {Value} {HomeCurrency}",
+                projection.ValuationSource,
+                projection.Ticker,
+                projection.Shares,
+                projection.MarketValueHome,
+                homeCurrency);
+            startValueHome += projection.MarketValueHome;
         }
+
         logger.LogDebug("  Total startValueHome ({HomeCurrency}): {Value}", homeCurrency, startValueHome);
 
         if (startValueHome > 0)
@@ -813,15 +877,10 @@ public class HistoricalPerformanceService(
             }
         }
 
-        // Year-end portfolio value in home currency
-        var endValueHome = 0m;
-        foreach (var position in yearEndPositions)
-        {
-            if (yearEndPrices.TryGetValue(position.Ticker, out var priceInfo))
-            {
-                endValueHome += position.TotalShares * priceInfo.Price * priceInfo.ExchangeRate;
-            }
-        }
+        // Year-end portfolio value in home currency (internal projection with cost-basis fallback)
+        var endValueHome = yearEndProjectedPositions
+            .Where(position => position.ValuationSource != PositionValuationSource.Unavailable)
+            .Sum(position => position.MarketValueHome);
 
         if (endValueHome > 0)
         {
@@ -922,6 +981,10 @@ public class HistoricalPerformanceService(
             StartValueSource = closedLoopStartValueSource,
             EndValueSource = closedLoopEndValueSource,
             NetContributionsSource = netContributionsSource,
+            YearStartHoldingProjections = yearStartProjectedPositions,
+            YearEndHoldingProjections = yearEndProjectedPositions,
+            LedgerStartValueHome = ledgerStartValueHome,
+            LedgerEndValueHome = ledgerEndValueHome,
             // Common
             CashFlowCount = 0,
             TransactionCount = yearTransactions.Count,
@@ -936,7 +999,7 @@ public class HistoricalPerformanceService(
             ReturnDisplayDegradeReasonMessage = returnDisplayDegradeSignal.ReasonMessage,
             HasRecentLargeInflowWarning = recentLargeInflowWarning.ShouldWarn,
             RecentLargeInflowWarningMessage = recentLargeInflowWarning.WarningMessage,
-            MissingPrices = []
+            MissingPrices = deduplicatedMissingPrices
         };
     }
 

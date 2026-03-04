@@ -171,6 +171,174 @@ public class CalculateAggregateYearPerformanceUseCaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithMissingPricesButSeededBaselineValues_StillAggregatesReturnsAndPreservesWarnings()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "TWD");
+        var portfolioB = CreatePortfolio(userId, "TWD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1);
+        var yearEnd = new DateTime(year, 12, 31);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 980m,
+                EndValueSource = 1000m,
+                StartValueHome = 980m,
+                EndValueHome = 1000m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 2.0408163265d,
+                TimeWeightedReturnPercentage = 2.0408163265d,
+                TotalReturnPercentageSource = 2.0408163265d,
+                TotalReturnPercentage = 2.0408163265d,
+                EarliestTransactionDateInYear = yearStart,
+                TransactionCount = 0,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices =
+                [
+                    new MissingPriceDto
+                    {
+                        Ticker = "2330",
+                        PriceType = "YearStart",
+                        Date = yearStart.AddDays(-1)
+                    }
+                ],
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "2330",
+                        Shares = 10m,
+                        CostSource = 980m,
+                        CostHome = 980m,
+                        MarketValueSource = 980m,
+                        MarketValueHome = 980m,
+                        ValuationSource = PositionValuationSource.CostBasisFallback
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "2330",
+                        Shares = 10m,
+                        CostSource = 980m,
+                        CostHome = 980m,
+                        MarketValueSource = 1000m,
+                        MarketValueHome = 1000m,
+                        ValuationSource = PositionValuationSource.MarketPrice
+                    }
+                ]
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueSource = 500m,
+                EndValueSource = 550m,
+                StartValueHome = 500m,
+                EndValueHome = 550m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 10d,
+                TimeWeightedReturnPercentage = 10d,
+                TotalReturnPercentageSource = 10d,
+                TotalReturnPercentage = 10d,
+                EarliestTransactionDateInYear = yearStart,
+                TransactionCount = 0,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices =
+                [
+                    new MissingPriceDto
+                    {
+                        Ticker = "AAPL",
+                        PriceType = "YearEnd",
+                        Date = yearEnd
+                    }
+                ],
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 5m,
+                        CostSource = 500m,
+                        CostHome = 500m,
+                        MarketValueSource = 500m,
+                        MarketValueHome = 500m,
+                        ValuationSource = PositionValuationSource.CostBasisFallback
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 5m,
+                        CostSource = 500m,
+                        CostHome = 500m,
+                        MarketValueSource = 550m,
+                        MarketValueHome = 550m,
+                        ValuationSource = PositionValuationSource.MarketPrice
+                    }
+                ]
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().HaveCount(2);
+        result.MissingPrices.Should().Contain(p => p.Ticker == "2330" && p.PriceType == "YearStart");
+        result.MissingPrices.Should().Contain(p => p.Ticker == "AAPL" && p.PriceType == "YearEnd");
+
+        result.StartValueSource.Should().BeNull();
+        result.EndValueSource.Should().BeNull();
+        result.StartValueHome.Should().Be(1480m);
+        result.EndValueHome.Should().Be(1550m);
+        result.NetContributionsSource.Should().BeNull();
+        result.NetContributionsHome.Should().Be(0m);
+
+        result.TotalReturnPercentageSource.Should().BeNull();
+        result.TotalReturnPercentage.Should().BeApproximately(4.7297297297d, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
+        result.ModifiedDietzPercentage.Should().BeApproximately(4.7297297297d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(4.7297297297d, 0.0001d);
+
+        result.HasOpeningBaseline.Should().BeTrue();
+        result.XirrReliability.Should().Be("High");
+        result.Xirr.Should().BeNull();
+        result.XirrSource.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WithLowReliabilityResult_SuppressesAggregateXirr()
     {
         // Arrange
@@ -337,34 +505,16 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.CoverageStartDate.Should().Be(lateTradeDate);
         result.CoverageDays.Should().Be(2);
 
-        result.StartValueSource.Should().Be(0m);
-        result.EndValueSource.Should().Be(105686.84m);
-        result.NetContributionsSource.Should().Be(100000m);
+        result.StartValueSource.Should().BeNull();
+        result.EndValueSource.Should().BeNull();
+        result.NetContributionsSource.Should().BeNull();
         result.StartValueHome.Should().Be(0m);
         result.EndValueHome.Should().Be(105686.84m);
         result.NetContributionsHome.Should().Be(100000m);
 
-        var periodStart = new DateTime(year, 1, 1);
-        var periodEnd = new DateTime(year, 12, 31);
-        var totalDays = (periodEnd.Date - periodStart.Date).Days;
-        var daysSinceStart = (lateTradeDate.Date - periodStart.Date).Days;
-        var weight = (totalDays - daysSinceStart) / (decimal)totalDays;
-
-        var expectedDenominator = result.StartValueSource!.Value + result.NetContributionsSource!.Value * weight;
-        var expectedNumerator = result.EndValueSource!.Value - result.StartValueSource!.Value - result.NetContributionsSource!.Value;
-        var expectedDietzPct = (double)((expectedNumerator / expectedDenominator) * 100m);
-
-        totalDays.Should().Be(364);
-        daysSinceStart.Should().Be(363);
-        weight.Should().BeApproximately(1m / 364m, 0.0000001m);
-        expectedDenominator.Should().BeApproximately(274.7252747m, 0.0001m);
-        expectedNumerator.Should().Be(5686.84m);
-
-        result.ModifiedDietzPercentageSource.Should().BeGreaterThan(1000d);
-        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedDietzPct, 0.0001d);
-        result.ModifiedDietzPercentageSource.Should().BeApproximately(2070.01d, 0.01d);
-        result.ModifiedDietzPercentage.Should().BeApproximately(expectedDietzPct, 0.0001d);
-        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(5.68684d, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
+        result.ModifiedDietzPercentage.Should().BeApproximately(2070.01d, 0.01d);
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
         result.TimeWeightedReturnPercentage.Should().BeApproximately(5.68684d, 0.0001d);
     }
 
@@ -610,7 +760,7 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         var result = await useCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
-        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(10d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
         result.TimeWeightedReturnPercentage.Should().BeApproximately(10d, 0.0001d);
 
         var periodStart = new DateTime(year, 1, 1);
@@ -622,10 +772,9 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         var expectedModifiedDietz = (2200m - 1000m - 1000m) / (1000m + 1000m * weight);
         var expectedModifiedDietzPct = (double)(expectedModifiedDietz * 100m);
 
-        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedModifiedDietzPct, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
         result.ModifiedDietzPercentage.Should().BeApproximately(expectedModifiedDietzPct, 0.0001d);
 
-        result.ModifiedDietzPercentageSource.Should().NotBeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.01d);
         result.ModifiedDietzPercentage.Should().NotBeApproximately(result.TimeWeightedReturnPercentage!.Value, 0.01d);
 
         result.HasOpeningBaseline.Should().BeTrue();
@@ -868,10 +1017,10 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
 
         // Assert
-        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(13.3333333333d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
         result.TimeWeightedReturnPercentage.Should().BeApproximately(13.3333333333d, 0.0001d);
 
-        result.ModifiedDietzPercentageSource.Should().BeApproximately(13.3333333333d, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
         result.ModifiedDietzPercentage.Should().BeApproximately(13.3333333333d, 0.0001d);
 
         result.Xirr.Should().BeNull();
@@ -882,6 +1031,270 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.HasOpeningBaseline.Should().BeTrue();
         result.UsesPartialHistoryAssumption.Should().BeFalse();
         result.XirrReliability.Should().Be("High");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AggregateUsesInternalHoldingProjectionsForBaselineValuationConsistency()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "USD");
+        var portfolioB = CreatePortfolio(userId, "USD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                StartValueSource = 1000m,
+                EndValueSource = 1100m,
+                StartValueHome = 30000m,
+                EndValueHome = 33000m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 10d,
+                TimeWeightedReturnPercentage = 10d,
+                EarliestTransactionDateInYear = yearStart,
+                TransactionCount = 0,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = [],
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 10m,
+                        CostSource = 1000m,
+                        CostHome = 30000m,
+                        MarketValueSource = 1000m,
+                        MarketValueHome = 30000m,
+                        ValuationSource = PositionValuationSource.CostBasisFallback
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 10m,
+                        CostSource = 1000m,
+                        CostHome = 30000m,
+                        MarketValueSource = 1100m,
+                        MarketValueHome = 33000m,
+                        ValuationSource = PositionValuationSource.MarketPrice
+                    }
+                ],
+                LedgerStartValueHome = 0m,
+                LedgerEndValueHome = 0m
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "USD",
+                // Intentionally inconsistent top-level values: aggregate should prefer projection values below.
+                StartValueSource = 200m,
+                EndValueSource = 200m,
+                StartValueHome = 6000m,
+                EndValueHome = 6000m,
+                NetContributionsSource = 0m,
+                NetContributionsHome = 0m,
+                TimeWeightedReturnPercentageSource = 0d,
+                TimeWeightedReturnPercentage = 0d,
+                EarliestTransactionDateInYear = yearStart,
+                TransactionCount = 0,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                MissingPrices = [],
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "MSFT",
+                        Shares = 2m,
+                        CostSource = 200m,
+                        CostHome = 6000m,
+                        MarketValueSource = 200m,
+                        MarketValueHome = 50000m,
+                        ValuationSource = PositionValuationSource.CostBasisFallback
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "MSFT",
+                        Shares = 2m,
+                        CostSource = 200m,
+                        CostHome = 6000m,
+                        MarketValueSource = 220m,
+                        MarketValueHome = 55000m,
+                        ValuationSource = PositionValuationSource.MarketPrice
+                    }
+                ],
+                LedgerStartValueHome = 3000m,
+                LedgerEndValueHome = 3000m
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert: home canonical uses internal projection + ledger sum
+        // ((30000+0) + (50000+3000) -> (33000+0) + (55000+3000)).
+        result.StartValueHome.Should().Be(83000m);
+        result.EndValueHome.Should().Be(91000m);
+        result.TotalReturnPercentage.Should().BeApproximately(9.6385542169d, 0.0001d);
+
+        // Product decision: aggregate source-side remains suppressed/null.
+        result.SourceCurrency.Should().BeNull();
+        result.StartValueSource.Should().BeNull();
+        result.EndValueSource.Should().BeNull();
+        result.NetContributionsSource.Should().BeNull();
+        result.TotalReturnPercentageSource.Should().BeNull();
+        result.ModifiedDietzPercentageSource.Should().BeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenHoldingProjectionHasUnavailableRows_ExcludesUnavailableFromAggregateHomeValuation()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        _currentUserServiceMock.Setup(x => x.UserId).Returns(userId);
+
+        var portfolioA = CreatePortfolio(userId, "TWD");
+        var portfolioB = CreatePortfolio(userId, "TWD");
+
+        _portfolioRepositoryMock
+            .Setup(x => x.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([portfolioA, portfolioB]);
+
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1);
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioA.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueHome = 1000m,
+                EndValueHome = 1200m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = yearStart,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 1m,
+                        CostSource = 1000m,
+                        CostHome = 1000m,
+                        MarketValueSource = 1000m,
+                        MarketValueHome = 1000m,
+                        ValuationSource = PositionValuationSource.CostBasisFallback
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "AAPL",
+                        Shares = 1m,
+                        CostSource = 1000m,
+                        CostHome = 1000m,
+                        MarketValueSource = 1200m,
+                        MarketValueHome = 1200m,
+                        ValuationSource = PositionValuationSource.MarketPrice
+                    }
+                ]
+            });
+
+        _historicalPerformanceServiceMock
+            .Setup(x => x.CalculateYearPerformanceAsync(portfolioB.Id, It.IsAny<CalculateYearPerformanceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearPerformanceDto
+            {
+                Year = year,
+                SourceCurrency = "TWD",
+                StartValueHome = 9999m,
+                EndValueHome = 9999m,
+                NetContributionsHome = 0m,
+                EarliestTransactionDateInYear = yearStart,
+                CoverageStartDate = yearStart,
+                CoverageDays = 365,
+                HasOpeningBaseline = true,
+                UsesPartialHistoryAssumption = false,
+                XirrReliability = "High",
+                YearStartHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "MISSING",
+                        Shares = 10m,
+                        CostSource = 9999m,
+                        CostHome = 9999m,
+                        MarketValueSource = 0m,
+                        MarketValueHome = 0m,
+                        ValuationSource = PositionValuationSource.Unavailable
+                    }
+                ],
+                YearEndHoldingProjections =
+                [
+                    new CurrentHoldingProjectionDto
+                    {
+                        Ticker = "MISSING",
+                        Shares = 10m,
+                        CostSource = 9999m,
+                        CostHome = 9999m,
+                        MarketValueSource = 0m,
+                        MarketValueHome = 0m,
+                        ValuationSource = PositionValuationSource.Unavailable
+                    }
+                ]
+            });
+
+        var useCase = CreateUseCase();
+
+        // Act
+        var result = await useCase.ExecuteAsync(new CalculateYearPerformanceRequest { Year = year }, CancellationToken.None);
+
+        // Assert
+        result.StartValueHome.Should().Be(1000m);
+        result.EndValueHome.Should().Be(1200m);
+        result.TotalReturnPercentage.Should().BeApproximately(20d, 0.0001d);
+        result.SourceCurrency.Should().BeNull();
+        result.StartValueSource.Should().BeNull();
+        result.EndValueSource.Should().BeNull();
+        result.NetContributionsSource.Should().BeNull();
+        result.TotalReturnPercentageSource.Should().BeNull();
+        result.ModifiedDietzPercentageSource.Should().BeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
     }
 
     [Fact]
@@ -969,7 +1382,7 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         var expectedActual = (2200m - 1000m - 1000m) / (1000m + 1000m * actualWeight);
         var expectedActualPct = (double)(expectedActual * 100m);
 
-        result.ModifiedDietzPercentageSource.Should().BeApproximately(expectedActualPct, 0.0001d);
+        result.ModifiedDietzPercentageSource.Should().BeNull();
         result.ModifiedDietzPercentage.Should().BeApproximately(expectedActualPct, 0.0001d);
 
         result.HasRecentLargeInflowWarning.Should().BeFalse();
@@ -981,7 +1394,7 @@ public class CalculateAggregateYearPerformanceUseCaseTests
 
         if (totalDaysActual != 365)
         {
-            result.ModifiedDietzPercentageSource!.Value.Should().NotBeApproximately(expectedFixed365Pct, 0.0001d);
+            result.ModifiedDietzPercentage!.Value.Should().NotBeApproximately(expectedFixed365Pct, 0.0001d);
         }
     }
 
@@ -1086,16 +1499,16 @@ public class CalculateAggregateYearPerformanceUseCaseTests
         result.TransactionCount.Should().Be(expectedPortfolioCount * 5);
         result.CashFlowCount.Should().Be(0);
         result.MissingPrices.Should().BeEmpty();
-        result.SourceCurrency.Should().Be("USD");
+        result.SourceCurrency.Should().BeNull();
         result.XirrReliability.Should().Be("High");
         result.Xirr.Should().BeNull();
         result.XirrPercentage.Should().BeNull();
         result.XirrSource.Should().BeNull();
         result.XirrPercentageSource.Should().BeNull();
-        result.StartValueSource.Should().BeGreaterThan(0m);
-        result.EndValueSource.Should().BeGreaterThan(result.StartValueSource!.Value);
-        result.NetContributionsSource.Should().BeGreaterThan(0m);
-        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.StartValueSource.Should().BeNull();
+        result.EndValueSource.Should().BeNull();
+        result.NetContributionsSource.Should().BeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeNull();
     }
 
     private static TimeSpan GetMedian(IReadOnlyCollection<TimeSpan> values)

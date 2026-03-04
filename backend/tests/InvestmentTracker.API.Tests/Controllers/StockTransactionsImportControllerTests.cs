@@ -2581,6 +2581,11 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentage, nameof(aggregatePerformance.TimeWeightedReturnPercentage));
         AssertFiniteIfHasValue(aggregatePerformance.ModifiedDietzPercentage, nameof(aggregatePerformance.ModifiedDietzPercentage));
+        aggregatePerformance.SourceCurrency.Should().BeNull();
+        aggregatePerformance.StartValueSource.Should().BeNull();
+        aggregatePerformance.EndValueSource.Should().BeNull();
+        aggregatePerformance.NetContributionsSource.Should().BeNull();
+        aggregatePerformance.TotalReturnPercentageSource.Should().BeNull();
         aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeNull();
         aggregatePerformance.ModifiedDietzPercentageSource.Should().BeNull();
         aggregatePerformance.Xirr.Should().BeNull();

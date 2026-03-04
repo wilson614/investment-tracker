@@ -483,22 +483,21 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         var single = await CalculatePortfolioYearPerformanceAsync(usdPortfolio.Id, targetYear);
 
         // Assert
-        aggregate.SourceCurrency.Should().Be(single.SourceCurrency);
-        aggregate.SourceCurrency.Should().Be("USD");
+        aggregate.SourceCurrency.Should().BeNull();
 
         aggregate.StartValueHome.Should().Be(single.StartValueHome);
         aggregate.EndValueHome.Should().Be(single.EndValueHome);
         aggregate.NetContributionsHome.Should().Be(single.NetContributionsHome);
-        aggregate.StartValueSource.Should().Be(single.StartValueSource);
-        aggregate.EndValueSource.Should().Be(single.EndValueSource);
-        aggregate.NetContributionsSource.Should().Be(single.NetContributionsSource);
+        aggregate.StartValueSource.Should().BeNull();
+        aggregate.EndValueSource.Should().BeNull();
+        aggregate.NetContributionsSource.Should().BeNull();
 
         aggregate.TotalReturnPercentage.Should().Be(single.TotalReturnPercentage);
-        aggregate.TotalReturnPercentageSource.Should().Be(single.TotalReturnPercentageSource);
+        aggregate.TotalReturnPercentageSource.Should().BeNull();
         aggregate.ModifiedDietzPercentage.Should().Be(single.ModifiedDietzPercentage);
-        aggregate.ModifiedDietzPercentageSource.Should().Be(single.ModifiedDietzPercentageSource);
+        aggregate.ModifiedDietzPercentageSource.Should().BeNull();
         aggregate.TimeWeightedReturnPercentage.Should().Be(single.TimeWeightedReturnPercentage);
-        aggregate.TimeWeightedReturnPercentageSource.Should().Be(single.TimeWeightedReturnPercentageSource);
+        aggregate.TimeWeightedReturnPercentageSource.Should().BeNull();
 
         aggregate.TransactionCount.Should().Be(single.TransactionCount);
         aggregate.CashFlowCount.Should().Be(0);
@@ -717,10 +716,10 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
         aggregate.MissingPrices.Should().BeEmpty();
         single.MissingPrices.Should().BeEmpty();
 
-        // Baseline parity: aggregate home/source valuation fields equal single-portfolio values.
-        aggregate.StartValueSource.Should().Be(single.StartValueSource);
-        aggregate.EndValueSource.Should().Be(single.EndValueSource);
-        aggregate.NetContributionsSource.Should().Be(single.NetContributionsSource);
+        // Baseline parity: aggregate home valuation fields equal single-portfolio values.
+        aggregate.StartValueSource.Should().BeNull();
+        aggregate.EndValueSource.Should().BeNull();
+        aggregate.NetContributionsSource.Should().BeNull();
         aggregate.StartValueHome.Should().Be(single.StartValueHome);
         aggregate.EndValueHome.Should().Be(single.EndValueHome);
         aggregate.NetContributionsHome.Should().Be(single.NetContributionsHome);
@@ -739,26 +738,20 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
             aggregate.TotalReturnPercentage.Should().BeApproximately(reconstructedTotalReturn, 0.0001d);
         }
 
-        if ((aggregate.StartValueSource ?? 0m) != 0m && aggregate.NetContributionsSource.HasValue)
-        {
-            var reconstructedSourceTotalReturn =
-                (double)(((aggregate.EndValueSource ?? 0m) - (aggregate.StartValueSource ?? 0m) - aggregate.NetContributionsSource.Value)
-                         / (aggregate.StartValueSource ?? 0m) * 100m);
-            aggregate.TotalReturnPercentageSource.Should().BeApproximately(reconstructedSourceTotalReturn, 0.0001d);
-        }
+        aggregate.TotalReturnPercentageSource.Should().BeNull();
 
         // Parity guard for closed-loop annual return outputs.
-        aggregate.ModifiedDietzPercentageSource.Should().Be(single.ModifiedDietzPercentageSource);
+        aggregate.ModifiedDietzPercentageSource.Should().BeNull();
         aggregate.ModifiedDietzPercentage.Should().Be(single.ModifiedDietzPercentage);
-        aggregate.TimeWeightedReturnPercentageSource.Should().Be(single.TimeWeightedReturnPercentageSource);
+        aggregate.TimeWeightedReturnPercentageSource.Should().BeNull();
         aggregate.TimeWeightedReturnPercentage.Should().Be(single.TimeWeightedReturnPercentage);
 
         // Regression guard: with mid-year contribution, MD and TWR should not collapse to same value.
-        aggregate.ModifiedDietzPercentageSource.Should().NotBeNull();
-        aggregate.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        aggregate.ModifiedDietzPercentage.Should().NotBeNull();
+        aggregate.TimeWeightedReturnPercentage.Should().NotBeNull();
 
-        aggregate.ModifiedDietzPercentageSource!.Value
-            .Should().NotBeApproximately(aggregate.TimeWeightedReturnPercentageSource!.Value, 1e-9);
+        aggregate.ModifiedDietzPercentage!.Value
+            .Should().NotBeApproximately(aggregate.TimeWeightedReturnPercentage!.Value, 1e-9);
     }
 
     [Fact]

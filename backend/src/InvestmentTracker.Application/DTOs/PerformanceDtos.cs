@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace InvestmentTracker.Application.DTOs;
 
 /// <summary>
@@ -62,6 +64,34 @@ public record YearPerformanceDto
 
     /// <summary>年度期間淨投入（原始幣別）。</summary>
     public decimal? NetContributionsSource { get; init; }
+
+    /// <summary>
+    /// 年度期初 current-holdings 投影（內部用途）。
+    /// source/home 組合值供 aggregate 組合與一致性驗證使用。
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<CurrentHoldingProjectionDto> YearStartHoldingProjections { get; init; } = [];
+
+    /// <summary>
+    /// 年度期末 current-holdings 投影（內部用途）。
+    /// source/home 組合值供 aggregate 組合與一致性驗證使用。
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<CurrentHoldingProjectionDto> YearEndHoldingProjections { get; init; } = [];
+
+    /// <summary>
+    /// 年度期初帳本價值（Home，內部用途）。
+    /// 用於 aggregate 在持倉投影組合時維持 closed-loop 一致。
+    /// </summary>
+    [JsonIgnore]
+    public decimal LedgerStartValueHome { get; init; }
+
+    /// <summary>
+    /// 年度期末帳本價值（Home，內部用途）。
+    /// 用於 aggregate 在持倉投影組合時維持 closed-loop 一致。
+    /// </summary>
+    [JsonIgnore]
+    public decimal LedgerEndValueHome { get; init; }
 
     // ===== 共通欄位 =====
 
@@ -142,6 +172,30 @@ public record YearPerformanceDto
 /// <summary>
 /// 歷史計算中缺少價格的持倉資訊。
 /// </summary>
+public enum PositionValuationSource
+{
+    MarketPrice = 0,
+    CostBasisFallback = 1,
+    Unavailable = 2
+}
+
+/// <summary>
+/// 內部 current-holdings 投影模型（非 API 契約欄位）。
+/// 語義：持股/成本/估值同時保存 source 與 home 觀點，供年度與彙總組合使用。
+/// </summary>
+public record CurrentHoldingProjectionDto
+{
+    public string Ticker { get; init; } = string.Empty;
+    public decimal Shares { get; init; }
+    public decimal CostSource { get; init; }
+    public decimal CostHome { get; init; }
+    public decimal MarketValueSource { get; init; }
+    public decimal MarketValueHome { get; init; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PositionValuationSource ValuationSource { get; init; }
+}
+
 public record MissingPriceDto
 {
     /// <summary>股票代號。</summary>
