@@ -35,6 +35,7 @@ public class AppDbContext : DbContext
     public DbSet<MonthlyNetWorthSnapshot> MonthlyNetWorthSnapshots => Set<MonthlyNetWorthSnapshot>();
     public DbSet<TransactionPortfolioSnapshot> TransactionPortfolioSnapshots => Set<TransactionPortfolioSnapshot>();
     public DbSet<BenchmarkAnnualReturn> BenchmarkAnnualReturns => Set<BenchmarkAnnualReturn>();
+    public DbSet<StockImportSession> StockImportSessions => Set<StockImportSession>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -111,6 +112,10 @@ public class AppDbContext : DbContext
         // UserBenchmark：需與 User 使用相同的過濾條件
         modelBuilder.Entity<UserBenchmark>()
             .HasQueryFilter(ub => ub.User.IsActive);
+
+        // StockImportSession：依使用者過濾
+        modelBuilder.Entity<StockImportSession>()
+            .HasQueryFilter(session => _currentUserService == null || session.UserId == _currentUserService.UserId);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

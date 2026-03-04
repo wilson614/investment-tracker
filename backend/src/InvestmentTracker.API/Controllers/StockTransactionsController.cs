@@ -26,7 +26,8 @@ public class StockTransactionsController(
     UpdateStockTransactionUseCase updateUseCase,
     DeleteStockTransactionUseCase deleteUseCase,
     IPreviewStockImportUseCase previewStockImportUseCase,
-    IExecuteStockImportUseCase executeStockImportUseCase) : ControllerBase
+    IExecuteStockImportUseCase executeStockImportUseCase,
+    IQueryStockImportSessionUseCase queryStockImportSessionUseCase) : ControllerBase
 {
     /// <summary>
     /// 取得指定投資組合的所有交易。
@@ -227,7 +228,7 @@ public class StockTransactionsController(
     /// 執行股票 CSV 匯入（最小可用垂直切片）。
     /// </summary>
     /// <remarks>
-    /// <para>用途：依 preview session 執行逐列匯入，回傳 committed / partially_committed / rejected。</para>
+    /// <para>用途：依 preview session 執行逐列匯入，回傳 committed 或 rejected。</para>
     /// <para><b>成功回應範例（200）</b></para>
     /// <code>
     /// {
@@ -296,7 +297,7 @@ public class StockTransactionsController(
         Guid sessionId,
         CancellationToken cancellationToken)
     {
-        var result = await executeStockImportUseCase.GetStatusAsync(sessionId, cancellationToken);
+        var result = await queryStockImportSessionUseCase.ExecuteAsync(sessionId, cancellationToken);
         return Ok(result);
     }
 
