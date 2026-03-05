@@ -2,12 +2,21 @@ import { useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import type { MissingPrice, YearEndPriceInfo } from '../../types';
 
+export interface MissingPriceSubmissionPayload {
+  yearStartPrices: Record<string, YearEndPriceInfo>;
+  yearEndPrices: Record<string, YearEndPriceInfo>;
+}
+
 interface MissingPriceModalProps {
   isOpen: boolean;
   onClose: () => void;
   missingPrices: MissingPrice[];
   year: number;
-  onSubmit: (prices: Record<string, YearEndPriceInfo>) => void;
+  onSubmit: (payload: MissingPriceSubmissionPayload) => void;
+}
+
+function getMissingPriceInputKey(missingPrice: MissingPrice): string {
+  return `${missingPrice.ticker}::${missingPrice.priceType}`;
 }
 
 export function MissingPriceModal({
@@ -21,35 +30,56 @@ export function MissingPriceModal({
 
   if (!isOpen) return null;
 
-  const handleInputChange = (ticker: string, field: 'price' | 'exchangeRate', value: string) => {
+  const handleInputChange = (missingPrice: MissingPrice, field: 'price' | 'exchangeRate', value: string) => {
+    const key = getMissingPriceInputKey(missingPrice);
+
     setPriceInputs(prev => ({
       ...prev,
-      [ticker]: {
-        ...prev[ticker],
+      [key]: {
+        ...prev[key],
         [field]: value,
       },
     }));
   };
 
   const handleSubmit = () => {
-    const prices: Record<string, YearEndPriceInfo> = {};
+    const yearStartPrices: Record<string, YearEndPriceInfo> = {};
+    const yearEndPrices: Record<string, YearEndPriceInfo> = {};
 
     for (const missing of missingPrices) {
-      const input = priceInputs[missing.ticker];
-      if (input?.price && input?.exchangeRate) {
-        prices[missing.ticker] = {
-          price: parseFloat(input.price),
-          exchangeRate: parseFloat(input.exchangeRate),
-        };
+      const key = getMissingPriceInputKey(missing);
+      const input = priceInputs[key];
+      if (!input?.price || !input?.exchangeRate) {
+        continue;
       }
+
+      const parsedPrice = parseFloat(input.price);
+      const parsedExchangeRate = parseFloat(input.exchangeRate);
+
+      if (Number.isNaN(parsedPrice) || Number.isNaN(parsedExchangeRate)) {
+        continue;
+      }
+
+      const payloadByType = missing.priceType === 'YearStart'
+        ? yearStartPrices
+        : yearEndPrices;
+
+      payloadByType[missing.ticker] = {
+        price: parsedPrice,
+        exchangeRate: parsedExchangeRate,
+      };
     }
 
-    onSubmit(prices);
+    onSubmit({
+      yearStartPrices,
+      yearEndPrices,
+    });
     onClose();
   };
 
   const isValid = missingPrices.every(mp => {
-    const input = priceInputs[mp.ticker];
+    const key = getMissingPriceInputKey(mp);
+    const input = priceInputs[key];
     return input?.price && input?.exchangeRate &&
       !isNaN(parseFloat(input.price)) &&
       !isNaN(parseFloat(input.exchangeRate));
@@ -91,44 +121,48 @@ export function MissingPriceModal({
           </p>
 
           <div className="space-y-4">
-            {missingPrices.map((mp) => (
-              <div key={mp.ticker} className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-medium text-[var(--accent-cream)]">{mp.ticker}</span>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    {mp.priceType === 'YearEnd' ? '年底' : '年初基準'} ({formatDate(mp.date)})
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-[var(--text-muted)] mb-1">
-                      收盤價
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={priceInputs[mp.ticker]?.price ?? ''}
-                      onChange={(e) => handleInputChange(mp.ticker, 'price', e.target.value)}
-                      className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]"
-                    />
+            {missingPrices.map((mp) => {
+              const inputKey = getMissingPriceInputKey(mp);
+
+              return (
+                <div key={`${mp.ticker}-${mp.priceType}`} className="p-4 bg-[var(--bg-tertiary)] rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-[var(--accent-cream)]">{mp.ticker}</span>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {mp.priceType === 'YearEnd' ? '年底' : '年初基準'} ({formatDate(mp.date)})
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-xs text-[var(--text-muted)] mb-1">
-                      匯率 (→TWD)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      placeholder="32.00"
-                      value={priceInputs[mp.ticker]?.exchangeRate ?? ''}
-                      onChange={(e) => handleInputChange(mp.ticker, 'exchangeRate', e.target.value)}
-                      className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-[var(--text-muted)] mb-1">
+                        收盤價
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={priceInputs[inputKey]?.price ?? ''}
+                        onChange={(e) => handleInputChange(mp, 'price', e.target.value)}
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--text-muted)] mb-1">
+                        匯率 (→TWD)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        placeholder="32.00"
+                        value={priceInputs[inputKey]?.exchangeRate ?? ''}
+                        onChange={(e) => handleInputChange(mp, 'exchangeRate', e.target.value)}
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-peach)]"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

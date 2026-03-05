@@ -997,6 +997,7 @@ describe('useHistoricalPerformance', () => {
 
     const nextVersion = invalidatePerformanceLocalStorageCache();
     expect(nextVersion).toBe(2);
+    localStorage.setItem(PERFORMANCE_CACHE_VERSION_STORAGE_KEY, '0');
 
     mockedPortfolioApi.getAvailableYears.mockResolvedValueOnce({
       years: [currentYear],

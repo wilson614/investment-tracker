@@ -19,7 +19,7 @@ import { usePortfolio } from '../contexts/PortfolioContext';
 import { PortfolioSelector } from '../components/portfolio/PortfolioSelector';
 import { YearSelector } from '../components/performance/YearSelector';
 import { CurrencyToggle, type PerformanceCurrencyMode } from '../components/performance/CurrencyToggle';
-import { MissingPriceModal } from '../components/modals/MissingPriceModal';
+import { MissingPriceModal, type MissingPriceSubmissionPayload } from '../components/modals/MissingPriceModal';
 import { PerformanceBarChart } from '../components/charts';
 import { StockMarket } from '../types';
 import type { YearEndPriceInfo, StockMarket as StockMarketType, MissingPrice, MarketYtdComparison, UserBenchmark } from '../types';
@@ -1633,9 +1633,17 @@ function PerformancePageContent({
     fetchRetryCountRef.current = 0; // 新年度重設重試計數
   };
 
-  const handleMissingPricesSubmit = (prices: Record<string, YearEndPriceInfo>) => {
+  const handleMissingPricesSubmit = ({
+    yearStartPrices,
+    yearEndPrices,
+  }: MissingPriceSubmissionPayload) => {
     if (selectedYear) {
-      calculatePerformance(selectedYear, prices);
+      const hasYearEndPrices = Object.keys(yearEndPrices).length > 0;
+      const hasYearStartPrices = Object.keys(yearStartPrices).length > 0;
+
+      if (hasYearEndPrices || hasYearStartPrices) {
+        calculatePerformance(selectedYear, yearEndPrices, yearStartPrices);
+      }
     }
     setShowMissingPriceModal(false);
   };
