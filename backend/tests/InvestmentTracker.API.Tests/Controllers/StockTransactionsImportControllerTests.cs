@@ -1024,6 +1024,13 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         rows.GetArrayLength().Should().BeGreaterThan(0);
 
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var sessionStore = scope.ServiceProvider.GetRequiredService<IStockImportSessionStore>();
+            var persistedSession = await sessionStore.GetAsync(sessionId.GetGuid(), CancellationToken.None);
+            persistedSession.Should().NotBeNull("preview should persist import session for later execute");
+        }
+
         var firstRow = rows.EnumerateArray().First();
         firstRow.TryGetProperty("rowNumber", out var rowNumber).Should().BeTrue();
         rowNumber.ValueKind.Should().Be(JsonValueKind.Number);
@@ -3788,20 +3795,21 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
     private static string ResolveSampleBrokerStatementFixturePath()
     {
-        if (File.Exists(SourceBrokerStatementFixtureAbsolutePath))
-        {
-            return SourceBrokerStatementFixtureAbsolutePath;
-        }
-
         var fixturePath = Path.Combine(AppContext.BaseDirectory, SampleBrokerStatementFixtureFileName);
 
+        // Prefer repository fixture copy for deterministic test behavior across environments.
         if (File.Exists(fixturePath))
         {
             return fixturePath;
         }
 
+        if (File.Exists(SourceBrokerStatementFixtureAbsolutePath))
+        {
+            return SourceBrokerStatementFixtureAbsolutePath;
+        }
+
         throw new FileNotFoundException(
-            $"Sample broker statement fixture not found at '{SourceBrokerStatementFixtureAbsolutePath}' nor '{fixturePath}'.");
+            $"Sample broker statement fixture not found at '{fixturePath}' nor '{SourceBrokerStatementFixtureAbsolutePath}'.");
     }
 
     private static int CountCsvDataRows(string csvContent)

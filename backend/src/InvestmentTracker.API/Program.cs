@@ -34,6 +34,7 @@ using Microsoft.OpenApi.Models;
 using Npgsql;
 using Serilog;
 using Serilog.Events;
+using System.Data;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -342,23 +343,12 @@ if (!app.Environment.IsEnvironment("Testing"))
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
+    var context = services.GetRequiredService<AppDbContext>();
+
     try
     {
         Console.WriteLine("Checking for pending database migrations...");
-        var context = services.GetRequiredService<AppDbContext>();
-
-        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
-        if (pendingMigrations.Count != 0)
-        {
-            Console.WriteLine($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
-            Console.WriteLine("Applying database migrations...");
-            context.Database.Migrate();
-            Console.WriteLine("Database migrations applied successfully.");
-        }
-        else
-        {
-            Console.WriteLine("No pending migrations found.");
-        }
+        await ApplyPendingMigrationsAsync(context);
     }
     catch (PostgresException ex) when (ex.SqlState == "42P07")
     {
@@ -366,7 +356,6 @@ if (!app.Environment.IsEnvironment("Testing"))
         // but no migration history exists. We need to mark migrations as applied.
         Console.WriteLine("Database tables already exist (likely from EnsureCreated). Attempting to sync migration history...");
 
-        var context = services.GetRequiredService<AppDbContext>();
         try
         {
             // Ensure __EFMigrationsHistory table exists
@@ -377,19 +366,26 @@ if (!app.Environment.IsEnvironment("Testing"))
                     CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
                 )");
 
-            // Get all migrations and mark them as applied
+            var existingTableNames = await LoadExistingTableNamesAsync(context);
+
+            // Get all migrations and mark them as applied only when required artifacts already exist.
             var allMigrations = context.Database.GetMigrations();
             foreach (var migration in allMigrations)
             {
-                // Migration names are safe (from EF Core internals), suppress SQL injection warning
-#pragma warning disable EF1002
-                await context.Database.ExecuteSqlRawAsync($@"
+                if (!InvestmentTracker.API.MigrationHistorySyncPolicy.ShouldMarkMigrationAsApplied(migration, existingTableNames))
+                {
+                    Console.WriteLine($"Skipping migration history sync for {migration} because required table artifacts are missing.");
+                    continue;
+                }
+
+                await context.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
-                    VALUES ('{migration}', '8.0.0')
+                    VALUES ({migration}, {"8.0.0"})
                     ON CONFLICT DO NOTHING");
-#pragma warning restore EF1002
             }
-            Console.WriteLine("Migration history synchronized. Application will continue.");
+
+            Console.WriteLine("Migration history synchronized. Re-checking pending migrations...");
+            await ApplyPendingMigrationsAsync(context);
         }
         catch (Exception syncEx)
         {
@@ -403,6 +399,60 @@ if (!app.Environment.IsEnvironment("Testing"))
         throw; // Re-throw to prevent app from starting with broken database
     }
 } // End of Testing environment check
+
+static async Task ApplyPendingMigrationsAsync(AppDbContext context)
+{
+    var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+    if (pendingMigrations.Count != 0)
+    {
+        Console.WriteLine($"Found {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}");
+        Console.WriteLine("Applying database migrations...");
+        await context.Database.MigrateAsync();
+        Console.WriteLine("Database migrations applied successfully.");
+        return;
+    }
+
+    Console.WriteLine("No pending migrations found.");
+}
+
+static async Task<HashSet<string>> LoadExistingTableNamesAsync(AppDbContext context)
+{
+    var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var connection = context.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                tableNames.Add(reader.GetString(0));
+            }
+        }
+
+        return tableNames;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
 
     app.Run();
 }
