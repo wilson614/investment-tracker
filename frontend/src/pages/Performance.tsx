@@ -557,6 +557,11 @@ function PerformancePageContent({
       return 'source';
     }
   });
+  const effectiveCurrencyMode: PerformanceCurrencyMode = isAggregate ? 'home' : currencyMode;
+
+  const handleCurrencyModeChange = useCallback((mode: PerformanceCurrencyMode) => {
+    setCurrencyMode(isAggregate ? 'home' : mode);
+  }, [isAggregate]);
 
   // 自訂基準狀態 - 從快取載入以即時顯示
   const [customBenchmarks, setCustomBenchmarks] = useState<UserBenchmark[]>(loadCachedCustomBenchmarks);
@@ -1665,31 +1670,31 @@ function PerformancePageContent({
       };
     }
 
-    const selectedCurrencyLabelValue = currencyMode === 'source'
+    const selectedCurrencyLabelValue = effectiveCurrencyMode === 'source'
       ? performance.sourceCurrency
       : displayHomeCurrency;
 
-    const modifiedDietzValueForYear = currencyMode === 'source'
+    const modifiedDietzValueForYear = effectiveCurrencyMode === 'source'
       ? performance.modifiedDietzPercentageSource
       : performance.modifiedDietzPercentage;
 
-    const timeWeightedReturnValueForYear = currencyMode === 'source'
+    const timeWeightedReturnValueForYear = effectiveCurrencyMode === 'source'
       ? performance.timeWeightedReturnPercentageSource
       : performance.timeWeightedReturnPercentage;
 
-    const totalReturnValueForYear = currencyMode === 'source'
+    const totalReturnValueForYear = effectiveCurrencyMode === 'source'
       ? performance.totalReturnPercentageSource
       : performance.totalReturnPercentage;
 
-    const startValueForYear = currencyMode === 'source'
+    const startValueForYear = effectiveCurrencyMode === 'source'
       ? performance.startValueSource
       : performance.startValueHome;
 
-    const endValueForYear = currencyMode === 'source'
+    const endValueForYear = effectiveCurrencyMode === 'source'
       ? performance.endValueSource
       : performance.endValueHome;
 
-    const netContributionValueForYear = currencyMode === 'source'
+    const netContributionValueForYear = effectiveCurrencyMode === 'source'
       ? performance.netContributionsSource
       : performance.netContributionsHome;
 
@@ -1702,7 +1707,7 @@ function PerformancePageContent({
       endValue: endValueForYear,
       netContributionValue: netContributionValueForYear,
     };
-  }, [isSelectedYearPerformance, performance, currencyMode, displayHomeCurrency]);
+  }, [isSelectedYearPerformance, performance, effectiveCurrencyMode, displayHomeCurrency]);
 
   const {
     selectedCurrencyLabel,
@@ -1838,7 +1843,7 @@ function PerformancePageContent({
   const benchmarkChartData = useMemo(() => {
     if (!performance) return [];
 
-    const portfolioReturn = currencyMode === 'home'
+    const portfolioReturn = effectiveCurrencyMode === 'home'
       ? performance.modifiedDietzPercentage
       : performance.modifiedDietzPercentageSource;
 
@@ -1846,7 +1851,7 @@ function PerformancePageContent({
       // Only include portfolio return if value exists
       ...(portfolioReturn != null
         ? [{
-            label: `我的投資組合 (${currencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})`,
+            label: `我的投資組合 (${effectiveCurrencyMode === 'home' ? displayHomeCurrency : performance.sourceCurrency})`,
             value: portfolioReturn,
             tooltip: `${selectedYear} 年度報酬率（資金加權報酬率 / Modified Dietz）`,
           }]
@@ -1887,7 +1892,7 @@ function PerformancePageContent({
     ];
   }, [
     performance,
-    currencyMode,
+    effectiveCurrencyMode,
     displayHomeCurrency,
     selectedYear,
     selectedBenchmarks,
@@ -1955,10 +1960,11 @@ function PerformancePageContent({
             <div className="flex w-full flex-wrap items-center justify-start gap-3 sm:w-auto sm:ml-auto sm:justify-end">
               {performance && (
                 <CurrencyToggle
-                  value={currencyMode}
-                  onChange={setCurrencyMode}
+                  value={effectiveCurrencyMode}
+                  onChange={handleCurrencyModeChange}
                   sourceCurrency={performance.sourceCurrency}
                   homeCurrency={displayHomeCurrency}
+                  allowSourceMode={!isAggregate}
                 />
               )}
               <YearSelector
@@ -2098,7 +2104,7 @@ function PerformancePageContent({
 
             {/* 績效指標 - 年度報酬率卡片 */}
             <div className="grid grid-cols-1 gap-6 mb-6">
-              <div className={`card-dark p-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
+              <div className={`card-dark p-6 ${effectiveCurrencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
                 <div className="flex items-center gap-2 mb-4">
                   <Calendar className="w-5 h-5 text-[var(--accent-peach)]" />
                   <h3 className="text-[var(--text-muted)]">
@@ -2119,7 +2125,7 @@ function PerformancePageContent({
                         role="tooltip"
                         className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg p-2 shadow-lg text-xs text-[var(--text-secondary)] whitespace-nowrap"
                       >
-                        {currencyMode === 'source'
+                        {effectiveCurrencyMode === 'source'
                           ? '原幣報酬率（不含匯率變動）'
                           : `${performance.transactionCount} 筆交易`}
                       </div>
@@ -2237,7 +2243,7 @@ function PerformancePageContent({
             </div>
 
             {/* Value Summary */}
-            <div className={`card-dark p-6 mb-6 ${currencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
+            <div className={`card-dark p-6 mb-6 ${effectiveCurrencyMode === 'source' ? 'border-l-4 border-[var(--accent-peach)]' : ''}`}>
               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
                 {selectedYear} 年度摘要 {selectedCurrencyLabel ? `(${selectedCurrencyLabel})` : ''}
               </h3>

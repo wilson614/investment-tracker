@@ -57,10 +57,12 @@ vi.mock('../components/performance/YearSelector', () => ({
 vi.mock('../components/performance/CurrencyToggle', () => ({
   CurrencyToggle: ({
     onChange,
+    allowSourceMode = true,
   }: {
     onChange: (mode: 'source' | 'home') => void;
+    allowSourceMode?: boolean;
   }) => (
-    <div data-testid="currency-toggle">
+    <div data-testid="currency-toggle" data-allow-source={allowSourceMode ? 'true' : 'false'}>
       <button
         type="button"
         data-testid="currency-toggle-home"
@@ -71,6 +73,7 @@ vi.mock('../components/performance/CurrencyToggle', () => ({
       <button
         type="button"
         data-testid="currency-toggle-source"
+        disabled={!allowSourceMode}
         onClick={() => onChange('source')}
       >
         source
@@ -596,7 +599,7 @@ describe('PerformancePage metrics binding regression', () => {
     expect(screen.queryByText('年化報酬率 (XIRR)')).not.toBeInTheDocument();
   });
 
-  it('binds total return to home/source fields when currency mode changes', async () => {
+  it('binds total return to home/source fields when currency mode changes in single portfolio mode', async () => {
     localStorage.setItem('performance_currency_mode', 'home');
     setupPageMocks(
       createPerformanceMock({
@@ -629,6 +632,42 @@ describe('PerformancePage metrics binding regression', () => {
       expect(within(totalReturnCell as HTMLElement).getByText('+12.34%')).toBeInTheDocument();
       expect(within(totalReturnCell as HTMLElement).queryByText('+56.78%')).not.toBeInTheDocument();
     });
+  });
+
+  it('forces home-currency binding and suppresses source toggle in aggregate mode', async () => {
+    localStorage.setItem('performance_currency_mode', 'source');
+    setupPageMocks(
+      createPerformanceMock({
+        totalReturnPercentage: 12.34,
+        totalReturnPercentageSource: 56.78,
+      }),
+      {
+        isAllPortfolios: true,
+      }
+    );
+
+    render(<PerformancePage />);
+
+    const currencyToggle = await screen.findByTestId('currency-toggle');
+    expect(currencyToggle).toHaveAttribute('data-allow-source', 'false');
+
+    const sourceButton = screen.getByTestId('currency-toggle-source');
+    expect(sourceButton).toBeDisabled();
+
+    const totalReturnLabel = await screen.findByText('總報酬率');
+    const totalReturnCell = totalReturnLabel.parentElement;
+    expect(totalReturnCell).not.toBeNull();
+
+    await waitFor(() => {
+      expect(within(totalReturnCell as HTMLElement).getByText('+12.34%')).toBeInTheDocument();
+      expect(within(totalReturnCell as HTMLElement).queryByText('+56.78%')).not.toBeInTheDocument();
+    });
+
+    const annualReturnHeading = screen.getAllByRole('heading', { level: 3 }).find((heading) =>
+      heading.textContent?.includes('年度報酬')
+    );
+    expect(annualReturnHeading).toBeDefined();
+    expect(annualReturnHeading).toHaveTextContent(`(${mockPortfolio.homeCurrency})`);
   });
 
   it('does not show main loading gate or trigger recalculation when historical cache data is complete', async () => {

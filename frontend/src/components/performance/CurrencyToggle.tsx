@@ -10,6 +10,7 @@ interface CurrencyToggleProps {
   storageKey?: string;
   className?: string;
   disabled?: boolean;
+  allowSourceMode?: boolean;
 }
 
 export function CurrencyToggle({
@@ -20,23 +21,31 @@ export function CurrencyToggle({
   storageKey = DEFAULT_STORAGE_KEY,
   className = '',
   disabled = false,
+  allowSourceMode = true,
 }: CurrencyToggleProps) {
   // 注意：父元件應從 localStorage lazy-init 以避免閃爍
   // 此元件不再於掛載時同步以防止重新渲染
 
   const sourceLabel = sourceCurrency ? `原幣 (${sourceCurrency})` : '原幣';
   const homeLabel = `本位幣 (${homeCurrency})`;
+  const effectiveValue: PerformanceCurrencyMode = allowSourceMode
+    ? value
+    : 'home';
 
   const setMode = (mode: PerformanceCurrencyMode) => {
     if (disabled) return;
 
+    const nextMode: PerformanceCurrencyMode = allowSourceMode
+      ? mode
+      : 'home';
+
     try {
-      localStorage.setItem(storageKey, mode);
+      localStorage.setItem(storageKey, nextMode);
     } catch {
       // 忽略
     }
 
-    onChange(mode);
+    onChange(nextMode);
   };
 
   const baseButton =
@@ -54,16 +63,17 @@ export function CurrencyToggle({
       <button
         type="button"
         onClick={() => setMode('source')}
-        aria-pressed={value === 'source'}
-        className={`${baseButton} ${value === 'source' ? selected : unselected}`}
+        aria-pressed={effectiveValue === 'source'}
+        className={`${baseButton} ${effectiveValue === 'source' ? selected : unselected}`}
+        disabled={!allowSourceMode}
       >
         {sourceLabel}
       </button>
       <button
         type="button"
         onClick={() => setMode('home')}
-        aria-pressed={value === 'home'}
-        className={`${baseButton} ${value === 'home' ? selected : unselected}`}
+        aria-pressed={effectiveValue === 'home'}
+        className={`${baseButton} ${effectiveValue === 'home' ? selected : unselected}`}
       >
         {homeLabel}
       </button>
