@@ -270,6 +270,11 @@
 - [x] T189 [P] Add regression coverage to ensure YearEnd-only missing price does not trigger first-snapshot anchor patch in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
 - [x] T190 Run focused QA verification for YearStart-only anchor patch gating and existing T159/T178~T187 regression safety
 - [x] T191 Complete code-review gate for YearStart-only anchor patch gating refinement
+- [x] T192 Reproduce persisted `TWR=-100%` scenarios with API-level matrix across single/aggregate, home/source, baseline import, and YearStart/YearEnd fallback paths in `backend/tests/InvestmentTracker.API.Tests/Integration/PortfoliosControllerTests.cs`
+- [x] T193 Fix missing-price manual submission contract to separate YearStart/YearEnd values for same ticker in `frontend/src/components/modals/MissingPriceModal.tsx` and `frontend/src/pages/Performance.tsx`
+- [x] T194 [P] Add frontend regression tests to prove YearStart/YearEnd same-ticker inputs stay isolated and submitted in separate payload maps in `frontend/src/test/missingPriceModal.submit.test.tsx`
+- [x] T195 Run focused QA verification for missing-price submission split and historical performance cache behavior in `frontend/src/test/missingPriceModal.submit.test.tsx`, `frontend/src/test/performance.metrics-binding.test.tsx`, and `frontend/src/test/useHistoricalPerformance.test.ts`
+- [x] T196 Complete code-review gate for missing-price submission split and TWR regression mitigation closure
 
 ---
 
