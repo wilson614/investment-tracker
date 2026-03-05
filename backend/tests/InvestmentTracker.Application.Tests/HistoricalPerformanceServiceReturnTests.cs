@@ -1173,6 +1173,483 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_MissingPriceFallback_WithSnapshotBeforeZero_ShouldNotCollapseTwrToMinus100()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var depositDate = new DateTime(year, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Missing price TWR -100 regression guard");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var seededAdjustment = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        seededAdjustment.SetImportInitialization(
+            marketValueAtImport: 1000m,
+            historicalTotalCost: 980m);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([seededAdjustment]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var externalDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            depositDate,
+            CurrencyTransactionType.Deposit,
+            200m,
+            homeAmount: 200m,
+            exchangeRate: 1m,
+            notes: "external deposit");
+
+        boundLedger.AddTransaction(externalDeposit);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        // 模擬缺價快照路徑：事件前估值錯誤為 0，若直接幾何鏈結會把 TWR 乘成 -100%。
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: externalDeposit.Id,
+                snapshotDate: depositDate,
+                beforeSource: 0m,
+                afterSource: 200m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 1, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>(),
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.IsComplete.Should().BeFalse();
+        result.MissingPrices.Should().ContainSingle(p => p.Ticker == "2330" && p.PriceType == "YearStart");
+
+        result.StartValueSource.Should().Be(980m);
+        result.EndValueSource.Should().Be(1200m);
+        result.StartValueHome.Should().Be(980m);
+        result.EndValueHome.Should().Be(1200m);
+
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);
+        result.TimeWeightedReturnPercentage.Should().NotBeNull();
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_MissingPriceFallback_WhenFirstSnapshotHasPositiveBefore_ShouldNotPatchLaterZeroBeforeSnapshots()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var firstDepositDate = new DateTime(year, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var secondDepositDate = new DateTime(year, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "Missing price fallback first-anchor-only patch guard");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var seededAdjustment = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Adjustment,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD,
+            notes: "import-execute-adjustment");
+        seededAdjustment.SetImportInitialization(
+            marketValueAtImport: 1000m,
+            historicalTotalCost: 980m);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([seededAdjustment]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var firstExternalDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            firstDepositDate,
+            CurrencyTransactionType.Deposit,
+            200m,
+            homeAmount: 200m,
+            exchangeRate: 1m,
+            notes: "first external deposit");
+
+        var secondExternalDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            secondDepositDate,
+            CurrencyTransactionType.Deposit,
+            50m,
+            homeAmount: 50m,
+            exchangeRate: 1m,
+            notes: "second external deposit");
+
+        boundLedger.AddTransaction(firstExternalDeposit);
+        boundLedger.AddTransaction(secondExternalDeposit);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        // 第一筆快照 before 已正常（非 0）；第二筆才是 zero-before。
+        // Regression guard: service 應只允許修補首段錨點，不可往後掃描並覆寫後續段落。
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: firstExternalDeposit.Id,
+                snapshotDate: firstDepositDate,
+                beforeSource: 980m,
+                afterSource: 1180m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 1, 1, 0, 0, DateTimeKind.Utc)),
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: secondExternalDeposit.Id,
+                snapshotDate: secondDepositDate,
+                beforeSource: 0m,
+                afterSource: 1230m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 7, 1, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>(),
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.IsComplete.Should().BeFalse();
+        result.MissingPrices.Should().ContainSingle(p => p.Ticker == "2330" && p.PriceType == "YearStart");
+        result.StartValueSource.Should().Be(980m);
+        result.EndValueSource.Should().Be(1250m);
+
+        // 若服務錯誤地往後掃描並覆寫第二段 zero-before，結果就不會維持 -100%。
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_NoMissingPriceFallbackSignal_ZeroBeforeSnapshot_ShouldPreserveMinus100Twr()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var depositDate = new DateTime(year, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "No fallback signal should not patch zero-before snapshot");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var externalDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            depositDate,
+            CurrencyTransactionType.Deposit,
+            200m,
+            homeAmount: 200m,
+            exchangeRate: 1m,
+            notes: "external deposit");
+
+        boundLedger.AddTransaction(externalDeposit);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: externalDeposit.Id,
+                snapshotDate: depositDate,
+                beforeSource: 0m,
+                afterSource: 200m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 1, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 110m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.IsComplete.Should().BeTrue();
+        result.MissingPrices.Should().BeEmpty();
+        result.StartValueSource.Should().Be(1000m);
+        result.EndValueSource.Should().Be(1300m);
+
+        // No missing-price/cost-basis fallback signal => do not patch away potential real -100% segment.
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_MissingYearEndPriceOnly_ZeroBeforeSnapshot_ShouldPreserveMinus100Twr()
+    {
+        // Arrange
+        const int year = 2025;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baselineDate = yearStart.AddDays(-1);
+        var depositDate = new DateTime(year, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "TWD",
+            homeCurrency: "TWD",
+            displayName: "YearEnd-only missing price should not patch first zero-before snapshot");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: baselineDate,
+            ticker: "2330",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.TW,
+            currency: Currency.TWD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        var boundLedger = new CurrencyLedger(_userId, "TWD", "TWD Ledger", "TWD");
+        typeof(CurrencyLedger)
+            .BaseType!
+            .GetProperty(nameof(CurrencyLedger.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(boundLedger, [portfolio.BoundCurrencyLedgerId]);
+
+        var externalDeposit = new CurrencyTransaction(
+            boundLedger.Id,
+            depositDate,
+            CurrencyTransactionType.Deposit,
+            200m,
+            homeAmount: 200m,
+            exchangeRate: 1m,
+            notes: "external deposit");
+
+        boundLedger.AddTransaction(externalDeposit);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(boundLedger);
+
+        var snapshots = new List<TransactionPortfolioSnapshot>
+        {
+            CreateSnapshot(
+                portfolioId: _portfolioId,
+                transactionId: externalDeposit.Id,
+                snapshotDate: depositDate,
+                beforeSource: 0m,
+                afterSource: 200m,
+                fxRate: 1m,
+                createdAt: new DateTime(year, 6, 1, 1, 0, 0, DateTimeKind.Utc))
+        };
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshots);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("2330", year, StockMarket.TW, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndPriceResult?)null);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>()
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.IsComplete.Should().BeFalse();
+        result.MissingPrices.Should().ContainSingle(p => p.Ticker == "2330" && p.PriceType == "YearEnd");
+        result.StartValueSource.Should().Be(1000m);
+        result.EndValueSource.Should().Be(1200m);
+
+        // YearEnd-only missing price should not trigger year-start fallback patch.
+        result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_AutoFetchSameTickerForYearStartAndYearEnd_DeduplicatesPriceAndFxCalls()
     {
         // Arrange
