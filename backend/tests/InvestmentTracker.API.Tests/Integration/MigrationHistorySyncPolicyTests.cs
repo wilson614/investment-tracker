@@ -1,5 +1,8 @@
 using FluentAssertions;
 using InvestmentTracker.API;
+using InvestmentTracker.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace InvestmentTracker.API.Tests.Integration;
 
@@ -129,6 +132,48 @@ public class MigrationHistorySyncPolicyTests
 
         // Assert
         markers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EfMigrations_ShouldRecognizeAllDeclaredMigrationTypes()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=investment_tracker_test;Username=postgres;Password=postgres")
+            .Options;
+
+        using var context = new AppDbContext(options);
+
+        var migrationTypes = typeof(AppDbContext).Assembly
+            .GetTypes()
+            .Where(type =>
+                typeof(Migration).IsAssignableFrom(type)
+                && !type.IsAbstract
+                && type.Namespace == "InvestmentTracker.Infrastructure.Persistence.Migrations")
+            .ToList();
+
+        var missingAttributeTypes = migrationTypes
+            .Where(type => type.GetCustomAttributes(typeof(MigrationAttribute), inherit: false)
+                .OfType<MigrationAttribute>()
+                .SingleOrDefault() is null)
+            .Select(type => type.FullName ?? type.Name)
+            .ToList();
+
+        var declaredMigrations = migrationTypes
+            .Select(type => type.GetCustomAttributes(typeof(MigrationAttribute), inherit: false)
+                .OfType<MigrationAttribute>()
+                .SingleOrDefault()?.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .ToList();
+
+        // Act
+        var recognizedMigrations = context.Database.GetMigrations().ToList();
+
+        // Assert
+        missingAttributeTypes.Should().BeEmpty();
+        declaredMigrations.Should().Contain("20260304103000_AddStockImportSessionPersistence");
+        recognizedMigrations.Should().Contain(declaredMigrations);
     }
 
     [Fact]

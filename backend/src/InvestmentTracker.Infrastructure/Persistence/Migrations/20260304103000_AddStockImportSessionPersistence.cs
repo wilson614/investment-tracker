@@ -1,4 +1,5 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace InvestmentTracker.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(InvestmentTracker.Infrastructure.Persistence.AppDbContext))]
+    [Migration("20260304103000_AddStockImportSessionPersistence")]
     public partial class AddStockImportSessionPersistence : Migration
     {
         /// <inheritdoc />
