@@ -266,6 +266,10 @@
 - [x] T185 Add annual full-year regression (first trade starts in October; blank pre-trade days skipped; TWR positive and not `-100%`) in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
 - [x] T186 Run focused QA verification for TWR zero-denominator/blank-day regression in backend domain+application tests
 - [x] T187 Complete code-review gate for TWR denominator-zero guard and regression coverage closure
+- [x] T188 Refine TWR first-snapshot anchor patch to trigger only on YearStart fallback signal in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T189 [P] Add regression coverage to ensure YearEnd-only missing price does not trigger first-snapshot anchor patch in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T190 Run focused QA verification for YearStart-only anchor patch gating and existing T159/T178~T187 regression safety
+- [x] T191 Complete code-review gate for YearStart-only anchor patch gating refinement
 
 ---
 
