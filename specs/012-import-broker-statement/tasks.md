@@ -275,6 +275,10 @@
 - [x] T194 [P] Add frontend regression tests to prove YearStart/YearEnd same-ticker inputs stay isolated and submitted in separate payload maps in `frontend/src/test/missingPriceModal.submit.test.tsx`
 - [x] T195 Run focused QA verification for missing-price submission split and historical performance cache behavior in `frontend/src/test/missingPriceModal.submit.test.tsx`, `frontend/src/test/performance.metrics-binding.test.tsx`, and `frontend/src/test/useHistoricalPerformance.test.ts`
 - [x] T196 Complete code-review gate for missing-price submission split and TWR regression mitigation closure
+- [x] T197 Reproduce new-tenant `TWR=-100%` behavior at API/service layers and isolate first-snapshot anchor invariant mismatch conditions
+- [x] T198 Compare `108626b..HEAD` annual performance path and confirm first-snapshot patch gate gap as primary regression source
+- [x] T199 Relax first-snapshot anchor patch trigger to invariant-based guard (`closedLoopStartValue > 0 && firstSnapshot.before == 0`) in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
+- [x] T200 [P] Update regression tests to enforce old-fail/new-pass for no-YearStart-fallback anchor mismatch scenarios in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
 
 ---
 
