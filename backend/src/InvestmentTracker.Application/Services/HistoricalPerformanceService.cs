@@ -534,10 +534,6 @@ public class HistoricalPerformanceService(
             .Select(position => ProjectPositionValue(position, yearEnd, yearEndPrices, yearEndFallbackTickerToHomeRates))
             .ToList();
 
-        var hasYearStartCostBasisFallbackSignal = yearStartProjectedPositions.Any(p => p.ValuationSource == PositionValuationSource.CostBasisFallback);
-        var hasYearStartMissingPriceSignal = deduplicatedMissingPrices.Any(p => string.Equals(p.PriceType, "YearStart", StringComparison.OrdinalIgnoreCase));
-        var hasYearStartFallbackSignal = hasYearStartMissingPriceSignal || hasYearStartCostBasisFallbackSignal;
-
         logger.LogDebug("=== Year {Year} Performance Calculation Debug ===", year);
         logger.LogDebug("{SourceCurrency}/{HomeCurrency} Rate Start: {RateStart}, End: {RateEnd}",
             sourceCurrency, homeCurrency, sourceToHomeRateStart, sourceToHomeRateEnd);
@@ -829,14 +825,13 @@ public class HistoricalPerformanceService(
             .ToList();
 
         if (closedLoopStartValueSource > 0m
-            && hasYearStartFallbackSignal
             && closedLoopSourceSnapshots.Count > 0)
         {
-            // 在 missing-price / 成本 fallback 場景，第一個現金流快照的 before 可能仍為 0（資料來源尚未套用 fallback），
+            // 不變量修補：若閉環起始值已為正，但第一段快照 before 仍為 0，表示錨點不一致，
             // 直接帶入 TWR 會把首段乘成 0 導致固定 -100%。
             // 保守修補：僅修補「第一段錨點快照」，避免覆寫後續可能是實際語意的零值子期間。
             var firstSnapshot = closedLoopSourceSnapshots[0];
-            if (firstSnapshot.ValueBefore == 0m && firstSnapshot.ValueAfter > 0m)
+            if (firstSnapshot.ValueBefore == 0m)
             {
                 closedLoopSourceSnapshots[0] = firstSnapshot with { ValueBefore = closedLoopStartValueSource };
             }
@@ -926,12 +921,11 @@ public class HistoricalPerformanceService(
             .ToList();
 
         if (closedLoopStartValueHome > 0m
-            && hasYearStartFallbackSignal
             && closedLoopHomeSnapshots.Count > 0)
         {
-            // 同 source 路徑：僅修補第一段錨點快照，避免擴大覆寫導致掩蓋後續真實 -100%/零值路徑。
+            // 同 source 路徑：以不變量不一致作為修補條件，僅修補第一段錨點快照。
             var firstSnapshot = closedLoopHomeSnapshots[0];
-            if (firstSnapshot.ValueBefore == 0m && firstSnapshot.ValueAfter > 0m)
+            if (firstSnapshot.ValueBefore == 0m)
             {
                 closedLoopHomeSnapshots[0] = firstSnapshot with { ValueBefore = closedLoopStartValueHome };
             }

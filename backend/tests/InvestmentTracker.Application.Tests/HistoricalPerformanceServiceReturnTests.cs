@@ -1425,7 +1425,7 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
-    public async Task CalculateYearPerformanceAsync_NoMissingPriceFallbackSignal_ZeroBeforeSnapshot_ShouldPreserveMinus100Twr()
+    public async Task CalculateYearPerformanceAsync_NoMissingPriceFallbackSignal_ButAnchorInvariantBroken_ShouldNotCollapseTwrToMinus100()
     {
         // Arrange
         const int year = 2025;
@@ -1438,7 +1438,7 @@ public class HistoricalPerformanceServiceReturnTests
             boundCurrencyLedgerId: Guid.NewGuid(),
             baseCurrency: "TWD",
             homeCurrency: "TWD",
-            displayName: "No fallback signal should not patch zero-before snapshot");
+            displayName: "No fallback signal but broken first-anchor invariant should be patched");
 
         typeof(Portfolio)
             .BaseType!
@@ -1530,14 +1530,16 @@ public class HistoricalPerformanceServiceReturnTests
         result.StartValueSource.Should().Be(1000m);
         result.EndValueSource.Should().Be(1300m);
 
-        // No missing-price/cost-basis fallback signal => do not patch away potential real -100% segment.
+        // 舊邏輯（只看 year-start fallback signal）會維持 -100；
+        // 新邏輯改為不變量檢查，首段 should be patched 並避免崩到 -100。
         result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
-        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);
         result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
     }
 
     [Fact]
-    public async Task CalculateYearPerformanceAsync_MissingYearEndPriceOnly_ZeroBeforeSnapshot_ShouldPreserveMinus100Twr()
+    public async Task CalculateYearPerformanceAsync_MissingYearEndPriceOnly_BrokenFirstAnchorInvariant_ShouldNotCollapseTwrToMinus100()
     {
         // Arrange
         const int year = 2025;
@@ -1643,9 +1645,11 @@ public class HistoricalPerformanceServiceReturnTests
         result.StartValueSource.Should().Be(1000m);
         result.EndValueSource.Should().Be(1200m);
 
-        // YearEnd-only missing price should not trigger year-start fallback patch.
+        // 即使沒有 year-start fallback signal，只要首段錨點不變量不一致（start>0 但 first before=0），
+        // 也應只修補第一段並避免 TWR 崩到 -100%。
         result.TimeWeightedReturnPercentageSource.Should().NotBeNull();
-        result.TimeWeightedReturnPercentageSource.Should().BeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(-100d);
         result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
     }
 
