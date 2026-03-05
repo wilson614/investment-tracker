@@ -58,4 +58,100 @@ public class MigrationHistorySyncPolicyTests
         // Assert
         shouldMark.Should().BeFalse();
     }
+
+    [Fact]
+    public void GetAppliedMigrationMarkersToRemove_WhenTargetMigrationTableMissing_ShouldReturnMarker()
+    {
+        // Arrange
+        var appliedMigrationIds = new List<string>
+        {
+            "20260111153721_InitialCreate",
+            "20260304103000_AddStockImportSessionPersistence"
+        };
+
+        var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "users",
+            "portfolios"
+        };
+
+        // Act
+        var markers = MigrationHistorySyncPolicy.GetAppliedMigrationMarkersToRemove(appliedMigrationIds, existingTables);
+
+        // Assert
+        markers.Should().BeEquivalentTo([
+            "20260304103000_AddStockImportSessionPersistence"
+        ]);
+    }
+
+    [Fact]
+    public void GetAppliedMigrationMarkersToRemove_WhenSuffixMarkerTableMissing_ShouldReturnOriginalMarker()
+    {
+        // Arrange
+        var appliedMigrationIds = new List<string>
+        {
+            "20260304103000_AddStockImportSessionPersistence.1A2B3C4D"
+        };
+
+        var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "users",
+            "portfolios"
+        };
+
+        // Act
+        var markers = MigrationHistorySyncPolicy.GetAppliedMigrationMarkersToRemove(appliedMigrationIds, existingTables);
+
+        // Assert
+        markers.Should().BeEquivalentTo([
+            "20260304103000_AddStockImportSessionPersistence.1A2B3C4D"
+        ]);
+    }
+
+    [Fact]
+    public void GetAppliedMigrationMarkersToRemove_WhenRequiredTableExists_ShouldReturnEmpty()
+    {
+        // Arrange
+        var appliedMigrationIds = new List<string>
+        {
+            "20260304103000_AddStockImportSessionPersistence"
+        };
+
+        var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "users",
+            "portfolios",
+            "stock_import_sessions"
+        };
+
+        // Act
+        var markers = MigrationHistorySyncPolicy.GetAppliedMigrationMarkersToRemove(appliedMigrationIds, existingTables);
+
+        // Assert
+        markers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void IsSupportedProvider_WhenProviderIsNpgsql_ShouldReturnTrue()
+    {
+        // Act
+        var supported = MigrationHistorySyncPolicy.IsSupportedProvider("Npgsql.EntityFrameworkCore.PostgreSQL");
+
+        // Assert
+        supported.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Microsoft.EntityFrameworkCore.Sqlite")]
+    [InlineData("Microsoft.EntityFrameworkCore.InMemory")]
+    public void IsSupportedProvider_WhenProviderIsNotNpgsql_ShouldReturnFalse(string? providerName)
+    {
+        // Act
+        var supported = MigrationHistorySyncPolicy.IsSupportedProvider(providerName);
+
+        // Assert
+        supported.Should().BeFalse();
+    }
 }

@@ -4,6 +4,8 @@ namespace InvestmentTracker.API;
 
 public static class MigrationHistorySyncPolicy
 {
+    private const string PostgresProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
+
     private static readonly IReadOnlyList<MigrationRequiredTableRule> RequiredTableRules =
     [
         new MigrationRequiredTableRule(
@@ -14,24 +16,61 @@ public static class MigrationHistorySyncPolicy
             ])
     ];
 
+    public static bool IsSupportedProvider(string? providerName)
+    {
+        return string.Equals(providerName, PostgresProviderName, StringComparison.Ordinal);
+    }
+
     public static bool ShouldMarkMigrationAsApplied(string migrationId, IReadOnlySet<string> existingTableNames)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(migrationId);
         ArgumentNullException.ThrowIfNull(existingTableNames);
 
-        var normalizedMigrationId = NormalizeMigrationId(migrationId);
-        foreach (var rule in RequiredTableRules)
+        var matchingRule = FindMatchingRule(migrationId);
+        if (matchingRule is null)
         {
-            if (!normalizedMigrationId.StartsWith(rule.MigrationPrefix, StringComparison.Ordinal))
+            // Fail-closed by default: only explicitly configured migrations may be marked as applied.
+            return false;
+        }
+
+        return matchingRule.RequiredTableNames.All(existingTableNames.Contains);
+    }
+
+    public static IReadOnlyList<string> GetAppliedMigrationMarkersToRemove(
+        IReadOnlyCollection<string> appliedMigrationIds,
+        IReadOnlySet<string> existingTableNames)
+    {
+        ArgumentNullException.ThrowIfNull(appliedMigrationIds);
+        ArgumentNullException.ThrowIfNull(existingTableNames);
+
+        if (appliedMigrationIds.Count == 0)
+        {
+            return [];
+        }
+
+        var markersToRemove = new List<string>();
+        foreach (var appliedMigrationId in appliedMigrationIds)
+        {
+            if (string.IsNullOrWhiteSpace(appliedMigrationId))
             {
                 continue;
             }
 
-            return rule.RequiredTableNames.All(existingTableNames.Contains);
+            var matchingRule = FindMatchingRule(appliedMigrationId);
+            if (matchingRule is null)
+            {
+                continue;
+            }
+
+            if (matchingRule.RequiredTableNames.All(existingTableNames.Contains))
+            {
+                continue;
+            }
+
+            markersToRemove.Add(appliedMigrationId.Trim());
         }
 
-        // Fail-closed by default: only explicitly configured migrations may be marked as applied.
-        return false;
+        return markersToRemove;
     }
 
     internal static string NormalizeMigrationId(string migrationId)
@@ -50,6 +89,15 @@ public static class MigrationHistorySyncPolicy
         }
 
         return normalized;
+    }
+
+    private static MigrationRequiredTableRule? FindMatchingRule(string migrationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(migrationId);
+
+        var normalizedMigrationId = NormalizeMigrationId(migrationId);
+        return RequiredTableRules.FirstOrDefault(rule =>
+            normalizedMigrationId.StartsWith(rule.MigrationPrefix, StringComparison.Ordinal));
     }
 
     internal sealed record MigrationRequiredTableRule(string MigrationPrefix, IReadOnlyList<string> RequiredTableNames);

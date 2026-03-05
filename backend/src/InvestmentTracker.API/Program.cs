@@ -348,6 +348,16 @@ if (!app.Environment.IsEnvironment("Testing"))
     try
     {
         Console.WriteLine("Checking for pending database migrations...");
+
+        if (InvestmentTracker.API.MigrationHistorySyncPolicy.IsSupportedProvider(context.Database.ProviderName))
+        {
+            var repairedMismatch = await RepairKnownMigrationHistoryMismatchesAsync(context);
+            if (repairedMismatch)
+            {
+                Console.WriteLine("Migration history mismatch repaired. Re-evaluating pending migrations...");
+            }
+        }
+
         await ApplyPendingMigrationsAsync(context);
     }
     catch (PostgresException ex) when (ex.SqlState == "42P07")
@@ -385,6 +395,12 @@ if (!app.Environment.IsEnvironment("Testing"))
             }
 
             Console.WriteLine("Migration history synchronized. Re-checking pending migrations...");
+
+            if (InvestmentTracker.API.MigrationHistorySyncPolicy.IsSupportedProvider(context.Database.ProviderName))
+            {
+                await RepairKnownMigrationHistoryMismatchesAsync(context);
+            }
+
             await ApplyPendingMigrationsAsync(context);
         }
         catch (Exception syncEx)
@@ -413,6 +429,83 @@ static async Task ApplyPendingMigrationsAsync(AppDbContext context)
     }
 
     Console.WriteLine("No pending migrations found.");
+}
+
+static async Task<bool> RepairKnownMigrationHistoryMismatchesAsync(AppDbContext context)
+{
+    await EnsureMigrationsHistoryTableExistsAsync(context);
+
+    var appliedMigrationIds = await LoadAppliedMigrationIdsAsync(context);
+    if (appliedMigrationIds.Count == 0)
+    {
+        return false;
+    }
+
+    var existingTableNames = await LoadExistingTableNamesAsync(context);
+    var markersToRemove = InvestmentTracker.API.MigrationHistorySyncPolicy.GetAppliedMigrationMarkersToRemove(appliedMigrationIds, existingTableNames);
+
+    if (markersToRemove.Count == 0)
+    {
+        return false;
+    }
+
+    foreach (var marker in markersToRemove)
+    {
+        Console.WriteLine($"Detected migration-history mismatch for {marker}. Removing marker for self-healing.");
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            DELETE FROM ""__EFMigrationsHistory""
+            WHERE ""MigrationId"" = {marker}");
+    }
+
+    return true;
+}
+
+static async Task EnsureMigrationsHistoryTableExistsAsync(AppDbContext context)
+{
+    await context.Database.ExecuteSqlRawAsync(@"
+        CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+            ""MigrationId"" character varying(150) NOT NULL,
+            ""ProductVersion"" character varying(32) NOT NULL,
+            CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
+        )");
+}
+
+static async Task<HashSet<string>> LoadAppliedMigrationIdsAsync(AppDbContext context)
+{
+    var migrationIds = new HashSet<string>(StringComparer.Ordinal);
+    var connection = context.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT ""MigrationId""
+            FROM ""__EFMigrationsHistory""";
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                migrationIds.Add(reader.GetString(0));
+            }
+        }
+
+        return migrationIds;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
 }
 
 static async Task<HashSet<string>> LoadExistingTableNamesAsync(AppDbContext context)
