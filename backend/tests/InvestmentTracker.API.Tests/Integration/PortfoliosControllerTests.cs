@@ -837,6 +837,134 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
     }
 
     [Fact]
+    public async Task AggregatePerformance_WithSameCurrencyWipeoutThenReinvestment_ShouldPreserveLegitWipeoutAndNotNeutralizeToZero()
+    {
+        // Arrange
+        var targetYear = DateTime.UtcNow.Year - 1;
+        var twdPortfolio = await CreateTestPortfolioWithCurrencyAsync("TWD Legit Wipeout", "TWD");
+        await CreateTestPortfolioWithCurrencyAsync("USD Empty", "USD");
+
+        await AddInitialDepositAsync(
+            twdPortfolio.Id,
+            new DateTime(targetYear - 1, 12, 20),
+            amount: 50000m,
+            homeAmount: 50000m,
+            exchangeRate: 1m);
+
+        var buyBeforeYear = new CreateStockTransactionRequest
+        {
+            PortfolioId = twdPortfolio.Id,
+            TransactionDate = new DateTime(targetYear - 1, 12, 25),
+            Ticker = "2330",
+            TransactionType = TransactionType.Buy,
+            Shares = 100m,
+            PricePerShare = 500m,
+            Fees = 0m,
+            Market = StockMarket.TW,
+            Currency = Currency.TWD,
+            BalanceAction = BalanceAction.None
+        };
+
+        (await Client.PostAsJsonAsync("/api/stocktransactions", buyBeforeYear)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await AddDepositAsync(
+            twdPortfolio.Id,
+            new DateTime(targetYear, 6, 30),
+            amount: 40000m,
+            homeAmount: 40000m,
+            exchangeRate: 1m);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = targetYear,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 500m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var single = await CalculatePortfolioYearPerformanceAsync(twdPortfolio.Id, request);
+        var aggregate = await CalculateAggregateYearPerformanceAsync(request);
+
+        // Assert
+        single.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        single.TimeWeightedReturnPercentageSource!.Value.Should().BeLessThan(-50d,
+            "legit wipeout + reinvestment should remain a large negative return, not be neutralized");
+        single.TimeWeightedReturnPercentageSource.Value.Should().NotBeApproximately(0d, 0.0001d,
+            "synthetic zero re-anchor guard must not neutralize legit wipeout scenario");
+        single.TimeWeightedReturnPercentageSource.Value.Should().NotBeApproximately(-100d, 0.0001d,
+            "same-year reinvestment should prevent complete -100% collapse");
+
+        aggregate.TimeWeightedReturnPercentage.Should().NotBeNull();
+        aggregate.TimeWeightedReturnPercentage!.Value.Should().BeApproximately(single.TimeWeightedReturnPercentage!.Value, 0.0001d);
+        aggregate.TimeWeightedReturnPercentage.Value.Should().BeLessThan(-50d);
+        aggregate.TimeWeightedReturnPercentageSource.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PortfolioYearPerformance_AutoFetchCrossCurrencyMissingYearEndFx_ShouldUseTransactionRateFallbackAndKeepTwrStable()
+    {
+        // Arrange
+        var targetYear = DateTime.UtcNow.Year - 1;
+        var portfolio = await CreateTestPortfolioWithCurrencyAsync("USD Missing FX Fallback", "USD");
+
+        await AddInitialUsdDepositAsync(portfolio.Id, new DateTime(targetYear - 1, 12, 15), 1000m);
+
+        var buyBeforeYear = new CreateStockTransactionRequest
+        {
+            PortfolioId = portfolio.Id,
+            TransactionDate = new DateTime(targetYear - 1, 12, 31),
+            Ticker = "AAPL",
+            TransactionType = TransactionType.Buy,
+            Shares = 10m,
+            PricePerShare = 100m,
+            Fees = 0m,
+            Market = StockMarket.US,
+            Currency = Currency.USD,
+            BalanceAction = BalanceAction.None
+        };
+
+        (await Client.PostAsJsonAsync("/api/stocktransactions", buyBeforeYear)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Act
+        var response = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{portfolio.Id}/performance/year",
+            new CalculateYearPerformanceRequest { Year = targetYear });
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var performance = await response.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        performance.Should().NotBeNull();
+
+        performance!.SourceCurrency.Should().Be("USD");
+
+        performance.StartValueSource.Should().Be(1000m);
+        performance.EndValueSource.Should().Be(1000m);
+
+        performance.StartValueHome.Should().BeGreaterThan(0m);
+        performance.EndValueHome.Should().BeGreaterThan(0m);
+
+        performance.StartValueHome.Should().NotBe(performance.StartValueSource,
+            "cross-currency path must not silently fallback to 1:1");
+        performance.EndValueHome.Should().NotBe(performance.EndValueSource,
+            "cross-currency path must not silently fallback to 1:1");
+
+        (performance.StartValueHome!.Value / performance.StartValueSource!.Value).Should().BeGreaterThan(1m,
+            "USD holdings converted to TWD should have non-1 conversion factor when FX fallback succeeds");
+        (performance.EndValueHome!.Value / performance.EndValueSource!.Value).Should().BeGreaterThan(1m,
+            "USD holdings converted to TWD should have non-1 conversion factor when FX fallback succeeds");
+
+        performance.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        performance.TimeWeightedReturnPercentage.Should().NotBeApproximately(-100d, 0.0001d);
+    }
+
+    [Fact]
     public async Task StockTransactions_Response_EnumsAreSerializedAsNumbers()
     {
         // Arrange

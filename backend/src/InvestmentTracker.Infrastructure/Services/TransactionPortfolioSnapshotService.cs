@@ -140,8 +140,32 @@ public class TransactionPortfolioSnapshotService(
                           && s.PortfolioValueBeforeSource == existingDayEndSource
                           && s.PortfolioValueAfterSource == existingDayEndSource);
 
+            var recalculatedDayBoundaryValues = await TryResolveDayBoundaryValuesAsync(
+                portfolio,
+                date,
+                cancellationToken,
+                backfillContext);
+
             if (!alreadyChained)
             {
+                // 不能沿用 firstSnapshot 的舊值：若交易更新導致日估值改變，會把 stale 值重新寫回。
+                if (recalculatedDayBoundaryValues.HasValue)
+                {
+                    var recalculated = recalculatedDayBoundaryValues.Value;
+
+                    await ReplaceStockSnapshotsForDateAsync(
+                        portfolioId: portfolio.Id,
+                        snapshotDate: snapshotDate,
+                        dayTransactions: dayTransactions,
+                        dayStartHome: recalculated.DayStartHome,
+                        dayEndHome: recalculated.DayEndHome,
+                        dayStartSource: recalculated.DayStartSource,
+                        dayEndSource: recalculated.DayEndSource,
+                        cancellationToken: cancellationToken);
+
+                    return;
+                }
+
                 await ReplaceStockSnapshotsForDateAsync(
                     portfolioId: portfolio.Id,
                     snapshotDate: snapshotDate,
@@ -156,65 +180,16 @@ public class TransactionPortfolioSnapshotService(
             }
 
             // 即使 alreadyChained，也不能直接 return：
-            // 交易更新（日期內移動、金額/費用變更）後，dayStart/dayEnd 可能已改變，
-            // 若沿用舊值會留下過期快照。
-            var recalculatedBeforeDate = date.AddDays(-1);
-
-            var recalculatedDayStartHome = await GetCachedPortfolioValueHomeAsync(
-                portfolio,
-                recalculatedBeforeDate,
-                cancellationToken,
-                backfillContext);
-
-            var recalculatedDayEndHome = await GetCachedPortfolioValueHomeAsync(
-                portfolio,
-                date,
-                cancellationToken,
-                backfillContext);
-
-            var recalculatedDayStartSource = await GetCachedPortfolioValueSourceAsync(
-                portfolio,
-                recalculatedBeforeDate,
-                cancellationToken,
-                backfillContext);
-
-            var recalculatedDayEndSource = await GetCachedPortfolioValueSourceAsync(
-                portfolio,
-                date,
-                cancellationToken,
-                backfillContext);
-
-            if (!recalculatedDayStartHome.HasValue
-                || !recalculatedDayEndHome.HasValue
-                || !recalculatedDayStartSource.HasValue
-                || !recalculatedDayEndSource.HasValue)
-            {
+            // 交易更新（日期內移動、金額/費用變更）後，dayStart/dayEnd 可能已改變。
+            if (!recalculatedDayBoundaryValues.HasValue)
                 return;
-            }
 
-            var resolvedRecalculatedDayStartHome = recalculatedDayStartHome.Value;
-            var resolvedRecalculatedDayEndHome = recalculatedDayEndHome.Value;
-            var resolvedRecalculatedDayStartSource = recalculatedDayStartSource.Value;
-            var resolvedRecalculatedDayEndSource = recalculatedDayEndSource.Value;
+            var resolvedRecalculated = recalculatedDayBoundaryValues.Value;
 
-            var recalculatedLedger = await GetBoundLedgerAsync(
-                portfolio,
-                cancellationToken,
-                backfillContext);
-
-            if (recalculatedLedger is { IsActive: true } && recalculatedLedger.UserId == portfolio.UserId)
-            {
-                resolvedRecalculatedDayStartHome += await CalculateLedgerValueHomeAsync(recalculatedLedger, portfolio.HomeCurrency, recalculatedBeforeDate, cancellationToken);
-                resolvedRecalculatedDayEndHome += await CalculateLedgerValueHomeAsync(recalculatedLedger, portfolio.HomeCurrency, date, cancellationToken);
-
-                resolvedRecalculatedDayStartSource += await CalculateLedgerValueSourceAsync(recalculatedLedger, portfolio.BaseCurrency, portfolio.HomeCurrency, recalculatedBeforeDate, cancellationToken);
-                resolvedRecalculatedDayEndSource += await CalculateLedgerValueSourceAsync(recalculatedLedger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
-            }
-
-            var valuesUnchanged = firstSnapshot.PortfolioValueBeforeHome == resolvedRecalculatedDayStartHome
-                                  && existingDayEndHome == resolvedRecalculatedDayEndHome
-                                  && firstSnapshot.PortfolioValueBeforeSource == resolvedRecalculatedDayStartSource
-                                  && existingDayEndSource == resolvedRecalculatedDayEndSource;
+            var valuesUnchanged = firstSnapshot.PortfolioValueBeforeHome == resolvedRecalculated.DayStartHome
+                                  && existingDayEndHome == resolvedRecalculated.DayEndHome
+                                  && firstSnapshot.PortfolioValueBeforeSource == resolvedRecalculated.DayStartSource
+                                  && existingDayEndSource == resolvedRecalculated.DayEndSource;
 
             if (valuesUnchanged)
                 return;
@@ -223,76 +198,34 @@ public class TransactionPortfolioSnapshotService(
                 portfolioId: portfolio.Id,
                 snapshotDate: snapshotDate,
                 dayTransactions: dayTransactions,
-                dayStartHome: resolvedRecalculatedDayStartHome,
-                dayEndHome: resolvedRecalculatedDayEndHome,
-                dayStartSource: resolvedRecalculatedDayStartSource,
-                dayEndSource: resolvedRecalculatedDayEndSource,
+                dayStartHome: resolvedRecalculated.DayStartHome,
+                dayEndHome: resolvedRecalculated.DayEndHome,
+                dayStartSource: resolvedRecalculated.DayStartSource,
+                dayEndSource: resolvedRecalculated.DayEndSource,
                 cancellationToken: cancellationToken);
 
             return;
         }
 
-        var beforeDate = date.AddDays(-1);
-
-        var dayStartHome = await GetCachedPortfolioValueHomeAsync(
-            portfolio,
-            beforeDate,
-            cancellationToken,
-            backfillContext);
-
-        var dayEndHome = await GetCachedPortfolioValueHomeAsync(
+        var resolvedDayBoundaryValues = await TryResolveDayBoundaryValuesAsync(
             portfolio,
             date,
             cancellationToken,
             backfillContext);
 
-        var dayStartSource = await GetCachedPortfolioValueSourceAsync(
-            portfolio,
-            beforeDate,
-            cancellationToken,
-            backfillContext);
-
-        var dayEndSource = await GetCachedPortfolioValueSourceAsync(
-            portfolio,
-            date,
-            cancellationToken,
-            backfillContext);
-
-        if (!dayStartHome.HasValue
-            || !dayEndHome.HasValue
-            || !dayStartSource.HasValue
-            || !dayEndSource.HasValue)
-        {
+        if (!resolvedDayBoundaryValues.HasValue)
             return;
-        }
 
-        var resolvedDayStartHome = dayStartHome.Value;
-        var resolvedDayEndHome = dayEndHome.Value;
-        var resolvedDayStartSource = dayStartSource.Value;
-        var resolvedDayEndSource = dayEndSource.Value;
-
-        var ledger = await GetBoundLedgerAsync(
-            portfolio,
-            cancellationToken,
-            backfillContext);
-
-        if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
-        {
-            resolvedDayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
-            resolvedDayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
-
-            resolvedDayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
-            resolvedDayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
-        }
+        var resolvedDayBoundary = resolvedDayBoundaryValues.Value;
 
         await ReplaceStockSnapshotsForDateAsync(
             portfolioId: portfolio.Id,
             snapshotDate: snapshotDate,
             dayTransactions: dayTransactions,
-            dayStartHome: resolvedDayStartHome,
-            dayEndHome: resolvedDayEndHome,
-            dayStartSource: resolvedDayStartSource,
-            dayEndSource: resolvedDayEndSource,
+            dayStartHome: resolvedDayBoundary.DayStartHome,
+            dayEndHome: resolvedDayBoundary.DayEndHome,
+            dayStartSource: resolvedDayBoundary.DayStartSource,
+            dayEndSource: resolvedDayBoundary.DayEndSource,
             cancellationToken: cancellationToken);
     }
 
@@ -679,6 +612,72 @@ public class TransactionPortfolioSnapshotService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task<(decimal DayStartHome, decimal DayEndHome, decimal DayStartSource, decimal DayEndSource)?> TryResolveDayBoundaryValuesAsync(
+        Portfolio portfolio,
+        DateOnly date,
+        CancellationToken cancellationToken,
+        SnapshotBackfillComputationContext? backfillContext)
+    {
+        var beforeDate = date.AddDays(-1);
+
+        var dayStartHome = await GetCachedPortfolioValueHomeAsync(
+            portfolio,
+            beforeDate,
+            cancellationToken,
+            backfillContext);
+
+        var dayEndHome = await GetCachedPortfolioValueHomeAsync(
+            portfolio,
+            date,
+            cancellationToken,
+            backfillContext);
+
+        var dayStartSource = await GetCachedPortfolioValueSourceAsync(
+            portfolio,
+            beforeDate,
+            cancellationToken,
+            backfillContext);
+
+        var dayEndSource = await GetCachedPortfolioValueSourceAsync(
+            portfolio,
+            date,
+            cancellationToken,
+            backfillContext);
+
+        if (!dayStartHome.HasValue
+            || !dayEndHome.HasValue
+            || !dayStartSource.HasValue
+            || !dayEndSource.HasValue)
+        {
+            return null;
+        }
+
+        var resolvedDayStartHome = dayStartHome.Value;
+        var resolvedDayEndHome = dayEndHome.Value;
+        var resolvedDayStartSource = dayStartSource.Value;
+        var resolvedDayEndSource = dayEndSource.Value;
+
+        var ledger = await GetBoundLedgerAsync(
+            portfolio,
+            cancellationToken,
+            backfillContext);
+
+        if (ledger is { IsActive: true } && ledger.UserId == portfolio.UserId)
+        {
+            resolvedDayStartHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            resolvedDayEndHome += await CalculateLedgerValueHomeAsync(ledger, portfolio.HomeCurrency, date, cancellationToken);
+
+            resolvedDayStartSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, beforeDate, cancellationToken);
+            resolvedDayEndSource += await CalculateLedgerValueSourceAsync(ledger, portfolio.BaseCurrency, portfolio.HomeCurrency, date, cancellationToken);
+        }
+
+        return (
+            DayStartHome: resolvedDayStartHome,
+            DayEndHome: resolvedDayEndHome,
+            DayStartSource: resolvedDayStartSource,
+            DayEndSource: resolvedDayEndSource);
+    }
+
     private async Task<CurrencyLedger?> GetBoundLedgerAsync(
         Portfolio portfolio,
         CancellationToken cancellationToken,
@@ -1036,6 +1035,17 @@ public class TransactionPortfolioSnapshotService(
                 return costFallback;
             }
 
+            if (string.IsNullOrWhiteSpace(NormalizeCurrencyCode(priceInfo.Currency)))
+            {
+                logger?.LogWarning(
+                    "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; provider currency is unknown and source valuation uses minimum positive guard.",
+                    position.Ticker,
+                    priceInfo.Currency,
+                    sourceCurrency,
+                    priceInfo.ActualDate);
+                return EnsurePositiveFallbackValue(0m);
+            }
+
             logger?.LogWarning(
                 "FX rate unavailable for {Ticker} ({FromCurrency}->{ToCurrency}) on {Date}; no source cost fallback available and valuation is zeroed.",
                 position.Ticker,
@@ -1223,15 +1233,16 @@ public class TransactionPortfolioSnapshotService(
         var normalizedFromCurrency = NormalizeCurrencyCode(fromCurrency);
         var normalizedToCurrency = NormalizeCurrencyCode(toCurrency);
 
-        if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
-            || string.IsNullOrWhiteSpace(normalizedToCurrency))
+        if (AreSameCurrency(normalizedFromCurrency, normalizedToCurrency))
         {
             return 1m;
         }
 
-        if (AreSameCurrency(normalizedFromCurrency, normalizedToCurrency))
+        if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
+            || string.IsNullOrWhiteSpace(normalizedToCurrency))
         {
-            return 1m;
+            // unknown/invalid currency code 僅在已知同幣別時回 1；其餘一律視為無法換算。
+            return null;
         }
 
         try

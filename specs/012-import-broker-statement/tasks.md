@@ -287,6 +287,13 @@
 - [x] T206 [P] Add constrained synthetic-zero wipeout guard plus legit-wipeout regression coverage in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs` and `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs`
 - [x] T207 Run focused production-like QA verification for zero-cost persisted seeds, empty-day TWR chaining, and non-`-100%` yearly return regressions in backend infrastructure/application/domain tests
 - [x] T208 Complete code-review gate for strict TWR patch hardening across snapshot fallback and TWR chaining safeguards
+- [x] T209 Tighten synthetic-zero wipeout guard to avoid misclassifying legit wipeout plus same-day reinvestment in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs`
+- [x] T210 [P] Add reverse domain regressions for synthetic re-anchor vs legit wipeout plus reinvestment in `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs`
+- [x] T211 Harden snapshot FX handling so unknown cross-currency inputs are not silently treated as `1m`, while preserving positive fallback valuation in `backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs`
+- [x] T212 [P] Add infrastructure regressions for unknown cross-currency FX handling and stale+unchained snapshot recalculation in `backend/tests/InvestmentTracker.Infrastructure.Tests/Services/TransactionPortfolioSnapshotServiceTests.cs`
+- [x] T213 Add production-like service/API regressions for cross-currency missing FX fallback, legit wipeout preservation, and non-`-100%` yearly return stability in backend application/API tests
+- [x] T214 Run focused QA verification for final TWR/snapshot hardening across domain, infrastructure, application, and API test suites
+- [x] T215 Complete final code-review gate for 012 release readiness after FX fallback and wipeout-guard hardening
 
 ---
 

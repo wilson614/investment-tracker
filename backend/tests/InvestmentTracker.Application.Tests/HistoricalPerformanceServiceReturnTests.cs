@@ -1937,6 +1937,259 @@ public class HistoricalPerformanceServiceReturnTests
     }
 
     [Fact]
+    public async Task CalculateYearPerformanceAsync_AutoFetchCrossCurrencyMissingFx_ShouldNotSilentOneToOneInHomeValuation()
+    {
+        // Arrange
+        const int year = 2025;
+        var previousYearEnd = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "USD",
+            homeCurrency: "TWD",
+            displayName: "Cross-currency missing FX guard");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: previousYearEnd,
+            ticker: "AAPL",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 30m,
+            fees: 0m,
+            market: StockMarket.US,
+            currency: Currency.USD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("AAPL", year, StockMarket.US, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 110m,
+                Currency = "USD",
+                ActualDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("AAPL", year - 1, StockMarket.US, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 100m,
+                Currency = "USD",
+                ActualDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndExchangeRateResult?)null);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndExchangeRateResult?)null);
+
+        _txDateFxServiceMock
+            .Setup(x => x.GetOrFetchAsync("USD", "TWD", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionDateExchangeRateResult?)null);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().BeEmpty();
+        result.StartValueSource.Should().Be(1000m);
+        result.EndValueSource.Should().Be(1100m);
+
+        result.StartValueHome.Should().NotBe(result.StartValueSource,
+            "cross-currency annual valuation should not silently treat missing FX as 1:1");
+        result.EndValueHome.Should().NotBe(result.EndValueSource,
+            "cross-currency annual valuation should not silently treat missing FX as 1:1");
+
+        result.StartValueHome.Should().Be(30000m,
+            "missing year-end FX should fallback to transaction-derived rate instead of 1:1");
+        result.EndValueHome.Should().Be(33000m,
+            "missing year-end FX should fallback to transaction-derived rate instead of 1:1");
+        result.StartValueHome.Should().NotBe(1000m);
+        result.EndValueHome.Should().NotBe(1100m);
+
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().BeApproximately(result.TimeWeightedReturnPercentageSource!.Value, 0.0001d);
+
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _txDateFxServiceMock.Verify(
+            x => x.GetOrFetchAsync("USD", "TWD", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(2));
+    }
+
+    [Fact]
+    public async Task CalculateYearPerformanceAsync_AutoFetchCrossCurrencyWithOnlyOneToOneTxRateFallback_ShouldAvoidSilentOneToOneAndKeepTwrStable()
+    {
+        // Arrange
+        const int year = 2025;
+        var previousYearEnd = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        var portfolio = new Portfolio(
+            userId: _userId,
+            boundCurrencyLedgerId: Guid.NewGuid(),
+            baseCurrency: "USD",
+            homeCurrency: "TWD",
+            displayName: "Cross-currency one-to-one fallback guard");
+
+        typeof(Portfolio)
+            .BaseType!
+            .GetProperty(nameof(Portfolio.Id))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(portfolio, [_portfolioId]);
+
+        var buyBeforeYear = new StockTransaction(
+            portfolioId: _portfolioId,
+            transactionDate: previousYearEnd,
+            ticker: "AAPL",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 100m,
+            exchangeRate: 1m,
+            fees: 0m,
+            market: StockMarket.US,
+            currency: Currency.USD);
+
+        _portfolioRepoMock
+            .Setup(x => x.GetByIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        _transactionRepoMock
+            .Setup(x => x.GetByPortfolioIdAsync(_portfolioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyBeforeYear]);
+
+        _currencyLedgerRepoMock
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.BackfillSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _txSnapshotServiceMock
+            .Setup(x => x.GetSnapshotsAsync(_portfolioId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("AAPL", year, StockMarket.US, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 110m,
+                Currency = "USD",
+                ActualDate = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndPriceAsync("AAPL", year - 1, StockMarket.US, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YearEndPriceResult
+            {
+                Price = 100m,
+                Currency = "USD",
+                ActualDate = new DateTime(year - 1, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+                Source = "Yahoo",
+                FromCache = false
+            });
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndExchangeRateResult?)null);
+
+        _historicalYearEndDataServiceMock
+            .Setup(x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((YearEndExchangeRateResult?)null);
+
+        _txDateFxServiceMock
+            .Setup(x => x.GetOrFetchAsync("USD", "TWD", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionDateExchangeRateResult
+            {
+                Rate = 1m,
+                CurrencyPair = "USDTWD",
+                RequestedDate = previousYearEnd,
+                ActualDate = previousYearEnd,
+                Source = "Test",
+                FromCache = false
+            });
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = year
+        };
+
+        // Act
+        var result = await _service.CalculateYearPerformanceAsync(_portfolioId, request, CancellationToken.None);
+
+        // Assert
+        result.MissingPrices.Should().ContainSingle(mp => mp.Ticker == "AAPL" && mp.PriceType == "YearStart");
+        result.MissingPrices.Should().ContainSingle(mp => mp.Ticker == "AAPL" && mp.PriceType == "YearEnd");
+
+        result.StartValueSource.Should().Be(1000m);
+        result.EndValueSource.Should().Be(1000m);
+
+        result.StartValueHome.Should().Be(1000m,
+            "when only unusable 1:1 cross-currency fallback exists, cost-basis home value should keep computability via existing home-cost baseline");
+        result.EndValueHome.Should().Be(1000m,
+            "home valuation should stay non-zero and avoid a TWR collapse even when market FX is unresolved");
+
+        result.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d);
+        result.TimeWeightedReturnPercentage.Should().NotBeApproximately(-100d, 0.0001d);
+
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year, It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        _historicalYearEndDataServiceMock.Verify(
+            x => x.GetOrFetchYearEndExchangeRateAsync("USD", "TWD", year - 1, It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        _txDateFxServiceMock.Verify(
+            x => x.GetOrFetchAsync("USD", "TWD", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(2));
+    }
+
+    [Fact]
     public async Task CalculateYearPerformanceAsync_Day1SeededAdjustmentPairedWithInitialBalance_ShouldNotProduceInfiniteStyleReturn()
     {
         // Arrange

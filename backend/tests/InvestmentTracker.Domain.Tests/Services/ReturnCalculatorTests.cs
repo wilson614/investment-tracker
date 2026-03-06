@@ -172,7 +172,7 @@ public class ReturnCalculatorTests
     }
 
     [Fact]
-    public void CalculateTimeWeightedReturn_WithSnapshotWipeoutToZero_UsesNeutralGuardInsteadOfCollapsingToMinus100()
+    public void CalculateTimeWeightedReturn_WithSyntheticZeroReanchor_NeutralizesWipeoutLikeSubPeriod()
     {
         var startValue = 980m;
         var endValue = 1250m;
@@ -181,7 +181,7 @@ public class ReturnCalculatorTests
         {
             // First event keeps chain anchored
             new(new DateTime(2024, 6, 1), 980m, 1180m),
-            // Synthetic wipeout-like snapshot: before goes to 0, after restored by same-day external flow
+            // Synthetic re-anchor: before goes 0, after snaps back near the prior anchor (<= +10%)
             new(new DateTime(2024, 7, 1), 0m, 1230m)
         };
 
@@ -208,6 +208,26 @@ public class ReturnCalculatorTests
 
         var result = _calculator.CalculateTimeWeightedReturn(startValue, endValue, snapshots);
 
+        result.Should().NotBeNull();
+        result!.Value.Should().Be(-1m);
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithLegitWipeoutAndSameDayReinvestment_DoesNotNeutralizeAsSyntheticZero()
+    {
+        var startValue = 1000m;
+        var endValue = 2200m;
+
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            // Legit wipeout + same-day recapitalization/reinvestment:
+            // after value is far above prior anchor (1000 -> 2000), so guard must NOT neutralize this -100% segment.
+            new(new DateTime(2024, 7, 1), 0m, 2000m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(startValue, endValue, snapshots);
+
+        // Chain = (0/1000) * (2200/2000) - 1 = -1
         result.Should().NotBeNull();
         result!.Value.Should().Be(-1m);
     }

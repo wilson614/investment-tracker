@@ -141,10 +141,11 @@ public class HistoricalPerformanceService(
         IReadOnlyList<CurrencyLedger> ledgers = [];
         IReadOnlyList<CurrencyTransaction> currencyTransactions = [];
 
-        if (boundLedger is { IsActive: true } && boundLedger.UserId == portfolio.UserId)
+        if (boundLedger is { IsActive: true, UserId: var boundLedgerUserId, Transactions: var boundLedgerTransactions }
+            && boundLedgerUserId == portfolio.UserId)
         {
             ledgers = [boundLedger];
-            currencyTransactions = boundLedger.Transactions.ToList();
+            currencyTransactions = boundLedgerTransactions.ToList();
         }
 
         var baselineReferenceDate = yearStart.AddDays(-1);
@@ -201,7 +202,67 @@ public class HistoricalPerformanceService(
 
         var fxRateCache = new ConcurrentDictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
 
-        async Task<decimal> ResolveExchangeRateAsync(string currency, int targetYear)
+        static bool IsUsableExchangeRate(string fromCurrency, string toCurrency, decimal rate)
+        {
+            if (rate <= 0m)
+                return false;
+
+            return string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase)
+                   || rate != 1m;
+        }
+
+        decimal? ResolveExchangeRateFromTransactions(string currency, int targetYear)
+        {
+            if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+                return 1m;
+
+            var targetDate = new DateTime(targetYear, 12, 31);
+
+            var latestRateOnOrBeforeTarget = validTransactions
+                .Where(tx => tx.ExchangeRate is > 0m
+                             && string.Equals(tx.Currency.ToString(), currency, StringComparison.OrdinalIgnoreCase)
+                             && tx.TransactionDate.Date <= targetDate.Date)
+                .OrderByDescending(tx => tx.TransactionDate)
+                .Select(tx => tx.ExchangeRate!.Value)
+                .FirstOrDefault();
+
+            if (IsUsableExchangeRate(currency, homeCurrency, latestRateOnOrBeforeTarget))
+                return latestRateOnOrBeforeTarget;
+
+            var latestKnownRateInSameCurrency = validTransactions
+                .Where(tx => tx.ExchangeRate is > 0m
+                             && string.Equals(tx.Currency.ToString(), currency, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(tx => tx.TransactionDate)
+                .Select(tx => tx.ExchangeRate!.Value)
+                .FirstOrDefault();
+
+            if (IsUsableExchangeRate(currency, homeCurrency, latestKnownRateInSameCurrency))
+                return latestKnownRateInSameCurrency;
+
+            var latestKnownRateInSourceCurrency = validTransactions
+                .Where(tx => tx.ExchangeRate is > 0m
+                             && string.Equals(tx.Currency.ToString(), sourceCurrency, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(tx => tx.TransactionDate)
+                .Select(tx => tx.ExchangeRate!.Value)
+                .FirstOrDefault();
+
+            if (IsUsableExchangeRate(sourceCurrency, homeCurrency, latestKnownRateInSourceCurrency)
+                && IsUsableExchangeRate(currency, homeCurrency, latestKnownRateInSourceCurrency))
+                return latestKnownRateInSourceCurrency;
+
+            var latestKnownNonHomeRate = validTransactions
+                .Where(tx => tx.ExchangeRate is > 0m
+                             && !string.Equals(tx.Currency.ToString(), homeCurrency, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(tx => tx.TransactionDate)
+                .Select(tx => tx.ExchangeRate!.Value)
+                .FirstOrDefault();
+
+            return IsUsableExchangeRate(currency, homeCurrency, latestKnownNonHomeRate)
+                ? latestKnownNonHomeRate
+                : null;
+        }
+
+        async Task<decimal?> ResolveExchangeRateAsync(string currency, int targetYear)
         {
             if (string.Equals(currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             {
@@ -220,9 +281,48 @@ public class HistoricalPerformanceService(
                 targetYear,
                 cancellationToken);
 
-            var resolvedRate = rateResult?.Rate ?? 1m;
-            fxRateCache.TryAdd(fxKey, resolvedRate);
-            return resolvedRate;
+            if (rateResult is { Rate: > 0m } && IsUsableExchangeRate(currency, homeCurrency, rateResult.Rate))
+            {
+                fxRateCache.TryAdd(fxKey, rateResult.Rate);
+                return rateResult.Rate;
+            }
+
+            var targetDate = new DateTime(targetYear, 12, 31);
+            var txDateFxResult = await txDateFxService.GetOrFetchAsync(currency, homeCurrency, targetDate, cancellationToken);
+            if (txDateFxResult is { Rate: > 0m } && IsUsableExchangeRate(currency, homeCurrency, txDateFxResult.Rate))
+            {
+                logger.LogWarning(
+                    "Missing year-end FX {From}->{To} for {Year}; fallback to transaction-date FX rate {Rate}",
+                    currency,
+                    homeCurrency,
+                    targetYear,
+                    txDateFxResult.Rate);
+
+                fxRateCache.TryAdd(fxKey, txDateFxResult.Rate);
+                return txDateFxResult.Rate;
+            }
+
+            var txDerivedFallbackRate = ResolveExchangeRateFromTransactions(currency, targetYear);
+            if (txDerivedFallbackRate is > 0m && IsUsableExchangeRate(currency, homeCurrency, txDerivedFallbackRate.Value))
+            {
+                logger.LogWarning(
+                    "Missing year-end FX {From}->{To} for {Year}; fallback to transaction-derived rate {Rate}",
+                    currency,
+                    homeCurrency,
+                    targetYear,
+                    txDerivedFallbackRate.Value);
+
+                fxRateCache.TryAdd(fxKey, txDerivedFallbackRate.Value);
+                return txDerivedFallbackRate.Value;
+            }
+
+            logger.LogWarning(
+                "Missing year-end FX {From}->{To} for {Year} and no fallback rate; auto-fetched market prices for this pair will be skipped",
+                currency,
+                homeCurrency,
+                targetYear);
+
+            return null;
         }
 
         foreach (var ticker in uniqueMissingTickers)
@@ -243,13 +343,25 @@ public class HistoricalPerformanceService(
                     if (yearEndPriceResult != null)
                     {
                         var exchangeRate = await ResolveExchangeRateAsync(currency, year);
-                        yearEndPrices[ticker] = new YearEndPriceInfo
+                        if (exchangeRate is > 0m)
                         {
-                            Price = yearEndPriceResult.Price,
-                            ExchangeRate = exchangeRate
-                        };
+                            yearEndPrices[ticker] = new YearEndPriceInfo
+                            {
+                                Price = yearEndPriceResult.Price,
+                                ExchangeRate = exchangeRate.Value
+                            };
 
-                        logger.LogInformation("Auto-fetched year-end price for {Ticker}/{Year}", ticker, year);
+                            logger.LogInformation("Auto-fetched year-end price for {Ticker}/{Year}", ticker, year);
+                        }
+                        else
+                        {
+                            logger.LogWarning(
+                                "Skipped auto-fetched year-end price for {Ticker}/{Year} due to unresolved FX {Currency}->{HomeCurrency}",
+                                ticker,
+                                year,
+                                currency,
+                                homeCurrency);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -272,13 +384,25 @@ public class HistoricalPerformanceService(
                     if (yearStartPriceResult != null)
                     {
                         var exchangeRate = await ResolveExchangeRateAsync(currency, yearStartYear);
-                        yearStartPrices[ticker] = new YearEndPriceInfo
+                        if (exchangeRate is > 0m)
                         {
-                            Price = yearStartPriceResult.Price,
-                            ExchangeRate = exchangeRate
-                        };
+                            yearStartPrices[ticker] = new YearEndPriceInfo
+                            {
+                                Price = yearStartPriceResult.Price,
+                                ExchangeRate = exchangeRate.Value
+                            };
 
-                        logger.LogInformation("Auto-fetched year-start price for {Ticker}/{Year}", ticker, yearStartYear);
+                            logger.LogInformation("Auto-fetched year-start price for {Ticker}/{Year}", ticker, yearStartYear);
+                        }
+                        else
+                        {
+                            logger.LogWarning(
+                                "Skipped auto-fetched year-start price for {Ticker}/{Year} due to unresolved FX {Currency}->{HomeCurrency}",
+                                ticker,
+                                yearStartYear,
+                                currency,
+                                homeCurrency);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -443,7 +567,9 @@ public class HistoricalPerformanceService(
                          .Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var tickerCurrency = GetTickerCurrency(ticker);
-                rates[ticker] = await ResolveExchangeRateAsync(tickerCurrency, targetYear);
+                var resolvedRate = await ResolveExchangeRateAsync(tickerCurrency, targetYear);
+                if (resolvedRate is > 0m)
+                    rates[ticker] = resolvedRate.Value;
             }
 
             return rates;
@@ -477,14 +603,17 @@ public class HistoricalPerformanceService(
                 };
             }
 
-            fallbackTickerToHomeRates.TryGetValue(position.Ticker, out var fallbackTickerToHomeRate);
+            fallbackTickerToHomeRates.TryGetValue(position.Ticker, out var fallbackTickerToHomeRateValue);
+            var fallbackTickerToHomeRate = fallbackTickerToHomeRateValue > 0m
+                ? fallbackTickerToHomeRateValue
+                : (decimal?)null;
 
             var fallbackSourceValue = position.TotalCostSource > 0m
                 ? ConvertAmountToSource(
                     position.TotalCostSource,
                     tickerCurrency,
                     valuationDate,
-                    fallbackTickerToHomeRate > 0m ? fallbackTickerToHomeRate : (decimal?)null)
+                    fallbackTickerToHomeRate)
                 : 0m;
 
             var fallbackHomeValue = position.TotalCostHome;
@@ -494,9 +623,9 @@ public class HistoricalPerformanceService(
                 {
                     fallbackHomeValue = position.TotalCostSource;
                 }
-                else if (fallbackTickerToHomeRate > 0m)
+                else if (fallbackTickerToHomeRateValue > 0m)
                 {
-                    fallbackHomeValue = position.TotalCostSource * fallbackTickerToHomeRate;
+                    fallbackHomeValue = position.TotalCostSource * fallbackTickerToHomeRateValue;
                 }
             }
 
@@ -645,7 +774,7 @@ public class HistoricalPerformanceService(
 
         // TWR 快照路徑可在「無顯式外部現金流」時回退到股票交易事件；
         // 但 MD / NetContributions 應維持原本外部現金流資料路徑，不受 fallback 影響。
-        var twrCashFlowEvents = cashFlowEvents;
+        IReadOnlyList<ReturnCashFlowEvent> twrCashFlowEvents = cashFlowEvents;
 
         if (twrCashFlowEvents.Count == 0)
         {
@@ -659,7 +788,7 @@ public class HistoricalPerformanceService(
 
             if (stockFallbackEvents.Count > 0)
             {
-                twrCashFlowEvents = stockFallbackEvents.ToList();
+                twrCashFlowEvents = stockFallbackEvents;
                 logger.LogInformation(
                     "No explicit external cash-flow events found for portfolio {PortfolioId} year {Year}; fallback to stock-transaction cash-flow path for TWR snapshots only.",
                     portfolioId,

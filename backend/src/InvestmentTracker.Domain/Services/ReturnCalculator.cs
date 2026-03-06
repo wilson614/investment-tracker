@@ -95,12 +95,13 @@ public class ReturnCalculator : IReturnCalculator
             var vEnd = snapshot.ValueBefore;
             var r = vEnd / denominator - 1m;
 
-            // Wipeout guard (narrowed): only treat vEnd=0 as synthetic when snapshot immediately
-            // re-anchors to a non-zero value that is at least the prior chain anchor.
-            // This keeps protection for synthetic zero-before snapshots, while preserving legit wipeouts.
+            // Wipeout guard (strict): only treat vEnd=0 as synthetic when snapshot re-anchors
+            // within a tight band around the prior chain anchor.
+            // Large same-day recapitalizations are treated as legit wipeout + reinvestment.
+            var syntheticReanchorUpperBound = denominator * 1.10m;
             var hasSyntheticZeroReanchorSignal = vEnd == 0m
-                                                 && snapshot.ValueAfter > 0m
-                                                 && snapshot.ValueAfter >= denominator;
+                                                 && snapshot.ValueAfter >= denominator
+                                                 && snapshot.ValueAfter <= syntheticReanchorUpperBound;
             if (r <= -0.99m && hasSyntheticZeroReanchorSignal)
                 r = 0m;
 

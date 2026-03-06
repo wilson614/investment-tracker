@@ -541,6 +541,101 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
     }
 
     [Fact]
+    public async Task PreviewExecuteAndAggregateYearPerformance_WithoutOpeningBaselineWithLateTopUp_ShouldNotCollapseToMinus100Twr()
+    {
+        // Arrange
+        var portfolio = await CreateTestPortfolioAsync(
+            "Stock Import Aggregate TWR -100 Guard",
+            currencyCode: "TWD");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildBrokerStatementCsvWithOneLateYearBuyRow(),
+            SelectedFormat = "broker_statement"
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().ContainSingle();
+
+        var previewRow = previewDto.Rows.Single();
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.TopUp,
+                TopUpTransactionType = CurrencyTransactionType.Deposit
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = previewRow.RowNumber,
+                    Ticker = previewRow.Ticker,
+                    ConfirmedTradeSide = previewRow.ConfirmedTradeSide,
+                    Exclude = false
+                }
+            ]
+        };
+
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var summaryResponse = await Client.GetAsync($"/api/portfolios/{portfolio.Id}/summary");
+        summaryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<PortfolioSummaryDto>();
+        summary.Should().NotBeNull();
+
+        var requestPrices = BuildYearPriceRequestFromSummaryPositions(summary!.Positions);
+        requestPrices["2330"] = new YearEndPriceInfo { Price = 105.68684m, ExchangeRate = 1m };
+
+        var yearRequest = new CalculateYearPerformanceRequest
+        {
+            Year = 2025,
+            YearEndPrices = requestPrices
+        };
+
+        // Act
+        var yearResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{portfolio.Id}/performance/year",
+            yearRequest);
+        yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var aggregateResponse = await Client.PostAsJsonAsync(
+            "/api/portfolios/aggregate/performance/year",
+            yearRequest);
+        aggregateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPerformance = await yearResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        var aggregatePerformance = await aggregateResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+
+        // Assert
+        yearPerformance.Should().NotBeNull();
+        aggregatePerformance.Should().NotBeNull();
+
+        yearPerformance!.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        yearPerformance.TimeWeightedReturnPercentageSource!.Value.Should().NotBeApproximately(-100d, 0.0001d,
+            "late-topup import path should keep single-portfolio TWR from collapsing to -100%");
+        yearPerformance.TimeWeightedReturnPercentageSource.Value.Should().BeGreaterThan(-100d);
+
+        AssertFiniteIfHasValue(aggregatePerformance!.TimeWeightedReturnPercentage, nameof(aggregatePerformance.TimeWeightedReturnPercentage));
+        aggregatePerformance.TimeWeightedReturnPercentage.Should().NotBeNull();
+        aggregatePerformance.TimeWeightedReturnPercentage!.Value.Should().NotBeApproximately(-100d, 0.0001d,
+            "late-topup import path should keep aggregate annual TWR from collapsing to -100%");
+        aggregatePerformance.TimeWeightedReturnPercentage.Value.Should().BeGreaterThan(-100d);
+
+        aggregatePerformance.SourceCurrency.Should().BeNull();
+        aggregatePerformance.TimeWeightedReturnPercentageSource.Should().BeNull();
+    }
+
+    [Fact]
     public async Task RegisterPreviewExecuteAndPerformance_UsingSampleCsv_WithMarginDataPath_ShouldKeep2025TwrInReasonableRange()
     {
         // Arrange
@@ -1940,6 +2035,101 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
         error.GetProperty("fieldName").GetString().Should().Be("rowNumber");
         error.GetProperty("errorCode").GetString().Should().Be("SESSION_ROW_MISMATCH");
         error.GetProperty("invalidValue").GetString().Should().Be("999");
+    }
+
+    [Fact]
+    public async Task ImportExecuteThenYearPerformance_CrossCurrencyAutoFetchMissingFx_ShouldUseTransactionRateFallback()
+    {
+        // Arrange
+        var targetYear = DateTime.UtcNow.Year - 1;
+        var portfolio = await CreateTestPortfolioWithUsdBaseAndTwdHomeAsync(
+            "Stock Import Cross-Currency Missing FX Fallback");
+
+        var previewRequest = new PreviewStockImportRequest
+        {
+            PortfolioId = portfolio.Id,
+            CsvContent = BuildUsdBrokerStatementCsvWithOneBaselineBuy(targetYear),
+            SelectedFormat = "broker_statement",
+            Baseline = new StockImportBaselineRequest
+            {
+                OpeningCashBalance = 1000m
+            }
+        };
+
+        var previewResponse = await Client.PostAsJsonAsync(PreviewEndpoint, previewRequest);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var previewDto = await previewResponse.Content.ReadFromJsonAsync<StockImportPreviewResponseDto>();
+        previewDto.Should().NotBeNull();
+        previewDto!.Rows.Should().ContainSingle();
+
+        var previewRow = previewDto.Rows.Single();
+        var executeRequest = new ExecuteStockImportRequest
+        {
+            SessionId = previewDto.SessionId,
+            PortfolioId = portfolio.Id,
+            DefaultBalanceAction = new StockImportDefaultBalanceDecisionRequest
+            {
+                Action = BalanceAction.Margin
+            },
+            Rows =
+            [
+                new ExecuteStockImportRowRequest
+                {
+                    RowNumber = previewRow.RowNumber,
+                    Ticker = "AAPL",
+                    ConfirmedTradeSide = "buy",
+                    Exclude = false
+                }
+            ]
+        };
+
+        var executeResponse = await Client.PostAsJsonAsync(ExecuteEndpoint, executeRequest);
+        executeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var executeDto = await executeResponse.Content.ReadFromJsonAsync<StockImportExecuteResponseDto>();
+        executeDto.Should().NotBeNull();
+        executeDto!.Status.Should().Be("committed");
+
+        // Act
+        var yearResponse = await Client.PostAsJsonAsync(
+            $"/api/portfolios/{portfolio.Id}/performance/year",
+            new CalculateYearPerformanceRequest { Year = targetYear });
+
+        // Assert
+        yearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var yearPerformance = await yearResponse.Content.ReadFromJsonAsync<YearPerformanceDto>();
+        yearPerformance.Should().NotBeNull();
+
+        yearPerformance!.SourceCurrency.Should().Be("USD");
+        yearPerformance.EndValueHome.Should().BeGreaterThanOrEqualTo(0m);
+
+        if (yearPerformance.EndValueSource is > 0m)
+        {
+            yearPerformance.EndValueHome.Should().NotBe(yearPerformance.EndValueSource,
+                "cross-currency auto-fetch path must not silently fallback to 1:1");
+
+            (yearPerformance.EndValueHome!.Value / yearPerformance.EndValueSource!.Value).Should().BeGreaterThan(1m,
+                "USD import holdings converted to TWD should have non-1 conversion factor when FX fallback succeeds");
+        }
+
+        if (yearPerformance.StartValueSource is > 0m)
+        {
+            yearPerformance.StartValueHome.Should().NotBe(yearPerformance.StartValueSource,
+                "cross-currency start valuation must not silently fallback to 1:1 when opening holdings exist");
+            (yearPerformance.StartValueHome!.Value / yearPerformance.StartValueSource!.Value).Should().BeGreaterThan(1m,
+                "USD opening holdings converted to TWD should have non-1 conversion factor when FX fallback succeeds");
+        }
+
+        var yearPerformanceSnapshot = JsonSerializer.Serialize(yearPerformance, ApiJsonOptions);
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d,
+            $"year payload: {yearPerformanceSnapshot}");
+        if (yearPerformance.TimeWeightedReturnPercentage.HasValue)
+        {
+            yearPerformance.TimeWeightedReturnPercentage.Value.Should().NotBeApproximately(-100d, 0.0001d,
+                $"year payload: {yearPerformanceSnapshot}");
+        }
     }
 
     [Fact]
@@ -4009,6 +4199,28 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         double.IsNaN(value.Value).Should().BeFalse($"{fieldName} should not be NaN");
         double.IsInfinity(value.Value).Should().BeFalse($"{fieldName} should not be Infinity");
+    }
+
+    private async Task<PortfolioDto> CreateTestPortfolioWithUsdBaseAndTwdHomeAsync(string description)
+    {
+        var request = new
+        {
+            Description = description,
+            CurrencyCode = "USD",
+            HomeCurrency = "TWD"
+        };
+
+        var response = await Client.PostAsJsonAsync("/api/portfolios", request);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<PortfolioDto>())!;
+    }
+
+    private static string BuildUsdBrokerStatementCsvWithOneBaselineBuy(int targetYear)
+    {
+        return $"""
+股名,股票代號,日期,成交股數,淨收付,成交單價,成交價金,手續費,交易稅,稅款,委託書號,幣別,備註
+"Apple","AAPL","{targetYear - 1}/12/31","10","-1,000","100","1,000","0","0","0","USD0001","美元",""
+""";
     }
 
     private static string BuildBrokerStatementCsvWithOneRow()

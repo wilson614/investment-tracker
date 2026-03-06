@@ -15,7 +15,7 @@ namespace InvestmentTracker.Infrastructure.Tests.Services;
 public class TransactionPortfolioSnapshotServiceTests
 {
     [Fact]
-    public async Task UpsertSnapshotAsync_SameDayMultipleStockTransactions_SecondSnapshotIsChainedToDayEnd()
+    public async Task UpsertSnapshotAsync_SameDayMultipleStockTransactions_RecalculatesDayBoundaryAndChainsToDayEnd()
     {
         // Arrange
         var userId = Guid.NewGuid();
@@ -73,6 +73,22 @@ public class TransactionPortfolioSnapshotServiceTests
             .ReturnsAsync((CurrencyLedger?)null);
 
         var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("VWRA.L", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooHistoricalPriceResult
+            {
+                Price = 100m,
+                ActualDate = new DateOnly(2021, 1, 3),
+                Currency = "USD"
+            });
+
+        yahoo.Setup(x => x.GetExchangeRateAsync("USD", "TWD", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new YahooExchangeRateResult
+            {
+                Rate = 30m,
+                ActualDate = new DateOnly(2021, 1, 3),
+                CurrencyPair = "USDTWD"
+            });
+
         var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
         var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
 
@@ -130,18 +146,25 @@ public class TransactionPortfolioSnapshotServiceTests
         var updated1 = snapshots.Single(s => s.TransactionId == tx1.Id);
         var updated2 = snapshots.Single(s => s.TransactionId == tx2.Id);
 
-        updated1.PortfolioValueBeforeHome.Should().Be(dayStartHome);
-        updated1.PortfolioValueAfterHome.Should().Be(dayEndHome);
-        updated1.PortfolioValueBeforeSource.Should().Be(dayStartSource);
-        updated1.PortfolioValueAfterSource.Should().Be(dayEndSource);
+        updated1.PortfolioValueBeforeHome.Should().Be(0m);
+        updated1.PortfolioValueAfterHome.Should().Be(3000m);
+        updated1.PortfolioValueBeforeSource.Should().Be(0m);
+        updated1.PortfolioValueAfterSource.Should().Be(100m);
 
         // Second snapshot should be neutralized (before==after==dayEnd) to avoid duplicate TWR factor
-        updated2.PortfolioValueBeforeHome.Should().Be(dayEndHome);
-        updated2.PortfolioValueAfterHome.Should().Be(dayEndHome);
-        updated2.PortfolioValueBeforeSource.Should().Be(dayEndSource);
-        updated2.PortfolioValueAfterSource.Should().Be(dayEndSource);
+        updated2.PortfolioValueBeforeHome.Should().Be(3000m);
+        updated2.PortfolioValueAfterHome.Should().Be(3000m);
+        updated2.PortfolioValueBeforeSource.Should().Be(100m);
+        updated2.PortfolioValueAfterSource.Should().Be(100m);
 
-        yahoo.VerifyNoOtherCalls();
+        yahoo.Verify(
+            x => x.GetHistoricalPriceAsync("VWRA.L", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        yahoo.Verify(
+            x => x.GetExchangeRateAsync("USD", "TWD", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once());
+
         stooq.VerifyNoOtherCalls();
         twse.VerifyNoOtherCalls();
     }
@@ -906,14 +929,12 @@ public class TransactionPortfolioSnapshotServiceTests
         twr.Should().NotBe(-1m);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("   ")]
-    public async Task UpsertSnapshotAsync_HistoricalPriceCurrencyNullOrWhitespace_DoesNotZeroValuation(string? historicalPriceCurrency)
+    [Fact]
+    public async Task UpsertSnapshotAsync_HistoricalPriceCurrencyWhitespace_SameCurrency_DoesNotCallFxProviders_AndDoesNotZeroValuation()
     {
         // Arrange
         var userId = Guid.NewGuid();
-        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "TWD", displayName: "Null/Whitespace FX Guard");
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "USD", homeCurrency: "USD", displayName: "Whitespace Same Currency FX Guard");
 
         var currentUserService = new Mock<ICurrentUserService>();
         currentUserService.SetupGet(x => x.UserId).Returns(userId);
@@ -962,7 +983,7 @@ public class TransactionPortfolioSnapshotServiceTests
             {
                 Price = 150m,
                 ActualDate = queryDate,
-                Currency = historicalPriceCurrency!
+                Currency = "   "
             });
 
         var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
@@ -989,10 +1010,10 @@ public class TransactionPortfolioSnapshotServiceTests
             .SingleAsync(s => s.PortfolioId == portfolio.Id && s.TransactionId == buyTx.Id);
 
         snapshot.PortfolioValueBeforeHome.Should().Be(0m);
-        snapshot.PortfolioValueAfterHome.Should().Be(150m);
+        snapshot.PortfolioValueAfterHome.Should().Be(100m);
         snapshot.PortfolioValueAfterHome.Should().BeGreaterThan(0m);
         snapshot.PortfolioValueBeforeSource.Should().Be(0m);
-        snapshot.PortfolioValueAfterSource.Should().Be(150m);
+        snapshot.PortfolioValueAfterSource.Should().Be(100m);
         snapshot.PortfolioValueAfterSource.Should().BeGreaterThan(0m);
 
         yahoo.Verify(
@@ -1002,6 +1023,116 @@ public class TransactionPortfolioSnapshotServiceTests
         stooq.Verify(
             x => x.GetExchangeRateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    public async Task UpsertSnapshotAsync_HistoricalPriceCurrencyUnknownCrossCurrency_DoesNotSilentOneToOne_AndKeepsValuationPositive(string? historicalPriceCurrency)
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var portfolio = new Portfolio(userId, Guid.NewGuid(), baseCurrency: "EUR", homeCurrency: "TWD", displayName: "Unknown Cross FX Guard");
+
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(x => x.UserId).Returns(userId);
+
+        var dbContext = CreateInMemoryDbContext(currentUserService.Object);
+        dbContext.Portfolios.Add(portfolio);
+        await dbContext.SaveChangesAsync();
+
+        var date = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc);
+
+        var buyTx = new StockTransaction(
+            portfolioId: portfolio.Id,
+            transactionDate: date,
+            ticker: "AGAC",
+            transactionType: TransactionType.Buy,
+            shares: 10m,
+            pricePerShare: 20m,
+            exchangeRate: 0.0000004m,
+            fees: 0m,
+            market: StockMarket.EU,
+            currency: Currency.USD);
+
+        buyTx.TotalCostHome.Should().Be(0m);
+        buyTx.TotalCostSource.Should().Be(200m);
+
+        var portfolioRepository = new Mock<IPortfolioRepository>(MockBehavior.Strict);
+        portfolioRepository
+            .Setup(x => x.GetByIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(portfolio);
+
+        var transactionRepository = new Mock<IStockTransactionRepository>(MockBehavior.Strict);
+        transactionRepository
+            .Setup(x => x.GetByIdAsync(buyTx.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(buyTx);
+        transactionRepository
+            .Setup(x => x.GetByPortfolioIdAsync(portfolio.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([buyTx]);
+
+        var currencyLedgerRepository = new Mock<ICurrencyLedgerRepository>(MockBehavior.Strict);
+        currencyLedgerRepository
+            .Setup(x => x.GetByIdWithTransactionsAsync(portfolio.BoundCurrencyLedgerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CurrencyLedger?)null);
+
+        var yahoo = new Mock<IYahooHistoricalPriceService>(MockBehavior.Strict);
+        yahoo.Setup(x => x.GetHistoricalPriceAsync("AGAC.AS", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, DateOnly queryDate, CancellationToken _) => new YahooHistoricalPriceResult
+            {
+                Price = 150m,
+                ActualDate = queryDate,
+                Currency = historicalPriceCurrency!
+            });
+
+        var stooq = new Mock<IStooqHistoricalPriceService>(MockBehavior.Strict);
+        stooq.Setup(x => x.GetStockPriceAsync("AGAC", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StooqPriceResult?)null);
+
+        var twse = new Mock<ITwseStockHistoricalPriceService>(MockBehavior.Strict);
+
+        var sut = new TransactionPortfolioSnapshotService(
+            dbContext,
+            portfolioRepository.Object,
+            transactionRepository.Object,
+            currencyLedgerRepository.Object,
+            new CurrencyLedgerService(),
+            new PortfolioCalculator(),
+            currentUserService.Object,
+            yahoo.Object,
+            stooq.Object,
+            twse.Object);
+
+        // Act
+        await sut.UpsertSnapshotAsync(portfolio.Id, buyTx.Id, buyTx.TransactionDate, CancellationToken.None);
+
+        // Assert
+        var snapshot = await dbContext.TransactionPortfolioSnapshots
+            .IgnoreQueryFilters()
+            .SingleAsync(s => s.PortfolioId == portfolio.Id && s.TransactionId == buyTx.Id);
+
+        snapshot.PortfolioValueBeforeHome.Should().Be(0m);
+        snapshot.PortfolioValueAfterHome.Should().Be(1m);
+        snapshot.PortfolioValueAfterHome.Should().BeGreaterThan(0m);
+
+        snapshot.PortfolioValueBeforeSource.Should().Be(0m);
+        snapshot.PortfolioValueAfterSource.Should().Be(1m);
+        snapshot.PortfolioValueAfterSource.Should().BeGreaterThan(0m);
+
+        snapshot.PortfolioValueAfterHome.Should().NotBe(150m);
+        snapshot.PortfolioValueAfterSource.Should().NotBe(150m);
+
+        yahoo.Verify(
+            x => x.GetExchangeRateAsync("USD", "EUR", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        yahoo.Verify(
+            x => x.GetExchangeRateAsync("TWD", "EUR", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        stooq.Verify(
+            x => x.GetExchangeRateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
     }
 
     [Fact]
