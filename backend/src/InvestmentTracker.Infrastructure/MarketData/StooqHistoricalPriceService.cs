@@ -71,6 +71,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching historical price from Stooq for {Market}", marketKey);
@@ -216,6 +220,10 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Error fetching {Symbol} from Stooq", symbol);
@@ -329,13 +337,21 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
     {
         try
         {
-            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+            var normalizedFromCurrency = fromCurrency?.Trim().ToUpperInvariant();
+            var normalizedToCurrency = toCurrency?.Trim().ToUpperInvariant();
+
+            if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
+                || string.IsNullOrWhiteSpace(normalizedToCurrency))
             {
-                var normalizedCurrency = fromCurrency.ToUpperInvariant();
-                return new StooqExchangeRateResult(1m, date, normalizedCurrency, normalizedCurrency);
+                return null;
             }
 
-            var symbol = $"{fromCurrency.ToLowerInvariant()}{toCurrency.ToLowerInvariant()}";
+            if (string.Equals(normalizedFromCurrency, normalizedToCurrency, StringComparison.Ordinal))
+            {
+                return new StooqExchangeRateResult(1m, date, normalizedFromCurrency, normalizedToCurrency);
+            }
+
+            var symbol = $"{normalizedFromCurrency.ToLowerInvariant()}{normalizedToCurrency.ToLowerInvariant()}";
 
             // 抓取以指定日期結尾的 10 天區間，處理週末／假日
             var startDate = date.AddDays(-10);
@@ -355,9 +371,15 @@ public class StooqHistoricalPriceService(HttpClient httpClient, ILogger<StooqHis
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Stooq 可能在被 rate limited 時回傳 HTTP 200 + error.csv。
-            return content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase) ? throw new StooqDailyHitsLimitExceededException(symbol) : ParseExchangeRate(content, fromCurrency.ToUpperInvariant(), toCurrency.ToUpperInvariant(), date);
+            return content.Contains("Exceeded the daily hits limit", StringComparison.OrdinalIgnoreCase)
+                ? throw new StooqDailyHitsLimitExceededException(symbol)
+                : ParseExchangeRate(content, normalizedFromCurrency, normalizedToCurrency, date);
         }
         catch (StooqDailyHitsLimitExceededException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

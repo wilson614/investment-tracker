@@ -150,6 +150,69 @@ public class ReturnCalculatorTests
     }
 
     [Fact]
+    public void CalculateTimeWeightedReturn_WithLeadingBlankSubPeriodsBeforeFirstTrade_DoesNotCollapseToMinus100()
+    {
+        var startValue = 0m;
+        var endValue = 1050m;
+
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            // Blank pre-trade sub-period (no holdings, no cash flow impact)
+            new(new DateTime(2024, 1, 5), 0m, 0m),
+            // First trade/contribution event starts the invested period
+            new(new DateTime(2024, 1, 10), 0m, 1000m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(startValue, endValue, snapshots);
+
+        // Geometric linking should skip leading zero-denominator blank periods
+        // and only capture post-trade performance: 1050/1000 - 1 = 5%
+        result.Should().NotBeNull();
+        result!.Value.Should().BeApproximately(0.05m, 0.0000001m);
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithSnapshotWipeoutToZero_UsesNeutralGuardInsteadOfCollapsingToMinus100()
+    {
+        var startValue = 980m;
+        var endValue = 1250m;
+
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            // First event keeps chain anchored
+            new(new DateTime(2024, 6, 1), 980m, 1180m),
+            // Synthetic wipeout-like snapshot: before goes to 0, after restored by same-day external flow
+            new(new DateTime(2024, 7, 1), 0m, 1230m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(startValue, endValue, snapshots);
+
+        // Guard should neutralize this wipeout-like sub-period and preserve positive annual chain.
+        // Expected = (980/980) * (1 + 0) * (1250/1230) - 1
+        result.Should().NotBeNull();
+        result!.Value.Should().BeApproximately(0.0162601626m, 0.0000001m);
+    }
+
+    [Fact]
+    public void CalculateTimeWeightedReturn_WithLegitWipeoutToZero_DoesNotNeutralizeToSyntheticZeroGuard()
+    {
+        var startValue = 1000m;
+        var endValue = 20m;
+
+        var snapshots = new List<ReturnValuationSnapshot>
+        {
+            // Legit wipeout: value falls to zero before event; only tiny recapitalization after event.
+            // This should NOT be treated as synthetic re-anchor.
+            new(new DateTime(2024, 7, 1), 0m, 10m)
+        };
+
+        var result = _calculator.CalculateTimeWeightedReturn(startValue, endValue, snapshots);
+
+        result.Should().NotBeNull();
+        result!.Value.Should().Be(-1m);
+    }
+
+    [Fact]
     public void CalculateTimeWeightedReturn_WithNegativeStartValue_ReturnsNull()
     {
         var snapshots = new List<ReturnValuationSnapshot>
@@ -376,6 +439,63 @@ public class ReturnCalculatorTests
         // Assert
         events.Select(e => e.TransactionId).Should().Equal([txImportOpeningInitialBalance.Id]);
         events.Should().ContainSingle();
+        events.Single().Amount.Should().Be(100000m);
+        events.Single().CurrencyCode.Should().Be("TWD");
+        events.Single().Source.Should().Be(ReturnCashFlowEventSource.CurrencyLedger);
+    }
+
+    [Fact]
+    public void CurrencyLedgerStrategy_GetCashFlowEvents_WithStockLinkedInitialBalanceAndOffsetSpendWithoutImportNotes_StillTreatsOnlyInitialBalanceAsExternal()
+    {
+        // Arrange
+        var portfolio = CreatePortfolio(baseCurrency: "TWD");
+        var boundLedgerId = portfolio.BoundCurrencyLedgerId;
+        var relatedStockId = Guid.NewGuid();
+
+        var ledger = CreateLedger(portfolio.UserId, boundLedgerId, "TWD", homeCurrency: "TWD");
+        var strategy = new CurrencyLedgerCashFlowStrategy();
+
+        var txInitialBalance = CreateCurrencyTransaction(
+            boundLedgerId,
+            new DateTime(2025, 12, 30),
+            CurrencyTransactionType.InitialBalance,
+            100000m,
+            homeAmount: 100000m,
+            exchangeRate: 1m,
+            relatedStockTransactionId: relatedStockId,
+            notes: "opening-seeded-balance",
+            createdAt: new DateTime(2025, 12, 30, 1, 0, 0, DateTimeKind.Utc));
+
+        var txOffsetSpendWithCustomNote = CreateCurrencyTransaction(
+            boundLedgerId,
+            new DateTime(2025, 12, 30),
+            CurrencyTransactionType.Spend,
+            100000m,
+            relatedStockTransactionId: relatedStockId,
+            notes: "opening-seeded-offset",
+            createdAt: new DateTime(2025, 12, 30, 2, 0, 0, DateTimeKind.Utc));
+
+        var txOffsetSpendWithoutNote = CreateCurrencyTransaction(
+            boundLedgerId,
+            new DateTime(2025, 12, 30),
+            CurrencyTransactionType.Spend,
+            50000m,
+            relatedStockTransactionId: relatedStockId,
+            notes: null,
+            createdAt: new DateTime(2025, 12, 30, 3, 0, 0, DateTimeKind.Utc));
+
+        // Act
+        var events = strategy.GetCashFlowEvents(
+            portfolio,
+            fromDate: new DateTime(2025, 1, 1),
+            toDate: new DateTime(2025, 12, 31),
+            stockTransactions: [],
+            ledgers: [ledger],
+            currencyTransactions: [txInitialBalance, txOffsetSpendWithCustomNote, txOffsetSpendWithoutNote]);
+
+        // Assert
+        events.Should().ContainSingle();
+        events.Single().TransactionId.Should().Be(txInitialBalance.Id);
         events.Single().Amount.Should().Be(100000m);
         events.Single().CurrencyCode.Should().Be("TWD");
         events.Single().Source.Should().Be(ReturnCashFlowEventSource.CurrencyLedger);

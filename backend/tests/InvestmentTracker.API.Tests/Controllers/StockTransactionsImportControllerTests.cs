@@ -2567,6 +2567,10 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
 
         AssertFiniteIfHasValue(yearPerformance!.TimeWeightedReturnPercentageSource, nameof(yearPerformance.TimeWeightedReturnPercentageSource));
         AssertFiniteIfHasValue(yearPerformance.ModifiedDietzPercentageSource, nameof(yearPerformance.ModifiedDietzPercentageSource));
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().NotBeApproximately(-100d, 0.0001d,
+            "day-1 seeded adjustment + import opening initial-balance path should not collapse to -100% TWR");
+        yearPerformance.TimeWeightedReturnPercentageSource.Should().BeGreaterThan(0d,
+            "historical-cost import path should stay positive after anchor repair");
         yearPerformance.Xirr.Should().BeNull();
         yearPerformance.XirrPercentage.Should().BeNull();
         yearPerformance.XirrSource.Should().BeNull();
@@ -2607,6 +2611,8 @@ public class StockTransactionsImportControllerTests(CustomWebApplicationFactory 
             aggregatePerformance.TimeWeightedReturnPercentage!.Value.Should().BeApproximately(
                 yearPerformance.TimeWeightedReturnPercentage.Value,
                 0.0001d);
+            aggregatePerformance.TimeWeightedReturnPercentage!.Value.Should().NotBeApproximately(-100d, 0.0001d,
+                "aggregate API should not regress to -100% TWR after import opening-balance seeding path");
         }
 
         aggregatePerformance.ModifiedDietzPercentage.HasValue.Should().Be(

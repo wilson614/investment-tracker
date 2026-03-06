@@ -279,6 +279,14 @@
 - [x] T198 Compare `108626b..HEAD` annual performance path and confirm first-snapshot patch gate gap as primary regression source
 - [x] T199 Relax first-snapshot anchor patch trigger to invariant-based guard (`closedLoopStartValue > 0 && firstSnapshot.before == 0`) in `backend/src/InvestmentTracker.Application/Services/HistoricalPerformanceService.cs`
 - [x] T200 [P] Update regression tests to enforce old-fail/new-pass for no-YearStart-fallback anchor mismatch scenarios in `backend/tests/InvestmentTracker.Application.Tests/HistoricalPerformanceServiceReturnTests.cs`
+- [x] T201 Fix transaction-level adjustment cost fallback to ignore zero-valued nullable import seed fields and fall through to usable source cost in `backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs`
+- [x] T202 Harden snapshot FX normalization so null/whitespace currency codes do not crash or zero valuation fallback paths in `backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs`, `backend/src/InvestmentTracker.Infrastructure/MarketData/YahooHistoricalPriceService.cs`, and `backend/src/InvestmentTracker.Infrastructure/MarketData/StooqHistoricalPriceService.cs`
+- [x] T203 [P] Add regression coverage for zero-valued import seed fallback, null/whitespace FX inputs, cancellation propagation, and API-level TWR non-`-100%` guards in backend infrastructure/application/API tests
+- [x] T204 Apply foolproof math fallback for Buy/Adjustment snapshot valuation when persisted cost fields are zero by deriving cost from `PricePerShare * Shares`, using `(rate ?? 1m)`, and enforcing positive minimum fallback in `backend/src/InvestmentTracker.Infrastructure/Services/TransactionPortfolioSnapshotService.cs`
+- [x] T205 Ensure TWR blank-day / zero-denominator subperiods are skipped instead of chaining `-100%` collapse in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs`
+- [x] T206 [P] Add constrained synthetic-zero wipeout guard plus legit-wipeout regression coverage in `backend/src/InvestmentTracker.Domain/Services/ReturnCalculator.cs` and `backend/tests/InvestmentTracker.Domain.Tests/Services/ReturnCalculatorTests.cs`
+- [x] T207 Run focused production-like QA verification for zero-cost persisted seeds, empty-day TWR chaining, and non-`-100%` yearly return regressions in backend infrastructure/application/domain tests
+- [x] T208 Complete code-review gate for strict TWR patch hardening across snapshot fallback and TWR chaining safeguards
 
 ---
 

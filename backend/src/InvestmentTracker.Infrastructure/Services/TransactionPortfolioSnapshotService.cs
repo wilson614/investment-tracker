@@ -1071,7 +1071,7 @@ public class TransactionPortfolioSnapshotService(
         string homeCurrency)
     {
         if (positionTransactions.Count == 0)
-            return 0m;
+            return 1m;
 
         var totalShares = 0m;
         var totalCostHome = 0m;
@@ -1109,7 +1109,7 @@ public class TransactionPortfolioSnapshotService(
             }
         }
 
-        return Math.Max(0m, totalCostHome);
+        return EnsurePositiveFallbackValue(totalCostHome);
     }
 
     private static decimal ResolveBuyCostFallbackHome(StockTransaction transaction, string homeCurrency)
@@ -1117,27 +1117,66 @@ public class TransactionPortfolioSnapshotService(
         if (transaction.TotalCostHome is > 0m)
             return transaction.TotalCostHome.Value;
 
-        return AreSameCurrency(transaction.Currency.ToString(), homeCurrency)
-            ? transaction.TotalCostSource
-            : 0m;
+        var sourceCost = ResolveUsableBuyCostSource(transaction);
+        var fxRate = transaction.ExchangeRate ?? 1m;
+        var convertedFallback = sourceCost * fxRate;
+
+        if (convertedFallback <= 0m && AreSameCurrency(transaction.Currency.ToString(), homeCurrency))
+            convertedFallback = sourceCost;
+
+        return EnsurePositiveFallbackValue(convertedFallback);
     }
 
     private static decimal ResolveAdjustmentCostFallbackHome(StockTransaction transaction, string homeCurrency)
     {
-        var sourceCost = transaction.HistoricalTotalCost
-                         ?? transaction.MarketValueAtImport
-                         ?? transaction.TotalCostSource;
+        var sourceCost = ResolveUsableAdjustmentCostSource(transaction);
+        var fxRate = transaction.ExchangeRate ?? 1m;
+        var convertedFallback = sourceCost * fxRate;
 
-        if (sourceCost <= 0m)
-            return 0m;
+        if (convertedFallback <= 0m && AreSameCurrency(transaction.Currency.ToString(), homeCurrency))
+            convertedFallback = sourceCost;
 
-        if (transaction.ExchangeRate is > 0m)
-            return sourceCost * transaction.ExchangeRate.Value;
+        return EnsurePositiveFallbackValue(convertedFallback);
+    }
 
-        return AreSameCurrency(transaction.Currency.ToString(), homeCurrency)
-            ? sourceCost
+    private static decimal ResolveUsableBuyCostSource(StockTransaction transaction)
+    {
+        if (transaction.TotalCostSource > 0m)
+            return transaction.TotalCostSource;
+
+        var foolproofMathFallback = ResolvePriceSharesCostSource(transaction);
+        return foolproofMathFallback > 0m
+            ? foolproofMathFallback
             : 0m;
     }
+
+    private static decimal ResolveUsableAdjustmentCostSource(StockTransaction transaction)
+    {
+        if (transaction.HistoricalTotalCost is > 0m)
+            return transaction.HistoricalTotalCost.Value;
+
+        if (transaction.MarketValueAtImport is > 0m)
+            return transaction.MarketValueAtImport.Value;
+
+        if (transaction.TotalCostSource > 0m)
+            return transaction.TotalCostSource;
+
+        var foolproofMathFallback = ResolvePriceSharesCostSource(transaction);
+        return foolproofMathFallback > 0m
+            ? foolproofMathFallback
+            : 0m;
+    }
+
+    private static decimal ResolvePriceSharesCostSource(StockTransaction transaction)
+    {
+        if (transaction.PricePerShare <= 0m || transaction.Shares <= 0m)
+            return 0m;
+
+        return transaction.PricePerShare * transaction.Shares;
+    }
+
+    private static decimal EnsurePositiveFallbackValue(decimal fallbackValue)
+        => fallbackValue > 0m ? fallbackValue : 1m;
 
     private async Task<decimal?> ResolveCostFallbackSourceAsync(
         StockPosition position,
@@ -1187,7 +1226,7 @@ public class TransactionPortfolioSnapshotService(
         if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
             || string.IsNullOrWhiteSpace(normalizedToCurrency))
         {
-            return null;
+            return 1m;
         }
 
         if (AreSameCurrency(normalizedFromCurrency, normalizedToCurrency))

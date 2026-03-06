@@ -755,6 +755,88 @@ public class PortfoliosControllerTests(CustomWebApplicationFactory factory) : In
     }
 
     [Fact]
+    public async Task AggregatePerformance_WithSameCurrencyPortfolio_InitialBalanceGuardAndTwrParity_ShouldStayPositiveAndAvoidMinus100Regression()
+    {
+        // Arrange
+        var targetYear = DateTime.UtcNow.Year - 1;
+        var twdPortfolio = await CreateTestPortfolioWithCurrencyAsync("TWD Same Currency", "tWd");
+        await CreateTestPortfolioWithCurrencyAsync("USD Empty", "USD");
+
+        await AddInitialDepositAsync(
+            twdPortfolio.Id,
+            new DateTime(targetYear - 1, 12, 20),
+            amount: 20000m,
+            homeAmount: 20000m,
+            exchangeRate: 1m);
+
+        var buyBeforeYear = new CreateStockTransactionRequest
+        {
+            PortfolioId = twdPortfolio.Id,
+            TransactionDate = new DateTime(targetYear - 1, 12, 25),
+            Ticker = "2330",
+            TransactionType = TransactionType.Buy,
+            Shares = 100m,
+            PricePerShare = 100m,
+            Fees = 0m,
+            Market = StockMarket.TW,
+            Currency = Currency.TWD,
+            BalanceAction = BalanceAction.None
+        };
+
+        var buyResponse = await Client.PostAsJsonAsync("/api/stocktransactions", buyBeforeYear);
+        buyResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Explicit external contribution in-year to verify InitialBalance/Deposit external CF path.
+        await AddDepositAsync(
+            twdPortfolio.Id,
+            new DateTime(targetYear, 6, 30),
+            amount: 1000m,
+            homeAmount: 1000m,
+            exchangeRate: 1m);
+
+        var request = new CalculateYearPerformanceRequest
+        {
+            Year = targetYear,
+            YearStartPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 100m, ExchangeRate = 1m }
+            },
+            YearEndPrices = new Dictionary<string, YearEndPriceInfo>
+            {
+                ["2330"] = new() { Price = 110m, ExchangeRate = 1m }
+            }
+        };
+
+        // Act
+        var single = await CalculatePortfolioYearPerformanceAsync(twdPortfolio.Id, request);
+        var aggregate = await CalculateAggregateYearPerformanceAsync(request);
+
+        // Assert: same-currency (source/home both TWD) should keep source/home parity and avoid -100% TWR collapse.
+        single.SourceCurrency.Should().Be("TWD");
+        single.TimeWeightedReturnPercentageSource.Should().NotBeNull();
+        single.TimeWeightedReturnPercentage.Should().NotBeNull();
+        single.TimeWeightedReturnPercentageSource!.Value.Should().BeGreaterThan(0d);
+        single.TimeWeightedReturnPercentageSource.Value.Should().NotBeApproximately(-100d, 0.0001d);
+        single.TimeWeightedReturnPercentage!.Value.Should().BeApproximately(single.TimeWeightedReturnPercentageSource.Value, 0.0001d);
+
+        single.NetContributionsSource.Should().NotBeNull();
+        single.NetContributionsSource!.Value.Should().BeGreaterThan(0m);
+        single.NetContributionsHome.Should().Be(single.NetContributionsSource.Value);
+
+        // Representative matrix: aggregate should keep home metric parity while source-side is suppressed.
+        aggregate.SourceCurrency.Should().BeNull();
+        aggregate.StartValueSource.Should().BeNull();
+        aggregate.EndValueSource.Should().BeNull();
+        aggregate.NetContributionsSource.Should().BeNull();
+        aggregate.TimeWeightedReturnPercentageSource.Should().BeNull();
+
+        aggregate.TimeWeightedReturnPercentage.Should().NotBeNull();
+        aggregate.TimeWeightedReturnPercentage!.Value.Should().BeGreaterThan(0d);
+        aggregate.TimeWeightedReturnPercentage.Value.Should().NotBeApproximately(-100d, 0.0001d);
+        aggregate.TimeWeightedReturnPercentage.Value.Should().BeApproximately(single.TimeWeightedReturnPercentage.Value, 0.0001d);
+    }
+
+    [Fact]
     public async Task StockTransactions_Response_EnumsAreSerializedAsNumbers()
     {
         // Arrange

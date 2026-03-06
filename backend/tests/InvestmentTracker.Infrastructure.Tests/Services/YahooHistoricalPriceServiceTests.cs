@@ -203,6 +203,51 @@ public class YahooHistoricalPriceServiceTests
         handler.CallCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task GetExchangeRateAsync_SameCurrencyWithWhitespace_ReturnsOne_AndDoesNotCallHttp()
+    {
+        // Arrange
+        var date = new DateOnly(2024, 2, 1);
+        var handler = new StubHttpMessageHandler((_, _) =>
+            throw new InvalidOperationException("HTTP should not be called for same-currency FX lookup."));
+
+        var httpClient = new HttpClient(handler);
+        var logger = new Mock<ILogger<YahooHistoricalPriceService>>().Object;
+        var sut = new YahooHistoricalPriceService(httpClient, logger);
+
+        // Act
+        var result = await sut.GetExchangeRateAsync(" usd ", "USD", date, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Rate.Should().Be(1m);
+        result.ActualDate.Should().Be(date);
+        result.CurrencyPair.Should().Be("USDUSD");
+        handler.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetExchangeRateAsync_WhenHttpIsCanceled_ThrowsOperationCanceledException()
+    {
+        // Arrange
+        var date = new DateOnly(2024, 2, 1);
+        var handler = new StubHttpMessageHandler((_, cancellationToken) =>
+            throw new OperationCanceledException(cancellationToken));
+
+        var httpClient = new HttpClient(handler);
+        var logger = new Mock<ILogger<YahooHistoricalPriceService>>().Object;
+        var sut = new YahooHistoricalPriceService(httpClient, logger);
+
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        var act = () => sut.GetExchangeRateAsync("USD", "TWD", date, cts.Token);
+
+        // Assert
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        handler.CallCount.Should().Be(1);
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

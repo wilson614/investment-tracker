@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using InvestmentTracker.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -66,6 +65,10 @@ public class YahooHistoricalPriceService(
                 PriceReturnPercent = parsed.Value.priceReturnPercent,
                 Year = year
             };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -255,6 +258,10 @@ public class YahooHistoricalPriceService(
 
             return matched;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Error fetching Yahoo Finance historical price for {Symbol}/{Date}", symbol, date);
@@ -281,9 +288,13 @@ public class YahooHistoricalPriceService(
                 return [];
             }
 
-            return chart.Points
-                .Where(point => point.Date >= fromDate && point.Date <= toDate)
-                .ToList();
+            return [..
+                chart.Points.Where(point => point.Date >= fromDate && point.Date <= toDate)
+            ];
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -443,19 +454,27 @@ public class YahooHistoricalPriceService(
     {
         try
         {
-            if (string.Equals(fromCurrency, toCurrency, StringComparison.OrdinalIgnoreCase))
+            var normalizedFromCurrency = fromCurrency?.Trim().ToUpperInvariant();
+            var normalizedToCurrency = toCurrency?.Trim().ToUpperInvariant();
+
+            if (string.IsNullOrWhiteSpace(normalizedFromCurrency)
+                || string.IsNullOrWhiteSpace(normalizedToCurrency))
             {
-                var normalizedCurrency = fromCurrency.ToUpperInvariant();
+                return null;
+            }
+
+            if (string.Equals(normalizedFromCurrency, normalizedToCurrency, StringComparison.Ordinal))
+            {
                 return new YahooExchangeRateResult
                 {
                     Rate = 1m,
                     ActualDate = date,
-                    CurrencyPair = $"{normalizedCurrency}{normalizedCurrency}"
+                    CurrencyPair = $"{normalizedFromCurrency}{normalizedToCurrency}"
                 };
             }
 
             // Yahoo Finance 匯率符號格式：USDTWD=X
-            var yahooSymbol = $"{fromCurrency.ToUpperInvariant()}{toCurrency.ToUpperInvariant()}=X";
+            var yahooSymbol = $"{normalizedFromCurrency}{normalizedToCurrency}=X";
 
             // 計算時間範圍：目標日期前後各 7 天，確保能找到交易日
             var startDate = date.AddDays(-7);
@@ -480,7 +499,7 @@ public class YahooHistoricalPriceService(
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var result = ParseExchangeRateResponse(json, date, fromCurrency, toCurrency);
+            var result = ParseExchangeRateResponse(json, date, normalizedFromCurrency, normalizedToCurrency);
 
             if (result != null)
             {
@@ -489,6 +508,10 @@ public class YahooHistoricalPriceService(
             }
 
             return result;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

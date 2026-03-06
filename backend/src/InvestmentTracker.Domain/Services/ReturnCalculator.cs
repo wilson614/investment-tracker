@@ -92,7 +92,19 @@ public class ReturnCalculator : IReturnCalculator
                 continue;
             }
 
-            factor *= snapshot.ValueBefore / denominator;
+            var vEnd = snapshot.ValueBefore;
+            var r = vEnd / denominator - 1m;
+
+            // Wipeout guard (narrowed): only treat vEnd=0 as synthetic when snapshot immediately
+            // re-anchors to a non-zero value that is at least the prior chain anchor.
+            // This keeps protection for synthetic zero-before snapshots, while preserving legit wipeouts.
+            var hasSyntheticZeroReanchorSignal = vEnd == 0m
+                                                 && snapshot.ValueAfter > 0m
+                                                 && snapshot.ValueAfter >= denominator;
+            if (r <= -0.99m && hasSyntheticZeroReanchorSignal)
+                r = 0m;
+
+            factor *= 1m + r;
             hasAnyPeriod = true;
             currentStartValue = snapshot.ValueAfter;
         }
