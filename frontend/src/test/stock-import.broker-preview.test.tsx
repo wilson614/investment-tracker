@@ -389,7 +389,7 @@ function expectVisibleTextOrder(textsInExpectedOrder: string[]) {
   }
 }
 
-function formatPercent(value: number | null): string {
+function formatPercent(value: number | null | undefined): string {
   if (value == null) {
     return '-';
   }

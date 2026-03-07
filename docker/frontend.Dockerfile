@@ -3,7 +3,8 @@
 # =============================================================================
 
 # Stage 1: Build
-FROM node:20-alpine AS build
+# Vite 7 / @vitejs/plugin-react 5 require Node >=20.19 or >=22.12
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Build argument for API URL
